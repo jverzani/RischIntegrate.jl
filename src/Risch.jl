@@ -28,7 +28,7 @@ rebuilt by calling operations as functions (same `build` / `lift` conventions as
     reduction with a general derivation (already written to take `δ`), the
     polynomial reduction (5.8/5.9 for log, 5.10/5.11 for exp), residue criterion
     (5.6-5.7) for the log part.
-* **Stage 4 (base case ℚ(x) done; towers pending)** – Risch differential equation solvers (ch. 6: weak normalisation,
+* **Stage 4 (done, restricted shapes over towers)** – Risch differential equation solvers (ch. 6: weak normalisation,
     SPDE, base case ℚ(x), exp/log cases) and limited integration (ch. 7).
 * **Stage 5** – parametric RDE / structure theorem, non-elementary detection
     ("this integral is not elementary"), irrational residues (algebraic constants,
@@ -1059,6 +1059,141 @@ function rde_base(f::QXF, g::QXF)
 end
 
 # ---------------------------------------------------------------------------
+# Stage 4b: the Risch differential equation over a tower K_m = k(t), k = K_{m-1}
+#
+#   y' + f y = g,   f = j u' (so exp(-∫f) = θ^-j is not in K by independence)
+#
+# Supported shape: f and g are polynomials in t (t = log), or Laurent polynomials
+# in t (t = exp); a normal denominator raises RischNotImplemented. Writing
+# y = Σ cᵢ tⁱ with cᵢ ∈ k:
+#   t = log(w), t' = w'/w ∈ k:   cᵢ' + f cᵢ + (i+1) cᵢ₊₁ t' = gᵢ   (f ∈ k)
+#   t = exp(w):                  cᵢ' + (f + i w') cᵢ = gᵢ          (f ∈ k)
+# which are RDEs in k (recursion). If f itself involves t, the leading term of f
+# fixes the support of y ( deg y = deg g - deg f ), and the cᵢ follow
+# algebraically from the top (or from the bottom when only negative powers of an
+# exponential occur). Every candidate is verified exactly; bounds only decide
+# where to look, so they can lose a solution but never invent one.
+# Returns y ∈ K_m or `nothing` when there is no solution.
+# ---------------------------------------------------------------------------
+function laurent_of(T::Tower, m::Int, h, polynomial::Bool)
+    k = T.Ts[m]
+    θ = xpoly(k)
+    p = degree(h.den)
+    ((isone(h.den)) || (!polynomial && h.den == θ^p)) || throw(RischNotImplemented(
+        "the Risch differential equation over a tower with a normal denominator " *
+        "(needs the full Bronstein ch. 6 denominator bound and SPDE reduction)"))
+    d = Dict{Int,k}()
+    for (idx, c) in enumerate(h.num.c)
+        iszero(c) || (d[idx - 1 - p] = c)
+    end
+    d
+end
+
+function from_laurent(T::Tower, m::Int, c::Dict)
+    k = T.Ts[m]
+    P = UPoly{k}
+    isempty(c) && return zero(T.Ts[m + 1])
+    lo, hi = minimum(keys(c)), maximum(keys(c))
+    p = max(0, -lo)
+    coeffs = fill(zero(k), hi + p + 1)
+    for (i, ci) in c
+        coeffs[i + p + 1] = ci
+    end
+    frac(P(coeffs), xpoly(k)^p)
+end
+
+# y' = g in K_m, y ∈ K_m with no logarithms allowed (used when f vanishes)
+function integrate_const(T::Tower, m::Int, g)
+    r = try
+        integrate_el(T, m, g)
+    catch e
+        e isa NotElementary ? nothing : rethrow()
+    end
+    (r === nothing || !isempty(r.logs) || !isempty(r.atans)) ? nothing : r.v
+end
+
+function rde(T::Tower, m::Int, f, g)
+    iszero(g) && return zero(T.Ts[m + 1])
+    m == 0 && return rde_base(f, g)
+    lv = T.levels[m]
+    k = T.Ts[m]
+    zk = zero(k)
+    islog = lv.kind === :log
+    fl = laurent_of(T, m, f, islog)
+    gl = laurent_of(T, m, g, islog)
+    isempty(fl) && throw(RischError("RDE with f = 0 is plain integration"))
+    df, ef = maximum(keys(fl)), minimum(keys(fl))
+    dg, eg = maximum(keys(gl)), minimum(keys(gl))
+    c = Dict{Int,k}()
+    if islog
+        tp = lv.dtheta.c[1]
+        if df == 0                                        # f ∈ k: triangular system of RDEs in k
+            for i in dg:-1:0
+                rhs = get(gl, i, zk) - (i + 1) * get(c, i + 1, zk) * tp
+                ci = rde(T, m - 1, fl[0], rhs)
+                ci === nothing && return nothing
+                iszero(ci) || (c[i] = ci)
+            end
+        else                                              # deg y = deg g - deg f, algebraic
+            hi = dg - df
+            hi < 0 && return nothing
+            for s in (hi + df):-1:df
+                i = s - df
+                rhs = get(gl, s, zk)
+                for (a, fa) in fl
+                    a == df || (rhs -= fa * get(c, s - a, zk))
+                end
+                rhs -= D(T, m - 1, get(c, s, zk)) + (s + 1) * get(c, s + 1, zk) * tp
+                c[i] = rhs / fl[df]
+            end
+        end
+    else
+        wp = D(T, m - 1, lv.arg)                          # w' for t = exp(w)
+        if df == 0 && ef == 0                             # f ∈ k: decoupled RDEs in k
+            for i in eg:dg
+                gi = get(gl, i, zk)
+                iszero(gi) && continue
+                fi = fl[0] + i * wp
+                ci = iszero(fi) ? integrate_const(T, m - 1, gi) : rde(T, m - 1, fi, gi)
+                ci === nothing && return nothing
+                c[i] = ci
+            end
+        elseif df > 0                                     # top-down
+            hi = dg - df
+            lo = min(eg, 0, eg - ef)
+            hi < lo && return nothing
+            for s in (hi + df):-1:(lo + df)
+                i = s - df
+                rhs = get(gl, s, zk)
+                for (a, fa) in fl
+                    a == df || (rhs -= fa * get(c, s - a, zk))
+                end
+                cs = get(c, s, zk)
+                iszero(cs) || (rhs -= D(T, m - 1, cs) + s * wp * cs)
+                c[i] = rhs / fl[df]
+            end
+        else                                              # only f_a with a <= 0, ef < 0: bottom-up
+            lo = eg - ef
+            hi = max(dg, 0)
+            hi < lo && return nothing
+            for s in (lo + ef):(hi + ef)
+                i = s - ef
+                rhs = get(gl, s, zk)
+                for (a, fa) in fl
+                    a == ef || (rhs -= fa * get(c, s - a, zk))
+                end
+                cs = get(c, s, zk)
+                iszero(cs) || (rhs -= D(T, m - 1, cs) + s * wp * cs)
+                c[i] = rhs / fl[ef]
+            end
+        end
+    end
+    filter!(p -> !iszero(p.second), c)
+    y = from_laurent(T, m, c)
+    D(T, m, y) + f * y == g ? y : nothing
+end
+
+# ---------------------------------------------------------------------------
 # Stage 3: integration in a monomial extension  K(θ),  K = Kᵢ₋₁
 #
 #   ∫ f = v + Σ cⱼ log(wⱼ) (+ Σ dⱼ atan(uⱼ) at the base level),  v, wⱼ ∈ Kᵢ, cⱼ ∈ ℚ
@@ -1215,13 +1350,10 @@ function integrate_el(T::Tower, i::Int, f)::ElemIntegral
     else
         for (j, α) in laurent                           # ∫ α θ^j = y θ^j  with  y' + j u' y = α
             (j == 0 || iszero(α)) && continue
-            K === QXF || throw(RischNotImplemented(
-                "the Risch differential equation over a tower (the exponential is not directly " *
-                "over ℚ(x)) is planned for Stage 4b"))
             fj = lq(T, Q(j), i - 1) * D(T, i - 1, lv.arg)
-            y = rde_base(fj, α)
+            y = rde(T, i - 1, fj, α)
             y === nothing && throw(NotElementary(
-                "the Risch differential equation y' + $j·u'·y = a has no rational solution, " *
+                "the Risch differential equation y' + $j·u'·y = a has no solution in the coefficient field, " *
                 "so the coefficient of exp(u)^$j has no elementary integral"))
             if j > 0
                 coeffs = fill(zero(K), j + 1)
