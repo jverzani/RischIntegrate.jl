@@ -389,18 +389,105 @@ end
 # ---------------------------------------------------------------------------
 # Rothstein–Trager log part for R/D, D squarefree monic, deg R < deg D, over ℚ
 # ---------------------------------------------------------------------------
+# Stage 5a: terms with quadratic-irrational constants (residues in ℚ(√d), d squarefree)
+struct QuadLog                  # β√d · log((U + √d V)/(U - √d V)),  d > 1
+    β::Q
+    d::Int
+    U::QX
+    V::QX
+end
+struct QuadAtan                 # c√e · atan(√e u)  (inverted = false)  or  c√e · atan(u/√e)  (true)
+    c::Q
+    e::Int
+    u::QXF
+    inverted::Bool
+end
+
 struct RationalIntegral
     rational::QXF                          # rational (non-log) part
     logs::Vector{Tuple{Q,QX}}              # c * log(w)
     atans::Vector{Tuple{Q,QXF}}            # c * atan(u)
     unresolved::Vector{Any}                # (residue polynomial, R, D) not handled yet
+    quads::Vector{Any}                     # QuadLog / QuadAtan
+end
+RationalIntegral(r, l, a, u) = RationalIntegral(r, l, a, u, Any[])
+
+# the field ℚ(√D), D a squarefree integer (negative D gives a complex field)
+struct QS{D}
+    a::Q
+    b::Q
+end
+Base.zero(::Type{QS{D}}) where {D} = QS{D}(Q(0), Q(0))
+Base.one(::Type{QS{D}}) where {D} = QS{D}(Q(1), Q(0))
+Base.iszero(x::QS) = iszero(x.a) && iszero(x.b)
+Base.isone(x::QS) = isone(x.a) && iszero(x.b)
+Base.:(==)(x::QS{D}, y::QS{D}) where {D} = x.a == y.a && x.b == y.b
+Base.:+(x::QS{D}, y::QS{D}) where {D} = QS{D}(x.a + y.a, x.b + y.b)
+Base.:-(x::QS{D}, y::QS{D}) where {D} = QS{D}(x.a - y.a, x.b - y.b)
+Base.:-(x::QS{D}) where {D} = QS{D}(-x.a, -x.b)
+Base.:*(x::QS{D}, y::QS{D}) where {D} = QS{D}(x.a * y.a + D * x.b * y.b, x.a * y.b + x.b * y.a)
+Base.:*(n::Integer, x::QS{D}) where {D} = QS{D}(n * x.a, n * x.b)
+function Base.inv(x::QS{D}) where {D}
+    n = x.a^2 - D * x.b^2
+    QS{D}(x.a / n, -x.b / n)
+end
+Base.:/(x::QS{D}, y::QS{D}) where {D} = x * inv(y)
+toQS(::Type{QS{D}}, p::UPoly{Q}) where {D} = UPoly{QS{D}}(QS{D}[QS{D}(c, Q(0)) for c in p.c])
+
+# n = s^2 d with d squarefree (sign kept in d)
+function sqfree_split(n::BigInt)
+    s, d = big(1), big(1)
+    for (p, k) in factorint(abs(n))
+        s *= p^(k ÷ 2)
+        d *= p^(k % 2)
+    end
+    s, (n < 0 ? -d : d)
+end
+
+# Residues are the two roots a = α ± β√d of the irreducible quadratic `rest`. With
+# W = gcd(D, A - a D') = U + √d V:   a log W + ā log W̄ is
+#   α log(U² - d V²) + β√d log((U + √d V)/(U - √d V))                 (d > 1)
+#   α log(U² + e V²) - 2β√e atan(√e V/U),   e = -d                     (d < 0)
+function quad_terms(A::QX, D::QX, dD::QX, rest::QX)
+    rest = monic(rest)
+    p0, p1 = rest.c[1], rest.c[2]
+    α = -p1 / 2
+    Δ = p1^2 - 4 * p0
+    iszero(Δ) && return nothing
+    s, d = sqfree_split(numerator(Δ) * denominator(Δ))
+    (d == 1 || abs(d) > 10^9) && return nothing
+    β = Q(s) / (2 * denominator(Δ))
+    dd = Int(d)
+    S = QS{dd}
+    a = S(α, β)
+    W = gcd(toQS(S, D), toQS(S, A) - scale(a, toQS(S, dD)))
+    degree(W) > 0 || return nothing
+    U = QX(Q[w.a for w in W.c])
+    V = QX(Q[w.b for w in W.c])
+    logs = Tuple{Q,QX}[]
+    quads = Any[]
+    iszero(α) || push!(logs, (α, U * U - dd * (V * V)))
+    if !iszero(V)
+        if dd > 0
+            push!(quads, QuadLog(β, dd, U, V))
+        elseif !iszero(U)
+            e = -dd
+            if degree(V) == 0
+                push!(quads, QuadAtan(2 * β, e, frac(U, V), true))
+            else
+                push!(quads, QuadAtan(-2 * β, e, frac(V, U), false))
+            end
+        end
+    end
+    logs, quads
 end
 
 function log_part(A::QX, D::QX)
     logs = Tuple{Q,QX}[]
     atans = Tuple{Q,QXF}[]
     unresolved = Any[]
-    iszero(A) && return logs, atans, unresolved
+    quads = Any[]
+    iszero(A) && return logs, atans, unresolved, quads
     dD = deriv(D)
     # R(z) = res_x(D, A - z D') computed in the field ℚ(z)
     Kz = QXF
@@ -413,7 +500,7 @@ function log_part(A::QX, D::QX)
     iszero(r) && throw(RischError("zero resultant in the residue computation"))
     isone(r.den) || throw(RischError("residue polynomial is not a polynomial"))
     Rz = r.num
-    degree(Rz) <= 0 && return logs, atans, unresolved
+    degree(Rz) <= 0 && return logs, atans, unresolved, quads
     Rsf = quo(Rz, gcd(Rz, deriv(Rz)))        # distinct residues
     roots = rational_roots(Rsf)
     rest = Rsf
@@ -422,7 +509,7 @@ function log_part(A::QX, D::QX)
         degree(W) > 0 && push!(logs, (a, W))
         rest = quo(rest, QX(Q[-a, Q(1)]))
     end
-    degree(rest) == 0 && return logs, atans, unresolved
+    degree(rest) == 0 && return logs, atans, unresolved, quads
     handled = false
     if degree(rest) == 2
         rest = monic(rest)
@@ -446,16 +533,24 @@ function log_part(A::QX, D::QX)
             handled = true
         end
     end
+    if !handled && degree(rest) == 2           # irrational or non-square complex residues (5a)
+        qt = quad_terms(A, D, dD, rest)
+        if qt !== nothing
+            append!(logs, qt[1])
+            append!(quads, qt[2])
+            handled = true
+        end
+    end
     handled || push!(unresolved, (rest, A, D))
-    logs, atans, unresolved
+    logs, atans, unresolved, quads
 end
 
 function integrate_rational(f::QXF)
     iszero(f) && return RationalIntegral(zero(QXF), Tuple{Q,QX}[], Tuple{Q,QXF}[], Any[])
     g, Qp, R, Dsf = hermite_reduce(dx, f.num, f.den)
     rational = g + frac(integrate_poly(Qp))
-    logs, atans, unresolved = log_part(R, Dsf)
-    RationalIntegral(rational, logs, atans, unresolved)
+    logs, atans, unresolved, quads = log_part(R, Dsf)
+    RationalIntegral(rational, logs, atans, unresolved, quads)
 end
 
 # d/dx of the computed antiderivative, in ℚ(x) (for self-verification)
@@ -466,6 +561,16 @@ function derivative_of(res::RationalIntegral)
     end
     for (c, u) in res.atans
         tot = tot + kconst(c) * dx(u) / (one(QXF) + u * u)
+    end
+    for q in res.quads
+        if q isa QuadLog      # d/dx [β√d log(W/W̄)] = 2βd (V'U - U'V)/(U² - dV²)
+            U, V = q.U, q.V
+            tot = tot + kconst(2 * q.β * q.d) * frac(deriv(V) * U - deriv(U) * V, U * U - q.d * (V * V))
+        else                  # c√e atan(√e u):  c e u'/(1 + e u²);  c√e atan(u/√e):  c e u'/(e + u²)
+            u, e = q.u, Q(q.e)
+            den = q.inverted ? kconst(e) + u * u : one(QXF) + kconst(e) * u * u
+            tot = tot + kconst(q.c * e) * dx(u) / den
+        end
     end
     tot
 end
@@ -567,10 +672,34 @@ struct Builder
     x::Any
 end
 const OPS = Dict{Symbol,Function}(:+ => +, :* => *, :/ => /, :^ => ^, :exp => exp,
-                                  :log => log, :atan => atan)
+                                  :log => log, :atan => atan, :sqrt => sqrt)
 mk(b::Builder, name::Symbol, args...) = b.build(OPS[name], args...)
 
 default_build(op, args...) = op(args...)
+
+# Constants such as sqrt(3) must stay symbolic. SimpleExpressions-like types defer
+# evaluation only when a symbolic variable is involved, so a constant-only call
+# `op(args...)` is built by substituting into `op(x, args[2:end]...)` (the
+# documented `u(value, :)` substitution); other types simply apply the operation.
+function placeholder_call(x, op, args)
+    isempty(args) && return nothing
+    try
+        u = op(x, args[2:end]...)
+        u isa Function || return nothing
+        r = u(args[1], :)
+        r isa Function ? r : nothing
+    catch
+        nothing
+    end
+end
+function deferred_call(x, op, args)
+    r = placeholder_call(x, op, args)
+    r === nothing ? op(args...) : r
+end
+function auto_build(f, x)
+    typeof(x) <: Function || return default_build
+    (op, args...) -> any(a -> a isa Function, args) ? op(args...) : deferred_call(x, op, args)
+end
 
 function auto_lift(f, x)
     for t in (f, x)
@@ -614,6 +743,20 @@ function to_term(b::Builder, res::RationalIntegral)
     for (c, u) in res.atans
         l = mk(b, :atan, frac_term(b, u))
         push!(ts, isone(c) ? l : mk(b, :*, b.lift(num(c)), l))
+    end
+    for q in res.quads
+        if q isa QuadLog
+            r = mk(b, :sqrt, b.lift(q.d))
+            top = mk(b, :+, poly_term(b, q.U), mk(b, :*, r, poly_term(b, q.V)))
+            bot = mk(b, :+, poly_term(b, q.U), mk(b, :*, b.lift(-1), r, poly_term(b, q.V)))
+            l = mk(b, :log, mk(b, :/, top, bot))
+            push!(ts, isone(q.β) ? mk(b, :*, r, l) : mk(b, :*, b.lift(num(q.β)), r, l))
+        else
+            r = mk(b, :sqrt, b.lift(q.e))
+            arg = q.inverted ? mk(b, :/, frac_term(b, q.u), r) : mk(b, :*, r, frac_term(b, q.u))
+            l = mk(b, :atan, arg)
+            push!(ts, isone(q.c) ? mk(b, :*, r, l) : mk(b, :*, b.lift(num(q.c)), r, l))
+        end
     end
     isempty(ts) && return b.lift(0)
     length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
@@ -995,7 +1138,7 @@ the Stage 2 machinery: the result must agree with the ordinary derivative.
 function tower_derivative(f, x; build = nothing, lift = nothing)
     T, el = build_tower(f, string(x))
     d = D(T, el)
-    b = Builder(build === nothing ? default_build : build,
+    b = Builder(build === nothing ? auto_build(f, x) : build,
                 lift === nothing ? auto_lift(f, x) : lift, x)
     tower_to_term(b, T, d)
 end
@@ -1297,6 +1440,8 @@ function integrate_el(T::Tower, i::Int, f)::ElemIntegral
         res = integrate_rational(f)
         isempty(res.unresolved) || throw(RischNotImplemented(
             "the logarithmic part has irrational residues; algebraic constants are planned for Stage 5"))
+        isempty(res.quads) || throw(RischNotImplemented(
+            "quadratic-irrational residues inside a tower are planned for Stage 5b"))
         return ElemIntegral(res.rational,
                             Tuple{Q,Any}[(c, frac(w)) for (c, w) in res.logs],
                             Tuple{Q,Any}[(c, u) for (c, u) in res.atans])
@@ -1412,7 +1557,7 @@ end
 function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = true)
     T, el = build_tower(f, string(x))
     L = length(T.levels)
-    bd = Builder(build === nothing ? default_build : build,
+    bd = Builder(build === nothing ? auto_build(f, x) : build,
                  lift === nothing ? auto_lift(f, x) : lift, x)
     if L > 0
         res = integrate_el(T, L, el)
