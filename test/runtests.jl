@@ -1,6 +1,6 @@
 using RischIntegrate
 using Test
 
-@testset "RischIntegrate.jl" begin
-    # Write your tests here.
-end
+#include("test_integrate.jl")
+#include("test_risch.jl")
+include("test_tower.jl")
