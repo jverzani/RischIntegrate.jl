@@ -80,8 +80,7 @@ function run_tests(x, evalat, name)
         for f in fs
             F = Risch.risch_integrate(f, x)
             for a in (2.3, 3.1, 4.7)
-                @show fd(t -> evalat(F, t), a), evalat(f, a)
-                #@test isapprox(real(fd(t -> evalat(F, t), a)), real(evalat(f, a)); rtol = 1e-5, atol = 1e-8)
+                @test isapprox(real(fd(t -> evalat(F, t), a)), real(evalat(f, a)); rtol = 1e-5, atol = 1e-8)
             end
         end
     end
