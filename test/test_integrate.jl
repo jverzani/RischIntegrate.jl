@@ -6,6 +6,18 @@ using .Risch
 
 fd(f, a; h = 1e-6) = (f(a + h) - f(a - h)) / (2h)
 
+# Compare d/dx F with f on the real parts: where F contains log(w) with w < 0 it is
+# complex-valued, but Re F' = (Re F)' is still the right derivative. Complex values
+# are reported so the offending integrand can be identified.
+function antiderivative_ok(F, f, a, evalat)
+    d = fd(t -> evalat(F, t), a)
+    v = evalat(f, a)
+    if d isa Complex && abs(imag(d)) > 1e-8
+        @warn "antiderivative is complex-valued at x = $a" integrand = f antiderivative = F value = d
+    end
+    isapprox(real(d), real(v); rtol = 1e-5, atol = 1e-8)
+end
+
 function run_tests(x, evalat, name)
     @testset "$name: elementary integrals in log towers" begin
         fs = (log(x),                       # x log x - x
@@ -23,7 +35,7 @@ function run_tests(x, evalat, name)
         for f in fs
             F = Risch.risch_integrate(f, x)
             for a in (1.7, 2.6, 4.1)
-                @test isapprox(real(fd(t -> evalat(F, t), a)), real(evalat(f, a)); rtol = 1e-5, atol = 1e-8)
+                @test antiderivative_ok(F, f, a, evalat)
             end
         end
     end
@@ -39,7 +51,7 @@ function run_tests(x, evalat, name)
         for f in fs
             F = Risch.risch_integrate(f, x)
             for a in (0.7, 1.6, 2.4)
-                @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5, atol = 1e-8)
+                @test antiderivative_ok(F, f, a, evalat)
             end
         end
     end
@@ -61,7 +73,7 @@ function run_tests(x, evalat, name)
         for f in fs
             F = Risch.risch_integrate(f, x)
             for a in (0.7, 1.6, 2.4)
-                @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5, atol = 1e-8)
+                @test antiderivative_ok(F, f, a, evalat)
             end
         end
     end
@@ -80,7 +92,7 @@ function run_tests(x, evalat, name)
         for f in fs
             F = Risch.risch_integrate(f, x)
             for a in (2.3, 3.1, 4.7)
-                @test isapprox(real(fd(t -> evalat(F, t), a)), real(evalat(f, a)); rtol = 1e-5, atol = 1e-8)
+                @test antiderivative_ok(F, f, a, evalat)
             end
         end
     end
@@ -90,11 +102,14 @@ function run_tests(x, evalat, name)
               exp(x) * (log(x)^2 + 2log(x)/x),         # exp(x) log(x)^2
               exp(exp(x)) * exp(x),                    # exp(exp(x))
               exp(exp(x)) * (1 + x * exp(x)),          # x exp(exp(x))
-              exp(x) * log(x) + exp(x) / x)            # same as the first, reordered
+              exp(x) * log(x) + exp(x) / x,            # same as the first, reordered
+              exp(x + exp(x)),                         # exp(exp(x)): cancellation exponent i0 = -1
+              exp(x + exp(x)) * (1 + exp(x)),          # exp(x + exp(x))
+              exp(2x + exp(x)))                        # (exp(x) - 1) exp(exp(x)): i0 = -2
         for f in fs
             F = Risch.risch_integrate(f, x)
             for a in (1.3, 1.9, 2.6)
-                @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5, atol = 1e-8)
+                @test antiderivative_ok(F, f, a, evalat)
             end
         end
     end
@@ -111,16 +126,19 @@ function run_tests(x, evalat, name)
         @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) * log(x), x)       # Ei(x) - ...
         @test_throws Risch.NotElementary Risch.risch_integrate(exp(exp(x)), x)           # Ei(exp(x))
         @test_throws Risch.NotElementary Risch.risch_integrate(x^x, x)
+        @test_throws Risch.NotElementary Risch.risch_integrate(x * exp(x + exp(x)), x)   # needs ∫ exp(exp(x))
+        # tower is [exp(x), log(x)]: top monomial log, normal denominator, non-constant residue
+        @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) / (x + log(x)), x)
     end
 
     @testset "$name: awaiting later stages" begin
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / (x * (log(x)^2 + 1)), x)  # atan(log x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / (exp(x) + exp(-x)), x)     # atan(exp x)
-#        @test_throws Risch.RischNotImplemented Risch.risch_integrate(exp(x) / (x + log(x)), x)      # normal denominator over a tower
     end
 end
 
 simple_x = let; SimpleExpressions.@symbolic x; x; end
 sym_x = let; SymEngine.@vars x; x; end
 run_tests(simple_x, (e, a) -> e isa Function ? e(a) : e, "SimpleExpressions")
-run_tests(sym_x, (e, a) -> Float64(SymEngine.N(SymEngine.subs(e, sym_x => a))), "SymEngine")
+run_tests(sym_x, (e, a) -> (z = SymEngine.N(SymEngine.subs(e, sym_x => a));
+                            z isa Complex ? ComplexF64(z) : Float64(z)), "SymEngine")

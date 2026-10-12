@@ -1294,6 +1294,16 @@ function rde(T::Tower, m::Int, f, g)
         end
     else
         wp = D(T, m - 1, lv.arg)                          # w' for t = exp(w)
+        # Cancellation exponent: at exponent i the lowest/top equation reads
+        # c' + (f_0 + i w') c = g_i, and f_0 + i w' = 0 for i0 = -f_0/w' when that is an
+        # integer (e.g. u = x + t with t = exp(x) gives i0 = -1: exp(x + e^x) has the
+        # antiderivative exp(e^x) = θ/t). There a constant c is a homogeneous solution,
+        # so the support of y may extend to i0.
+        i0 = nothing
+        if !iszero(wp)
+            cv = const_value(-get(fl, 0, zk) / wp)
+            cv !== nothing && isone(denominator(cv)) && (i0 = Int(numerator(cv)))
+        end
         if df == 0 && ef == 0                             # f ∈ k: decoupled RDEs in k
             for i in eg:dg
                 gi = get(gl, i, zk)
@@ -1306,6 +1316,7 @@ function rde(T::Tower, m::Int, f, g)
         elseif df > 0                                     # top-down
             hi = dg - df
             lo = min(eg, 0, eg - ef)
+            i0 === nothing || (lo = min(lo, i0))
             hi < lo && return nothing
             for s in (hi + df):-1:(lo + df)
                 i = s - df
@@ -1320,6 +1331,7 @@ function rde(T::Tower, m::Int, f, g)
         else                                              # only f_a with a <= 0, ef < 0: bottom-up
             lo = eg - ef
             hi = max(dg, 0)
+            i0 === nothing || (hi = max(hi, i0))
             hi < lo && return nothing
             for s in (lo + ef):(hi + ef)
                 i = s - ef
