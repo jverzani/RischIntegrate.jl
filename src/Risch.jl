@@ -1896,6 +1896,7 @@ function rde(T::Tower, m::Int, f, g)
     df, ef = maximum(keys(fl)), minimum(keys(fl))
     dg, eg = maximum(keys(gl)), minimum(keys(gl))
     c = Dict{Int,k}()
+    undecided = false                                     # exp case: cancellation not decided (8b)
     if islog
         tp = lv.dtheta.c[1]
         if df == 0                                        # f ∈ k: triangular system of RDEs in k
@@ -1920,19 +1921,16 @@ function rde(T::Tower, m::Int, f, g)
         end
     else
         wp = D(T, m - 1, lv.arg)                          # w' for t = exp(w)
-        # Cancellation exponent: at exponent i the lowest/top equation reads
-        # c' + (f_0 + i w') c = g_i, and f_0 + i w' = 0 for i0 = -f_0/w' when that is an
-        # integer (e.g. u = x + t with t = exp(x) gives i0 = -1: exp(x + e^x) has the
-        # antiderivative exp(e^x) = θ/t). There a constant c is a homogeneous solution,
-        # so the support of y may extend to i0.
-        i0 = nothing
-        if !iszero(wp)
-            cv = dconst_value(T, -get(fl, 0, zk) / wp)
-            if cv !== nothing
-                n0 = cinteger(cv)
-                n0 === nothing || (i0 = Int(numerator(n0)))
-            end
-        end
+        # Cancellation exponent (step 8b): where the lowest (f polynomial) or top (only
+        # non-positive powers in f) equation reads c' + (f_0 + s w') c = g_s, a nonzero
+        # homogeneous solution c ∈ k lets the support of y extend to s. `cancellation_exponent`
+        # decides it completely when it can; `:unknown` means a failed search is not a proof.
+        # (e.g. u = x + t, t = exp(x): s = -1 with c constant, ∫ exp(x + e^x) = θ/t;
+        #  u = x + log x + t: s = -1 with c = 1/x, ∫ exp(x + log x + e^x)/x = θ/(x t))
+        needs_s0 = (df > 0 && ef >= 0) || (df <= 0 && ef < 0)
+        s0 = needs_s0 ? cancellation_exponent(T, m, get(fl, 0, zk), wp) : nothing
+        undecided = s0 === :unknown
+        i0 = s0 isa Int ? s0 : nothing
         if df == 0 && ef == 0                             # f ∈ k: decoupled RDEs in k
             for i in eg:dg
                 gi = get(gl, i, zk)
@@ -1946,7 +1944,10 @@ function rde(T::Tower, m::Int, f, g)
             hi = dg - df
             lo = min(eg, 0, eg - ef)
             i0 === nothing || (lo = min(lo, i0))
-            hi < lo && return nothing
+            if hi < lo
+                undecided && cancellation_undecided()
+                return nothing
+            end
             for s in (hi + df):-1:(lo + df)
                 i = s - df
                 rhs = get(gl, s, zk)
@@ -1961,7 +1962,10 @@ function rde(T::Tower, m::Int, f, g)
             lo = eg - ef
             hi = max(dg, 0)
             i0 === nothing || (hi = max(hi, i0))
-            hi < lo && return nothing
+            if hi < lo
+                undecided && cancellation_undecided()
+                return nothing
+            end
             for s in (lo + ef):(hi + ef)
                 i = s - ef
                 rhs = get(gl, s, zk)
@@ -1976,7 +1980,88 @@ function rde(T::Tower, m::Int, f, g)
     end
     filter!(p -> !iszero(p.second), c)
     y = from_laurent(T, m, c)
-    D(T, m, y) + f * y == g ? y : nothing
+    D(T, m, y) + f * y == g && return y
+    undecided && cancellation_undecided()
+    nothing
+end
+
+cancellation_undecided() = throw(RischNotImplemented(
+    "Risch DE, cancellation case: whether f₀ + s·w' is a logarithmic derivative in k could not be decided"))
+
+# Step 8b. The integers s for which  c' + (f₀ + s w') c = 0  has a solution c ∈ k* (k = K_(m-1),
+# t = θ_m = exp(w)): then -(f₀ + s w') = c'/c is a logarithmic derivative in k. Writing
+# c = (constant) Π θᵢ^(nᵢ) Π qⱼ^(eⱼ) (generators of k and normal irreducible factors, all
+# exponents integers), c'/c = Σ nᵢ bᵢ' + Σ eⱼ δqⱼ/qⱼ with bᵢ' the derivative of an exp argument
+# or θᵢ' = aᵢ'/aᵢ of a log; the qⱼ show up in the denominators of f₀ and w'. So solve
+#     f₀ = Σ ρᵢ (candidates) - s w'     over ℚ.
+# w' is not in the span of logarithmic derivatives (t is a monomial over k), so s is unique:
+# a non-integer s means no cancellation. The factor list (squarefree factors, split by rational
+# roots at the base) can be too coarse; in that case the answer is :unknown, never a guess.
+# Returns an Int, `nothing` (no cancellation) or :unknown.
+function cancellation_exponent(T::Tower, m::Int, f0, wp)
+    km = m - 1
+    K = T.Ts[m]                                         # the type of k = K_km
+    lift(e) = liftto(T, e, km)
+    cands = K[]
+    gen_is_log = Bool[]
+    for (i, lv) in enumerate(T.levels[1:km])
+        push!(cands, lift(lv.kind === :exp ? D(T, i - 1, lv.arg) : lv.dtheta.c[1]))
+        push!(gen_is_log, lv.kind === :log)
+    end
+    ngen = length(cands)
+    qs = Tuple{Int,Any}[]
+    normal_factors!(qs, T, f0, levelof(T, f0))
+    normal_factors!(qs, T, wp, levelof(T, wp))
+    for (l, q) in unique(qs)
+        push!(cands, lift(D(T, l, q) / q))
+    end
+    coarse = !isempty(qs)
+    r = solve_relation(T, lift(f0), K[cands; lift(wp)])
+    r === nothing && return coarse ? :unknown : nothing
+    s = -r[end]
+    isone(denominator(s)) || return nothing             # unique s, not an integer
+    ρ = r[1:(end - 1)]
+    if !all(x -> isone(denominator(x)), ρ)
+        # a non-integer exponent of an exp generator means c ∉ k; of a log argument or a factor,
+        # c could still be in k (a perfect power), so do not decide
+        (coarse || any(gen_is_log[i] && !isone(denominator(ρ[i])) for i in 1:ngen)) && return :unknown
+        return nothing
+    end
+    Int(numerator(s))
+end
+
+# squarefree normal factors of the denominators in h (level l), at every level: (level, q)
+function normal_factors!(out, T::Tower, h, l::Int)
+    iszero(h) && return out
+    if l == 0
+        d = h.den
+        degree(d) > 0 || return out
+        rest = quo(d, gcd(d, deriv(d)))
+        CC = eltype(d.c)
+        for r in constant_roots(rest)                   # split off linear factors x - r
+            lin = UPoly{CC}(CC[-r, one(CC)])
+            push!(out, (0, frac(lin)))
+            rest = quo(rest, lin)
+        end
+        degree(rest) > 0 && push!(out, (0, frac(monic(rest))))
+        return out
+    end
+    d = h.den
+    if T.levels[l].kind === :exp                        # θ^v in the denominator is special, not normal
+        v = findfirst(c -> !iszero(c), d.c) - 1
+        v > 0 && (d = quo(d, xpoly(T.Ts[l])^v))
+    end
+    if degree(d) > 0
+        sq = quo(d, gcd(d, deriv(d)))
+        degree(sq) > 0 && push!(out, (l, frac(monic(sq))))
+    end
+    for c in h.num.c
+        normal_factors!(out, T, c, l - 1)
+    end
+    for c in h.den.c
+        normal_factors!(out, T, c, l - 1)
+    end
+    out
 end
 
 # ---------------------------------------------------------------------------

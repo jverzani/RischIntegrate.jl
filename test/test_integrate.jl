@@ -114,7 +114,11 @@ function run_tests(x, evalat, name)
               exp(x) * log(x) + exp(x) / x,            # same as the first, reordered
               exp(x + exp(x)),                         # exp(exp(x)): cancellation exponent i0 = -1
               exp(x + exp(x)) * (1 + exp(x)),          # exp(x + exp(x))
-              exp(2x + exp(x)))                        # (exp(x) - 1) exp(exp(x)): i0 = -2
+              exp(2x + exp(x)),                        # (exp(x) - 1) exp(exp(x)): i0 = -2
+              # cancellation with a non-constant homogeneous solution (step 8b): both were
+              # wrongly reported NotElementary before; the answer is exp(exp(x)) = θ/(x t^k)
+              exp(x + log(x) + exp(x)) / x,            # s0 = -1, c = 1/x
+              exp(2x + log(x) + exp(x)) * exp(-x) / x) # s0 = -2 (SymEngine merges it into the above)
         for f in fs
             F = Risch.risch_integrate(f, x)
             for a in (1.3, 1.9, 2.6)
