@@ -78,9 +78,26 @@ function run_tests(x, evalat, name)
         @test shape(log(2x) - log(x), x) == Symbol[]                          # = log 2, a constant
     end
 
+    @testset "$name: trigonometric functions: θ = exp(i·u) over ℚ(i) (Step 7)" begin
+        @test shape(sin(x), x) == [:exp]
+        @test shape(sin(x) + cos(x) + tan(x), x) == [:exp]
+        @test shape(sin(x) + cos(x / 2), x) == [:exp]                         # θ = exp(ix/2)
+        @test length(shape(sin(x) * exp(x), x)) == 2
+        @test shape(sin(x)^2 + cos(x)^2, x) == Symbol[]                       # = 1
+        @test Risch.ctype(Risch.build_tower(sin(x), string(x))[1]) === Risch.QI
+        @test Risch.ctype(Risch.build_tower(exp(x), string(x))[1]) === Rational{BigInt}
+        for f in (sin(x), cos(x)^2, tan(x), 1 / (2 + cos(x)), sin(x) * log(x), sin(x + 1),
+                  exp(x) * cos(2x), sin(exp(x)), sin(x) + log(x) + log(2x))
+            d = Risch.tower_derivative(f, x)
+            for a in (0.7, 1.3, 2.1)
+                @test isapprox(evalat(d, a), fd(t -> evalat(f, t), a); rtol = 1e-5, atol = 1e-8)
+            end
+        end
+    end
+
     @testset "$name: rejected input" begin
-        @test_throws Risch.RischNotImplemented shape(sin(x), x)                 # needs Q(i), Stage 5
         @test_throws Risch.RischNotImplemented shape(sqrt(x), x)                # algebraic
+        @test_throws Risch.RischNotImplemented shape(sin(x) + sin(x + 1), x)    # e^i: step 7, part 3
         @test_throws Risch.RischNotImplemented shape(log(x) + log(-2x), x)      # log(-2): complex
         @test_throws Risch.RischNotImplemented shape(exp(x) + exp(x + log(x + 1) / 2), x)  # √(x+1)
     end

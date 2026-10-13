@@ -23,17 +23,53 @@ function run_tests(x, evalat, name)
         end
     end
 
-    @testset "$name: outside the supported class (clear errors)" begin
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sin(x) / x, x)          # Si(x)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / (2 + cos(x)), x)    # needs the Q(i)-tower
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(tan(x), x)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sin(x^2), x)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sin(x + 1), x)          # sin 1, cos 1 constants
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(x * sin(x) * log(x), x)
+    @testset "$name: trigonometric integrands through exp(i·u) towers over ℚ(i) (Step 7)" begin
+        fs = (1 / (2 + cos(x)),                    # residues ±i/√3: a pair over ℚ(i)(√3)
+              1 / (1 + cos(x)^2),                  # residues ±i/(2√2): ℚ(i)(√2)
+              1 / (5 + 4cos(x)),                   # residues ±i/3 ∈ ℚ(i): atan form
+              tan(x),                              # -log|cos x| via log(w σw)/2
+              tan(x)^2,                            # tan x - x
+              1 / cos(x),                          # log|sec x + tan x|
+              cos(x) / sin(x),                     # log sin x
+              cos(x) / (2 + sin(x)),
+              sin(x) / (1 + cos(x)),
+              sin(x) * cos(x) / (1 + sin(x)^2),    # log(1 + sin² x)/2: residues 1/2 of a quartic
+              sin(x + 1),                          # θ = exp(i(x+1)) alone: no new constant
+              x * sin(x + 1),
+              sin(x) * log(x) + (1 - cos(x)) / x)  # (1 - cos x) log x: tower [exp(ix), log x]
+        for f in fs
+            F = Risch.risch_integrate(f, x)
+            for a in (0.7, 1.6, 2.4)
+                @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5, atol = 1e-8)
+            end
+        end
+    end
+
+    @testset "$name: decided non-elementary / outside the supported class" begin
+        @test_throws Risch.NotElementary Risch.risch_integrate(sin(x) / x, x)        # Si(x)
+        @test_throws Risch.NotElementary Risch.risch_integrate(sin(x^2), x)          # Fresnel
+        @test_throws Risch.NotElementary Risch.risch_integrate(cos(x) / x, x)        # Ci(x)
+        # ∫ x sin x log x needs Si(x); decided by the tower, or refused where its bounds are partial
+        @test try
+            Risch.risch_integrate(x * sin(x) * log(x), x)
+            false
+        catch e
+            e isa Risch.NotElementary || e isa Risch.RischNotImplemented
+        end
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sin(x) + sin(x + 1), x)  # e^i (step 7, part 3)
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(sin(x)), x)         # algebraic
     end
 end
 
 simple_x = let; SimpleExpressions.@symbolic x; x; end
 sym_x = let; SymEngine.@vars x; x; end
 run_tests(simple_x, (e, a) -> e isa Function ? e(a) : e, "SimpleExpressions")
-run_tests(sym_x, (e, a) -> Float64(SymEngine.N(SymEngine.subs(e, sym_x => a))), "SymEngine")
+# SymEngine may evaluate a real expression (e.g. atan of a real argument) with a roundoff-size
+# imaginary part; drop only that. A genuinely complex value stays complex and fails the comparison.
+function trig_sym_eval(e, a)
+    z = SymEngine.N(SymEngine.subs(e, sym_x => a))
+    z isa Complex || return Float64(z)
+    w = ComplexF64(z)
+    abs(imag(w)) <= 1e-10 * max(1.0, abs(w)) ? real(w) : w
+end
+run_tests(sym_x, trig_sym_eval, "SymEngine")

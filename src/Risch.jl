@@ -729,6 +729,16 @@ end
 cterm(b::Builder, c) = throw(RischNotImplemented(
     "output of constants of type $(typeof(c)) is not implemented"))
 
+# constants of ℚ(i) and ℚ(i)(√d) in real-form output: they must be real (Step 7)
+function cterm(b::Builder, c::QI)
+    iszero(c.im) || throw(RischError("a non-real constant $c reached the real-form output"))
+    cterm(b, c.re)
+end
+function cterm(b::Builder, c::QSB{d,QI}) where {d}
+    (iszero(c.a.im) && iszero(c.b.im)) || throw(RischError("a non-real constant $c reached the real-form output"))
+    cterm(b, QS{d}(c.a.re, c.b.re))
+end
+
 # c ∈ ℚ(t₁, …, tₖ) = B(tₖ): a rational function of tₖ with coefficients in B, tₖ from b.consts
 function cterm(b::Builder, c::Frac{<:UPoly})
     k = cdepth(typeof(c))
@@ -1396,6 +1406,14 @@ end
 struct NewConstants <: Exception
     consts::Vector{ConstGen}
 end
+struct NeedComplex <: Exception end            # trig input: re-parse over ℚ(i) (Step 7)
+
+# the imaginary unit of a constant field that contains it
+cimag(::Type{QI}) = QI(Q(0), Q(1))
+cimag(::Type{QSB{d,B}}) where {d,B} = QSB{d,B}(cimag(B), zero(B))
+cimag(::Type{Frac{UPoly{B}}}) where {B} = kconst(cimag(B))
+cimag(::Type{T}) where {T} = throw(RischNotImplemented("the constant field $T does not contain i"))
+is_complex_field(::Type{C}) where {C} = C === QI || (C <: Frac && cbase(C) === QI)
 const MAX_CONSTS = 8
 
 # the value of c at depth `d` of the nested constant field, if c lies in that subfield
@@ -1411,7 +1429,7 @@ end
 function const_exp(T::Tower, c)
     C = ctype(T)
     gens = T.consts
-    C === Q || C <: Frac || throw(RischNotImplemented(
+    (C === Q || C === QI || C <: Frac) || throw(RischNotImplemented(
         "exp of the constant $c over the constant field $C is not implemented"))
     logs = [j for j in eachindex(gens) if gens[j].kind === :log]
     vs = cflat_all(C, C[one(C); C[tgen(C, j) for j in logs]; c])
@@ -1447,7 +1465,7 @@ is_monomial(p::UPoly) = count(!iszero, p.c) == 1
 function const_log(T::Tower, c)
     C = ctype(T)
     gens = T.consts
-    C === Q || C <: Frac || throw(RischNotImplemented(
+    (C === Q || C === QI || C <: Frac) || throw(RischNotImplemented(
         "log of the constant $c over the constant field $C is not implemented"))
     r, m = crational(c), 0
     if r === nothing
@@ -1504,9 +1522,21 @@ function parse_tower(t, T::Tower)
         args = arguments(t)
         if !isempty(args)
             n = opname(operation(t))
+            if n in (:sin, :cos, :tan) && length(args) == 1     # Step 7: θ = exp(i·u) over ℚ(i)
+                C = ctype(T)
+                (C === QI || (C <: Frac && cbase(C) === QI)) || throw(NeedComplex())
+                u = parse_tower(args[1], T)
+                ci = cimag(C)
+                E = make_exp(T, u * lconst(T, ci, levelof(T, u)))
+                l = levelof(T, E)
+                s2i = E - inv(E)                                 # 2i sin u
+                c2 = E + inv(E)                                  # 2 cos u
+                n === :sin && return s2i * lconst(T, inv(ci + ci), l)
+                n === :cos && return c2 * lconst(T, inv(cfromQ(C, Q(2))), l)
+                return s2i / (c2 * lconst(T, ci, l))             # tan = sin/cos
+            end
             n in TRIG && throw(RischNotImplemented(
-                "`$n` is not supported yet: trigonometric input needs complex (ℚ(i)) " *
-                "coefficients and real-form output (Stage 5)"))
+                "`$n` is not supported: only sin, cos and tan of tower elements are"))
             n in ALGEBRAIC && throw(RischNotImplemented(
                 "`$n` is an algebraic (radical) function; only transcendental towers are supported"))
             if n === :^ && length(args) == 2 && is_e_const(args[1])
@@ -1575,8 +1605,9 @@ end
 function build_tower(f, xk::String; constants::Union{Nothing,Type} = nothing)
     scales = Dict{Int,Int}()
     consts = ConstGen[]
+    base = Q                                   # becomes ℚ(i) when trigonometric functions appear
     for _ in 1:50
-        C = constants === nothing ? cfield(length(consts)) : constants
+        C = constants === nothing ? cfield(length(consts), base) : constants
         T = Tower(C, xk, scales, copy(consts))
         try
             el = parse_tower(f, T)
@@ -1590,6 +1621,10 @@ function build_tower(f, xk::String; constants::Union{Nothing,Type} = nothing)
                 length(e.consts) <= MAX_CONSTS || throw(RischNotImplemented(
                     "more than $MAX_CONSTS transcendental constants"))
                 consts = e.consts
+            elseif e isa NeedComplex
+                constants === nothing || throw(RischNotImplemented(
+                    "trigonometric input needs the constant field ℚ(i), but it was fixed to $constants"))
+                base = QI
             else
                 rethrow()
             end
@@ -1655,6 +1690,7 @@ function tower_derivative(f, x; build = nothing, lift = nothing)
     d = D(T, el)
     b = Builder(build === nothing ? auto_build(f, x) : build,
                 lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
+    is_complex_field(ctype(T)) && return real_term(b, T, sigma_kinds(T), d)
     tower_to_term(b, T, d)
 end
 
@@ -1912,6 +1948,58 @@ struct TowerQuadAtan            # c√e · atan(√e u)  (inverted = false)  or 
     inverted::Bool
 end
 
+# Step 7: a conjugate pair of residues a, σ_d(a) = α ± β√d (α, β ∈ ℚ(i), d > 1 squarefree) of a
+# residue polynomial over ℚ(i):  a log W + σ_d(a) log σ_d(W),  kept over the tower T2 = T with
+# constants ℚ(i)(√d) (σ_d: √d ↦ -√d fixes ℚ(i)). Its derivative is σ_d-invariant, i.e. in T.
+struct ExtQuadPair
+    T2::Any
+    a::Any                 # ∈ ℚ(i)(√d)
+    W::Any                 # monic in θ, element of T2 at the level it was found
+end
+galois_d(c::QSB{d,B}) where {d,B} = QSB{d,B}(c.a, -c.b)
+qs_down(c::QSB) = iszero(c.b) ? c.a :
+    throw(RischError("a constant of ℚ(i)(√d) that should lie in ℚ(i) does not"))
+ext_corr(q::ExtQuadPair) = qs_down(q.a + galois_d(q.a)) * degree(q.W.num)   # 2α·deg W
+
+# Δ = s² d with s ∈ ℚ(i) and d > 1 a squarefree integer, or nothing. If Δ = s² d, s = u + vi,
+# then u² = (p + |Δ|)/(2d) and v² = (|Δ| - p)/(2d), so d is the squarefree part of 2(p ± |Δ|)
+# (a negative part is absorbed into s: √(-d) = i√d).
+function qi_split_sqrt(Δ::QI)
+    p, q = Δ.re, Δ.im
+    m = rat_sqrt(p^2 + q^2)
+    m === nothing && return nothing
+    for cand in (2 * (p + m), 2 * (p - m))
+        iszero(cand) && continue
+        _, d0 = sqfree_split(numerator(cand) * denominator(cand))
+        d = abs(d0)
+        (d == 1 || d > 10^9) && continue
+        s = qi_sqrt(Δ / QI(Q(d), Q(0)))
+        s === nothing || return Int(d), s
+    end
+    nothing
+end
+
+# the pair of roots of the quadratic `rest` ∈ ℚ(i)[z] as an ExtQuadPair (and its exp correction
+# 2α·deg W), or nothing if the roots are not of the form α ± β√d
+function ext_quad_terms(T::Tower, i::Int, A::UPoly, D::UPoly, dD::UPoly, rest::UPoly{QI})
+    rest = monic(rest)
+    p0, p1 = rest.c[1], rest.c[2]
+    sp = qi_split_sqrt(p1 * p1 - 4 * p0)
+    sp === nothing && return nothing
+    dd, s = sp
+    half = inv(QI(Q(2), Q(0)))
+    α, β = -p1 * half, s * half
+    S = QSB{dd,QI}
+    φ(c) = S(c, zero(QI))
+    T2 = change_constants(T, S, φ)
+    K2 = T2.Ts[i]
+    up(p) = UPoly{K2}(K2[change_constants(T, T2, c, φ) for c in p.c])
+    a = S(α, β)
+    W = gcd(up(D), up(A) - scale(lconst(T2, a, i - 1), up(dD)))
+    degree(W) > 0 || return nothing
+    ExtQuadPair(T2, a, frac(W))
+end
+
 # the Stage 5a terms of a rational integral, as tower terms (U, V, u ∈ K₀ = ℚ(x))
 tower_quad(q::QuadLog) = TowerQuadLog(q.β, q.d, frac(q.U), frac(q.V))
 tower_quad(q::QuadAtan) = TowerQuadAtan(q.c, q.e, q.u, q.inverted)
@@ -2014,6 +2102,12 @@ function residue_logs(T::Tower, i::Int, A::UPoly, D::UPoly)
             append!(quads, qt[2])
             rest = one(rest)
         end
+    elseif CT === QI && degree(rest) == 2              # a pair α ± β√d over ℚ(i) (Step 7)
+        qt = ext_quad_terms(T, i, A, D, dD, rest)
+        if qt !== nothing
+            push!(quads, qt)
+            rest = one(rest)
+        end
     end
     degree(rest) > 0 && throw(RischNotImplemented(
         "the residues are algebraic constants of degree > 2 (or a quadratic pair over a constant " *
@@ -2114,7 +2208,10 @@ function integrate_el(T::Tower, i::Int, f)::ElemIntegral
             push!(logs, (c, frac(W)))
             corr += c * degree(W)
         end
-        append!(quads, rq)                              # degree 0 in θ: no exp correction
+        for q in rq                                     # 5b ratio terms: degree 0, no correction
+            q isa ExtQuadPair && (corr += ext_corr(q))
+        end
+        append!(quads, rq)
     end
     v = g
     if lv.kind === :log
@@ -2174,10 +2271,18 @@ function check_tower(T::Tower, L::Int, res::ElemIntegral, f)
             U, V = liftto(T, q.U, L), liftto(T, q.V, L)
             num_ = D(T, L, V) * U - D(T, L, U) * V
             tot = tot + lq(T, 2 * q.β * q.d, L) * num_ / (U * U - lq(T, Q(q.d), L) * (V * V))
-        else                    # c√e atan(√e u): c e u'/(1 + e u²);  c√e atan(u/√e): c e u'/(e + u²)
+        elseif q isa TowerQuadAtan  # c√e atan(√e u): c e u'/(1 + e u²);  c√e atan(u/√e): c e u'/(e + u²)
             u, e = liftto(T, q.u, L), lq(T, Q(q.e), L)
             den = q.inverted ? e + u * u : one(u) + e * u * u
             tot = tot + lq(T, q.c * q.e, L) * D(T, L, u) / den
+        elseif q isa ExtQuadPair    # a W'/W + σ_d(a W'/W), computed over ℚ(i)(√d), read back in T
+            T2 = q.T2
+            w = liftto(T2, q.W, L)
+            t1 = lconst(T2, q.a, L) * (D(T2, L, w) / w)
+            t2 = change_constants(T2, T2, t1, galois_d)
+            tot = tot + change_constants(T2, T, t1 + t2, qs_down)
+        else
+            throw(RischError("unknown term $(typeof(q))"))
         end
     end
     tot == f
@@ -2402,14 +2507,205 @@ function integrate_trig(f, x; build = nothing, lift = nothing, verify::Bool = tr
 end
 
 # ---------------------------------------------------------------------------
+# Step 7: real form of results over ℚ(i)
+#
+# Complex conjugation σ (i ↦ -i, x real) acts on a tower whose generators are real
+# (exp or log of real elements: σθ = θ) or trigonometric (θ = exp(i·w), w real: σθ = 1/θ).
+# σ commutes with the derivation, so for a real integrand f and ∫ f = F computed over ℚ(i),
+# Re F = (F + σF)/2 is an antiderivative too, and it has a real form:
+#   (v + σv)/2                      σ-invariant; on a :trig level written with cos(kw), sin(kw)
+#   (c log w + σc log σw)/2   =     c_r/2 log(w σw) - c_i atan(V/U)
+#       c_r = (c + σc)/2, c_i = (c - σc)/(2i), U = (w + σw)/2, V = (w - σw)/(2i)
+#   (c_r log w when w is real). The real form is re-verified exactly in the tower.
+# ---------------------------------------------------------------------------
+function sigma_kinds(T::Tower)
+    kinds = Symbol[]
+    for (i, lv) in enumerate(T.levels)
+        sa = tconj(T, kinds, lv.arg, levelof(T, lv.arg))
+        if sa == lv.arg
+            push!(kinds, :real)
+        elseif lv.kind === :exp && sa == -lv.arg
+            push!(kinds, :trig)
+        else
+            throw(RischNotImplemented(
+                "generator $i ($(lv.kind)) is neither real nor exp(i·real): no real form"))
+        end
+    end
+    kinds
+end
+
+# σ on an element of level i (needs the kinds of levels 1..i)
+function tconj(T::Tower, kinds, f, i::Int)
+    i == 0 && return cconj(f)
+    iszero(f) && return f
+    n = tconj_poly(T, kinds, f.num, i)
+    d = tconj_poly(T, kinds, f.den, i)
+    kinds[i] === :real && return frac(n, d)
+    θ = xpoly(T.Ts[i])          # θ ↦ 1/θ: p(θ) ↦ θ^(-deg p) p̃(θ), p̃ = reversed conjugated coefficients
+    frac(n * θ^degree(f.den), d * θ^degree(f.num))
+end
+function tconj_poly(T::Tower, kinds, p::UPoly, i::Int)
+    K = T.Ts[i]
+    cs = K[tconj(T, kinds, c, i - 1) for c in p.c]
+    kinds[i] === :trig && reverse!(cs)
+    UPoly{K}(cs)
+end
+
+# Laurent polynomials in θ as Dict(k => coefficient)
+laurent_of(p::UPoly{K}) where {K} = Dict{Int,K}(k - 1 => c for (k, c) in enumerate(p.c) if !iszero(c))
+laurent_conj(T::Tower, kinds, p::UPoly{K}, i::Int) where {K} =        # Σ σ(c_k) θ^(-k)
+    Dict{Int,K}(-(k - 1) => tconj(T, kinds, c, i - 1) for (k, c) in enumerate(p.c) if !iszero(c))
+function laurent_mul(a::Dict{Int,K}, b::Dict{Int,K}) where {K}
+    r = Dict{Int,K}()
+    for (i, x) in a, (j, y) in b
+        s = get(r, i + j, zero(K)) + x * y
+        iszero(s) ? delete!(r, i + j) : (r[i + j] = s)
+    end
+    r
+end
+
+# a σ-invariant element of level i as a real term
+function real_term(b::Builder, T::Tower, kinds, f, i::Int = levelof(T, f))
+    i == 0 && return frac_term(b, f)            # σ-invariant: real coefficients (cterm checks)
+    lv = T.levels[i]
+    if kinds[i] === :real
+        th = mk(b, lv.kind, real_term(b, T, kinds, lv.arg))
+        n = real_poly_term(b, T, kinds, f.num, i, th)
+        return isone(f.den) ? n : mk(b, :/, n, real_poly_term(b, T, kinds, f.den, i, th))
+    end
+    # :trig, θ = exp(i w):  f = N/D = (N·σD)/(D·σD) with σ-invariant Laurent numerator and denominator
+    sD = laurent_conj(T, kinds, f.den, i)
+    A = laurent_mul(laurent_of(f.num), sD)
+    B = laurent_mul(laurent_of(f.den), sD)
+    C = ctype(T)
+    w = liftto(T, lv.arg, i - 1) * lconst(T, -cimag(C), i - 1)
+    wt = real_term(b, T, kinds, w)
+    num = real_laurent_term(b, T, kinds, A, i, wt)
+    if length(B) == 1 && haskey(B, 0)
+        return isone(B[0]) ? num : mk(b, :/, num, real_term(b, T, kinds, B[0], i - 1))
+    end
+    mk(b, :/, num, real_laurent_term(b, T, kinds, B, i, wt))
+end
+
+function real_poly_term(b::Builder, T::Tower, kinds, p::UPoly, i::Int, th)
+    iszero(p) && return b.lift(0)
+    ts = Any[]
+    for (k, c) in enumerate(p.c)
+        iszero(c) && continue
+        e = k - 1
+        if e == 0
+            push!(ts, real_term(b, T, kinds, c, i - 1))
+        else
+            thk = e == 1 ? th : mk(b, :^, th, b.lift(e))
+            push!(ts, isone(c) ? thk : mk(b, :*, real_term(b, T, kinds, c, i - 1), thk))
+        end
+    end
+    length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
+end
+
+# Σ a_k θ^k with a_(-k) = σ(a_k):  a_0 + Σ_(k>0) (a_k + a_(-k)) cos(kw) + i(a_k - a_(-k)) sin(kw)
+function real_laurent_term(b::Builder, T::Tower, kinds, L::Dict, i::Int, wt)
+    K = T.Ts[i]
+    all(k -> haskey(L, -k), keys(L)) || throw(RischError("real form: Laurent polynomial is not σ-invariant"))
+    I = lconst(T, cimag(ctype(T)), i - 1)
+    ts = Any[]
+    c0 = get(L, 0, zero(K))
+    iszero(c0) || push!(ts, real_term(b, T, kinds, c0, i - 1))
+    for k in sort([k for k in keys(L) if k > 0])
+        ck, cm = L[k], L[-k]
+        kw = k == 1 ? wt : mk(b, :*, b.lift(k), wt)
+        for (coef, fn) in ((ck + cm, :cos), (I * (ck - cm), :sin))
+            iszero(coef) && continue
+            tr = mk(b, fn, kw)
+            push!(ts, isone(coef) ? tr : mk(b, :*, real_term(b, T, kinds, coef, i - 1), tr))
+        end
+    end
+    isempty(ts) && return b.lift(0)
+    length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
+end
+
+# Re(c log w) as real pieces (coefficient, :log | :atan, argument), see the header above
+function real_log_pieces(T::Tower, kinds, c, w)
+    C = ctype(T)
+    j = levelof(T, w)
+    sw = tconj(T, kinds, w, j)
+    sc = cconj(c)
+    half = inv(cfromQ(C, Q(2)))
+    I = cimag(C)
+    cr = (c + sc) * half
+    ci = (c - sc) * inv(I + I)
+    pieces = Tuple{Any,Symbol,Any}[]
+    if sw == w
+        iszero(cr) || push!(pieces, (cr, :log, w))
+        return pieces
+    end
+    iszero(cr) || push!(pieces, (cr * half, :log, w * sw))
+    U = (w + sw) * lconst(T, half, j)
+    V = (w - sw) * lconst(T, inv(I + I), j)
+    (iszero(ci) || iszero(U) || iszero(V)) || push!(pieces, (-ci, :atan, V / U))  # U = 0: w/σw = -1, constant
+    pieces
+end
+
+# the real form of an integral over ℚ(i) as a term, verified: D(real form) == f in T
+function to_term_real(b::Builder, T::Tower, L::Int, res::ElemIntegral, f)
+    kinds = sigma_kinds(T)
+    C = ctype(T)
+    v = liftto(T, res.v, L)
+    vr = (v + tconj(T, kinds, v, L)) * lconst(T, inv(cfromQ(C, Q(2))), L)
+    tot = D(T, L, vr)
+    ts = Any[]
+    iszero(vr) || push!(ts, real_term(b, T, kinds, vr, L))
+    function emit!(TT, kk, pieces)              # push the terms, return Σ derivatives (in TT)
+        ds = zero(TT.Ts[L + 1])
+        for (coef, kind, arg) in pieces
+            a = liftto(TT, arg, L)
+            da = kind === :log ? D(TT, L, a) / a : D(TT, L, a) / (one(a) + a * a)
+            ds = ds + lconst(TT, coef, L) * da
+            t = mk(b, kind, real_term(b, TT, kk, arg))
+            push!(ts, isone(coef) ? t : mk(b, :*, cterm(b, coef), t))
+        end
+        ds
+    end
+    for (c, w) in res.logs
+        tot = tot + emit!(T, kinds, real_log_pieces(T, kinds, c, w))
+    end
+    isempty(res.atans) || throw(RischError("unexpected atan terms over ℚ(i)"))
+    for q in res.quads
+        q isa ExtQuadPair || throw(RischError("unexpected term $(typeof(q)) over ℚ(i)"))
+        T2 = q.T2
+        k2 = sigma_kinds(T2)
+        a2, W2 = galois_d(q.a), change_constants(T2, T2, q.W, galois_d)
+        ds = emit!(T2, k2, real_log_pieces(T2, k2, q.a, q.W)) +
+             emit!(T2, k2, real_log_pieces(T2, k2, a2, W2))
+        tot = tot + change_constants(T2, T, ds, qs_down)
+    end
+    tot == liftto(T, f, L) ||
+        throw(RischError("internal check failed: the real form of the antiderivative does not differentiate back"))
+    isempty(ts) && return b.lift(0)
+    length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
+end
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = true)
-    has_trig(f) && return integrate_trig(f, x; build = build, lift = lift, verify = verify)
+    if has_trig(f)                     # polynomial × exp × trig first (Stage 5c), else the ℚ(i) tower
+        try
+            return integrate_trig(f, x; build = build, lift = lift, verify = verify)
+        catch e
+            e isa RischNotImplemented || rethrow()
+        end
+    end
     T, el = build_tower(f, string(x))
     L = length(T.levels)
     bd = Builder(build === nothing ? auto_build(f, x) : build,
                  lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
+    if is_complex_field(ctype(T))      # Step 7: integrate over ℚ(i), then take the real part
+        res = integrate_el(T, L, el)
+        verify && !check_tower(T, L, res, el) &&
+            throw(RischError("internal check failed: derivative of the result differs from the integrand"))
+        return to_term_real(bd, T, L, res, el)
+    end
     if L > 0
         res = integrate_el(T, L, el)
         verify && !check_tower(T, L, res, el) &&

@@ -304,10 +304,10 @@ end
 
 simple_x = let; SimpleExpressions.@symbolic x; x; end
 sym_x = let; SymEngine.@vars x; x; end
-simple_eval = (e, a) -> e isa Function ? e(a) : e
-sym_eval = (e, a) -> (z = SymEngine.N(SymEngine.subs(e, sym_x => a));
+tc_simple_eval = (e, a) -> e isa Function ? e(a) : e
+tc_sym_eval = (e, a) -> (z = SymEngine.N(SymEngine.subs(e, sym_x => a));
                       z isa Complex ? ComplexF64(z) : Float64(z))
-run_tests(simple_x, simple_eval, "SimpleExpressions")
-run_tests(sym_x, sym_eval, "SymEngine")
-run_const_tests(simple_x, simple_eval, "SimpleExpressions")
-run_const_tests(sym_x, sym_eval, "SymEngine")
+run_tests(simple_x, tc_simple_eval, "SimpleExpressions")
+run_tests(sym_x, tc_sym_eval, "SymEngine")
+run_const_tests(simple_x, tc_simple_eval, "SimpleExpressions")
+run_const_tests(sym_x, tc_sym_eval, "SymEngine")
