@@ -35,10 +35,15 @@ rebuilt by calling operations as functions (same `build` / `lift` conventions as
     `RootSum`), real forms for trigonometric input.
 
 Stage 1 deliberately raises `RischNotImplemented` for anything outside its scope.
+
+Non-elementary integrals that can be written with SpecialFunctions.jl (Ei, Si, Ci, erf, erfi;
+li(x) as Ei(log x)) are returned that way, verified like every other answer; `NotElementary`
+is raised when the integral is proved non-elementary and no such form was found.
 """
 module Risch
 
 using TermInterface: iscall, operation, arguments
+using SpecialFunctions: expinti, sinint, cosint, erf, erfi
 
 export risch_integrate, integrate_rational, tower_derivative, RischError, RischNotImplemented,
        NotElementary
@@ -714,7 +719,9 @@ end
 Builder(build, lift, x) = Builder(build, lift, x, ConstGen[])
 const OPS = Dict{Symbol,Function}(:+ => +, :* => *, :/ => /, :^ => ^, :exp => exp,
                                   :log => log, :atan => atan, :sqrt => sqrt,
-                                  :sin => sin, :cos => cos)
+                                  :sin => sin, :cos => cos,
+                                  # SpecialFunctions (Step 8a): Ei, Si, Ci, erf, erfi
+                                  :Ei => expinti, :Si => sinint, :Ci => cosint, :erf => erf, :erfi => erfi)
 mk(b::Builder, name::Symbol, args...) = b.build(OPS[name], args...)
 
 # a constant of the differential field as a term (part of the constant-field interface;
@@ -2270,7 +2277,13 @@ function integrate_el(T::Tower, i::Int, f)::ElemIntegral
     quads = Any[]
     corr = zero(ctype(T))
     if !iszero(R)
-        rl, rq = residue_logs(T, i, R, Dsf)
+        rl, rq = try
+            residue_logs(T, i, R, Dsf)
+        catch e
+            sp = (e isa NotElementary && lv.kind === :log) ? special_log(T, i, R, Dsf) : nothing
+            sp === nothing && rethrow()
+            Tuple{ctype(T),Any}[], Any[sp]                 # li-type: c·e^p·Ei(k·log(u) + k·b) (Step 8a)
+        end
         for (c, W) in rl
             push!(logs, (c, frac(W)))
             corr += c * degree(W)
@@ -2296,9 +2309,14 @@ function integrate_el(T::Tower, i::Int, f)::ElemIntegral
             (j == 0 || iszero(α)) && continue
             fj = lq(T, Q(j), i - 1) * D(T, i - 1, lv.arg)
             y = rde(T, i - 1, fj, α)
-            y === nothing && throw(NotElementary(
-                "the Risch differential equation y' + $j·u'·y = a has no solution in the coefficient field, " *
-                "so the coefficient of exp(u)^$j has no elementary integral"))
+            if y === nothing                            # not elementary; try Ei / erf (Step 8a)
+                sp = special_exp(T, i, j, α)
+                sp === nothing && throw(NotElementary(
+                    "the Risch differential equation y' + $j·u'·y = a has no solution in the coefficient field, " *
+                    "so the coefficient of exp(u)^$j has no elementary integral"))
+                y = sp[1]
+                append!(quads, sp[2])
+            end
             if j > 0
                 coeffs = fill(zero(K), j + 1)
                 coeffs[j + 1] = y
@@ -2342,6 +2360,8 @@ function check_tower(T::Tower, L::Int, res::ElemIntegral, f)
             u, e = liftto(T, q.u, L), lq(T, Q(q.e), L)
             den = q.inverted ? e + u * u : one(u) + e * u * u
             tot = tot + lq(T, q.c * q.e, L) * D(T, L, u) / den
+        elseif q isa SpecialTerm    # Step 8a: the stored exact derivative
+            tot = tot + liftto(T, q.deriv, L)
         elseif q isa ExtQuadPair    # a W'/W + σ_d(a W'/W), computed over ℚ(i)(√d), read back in T
             T2 = q.T2
             w = liftto(T2, q.W, L)
@@ -2374,6 +2394,8 @@ function to_term(b::Builder, T::Tower, res::ElemIntegral)
             bot = mk(b, :+, Ut, mk(b, :*, b.lift(-1), r, Vt))
             l = mk(b, :log, mk(b, :/, top, bot))
             push!(ts, isone(q.β) ? mk(b, :*, r, l) : mk(b, :*, cterm(b, q.β), r, l))
+        elseif q isa SpecialTerm
+            push!(ts, special_out(b, q, cterm(b, q.c), z -> tower_to_term(b, T, z)))
         else
             r = mk(b, :sqrt, b.lift(q.e))
             ut = tower_to_term(b, T, q.u)
@@ -2574,6 +2596,264 @@ function integrate_trig(f, x; build = nothing, lift = nothing, verify::Bool = tr
 end
 
 # ---------------------------------------------------------------------------
+# Step 8a: non-elementary integrals with SpecialFunctions (on by default)
+#
+# Where the algorithm proves that ∫ a θ^j (θ = exp(U)) is not elementary, try instead
+#     a = y' + jU'y + Σ_t c_t U'/(U - t) [+ k]            (parametric Risch DE over C(x))
+# since  (c e^(jt) Ei(j(U - t)))' = c θ^j U'/(U - t)  and, for jU = A x² + B x + C₀,
+# ∫ k θ^j = k e^E √π/(2√|A|) erf(√|A| (x + h))  (erfi for A > 0),  h = B/(2A), E = C₀ - B²/(4A).
+# The shifts t are U(r) at the poles r ∈ C of a, and 0. Above the base level only the direct
+# case a = c U'/U (→ c Ei(jU)) is used. At a log level whose residues are not constant,
+# ∫ c' u^m u'/(log u + b) = c' e^(-kb) Ei(k (log u + b)), k = m + 1 (li(u^k) for b = 0).
+# Each term keeps its exact derivative, so the usual checks still verify the result.
+# ---------------------------------------------------------------------------
+struct SpecialTerm
+    fn::Symbol         # :Ei, :erf or :erfi
+    c::Any             # coefficient ∈ C
+    p::Any             # constant prefactor e^p, p ∈ C (output only: it cancels in the derivative)
+    z::Any             # the argument (Ei), or x + h (erf/erfi): a tower element
+    A::Q               # erf/erfi: the coefficient of x²
+    deriv::Any         # the exact derivative of the term (tower element)
+end
+
+# y' + f y + Σ c_e e = g over C(x): (y, [c_e]) or nothing. As `rde_base`, with the extras e as
+# additional unknown columns and their denominators included in the denominator bound.
+function rde_param_base(f::Frac{UPoly{C}}, g::Frac{UPoly{C}}, extras::Vector) where {C}
+    P = UPoly{C}
+    iszero(f) && return nothing
+    Fn, Df = f.num, f.den
+    a = degree(Fn) - degree(Df)
+    a == -1 && return nothing
+    Lg = reduce(plcm, P[e.den for e in extras]; init = g.den)
+    Dn = one(P)
+    fparts = squarefree(Df)
+    for (gk, k) in squarefree(Lg)
+        remaining = gk
+        for (fi, i) in fparts
+            part = gcd(remaining, fi)
+            degree(part) > 0 || continue
+            i == 1 && return nothing                     # simple pole of f: not handled here
+            Dn = Dn * part^max(0, k - i)
+            remaining = quo(remaining, part)
+        end
+        Dn = Dn * remaining^max(0, k - 1)
+    end
+    γ = maximum(degree(e.num) - degree(e.den) for e in Any[g; extras])
+    M = (a >= 0 ? γ - a : max(γ + 1, 0)) + degree(Dn)
+    dD = deriv(Dn)
+    mono(k) = P(C[i == k + 1 ? one(C) : zero(C) for i in 1:(k + 1)])
+    scale_e(e) = e.num * quo(Lg, e.den) * Df * Dn * Dn
+    cols = P[]
+    for k in 0:M
+        N = mono(k)
+        dN = k == 0 ? zero(P) : k * mono(k - 1)
+        push!(cols, Df * Lg * (Dn * dN - dD * N) + Fn * Lg * Dn * N)
+    end
+    for e in extras
+        push!(cols, scale_e(e))
+    end
+    target = scale_e(g)
+    len = maximum(length(p.c) for p in [cols; target])
+    coords(p) = C[i <= length(p.c) ? p.c[i] : zero(C) for i in 1:len]
+    sol = solve_columns([coords(p) for p in cols], coords(target))
+    sol === nothing && return nothing
+    nN = max(M + 1, 0)
+    y = frac(P(sol[1:nN]), Dn)
+    cs = sol[(nN + 1):end]
+    lhs = dx(y) + f * y
+    for (c, e) in zip(cs, extras)
+        lhs = lhs + kconst(c) * e
+    end
+    lhs == g || throw(RischError("parametric RDE solution failed its own check"))
+    y, cs
+end
+
+# U ∈ C(x) at r ∈ C, or nothing at a pole
+function feval(U::Frac{UPoly{C}}, r::C) where {C}
+    d = peval(U.den, r)
+    iszero(d) ? nothing : peval(U.num, r) / d
+end
+
+# σ at level 0 (x real), for the real-form filters of special terms
+conj0(T::Tower, f) = frac(cpconj_g(T.consts, f.num), cpconj_g(T.consts, f.den))
+
+# ∫ α θ^j (θ = exp(U), level i) with Ei / erf terms: (y, terms) with ∫ α θ^j = y θ^j + Σ terms
+function special_exp(T::Tower, i::Int, j::Int, α)
+    lv = T.levels[i]
+    m = i - 1
+    C = ctype(T)
+    cx = is_complex_field(C)
+    U = liftto(T, lv.arg, m)
+    dU = D(T, m, U)
+    θj = theta(T, i)^j
+    jq = cfromQ(C, Q(j))
+    if m > 0                                             # only c Ei(jU):  α = c U'/U
+        cv = dconst_value(T, α / (dU / U))
+        cv === nothing && return nothing
+        jU = lq(T, Q(j), m) * U
+        d = lconst(T, cv, i) * liftto(T, dU / U, i) * θj
+        return zero(T.Ts[i]), Any[SpecialTerm(:Ei, cv, zero(C), jU, Q(0), d)]
+    end
+    # base level: U ∈ C(x)
+    ok_arg(z) = !cx || (s = conj0(T, z); s == z || s == -z)   # real or i·real: has a real form
+    shifts = C[zero(C)]
+    if !isone(α.den)
+        sq = quo(α.den, gcd(α.den, deriv(α.den)))
+        for r in constant_roots(sq)
+            t = feval(U, r)
+            (t === nothing || t in shifts) || push!(shifts, t)
+        end
+    end
+    jU = kconst(jq) * U
+    extras, kinds = Any[], Any[]
+    for t in shifts
+        Ut = U - kconst(t)
+        (iszero(Ut) || !ok_arg(kconst(jq) * Ut)) && continue
+        push!(extras, dU / Ut)
+        push!(kinds, (:Ei, t))
+    end
+    if isone(jU.den) && degree(jU.num) == 2
+        A = crational(jU.num.c[3])
+        B, C0 = jU.num.c[2], jU.num.c[1]
+        if A !== nothing && (!cx || (cconj_g(T.consts, B) == B && cconj_g(T.consts, C0) == C0))
+            push!(extras, one(jU))
+            push!(kinds, (:erf, A))
+        end
+    end
+    isempty(extras) && return nothing
+    r = rde_param_base(lq(T, Q(j), 0) * dU, α, extras)
+    r === nothing && return nothing
+    y, cs = r
+    terms = Any[]
+    X = frac(xpoly(C))
+    for (c, kd, e) in zip(cs, kinds, extras)
+        iszero(c) && continue
+        d = lconst(T, c, i) * liftto(T, e, i) * θj         # (term)' = c e θ^j
+        if kd[1] === :Ei
+            t = kd[2]
+            push!(terms, SpecialTerm(:Ei, c, jq * t, jU - kconst(jq * t), Q(0), d))
+        else
+            A = kd[2]
+            Ac = cfromQ(C, A)
+            B, C0 = jU.num.c[2], jU.num.c[1]
+            h = B / (Ac + Ac)
+            E = C0 - B * B / (4 * Ac)
+            push!(terms, SpecialTerm(A < 0 ? :erf : :erfi, c, E, X + kconst(h), A, d))
+        end
+    end
+    y, terms
+end
+
+# a log level whose residue polynomial has non-constant roots: R/(θ + b), b ∈ C, R = c' u^m u'
+function special_log(T::Tower, i::Int, R::UPoly, Dsf::UPoly)
+    (degree(Dsf) == 1 && degree(R) <= 0) || return nothing
+    l1 = lc(Dsf)
+    if !isone(l1)                                       # make Dsf = θ + b monic
+        R, Dsf = scale(inv(l1), R), scale(inv(l1), Dsf)
+    end
+    lv = T.levels[i]
+    m0 = i - 1
+    b = Dsf.c[1]
+    bc = dconst_value(T, b)
+    bc === nothing && return nothing
+    r0 = isempty(R.c) ? zero(T.Ts[i]) : R.c[1]
+    iszero(r0) && return nothing
+    u = liftto(T, lv.arg, m0)
+    du = D(T, m0, u)
+    q = r0 / du
+    mq = Q(0)
+    if dconst_value(T, q) === nothing                   # q = c' u^m: m = (q'/q)/(u'/u)
+        mv = dconst_value(T, D(T, m0, q) * u / (q * du))
+        mv === nothing && return nothing
+        mi = cinteger(mv)
+        mi === nothing && return nothing
+        mq = mi
+    end
+    mint = Int(numerator(mq))
+    cv = dconst_value(T, q / u^mint)
+    cv === nothing && return nothing
+    k = mint + 1
+    k == 0 && return nothing
+    C = ctype(T)
+    kc = cfromQ(C, Q(k))
+    w = frac(Dsf)                                       # θ + b at level i
+    d = frac(UPoly{T.Ts[i]}(T.Ts[i][r0]), Dsf)          # the integrand R/Dsf
+    SpecialTerm(:Ei, cv, -(kc * bc), lconst(T, kc, i) * w, Q(0), d)
+end
+
+# the term with a given coefficient term `ct` (real fields); zt converts a tower element
+function special_out(b::Builder, q::SpecialTerm, ct, zt)
+    if q.fn === :Ei
+        core = mk(b, :Ei, zt(q.z))
+    else
+        sa = mk(b, :sqrt, cterm(b, abs(q.A)))
+        core = mk(b, :*, mk(b, :/, mk(b, :sqrt, b.lift(π)), mk(b, :*, b.lift(2), sa)),
+                  mk(b, q.fn, mk(b, :*, sa, zt(q.z))))
+    end
+    parts = Any[]
+    isone(q.c) || push!(parts, ct)
+    iszero(q.p) || push!(parts, mk(b, :exp, cterm(b, q.p)))
+    isempty(parts) ? core : mk(b, :*, parts..., core)
+end
+
+# leading rational coefficient of a nested Frac / constant (for a sign)
+lead_rational(c::Q) = c
+lead_rational(c::QI) = iszero(c.re) ? c.im : c.re
+lead_rational(c::QSB) = lead_rational(iszero(c.a) ? c.b : c.a)
+lead_rational(c::Frac) = iszero(c) ? Q(0) : lead_rational(lc(c.num))
+
+# Re(c e^p F(z)) over ℚ(i): Ei of a real z, or Ei(i w) ~ Ci(w) + i Si(w) for real w
+function special_out_real(b::Builder, T::Tower, kinds, q::SpecialTerm)
+    C = ctype(T)
+    gens = T.consts
+    half = inv(cfromQ(C, Q(2)))
+    I = cimag(C)
+    rpart(c) = (c + cconj_g(gens, c)) * half
+    ipart(c) = (c - cconj_g(gens, c)) * inv(I + I)
+    cr, ci, pr, ps = rpart(q.c), ipart(q.c), rpart(q.p), ipart(q.p)
+    zt(z) = real_term(b, T, kinds, z)
+    if q.fn !== :Ei                                      # erf/erfi: real argument and prefactor
+        iszero(ci) && iszero(ps) || throw(RischNotImplemented("erf of a complex argument has no real form here"))
+        iszero(cr) && return b.lift(0)
+        return special_out(b, SpecialTerm(q.fn, cr, pr, q.z, q.A, q.deriv), cterm(b, cr), zt)
+    end
+    # κ = c e^p = e^pr (cr + i ci)(cos ps + i sin ps):  κ_r, κ_i as terms (nothing for zero)
+    ep = iszero(pr) ? nothing : mk(b, :exp, cterm(b, pr))
+    function combo(a1, a2)                               # e^pr (a1 cos ps + a2 sin ps)
+        ts = Any[]
+        if iszero(ps)
+            iszero(a1) || push!(ts, cterm(b, a1))
+        else
+            iszero(a1) || push!(ts, mk(b, :*, cterm(b, a1), mk(b, :cos, cterm(b, ps))))
+            iszero(a2) || push!(ts, mk(b, :*, cterm(b, a2), mk(b, :sin, cterm(b, ps))))
+        end
+        isempty(ts) && return nothing
+        t = length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
+        ep === nothing ? t : mk(b, :*, ep, t)
+    end
+    κr = combo(cr, -ci)
+    κi = combo(ci, cr)
+    lvl = levelof(T, q.z)
+    sz = tconj(T, kinds, q.z, lvl)
+    if sz == q.z
+        κr === nothing && return b.lift(0)
+        return mk(b, :*, κr, mk(b, :Ei, zt(q.z)))
+    end
+    sz == -q.z || throw(RischNotImplemented("Ei of a complex argument has no real form here"))
+    w = q.z * lconst(T, -I, lvl)                        # z = i w, w real
+    flip = lead_rational(w) < 0                         # Ci(-w) ~ Ci(w), Si(-w) = -Si(w)
+    flip && (w = -w)
+    ts = Any[]
+    κr === nothing || push!(ts, mk(b, :*, κr, mk(b, :Ci, zt(w))))
+    if κi !== nothing                                   # Re(κ (Ci + i Si)) = κr Ci - κi Si
+        st = mk(b, :*, κi, mk(b, :Si, zt(w)))
+        push!(ts, flip ? st : mk(b, :*, b.lift(-1), st))
+    end
+    isempty(ts) && return b.lift(0)
+    length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
+end
+
+# ---------------------------------------------------------------------------
 # Step 7: real form of results over ℚ(i)
 #
 # Complex conjugation σ (i ↦ -i, x real) acts on a tower whose generators are real
@@ -2738,6 +3018,13 @@ function to_term_real(b::Builder, T::Tower, L::Int, res::ElemIntegral, f)
     end
     isempty(res.atans) || throw(RischError("unexpected atan terms over ℚ(i)"))
     for q in res.quads
+        q isa SpecialTerm || continue
+        d = liftto(T, q.deriv, L)                       # Re of the term differentiates to (d + σd)/2
+        tot = tot + (d + tconj(T, kinds, d, L)) * lconst(T, inv(cfromQ(C, Q(2))), L)
+        push!(ts, special_out_real(b, T, kinds, q))
+    end
+    for q in res.quads
+        q isa SpecialTerm && continue
         q isa ExtQuadPair || throw(RischError("unexpected term $(typeof(q)) over ℚ(i)"))
         T2 = q.T2
         k2 = sigma_kinds(T2)
