@@ -1,10 +1,19 @@
 using Test
 import SimpleExpressions
 import SymEngine
+import SpecialFunctions
 include("Risch.jl")
 using .Risch
 
 fd(f, a; h = 1e-6) = (f(a + h) - f(a - h)) / (2h)
+
+# whether the symbolic package defines the SpecialFunctions used in answers (Step 8a)
+ti_special_ok(x) = try
+    SpecialFunctions.expinti(x); SpecialFunctions.erf(x); SpecialFunctions.erfi(x)
+    true
+catch
+    false
+end
 
 # Compare d/dx F with f on the real parts: where F contains log(w) with w < 0 it is
 # complex-valued, but Re F' = (Re F)' is still the right derivative. Complex values
@@ -114,17 +123,44 @@ function run_tests(x, evalat, name)
         end
     end
 
+    @testset "$name: non-elementary integrals with SpecialFunctions (Step 8a)" begin
+        if ti_special_ok(x)
+            fs = (1 / log(x),                      # li(x) = Ei(log x)
+                  x / log(x),                      # Ei(2 log x)
+                  exp(x^2),                        # √π/2 erfi(x)
+                  exp(-x^2),                       # √π/2 erf(x)
+                  x^2 * exp(-x^2),                 # -x e^(-x²)/2 + √π/4 erf(x)
+                  exp(-x^2 + x),                   # e^(1/4) √π/2 erf(x - 1/2)
+                  exp(x) / x,                      # Ei(x)
+                  exp(x) / x^2,                    # Ei(x) - e^x/x
+                  exp(x) / (x + 1),                # e^(-1) Ei(x + 1)
+                  exp(2x) / x,                     # Ei(2x)
+                  (x - 1) * exp(x) / x^2 + exp(x) / x,   # e^x/x + Ei(x)
+                  exp(1/x),                        # x e^(1/x) - Ei(1/x)
+                  exp(exp(x)),                     # Ei(e^x): above the base level
+                  exp(x + 1) / x + exp(x))         # e·Ei(x) + e^x: constant field ℚ(e)
+            for f in fs
+                F = Risch.risch_integrate(f, x)
+                for a in (1.3, 1.9, 2.6)
+                    @test antiderivative_ok(F, f, a, evalat)
+                end
+            end
+            # ∫ e^x log x = e^x log x - Ei(x): found when log is the top generator (the tower
+            # order follows the package's term order); otherwise NotElementary is still correct
+            r = try Risch.risch_integrate(exp(x) * log(x), x) catch e; e end
+            if r isa Exception
+                @test r isa Risch.NotElementary
+            else
+                @test all(a -> antiderivative_ok(r, exp(x) * log(x), a, evalat), (1.3, 1.9, 2.6))
+            end
+        else
+            @test_skip "SpecialFunctions (expinti, erf, erfi) are not defined for $(typeof(x))"
+        end
+    end
+
     @testset "$name: decided non-elementary" begin
-        @test_throws Risch.NotElementary Risch.risch_integrate(1 / log(x), x)            # li(x)
         @test_throws Risch.NotElementary Risch.risch_integrate(log(x) / (x + 1), x)      # dilogarithm
         @test_throws Risch.NotElementary Risch.risch_integrate(1 / (x + log(x)), x)
-        @test_throws Risch.NotElementary Risch.risch_integrate(exp(x^2), x)              # erfi
-        @test_throws Risch.NotElementary Risch.risch_integrate(exp(-x^2), x)             # erf
-        @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) / x, x)            # Ei(x)
-        @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) / x^2, x)
-        @test_throws Risch.NotElementary Risch.risch_integrate(exp(1/x), x)
-        @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) * log(x), x)       # Ei(x) - ...
-        @test_throws Risch.NotElementary Risch.risch_integrate(exp(exp(x)), x)           # Ei(exp(x))
         @test_throws Risch.NotElementary Risch.risch_integrate(x^x, x)
         @test_throws Risch.NotElementary Risch.risch_integrate(x * exp(x + exp(x)), x)   # needs ∫ exp(exp(x))
         # tower is [exp(x), log(x)]: top monomial log, normal denominator, non-constant residue
@@ -173,7 +209,6 @@ function run_tests(x, evalat, name)
                 @test antiderivative_ok(F, f, a, evalat)
             end
         end
-        @test_throws Risch.NotElementary Risch.risch_integrate(exp(x + 1) / x + exp(x), x)   # e·Ei(x)
     end
 
     @testset "$name: awaiting later stages" begin

@@ -1,10 +1,19 @@
 using Test
 import SimpleExpressions
 import SymEngine
+import SpecialFunctions
 include("Risch.jl")
 using .Risch
 
 fd(f, a; h = 1e-6) = (f(a + h) - f(a - h)) / (2h)
+
+# whether the symbolic package defines the SpecialFunctions used in answers (Step 8a)
+tt_special_ok(x) = try
+    SpecialFunctions.sinint(x); SpecialFunctions.cosint(x)
+    true
+catch
+    false
+end
 
 function run_tests(x, evalat, name)
     @testset "$name: polynomial × exponential × trig" begin
@@ -52,16 +61,39 @@ function run_tests(x, evalat, name)
         end
     end
 
+    @testset "$name: sine and cosine integrals (Step 8a)" begin
+        if tt_special_ok(x)
+            fs = (sin(x) / x,                      # Si(x): Ei(±ix) in real form
+                  cos(x) / x,                      # Ci(x)
+                  sin(2x) / x,                     # Si(2x)
+                  (1 + cos(x)) / x,                # log x + Ci(x)
+                  sin(x)^2 / x,                    # log(x)/2 - Ci(2x)/2
+                  sin(x) / (x + 1),                # shift t = -i: cos 1, sin 1 coefficients
+                  x * cos(x) / (x + 1)^2)          # Hermite-type reduction, then Si/Ci of x + 1
+            for f in fs
+                F = Risch.risch_integrate(f, x)
+                for a in (0.7, 1.6, 2.4)
+                    @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5, atol = 1e-8)
+                end
+            end
+        else
+            @test_skip "SpecialFunctions (sinint, cosint) are not defined for $(typeof(x))"
+        end
+    end
+
     @testset "$name: decided non-elementary / outside the supported class" begin
-        @test_throws Risch.NotElementary Risch.risch_integrate(sin(x) / x, x)        # Si(x)
-        @test_throws Risch.NotElementary Risch.risch_integrate(sin(x^2), x)          # Fresnel
-        @test_throws Risch.NotElementary Risch.risch_integrate(cos(x) / x, x)        # Ci(x)
-        # ∫ x sin x log x needs Si(x); decided by the tower, or refused where its bounds are partial
-        @test try
-            Risch.risch_integrate(x * sin(x) * log(x), x)
-            false
-        catch e
-            e isa Risch.NotElementary || e isa Risch.RischNotImplemented
+        @test_throws Risch.NotElementary Risch.risch_integrate(sin(x^2), x)          # Fresnel: no real form
+        @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) * sin(x) / x, x)   # Ei((1+i)x)
+        # ∫ x sin x log x = log x (sin x - x cos x) + cos x - Si(x): an answer when found (the tower
+        # order follows the package's term order), else a decision or a refusal
+        r = try Risch.risch_integrate(x * sin(x) * log(x), x) catch e; e end
+        if r isa Exception
+            @test r isa Risch.NotElementary || r isa Risch.RischNotImplemented ||
+                  (r isa MethodError && !tt_special_ok(x))
+        else
+            for a in (0.7, 1.6, 2.4)
+                @test isapprox(fd(t -> evalat(r, t), a), evalat(x * sin(x) * log(x), a); rtol = 1e-5, atol = 1e-8)
+            end
         end
         # exp(i log 2) = 2^i is not of the form e^(a + bi); SimpleExpressions turns log(2) into a float,
         # refused as an inexact constant
