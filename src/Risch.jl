@@ -744,10 +744,43 @@ function cterm(b::Builder, c::Frac{<:UPoly})
     k = cdepth(typeof(c))
     k <= length(b.consts) || throw(RischError(
         "constant field with $k generators but only $(length(b.consts)) are described"))
+    b.consts[k].kind === :expi && return cterm_expi(b, c, b.consts[k].arg)
     t = constgen_term(b, b.consts[k])
     n = cpoly_term(b, c.num, t)
     isone(c.den) ? n : mk(b, :/, n, cpoly_term(b, c.den, t))
 end
+# a real (σ-invariant) constant c ∈ B(τ), τ = e^(i·a): c = (N·σD)/(D·σD) with σ-invariant Laurent
+# polynomials in τ, written with cos(k·a) and sin(k·a) (as for a :trig level of a tower)
+function cterm_expi(b::Builder, c::Frac{<:UPoly}, a::Q)
+    B = eltype(c.num.c)
+    sD = Dict{Int,B}(-(j - 1) => cconj_g(b.consts, d) for (j, d) in enumerate(c.den.c) if !iszero(d))
+    A = laurent_mul(laurent_of(c.num), sD)
+    Bd = laurent_mul(laurent_of(c.den), sD)
+    n = cterm_laurent(b, A, a, B)
+    if length(Bd) == 1 && haskey(Bd, 0)
+        return isone(Bd[0]) ? n : mk(b, :/, n, cterm(b, Bd[0]))
+    end
+    mk(b, :/, n, cterm_laurent(b, Bd, a, B))
+end
+function cterm_laurent(b::Builder, L::Dict, a::Q, ::Type{B}) where {B}
+    all(k -> haskey(L, -k), keys(L)) || throw(RischError("a constant in the real-form output is not real"))
+    I = cimag(B)
+    ts = Any[]
+    c0 = get(L, 0, zero(B))
+    iszero(c0) || push!(ts, cterm(b, c0))
+    for k in sort([k for k in keys(L) if k > 0])
+        ck, cm = L[k], L[-k]
+        ka = cterm(b, k * a)
+        for (coef, fn) in ((ck + cm, :cos), (I * (ck - cm), :sin))
+            iszero(coef) && continue
+            tr = mk(b, fn, ka)
+            push!(ts, isone(coef) ? tr : mk(b, :*, cterm(b, coef), tr))
+        end
+    end
+    isempty(ts) && return b.lift(0)
+    length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
+end
+
 constgen_term(b::Builder, g::ConstGen) =
     g.kind === :exp ? mk(b, :exp, cterm(b, g.arg)) :
     g.kind === :log ? mk(b, :log, cterm(b, g.arg)) :
@@ -1116,6 +1149,20 @@ end
 cconj(c::Frac{<:UPoly}) = frac(cpconj(c.num), cpconj(c.den))
 cpconj(p::UPoly{T}) where {T} = UPoly{T}(T[cconj(c) for c in p.c])
 
+# σ on a constant of ℚ(i)(t₁, …, tₖ) knowing what the generators are (Step 7, part 3): a real
+# generator (e^a, log p) is fixed, τ = e^(i·a) (kind :expi) goes to 1/τ.
+cconj_g(gens, c) = cconj(c)
+function cconj_g(gens, c::Frac{<:UPoly})
+    iszero(c) && return c                           # (degree of the zero numerator is -1)
+    k = cdepth(typeof(c))
+    n, d = cpconj_g(gens, c.num), cpconj_g(gens, c.den)
+    (k <= length(gens) && gens[k].kind === :expi) || return frac(n, d)
+    t = xpoly(eltype(c.num.c))                      # τ ↦ 1/τ:  p(τ) ↦ τ^(-deg p) p̃(τ)
+    rv(p) = typeof(p)(reverse(p.c))
+    frac(rv(n) * t^degree(c.den), rv(d) * t^degree(c.num))
+end
+cpconj_g(gens, p::UPoly{T}) where {T} = UPoly{T}(T[cconj_g(gens, c) for c in p.c])
+
 # --- ℚ(t₁, …, tₖ) as a constant field (Step 6) -------------------------------------
 # Purely transcendental: the type is nested rational functions,  C₀ = ℚ,  Cⱼ = Cⱼ₋₁(tⱼ) =
 # Frac{UPoly{Cⱼ₋₁}}, so the existing polynomial/fraction arithmetic is the field arithmetic.
@@ -1431,32 +1478,52 @@ function const_exp(T::Tower, c)
     gens = T.consts
     (C === Q || C === QI || C <: Frac) || throw(RischNotImplemented(
         "exp of the constant $c over the constant field $C is not implemented"))
+    cx = is_complex_field(C)
     logs = [j for j in eachindex(gens) if gens[j].kind === :log]
-    vs = cflat_all(C, C[one(C); C[tgen(C, j) for j in logs]; c])
+    # c = a + b·i + Σ r_p log p  (the i column only over ℚ(i))
+    cols = C[one(C); (cx ? C[cimag(C)] : C[]); C[tgen(C, j) for j in logs]; c]
+    vs = cflat_all(C, cols)
     sol = solve_columns(vs[1:(end - 1)], vs[end])
     sol === nothing && throw(RischNotImplemented(
-        "exp of the constant $c: only exp(rational + integer multiples of logs of rationals) is implemented"))
+        "exp of the constant $c: only exp(a + b·i + integer multiples of logs of rationals), a, b ∈ ℚ, is implemented"))
+    a = sol[1]
+    b = cx ? sol[2] : Q(0)
     val = one(C)
-    for (j, ρ) in zip(logs, sol[2:end])
+    for (j, ρ) in zip(logs, sol[(cx ? 3 : 2):end])
         iszero(ρ) && continue
         isone(denominator(ρ)) || throw(RischNotImplemented(
             "exp of a rational multiple of log $(gens[j].arg) is an algebraic number"))
         val = val * cfromQ(C, gens[j].arg^Int(numerator(ρ)))
     end
-    a = sol[1]
-    iszero(a) && return val
-    jE = findfirst(g -> g.kind === :exp, gens)
-    if jE === nothing                                       # first appearance of e: tₑ = e^(1/den a)
-        throw(NewConstants(ConstGen[ConstGen(:exp, Q(1) // denominator(a)); gens]))
+    for r in (a, b)                         # a float that was rationalized would ask for e^(1/10¹⁶)
+        denominator(r) <= MAX_CONST_DEN || throw(RischNotImplemented(
+            "exp of a constant with a large denominator ($r): an inexact (floating-point) constant?"))
     end
-    s = denominator(gens[jE].arg)                            # tₑ = e^(1/s)
-    m = a * s
-    if !isone(denominator(m))                               # refine: tₑ = e^(1/lcm(s, den a))
+    iszero(a) || (val = val * const_gen_power(T, :exp, a))
+    iszero(b) || (val = val * const_gen_power(T, :expi, b))
+    val
+end
+const MAX_CONST_DEN = 1000
+
+# e^a (kind :exp) or e^(i·a) (kind :expi) as a power of the generator g = e^(1/s) or e^(i/s);
+# throws NewConstants to add it (exp first, expi right after it) or to refine s
+function const_gen_power(T::Tower, kind::Symbol, a::Q)
+    gens = T.consts
+    j = findfirst(g -> g.kind === kind, gens)
+    if j === nothing
         g2 = copy(gens)
-        g2[jE] = ConstGen(:exp, Q(1) // lcm(s, denominator(a)))
+        pos = kind === :exp ? 1 : ((!isempty(gens) && gens[1].kind === :exp) ? 2 : 1)
+        insert!(g2, pos, ConstGen(kind, Q(1) // denominator(a)))
         throw(NewConstants(g2))
     end
-    val * tgen(C, jE)^Int(numerator(m))
+    s = denominator(gens[j].arg)
+    m = a * s
+    if !isone(denominator(m))                               # refine: generator e^(1/lcm(s, den a))
+        g2 = copy(gens)
+        g2[j] = ConstGen(kind, Q(1) // lcm(s, denominator(a)))
+        throw(NewConstants(g2))
+    end
+    tgen(ctype(T), j)^Int(numerator(m))
 end
 
 is_monomial(p::UPoly) = count(!iszero, p.c) == 1
@@ -2536,7 +2603,7 @@ end
 
 # σ on an element of level i (needs the kinds of levels 1..i)
 function tconj(T::Tower, kinds, f, i::Int)
-    i == 0 && return cconj(f)
+    i == 0 && return frac(cpconj_g(T.consts, f.num), cpconj_g(T.consts, f.den))   # x real
     iszero(f) && return f
     n = tconj_poly(T, kinds, f.num, i)
     d = tconj_poly(T, kinds, f.den, i)
@@ -2629,7 +2696,7 @@ function real_log_pieces(T::Tower, kinds, c, w)
     C = ctype(T)
     j = levelof(T, w)
     sw = tconj(T, kinds, w, j)
-    sc = cconj(c)
+    sc = cconj_g(T.consts, c)
     half = inv(cfromQ(C, Q(2)))
     I = cimag(C)
     cr = (c + sc) * half

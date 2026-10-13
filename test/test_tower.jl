@@ -86,8 +86,14 @@ function run_tests(x, evalat, name)
         @test shape(sin(x)^2 + cos(x)^2, x) == Symbol[]                       # = 1
         @test Risch.ctype(Risch.build_tower(sin(x), string(x))[1]) === Risch.QI
         @test Risch.ctype(Risch.build_tower(exp(x), string(x))[1]) === Rational{BigInt}
+        # τ = e^i, refined to e^(i/2), next to the real e
+        @test shape(sin(x) + sin(x + 1), x) == [:exp]
+        @test consts(sin(x) + sin(x + 1), x) == Set([G(:expi, 1)])
+        @test consts(sin(x) + sin(x + 1) + cos(x + 1//2), x) == Set([G(:expi, 1//2)])
+        @test consts(exp(x) + exp(x + 1) + sin(x) + sin(x + 1), x) == Set([G(:exp, 1), G(:expi, 1)])
         for f in (sin(x), cos(x)^2, tan(x), 1 / (2 + cos(x)), sin(x) * log(x), sin(x + 1),
-                  exp(x) * cos(2x), sin(exp(x)), sin(x) + log(x) + log(2x))
+                  exp(x) * cos(2x), sin(exp(x)), sin(x) + log(x) + log(2x),
+                  sin(x) + sin(x + 1), cos(x + 1//2) * sin(x), exp(x + 1) * sin(x) + exp(x) * cos(x + 1))
             d = Risch.tower_derivative(f, x)
             for a in (0.7, 1.3, 2.1)
                 @test isapprox(evalat(d, a), fd(t -> evalat(f, t), a); rtol = 1e-5, atol = 1e-8)
@@ -97,7 +103,7 @@ function run_tests(x, evalat, name)
 
     @testset "$name: rejected input" begin
         @test_throws Risch.RischNotImplemented shape(sqrt(x), x)                # algebraic
-        @test_throws Risch.RischNotImplemented shape(sin(x) + sin(x + 1), x)    # e^i: step 7, part 3
+        @test_throws Risch.RischNotImplemented shape(sin(x) + sin(x + log(2)), x)   # 2^i
         @test_throws Risch.RischNotImplemented shape(log(x) + log(-2x), x)      # log(-2): complex
         @test_throws Risch.RischNotImplemented shape(exp(x) + exp(x + log(x + 1) / 2), x)  # √(x+1)
     end

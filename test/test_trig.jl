@@ -36,7 +36,14 @@ function run_tests(x, evalat, name)
               sin(x) * cos(x) / (1 + sin(x)^2),    # log(1 + sin² x)/2: residues 1/2 of a quartic
               sin(x + 1),                          # θ = exp(i(x+1)) alone: no new constant
               x * sin(x + 1),
-              sin(x) * log(x) + (1 - cos(x)) / x)  # (1 - cos x) log x: tower [exp(ix), log x]
+              sin(x) * log(x) + (1 - cos(x)) / x,  # (1 - cos x) log x: tower [exp(ix), log x]
+              # the constant τ = e^i (step 7, part 3): sin(x+1) = (τθ - 1/(τθ))/(2i), θ = exp(ix)
+              sin(x) + sin(x + 1),
+              sin(x) * cos(x + 1),
+              x * cos(x + 1) + sin(x),
+              cos(x + 1//2) + sin(x),              # τ = e^(i/2)
+              exp(x + 1) * sin(x) + sin(x + 1),    # real constant e (via exp(x+1)) and τ together
+              x * cos(1) + sin(x))                 # cos 1 as a constant (SymEngine keeps it symbolic)
         for f in fs
             F = Risch.risch_integrate(f, x)
             for a in (0.7, 1.6, 2.4)
@@ -56,7 +63,9 @@ function run_tests(x, evalat, name)
         catch e
             e isa Risch.NotElementary || e isa Risch.RischNotImplemented
         end
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sin(x) + sin(x + 1), x)  # e^i (step 7, part 3)
+        # exp(i log 2) = 2^i is not of the form e^(a + bi); SimpleExpressions turns log(2) into a float,
+        # refused as an inexact constant
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sin(x) + sin(x + log(2)), x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(sin(x)), x)         # algebraic
     end
 end
