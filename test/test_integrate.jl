@@ -154,6 +154,28 @@ function run_tests(x, evalat, name)
         end
     end
 
+    @testset "$name: transcendental constants e, log 2, ... (Step 6)" begin
+        fs = (exp(x) + exp(x + 1),                     # (1 + e) exp(x)
+              x * exp(x + 1) + exp(x),                 # Risch DE over ℚ(e)(x)
+              exp(x) * (1 + exp(x + 1)),               # exp(x) + e exp(2x)/2
+              exp(x + 1) / (exp(x) + 1),               # residue e: e log(exp(x) + 1)
+              exp(x) + exp(x + 1//2),                  # constant generator e^(1/2)
+              log(x) + log(2x),                        # 2x log x - 2x + x log 2
+              log(x) * log(2x),                        # ∫ log² x + log 2 ∫ log x
+              log(2x) - log(x),                        # = log 2: x log 2
+              log(x) / x + log(6x) / x,                # log 6 = log 2 + log 3
+              2^x,                                     # 2^x / log 2: Risch DE y' + log(2) y = 1
+              x * 3^x,
+              1 / (x * (log(x) + log(2x))))            # log(2 log x + log 2)/2
+        for f in fs
+            F = Risch.risch_integrate(f, x)
+            for a in (1.3, 1.9, 2.6)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        @test_throws Risch.NotElementary Risch.risch_integrate(exp(x + 1) / x + exp(x), x)   # e·Ei(x)
+    end
+
     @testset "$name: awaiting later stages" begin
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / (x * (log(x)^4 + 1)), x)  # quartic residues
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(log(x) / (x^2 + 2), x)        # atan × log

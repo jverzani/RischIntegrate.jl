@@ -699,6 +699,8 @@ struct ConstGen
     kind::Symbol          # :exp or :log
     arg::Q
 end
+Base.:(==)(a::ConstGen, b::ConstGen) = a.kind === b.kind && a.arg == b.arg
+Base.hash(g::ConstGen, h::UInt) = hash(g.arg, hash(g.kind, h))
 
 struct Builder
     build::Any
@@ -1258,12 +1260,15 @@ function map_constants(T::Tower, T2::Tower, f, φ, i::Int)
 end
 
 # --- exp and log of tower elements --------------------------------------------
+# Structure theorem (Risch): exp(u) is not new iff  u' = Σ ρᵢ bᵢ'  with ρ ∈ ℚ, where bᵢ is the
+# argument of an exp level and θᵢ of a log level; then  u = Σ ρᵢ bᵢ + c  with c a constant
+# (D c = 0), and  exp(u) = exp(c) Π θᵢ^ρᵢ (exp levels) Π argᵢ^ρᵢ (log levels). exp(c) is
+# found in the constant field (`const_exp`), which may ask for a new constant generator.
 function make_exp(T::Tower, u)
     c = dconst_value(T, u)
     if c !== nothing
         iszero(c) && return one(T.Ts[1])
-        throw(RischNotImplemented("exp of the nonzero constant $c involves the transcendental " *
-                                  "constant e^$c (constant-field extensions are planned for Stage 5)"))
+        return lconst(T, const_exp(T, c), 0)
     end
     top = length(T.levels)
     u = liftto(T, u, top)
@@ -1272,12 +1277,16 @@ function make_exp(T::Tower, u)
     for (i, lv) in enumerate(T.levels)
         push!(basis, lv.kind === :exp ? liftto(T, lv.arg, top) : liftto(T, theta(T, i), top))
     end
-    push!(basis, one(K))
-    r = solve_relation(T, u, basis)
+    dbasis = K[D(T, top, b) for b in basis]
+    r = solve_relation(T, D(T, top, u), dbasis)
     if r !== nothing
-        iszero(r[end]) || throw(RischNotImplemented(
-            "exp(u + c) with a nonzero constant c needs the transcendental constant e^c (Stage 5)"))
-        res = one(K)
+        off = u
+        for (ρ, b) in zip(r, basis)
+            iszero(ρ) || (off = off - lq(T, ρ, top) * b)
+        end
+        cv = dconst_value(T, off)
+        cv === nothing && throw(RischError("inconsistent exponential relation (offset not constant)"))
+        res = iszero(cv) ? one(K) : lconst(T, const_exp(T, cv), top)
         for (i, lv) in enumerate(T.levels)
             ρ = r[i]
             iszero(ρ) && continue
@@ -1304,8 +1313,7 @@ function make_log(T::Tower, u)
     c = dconst_value(T, u)
     if c !== nothing
         isone(c) && return zero(T.Ts[1])
-        throw(RischNotImplemented("log of the constant $c is a new transcendental constant " *
-                                  "(constant-field extensions are planned for Stage 5)"))
+        return lconst(T, const_log(T, c), 0)
     end
     top = length(T.levels)
     u = liftto(T, u, top)
@@ -1336,12 +1344,105 @@ function make_log(T::Tower, u)
         end
         cv = dconst_value(T, R)
         cv === nothing && throw(RischError("inconsistent logarithmic relation (not a constant ratio)"))
-        (isone(cv) || isone(-cv)) || throw(RischNotImplemented(
-            "log(u) = (combination of generators) + log(±$cv)/$q: a new constant (Stage 5)"))
-        return liftto(T, res, top)
+        res = liftto(T, res, top)
+        # u^q = cv · Π(...): log u = Σ ρᵢ (log of generator i) + log(cv)/q. A ratio of -1 keeps the
+        # behaviour from before Step 6 (the constant log(-1) = iπ is dropped).
+        if !(isone(cv) || isone(-cv))
+            res = res + lconst(T, const_log(T, cv) / cfromQ(ctype(T), Q(q)), top)
+        end
+        return res
     end
     add_level!(T, :log, u, UPoly{K}(K[w]), 0)
     theta(T, top + 1)
+end
+
+# --- constants: exp and log in the constant field ℚ(t₁, …, tₖ) (Step 6) -----------
+# Generators (T.consts): at most one exp constant tₑ = exp(1/s), always first; and one
+# log p per prime p (log r = Σ v_p(r) log p for r ∈ ℚ₊). A constant that needs a generator
+# that is not there yet throws NewConstants with the extended list; `build_tower` re-parses.
+struct NewConstants <: Exception
+    consts::Vector{ConstGen}
+end
+const MAX_CONSTS = 8
+
+# the value of c at depth `d` of the nested constant field, if c lies in that subfield
+function const_below(c, d::Int)
+    while cdepth(typeof(c)) > d
+        (isone(c.den) && degree(c.num) <= 0) || return nothing
+        c = isempty(c.num.c) ? zero(eltype(c.num.c)) : c.num.c[1]
+    end
+    c
+end
+
+# exp(c) ∈ C for c = a + Σ r_p log p (a, r_p ∈ ℚ, r_p integers), else RischNotImplemented
+function const_exp(T::Tower, c)
+    C = ctype(T)
+    gens = T.consts
+    C === Q || C <: Frac || throw(RischNotImplemented(
+        "exp of the constant $c over the constant field $C is not implemented"))
+    logs = [j for j in eachindex(gens) if gens[j].kind === :log]
+    vs = cflat_all(C, C[one(C); C[tgen(C, j) for j in logs]; c])
+    sol = solve_columns(vs[1:(end - 1)], vs[end])
+    sol === nothing && throw(RischNotImplemented(
+        "exp of the constant $c: only exp(rational + integer multiples of logs of rationals) is implemented"))
+    val = one(C)
+    for (j, ρ) in zip(logs, sol[2:end])
+        iszero(ρ) && continue
+        isone(denominator(ρ)) || throw(RischNotImplemented(
+            "exp of a rational multiple of log $(gens[j].arg) is an algebraic number"))
+        val = val * cfromQ(C, gens[j].arg^Int(numerator(ρ)))
+    end
+    a = sol[1]
+    iszero(a) && return val
+    jE = findfirst(g -> g.kind === :exp, gens)
+    if jE === nothing                                       # first appearance of e: tₑ = e^(1/den a)
+        throw(NewConstants(ConstGen[ConstGen(:exp, Q(1) // denominator(a)); gens]))
+    end
+    s = denominator(gens[jE].arg)                            # tₑ = e^(1/s)
+    m = a * s
+    if !isone(denominator(m))                               # refine: tₑ = e^(1/lcm(s, den a))
+        g2 = copy(gens)
+        g2[jE] = ConstGen(:exp, Q(1) // lcm(s, denominator(a)))
+        throw(NewConstants(g2))
+    end
+    val * tgen(C, jE)^Int(numerator(m))
+end
+
+is_monomial(p::UPoly) = count(!iszero, p.c) == 1
+
+# log(c) ∈ C for c = r · tₑ^m with r ∈ ℚ, r > 0, m ∈ ℤ, else RischNotImplemented
+function const_log(T::Tower, c)
+    C = ctype(T)
+    gens = T.consts
+    C === Q || C <: Frac || throw(RischNotImplemented(
+        "log of the constant $c over the constant field $C is not implemented"))
+    r, m = crational(c), 0
+    if r === nothing
+        jE = findfirst(g -> g.kind === :exp, gens)
+        c1 = jE == 1 ? const_below(c, 1) : nothing         # c ∈ ℚ(tₑ)?
+        (c1 !== nothing && is_monomial(c1.num) && is_monomial(c1.den)) || throw(RischNotImplemented(
+            "log of the constant $c: only logs of rationals times powers of e are implemented"))
+        r = lc(c1.num)
+        m = degree(c1.num) - degree(c1.den)
+    end
+    r > 0 || throw(RischNotImplemented("log of the negative constant $r is complex"))
+    val = m == 0 ? zero(C) : cfromQ(C, m * gens[1].arg)       # log(tₑ^m) = m/s
+    missing_ = ConstGen[]
+    for (n, sgn) in ((numerator(r), 1), (denominator(r), -1))
+        for (p, k) in factorint(n)
+            p < big(10)^12 || throw(RischNotImplemented(
+                "log of a rational with a large factor that could not be factored ($p)"))
+            g = ConstGen(:log, Q(p))
+            j = findfirst(==(g), gens)
+            if j === nothing
+                push!(missing_, g)
+            elseif isempty(missing_)
+                val = val + (sgn * k) * tgen(C, j)
+            end
+        end
+    end
+    isempty(missing_) || throw(NewConstants(ConstGen[gens; missing_]))
+    val
 end
 
 # --- term -> tower element ----------------------------------------------------
@@ -1427,8 +1528,7 @@ function parse_tower(t, T::Tower)
         end
     end
     string(t) == T.xk && return frac(xpoly(ctype(T)))
-    is_e_const(t) && throw(RischNotImplemented(
-        "the constant e is transcendental; constant-field extensions are planned for Stage 5"))
+    is_e_const(t) && return lconst(T, const_exp(T, one(ctype(T))), 0)
     r = leaf_rational(t)
     r !== nothing && return lq(T, r, 0)
     throw(RischNotImplemented("symbol `$t` is not the integration variable; " *
@@ -1436,17 +1536,30 @@ function parse_tower(t, T::Tower)
 end
 
 # Build the tower for `f`. A Restart (a rational multiple such as exp(x/2) after
-# exp(x)) refines the generator and re-parses; the hints only ever grow.
-function build_tower(f, xk::String; constants::Type = Q)
+# exp(x)) refines the generator and re-parses; the hints only ever grow. A NewConstants
+# (a constant such as e or log 2 appeared) re-parses over the larger field ℚ(t₁, …, tₖ).
+# `constants` fixes the constant field instead (no constant generators can then be added).
+function build_tower(f, xk::String; constants::Union{Nothing,Type} = nothing)
     scales = Dict{Int,Int}()
+    consts = ConstGen[]
     for _ in 1:50
-        T = Tower(constants, xk, scales)
+        C = constants === nothing ? cfield(length(consts)) : constants
+        T = Tower(C, xk, scales, copy(consts))
         try
             el = parse_tower(f, T)
             return minimal(T, el)
         catch e
-            e isa Restart || rethrow()
-            scales[e.seq] = lcm(get(scales, e.seq, 1), e.q)
+            if e isa Restart
+                scales[e.seq] = lcm(get(scales, e.seq, 1), e.q)
+            elseif e isa NewConstants
+                constants === nothing || throw(RischNotImplemented(
+                    "the input involves transcendental constants, but the constant field was fixed to $constants"))
+                length(e.consts) <= MAX_CONSTS || throw(RischNotImplemented(
+                    "more than $MAX_CONSTS transcendental constants"))
+                consts = e.consts
+            else
+                rethrow()
+            end
         end
     end
     throw(RischError("could not find a consistent exponential generator"))
@@ -1508,7 +1621,7 @@ function tower_derivative(f, x; build = nothing, lift = nothing)
     T, el = build_tower(f, string(x))
     d = D(T, el)
     b = Builder(build === nothing ? auto_build(f, x) : build,
-                lift === nothing ? auto_lift(f, x) : lift, x)
+                lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
     tower_to_term(b, T, d)
 end
 
@@ -2263,7 +2376,7 @@ function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = t
     T, el = build_tower(f, string(x))
     L = length(T.levels)
     bd = Builder(build === nothing ? auto_build(f, x) : build,
-                 lift === nothing ? auto_lift(f, x) : lift, x)
+                 lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
     if L > 0
         res = integrate_el(T, L, el)
         verify && !check_tower(T, L, res, el) &&
