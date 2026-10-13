@@ -328,8 +328,10 @@ function rational_roots(p::UPoly{Q})
     roots
 end
 
-# roots in the constant field C of a polynomial over C. Only C = ℚ is implemented; other
-# constant fields will provide their own methods (ℚ(√d), ℚ(i), ...).
+# distinct roots in the constant field C of a polynomial over C. Contract: the result may be
+# INCOMPLETE (a field may only find some of its roots, see ℚ(√d)); every caller divides out the
+# roots found and treats a leftover factor of positive degree as "not handled"
+# (RischNotImplemented / `unresolved`), never as "no roots". For ℚ the result is complete.
 constant_roots(p::UPoly{Q}) = rational_roots(p)
 constant_roots(p::UPoly) = throw(RischNotImplemented(
     "root finding in this constant field is not implemented"))
@@ -690,15 +692,66 @@ function num(c::Q)
     (typemin(Int) <= n <= typemax(Int) && d <= typemax(Int)) ? Int(n) // Int(d) : c
 end
 
+# A generator tⱼ of a transcendental constant field ℚ(t₁, …, tₖ) (Step 6): tⱼ = exp(arg) or
+# log(arg), arg ∈ ℚ. The field type only knows "k indeterminates"; what they stand for is
+# this list, kept by the tower (`T.consts`) and by the Builder (for output).
+struct ConstGen
+    kind::Symbol          # :exp or :log
+    arg::Q
+end
+
 struct Builder
     build::Any
     lift::Any
     x::Any
+    consts::Vector{ConstGen}  # meaning of the indeterminates of the constant field (output)
 end
+Builder(build, lift, x) = Builder(build, lift, x, ConstGen[])
 const OPS = Dict{Symbol,Function}(:+ => +, :* => *, :/ => /, :^ => ^, :exp => exp,
                                   :log => log, :atan => atan, :sqrt => sqrt,
                                   :sin => sin, :cos => cos)
 mk(b::Builder, name::Symbol, args...) = b.build(OPS[name], args...)
+
+# a constant of the differential field as a term (part of the constant-field interface;
+# only C = ℚ is implemented: rationals are lifted into the package's number type)
+cterm(b::Builder, c::Q) = b.lift(num(c))
+function cterm(b::Builder, c::QS{d}) where {d}         # a + b√d, with sqrt(d) kept symbolic
+    iszero(c.b) && return cterm(b, c.a)
+    r = mk(b, :sqrt, b.lift(d))
+    s = isone(c.b) ? r : mk(b, :*, cterm(b, c.b), r)
+    iszero(c.a) ? s : mk(b, :+, cterm(b, c.a), s)
+end
+cterm(b::Builder, c) = throw(RischNotImplemented(
+    "output of constants of type $(typeof(c)) is not implemented"))
+
+# c ∈ ℚ(t₁, …, tₖ) = B(tₖ): a rational function of tₖ with coefficients in B, tₖ from b.consts
+function cterm(b::Builder, c::Frac{<:UPoly})
+    k = cdepth(typeof(c))
+    k <= length(b.consts) || throw(RischError(
+        "constant field with $k generators but only $(length(b.consts)) are described"))
+    t = constgen_term(b, b.consts[k])
+    n = cpoly_term(b, c.num, t)
+    isone(c.den) ? n : mk(b, :/, n, cpoly_term(b, c.den, t))
+end
+constgen_term(b::Builder, g::ConstGen) =
+    g.kind === :exp ? mk(b, :exp, cterm(b, g.arg)) :
+    g.kind === :log ? mk(b, :log, cterm(b, g.arg)) :
+    throw(RischError("unknown constant generator kind $(g.kind)"))
+function cpoly_term(b::Builder, p::UPoly, t)
+    iszero(p) && return b.lift(0)
+    ts = Any[]
+    for (i, c) in enumerate(p.c)
+        iszero(c) && continue
+        k = i - 1
+        if k == 0
+            push!(ts, cterm(b, c))
+        else
+            tk = k == 1 ? t : mk(b, :^, t, b.lift(k))
+            push!(ts, isone(c) ? tk : mk(b, :*, cterm(b, c), tk))
+        end
+    end
+    length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
+end
 
 default_build(op, args...) = op(args...)
 
@@ -740,22 +793,22 @@ function auto_lift(f, x)
     identity
 end
 
-function poly_term(b::Builder, p::CX)
+function poly_term(b::Builder, p::UPoly)
     iszero(p) && return b.lift(0)
     ts = Any[]
     for (i, c) in enumerate(p.c)
         iszero(c) && continue
         k = i - 1
         if k == 0
-            push!(ts, b.lift(num(c)))
+            push!(ts, cterm(b, c))
         else
             xk = k == 1 ? b.x : mk(b, :^, b.x, b.lift(k))
-            push!(ts, isone(c) ? xk : mk(b, :*, b.lift(num(c)), xk))
+            push!(ts, isone(c) ? xk : mk(b, :*, cterm(b, c), xk))
         end
     end
     length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
 end
-frac_term(b::Builder, f::CXF) =
+frac_term(b::Builder, f::Frac{<:UPoly}) =
     isone(f.den) ? poly_term(b, f.num) : mk(b, :/, poly_term(b, f.num), poly_term(b, f.den))
 
 function to_term(b::Builder, res::RationalIntegral)
@@ -763,11 +816,11 @@ function to_term(b::Builder, res::RationalIntegral)
     iszero(res.rational) || push!(ts, frac_term(b, res.rational))
     for (c, w) in res.logs
         l = mk(b, :log, poly_term(b, w))
-        push!(ts, isone(c) ? l : mk(b, :*, b.lift(num(c)), l))
+        push!(ts, isone(c) ? l : mk(b, :*, cterm(b, c), l))
     end
     for (c, u) in res.atans
         l = mk(b, :atan, frac_term(b, u))
-        push!(ts, isone(c) ? l : mk(b, :*, b.lift(num(c)), l))
+        push!(ts, isone(c) ? l : mk(b, :*, cterm(b, c), l))
     end
     for q in res.quads
         if q isa QuadLog
@@ -811,13 +864,34 @@ mutable struct Tower{C}          # C: type of the constants of the differential 
     Ts::Vector{DataType}      # Ts[i+1] is the type of Kᵢ
     scales::Dict{Int,Int}     # exp-generator refinement hints (see Restart)
     nexp::Int
+    consts::Vector{ConstGen}  # meaning of the generators of C when C = ℚ(t₁, …, tₖ) (Step 6)
 end
-Tower(::Type{C}, xk::String, scales::Dict{Int,Int}) where {C} =
-    Tower{C}(xk, Level[], DataType[Frac{UPoly{C}}], scales, 0)
+Tower(::Type{C}, xk::String, scales::Dict{Int,Int}, consts::Vector{ConstGen} = ConstGen[]) where {C} =
+    Tower{C}(xk, Level[], DataType[Frac{UPoly{C}}], scales, 0, consts)
 ctype(::Tower{C}) where {C} = C
 
-# embedding of an exact rational number into the constant field
+# --- interface every constant field C must provide ----------------------------
+#   cfromQ(C, q)     embedding ℚ -> C
+#   crational(c)     the value of c as a rational number when c ∈ ℚ, else nothing
+#   cflat_all(C, cs) coordinates over ℚ of a list of constants (aligned; see `flat`)
+#   constant_roots   roots in C of a polynomial over C
+#   cterm(b, c)      the constant as a term of the user's package (output)
+# Only C = ℚ is implemented. The fallbacks raise RischNotImplemented rather than guess:
+# e.g. answering "not rational" for a constant that is rational in disguise would make
+# the integer test for the cancellation exponent (rde) silently wrong.
 cfromQ(::Type{Q}, q::Q) = q
+cfromQ(::Type{T}, q::Q) where {T} = throw(RischNotImplemented(
+    "embedding of ℚ into the constant field $T is not implemented"))
+
+crational(c::Q) = c
+crational(c) = throw(RischNotImplemented(
+    "deciding whether a constant of type $(typeof(c)) is rational is not implemented"))
+
+# the rational integer value of a constant, or nothing
+function cinteger(c)
+    q = crational(c)
+    (q !== nothing && isone(denominator(q))) ? q : nothing
+end
 
 # lift a constant c ∈ C (not just a rational number) to level j
 lconst(T::Tower, c, j::Int) = liftto(T, kconst(c), j)
@@ -856,7 +930,6 @@ function const_value(T::Tower{C}, f) where {C}
 end
 
 # --- the derivation on every level -------------------------------------------
-D(T::Tower, i::Int, f::CXF) = dx(f)
 function D(T::Tower, i::Int, f::Frac{<:UPoly})
     i == 0 && return dx(f)
     frac(Dp(T, i, f.num) * f.den - f.num * Dp(T, i, f.den), f.den * f.den)
@@ -868,11 +941,215 @@ function Dp(T::Tower, i::Int, p::UPoly)
 end
 D(T::Tower, f) = D(T, levelof(T, f), f)
 
+# --- differential constants ----------------------------------------------------
+# `const_value` is structural: it recognises elements written as a constant of C. The
+# algorithm needs the semantic notion, D f = 0 (residue criterion, constant ratios in the
+# log structure theorem, the cancellation exponent of the Risch DE). In a valid tower of
+# monomials over C the two agree: no monomial introduces new constants, so every element
+# with D f = 0 lies in C. `dconst_value` therefore tries the cheap structural test first and
+# only then differentiates; a differential constant that is not structurally in C means the
+# tower is not a valid monomial extension, which is reported as an internal error rather
+# than silently treated as "not constant".
+is_constant(T::Tower, f) = const_value(T, f) !== nothing || iszero(D(T, f))
+
+function dconst_value(T::Tower, f)
+    v = const_value(T, f)
+    v === nothing || return v
+    iszero(D(T, f)) && throw(RischError(
+        "an element with derivative 0 is not in the constant field: the tower is not a valid " *
+        "monomial extension (new constants appeared)"))
+    nothing
+end
+
 # --- ℚ-linear dependence between field elements -------------------------------
 plcm(a::P, b::P) where {P<:UPoly} = quo(a * b, gcd(a, b))
 
 # coordinates of constants over ℚ (aligned across the list): ℚ itself is one coordinate
 cflat_all(::Type{Q}, cs) = [Q[c] for c in cs]
+cflat_all(::Type{T}, cs) where {T} = throw(RischNotImplemented(
+    "coordinates over ℚ of constants of type $T are not implemented"))
+
+# --- ℚ(√d) as a constant field (d squarefree, d ≠ 0, 1) -----------------------------
+# Completes the arithmetic of QS{d} (defined with Stage 5a) and implements the constant-field
+# interface. 1 and √d are linearly independent over ℚ, so (a, b) are the ℚ-coordinates.
+Base.zero(::QS{d}) where {d} = zero(QS{d})
+Base.one(::QS{d}) where {d} = one(QS{d})
+Base.copy(x::QS) = x
+Base.hash(x::QS{d}, h::UInt) where {d} = hash(x.b, hash(x.a, hash(d, h)))
+Base.:*(x::QS{d}, n::Integer) where {d} = n * x
+function Base.:^(x::QS{d}, n::Integer) where {d}
+    n < 0 && return inv(x)^(-n)
+    r, b = one(x), x
+    while n > 0
+        isodd(n) && (r = r * b)
+        n >>= 1
+        n > 0 && (b = b * b)
+    end
+    r
+end
+Base.show(io::IO, x::QS{d}) where {d} = print(io, x.a, " + ", x.b, "√", d)
+
+cfromQ(::Type{QS{d}}, q::Q) where {d} = QS{d}(q, Q(0))
+crational(c::QS) = iszero(c.b) ? c.a : nothing
+cflat_all(::Type{QS{d}}, cs) where {d} = [Q[c.a, c.b] for c in cs]
+
+# square root in ℚ(√d), or nothing:  (u + v√d)² = a + b√d  ⟺  u² + d v² = a, 2uv = b
+function qs_sqrt(x::QS{d}) where {d}
+    a, b = x.a, x.b
+    if iszero(b)
+        r = rat_sqrt(a)
+        r !== nothing && return QS{d}(r, Q(0))
+        s = rat_sqrt(a / d)                      # u = 0:  d v² = a
+        return s === nothing ? nothing : QS{d}(Q(0), s)
+    end
+    disc = rat_sqrt(a^2 - d * b^2)               # u² is a root of  t² - a t + d b²/4
+    disc === nothing && return nothing
+    for u2 in ((a + disc) / 2, (a - disc) / 2)
+        u = rat_sqrt(u2)
+        (u === nothing || iszero(u)) && continue
+        y = QS{d}(u, b / (2 * u))
+        y * y == x && return y
+    end
+    nothing
+end
+
+# Distinct roots in ℚ(√d) that this finds: every rational root (common rational roots of the
+# two ℚ-components p = P₀ + √d P₁), and all roots once at most two remain (quadratic formula).
+# Possibly incomplete in degree ≥ 3, as allowed by the `constant_roots` contract.
+function constant_roots(p::UPoly{QS{d}}) where {d}
+    S = QS{d}
+    roots = S[]
+    iszero(p) && return roots
+    P0 = UPoly{Q}(Q[c.a for c in p.c])
+    P1 = UPoly{Q}(Q[c.b for c in p.c])
+    rest = p
+    for r in rational_roots(gcd(P0, P1))
+        s = S(r, Q(0))
+        push!(roots, s)
+        rest = quo(rest, UPoly{S}(S[-s, one(S)]))
+    end
+    addroot!(s) = (s in roots || push!(roots, s))
+    if degree(rest) == 1
+        addroot!(-rest.c[1] / rest.c[2])
+    elseif degree(rest) == 2
+        m = monic(rest)
+        p0, p1 = m.c[1], m.c[2]
+        sq = qs_sqrt(p1 * p1 - 4 * p0)
+        if sq !== nothing
+            half = inv(2 * one(S))
+            addroot!((-p1 + sq) * half)
+            addroot!((-p1 - sq) * half)
+        end
+    end
+    roots
+end
+
+# --- ℚ(t₁, …, tₖ) as a constant field (Step 6) -------------------------------------
+# Purely transcendental: the type is nested rational functions,  C₀ = ℚ,  Cⱼ = Cⱼ₋₁(tⱼ) =
+# Frac{UPoly{Cⱼ₋₁}}, so the existing polynomial/fraction arithmetic is the field arithmetic.
+# tⱼ is treated as an indeterminate: this is exact for one generator e = exp(1) (Hermite)
+# and log 2 (Lindemann); for several (e and log 2 together, say) algebraic independence is
+# Schanuel's conjecture, which every CAS assumes (were it false, a constant that is really
+# zero could be treated as nonzero). The meaning of each tⱼ is in `T.consts`.
+cdepth(::Type{Q}) = 0
+cdepth(::Type{Frac{UPoly{B}}}) where {B} = 1 + cdepth(B)
+cfield(k::Int) = k == 0 ? Q : Frac{UPoly{cfield(k - 1)}}
+# the generator tⱼ as an element of C = ℚ(t₁, …, tₖ), 1 ≤ j ≤ k
+function tgen(::Type{Frac{UPoly{B}}}, j::Int) where {B}
+    k = 1 + cdepth(B)
+    1 <= j <= k || throw(ArgumentError("generator $j of a constant field with $k generators"))
+    j == k ? frac(xpoly(B)) : kconst(tgen(B, j))
+end
+
+cfromQ(::Type{Frac{UPoly{B}}}, q::Q) where {B} = kconst(cfromQ(B, q))
+
+# the normal form (coprime, monic denominator) is unique, so c ∈ ℚ iff it is a constant
+# polynomial over a rational at every depth
+function crational(c::Frac{<:UPoly})
+    (isone(c.den) && degree(c.num) <= 0) || return nothing
+    isempty(c.num.c) && return Q(0)
+    crational(c.num.c[1])
+end
+
+# ℚ-coordinates, aligned across the list: multiply by the common denominator L (a ℚ-linear
+# relation survives multiplication by L ≠ 0), then flatten the coefficients of the numerators.
+function cflat_all(::Type{Frac{UPoly{B}}}, cs) where {B}
+    isempty(cs) && return Vector{Q}[]
+    P = UPoly{B}
+    L = reduce(plcm, [c.den for c in cs]; init = one(P))
+    nums = [c.num * quo(L, c.den) for c in cs]
+    m = maximum(length(n.c) for n in nums)
+    parts = [cflat_all(B, B[k <= length(n.c) ? n.c[k] : zero(B) for n in nums]) for k in 1:m]
+    [reduce(vcat, (parts[k][j] for k in 1:m); init = Q[]) for j in eachindex(cs)]
+end
+
+# square roots (nothing if there is none in the field)
+csqrt(q::Q) = rat_sqrt(q)
+csqrt(x::QS) = qs_sqrt(x)
+function csqrt(c::Frac{<:UPoly})        # normal form is unique, so c = g² iff num, den are squares
+    iszero(c) && return c
+    a = psqrt(c.num)
+    a === nothing && return nothing
+    b = psqrt(c.den)
+    b === nothing && return nothing
+    frac(a, b)
+end
+# square root of a polynomial over a field B (top coefficient first), verified
+function psqrt(p::UPoly{B}) where {B}
+    iszero(p) && return p
+    isodd(degree(p)) && return nothing
+    l = csqrt(lc(p))
+    l === nothing && return nothing
+    n = degree(p) ÷ 2
+    a = Vector{B}(undef, n + 1)               # a[k+1] = coefficient of t^k
+    a[n + 1] = l
+    two_l = l + l
+    for k in (n - 1):-1:0                     # coefficient of t^(n+k) in a² fixes a_k
+        acc = p.c[n + k + 1]
+        for i in (k + 1):(n - 1)
+            j = n + k - i
+            (k < j < n) && (acc = acc - a[i + 1] * a[j + 1])
+        end
+        a[k + 1] = acc / two_l
+    end
+    r = UPoly{B}(a)
+    r * r == p ? r : nothing
+end
+
+# Distinct roots in ℚ(t₁, …, tₖ) that this finds: rational roots (common roots of the
+# ℚ-coordinate polynomials), then all roots once at most two remain (quadratic formula).
+# Possibly incomplete in degree ≥ 3, as the `constant_roots` contract allows.
+function constant_roots(p::UPoly{F}) where {F<:Frac{<:UPoly}}
+    roots = F[]
+    iszero(p) && return roots
+    vs = cflat_all(F, p.c)                    # p(r)·L = Σ rᵏ vₖ for r ∈ ℚ: zero iff each coordinate is
+    g = zero(UPoly{Q})
+    for j in eachindex(vs[1])
+        g = gcd(g, UPoly{Q}(Q[v[j] for v in vs]))
+    end
+    rest = p
+    if degree(g) > 0
+        for r in rational_roots(g)
+            s = cfromQ(F, r)
+            push!(roots, s)
+            rest = quo(rest, UPoly{F}(F[-s, one(F)]))
+        end
+    end
+    addroot!(s) = (s in roots || push!(roots, s))
+    if degree(rest) == 1
+        addroot!(-rest.c[1] / rest.c[2])
+    elseif degree(rest) == 2
+        m = monic(rest)
+        p0, p1 = m.c[1], m.c[2]
+        sq = csqrt(p1 * p1 - 4 * p0)
+        if sq !== nothing
+            half = inv(2 * one(F))
+            addroot!((-p1 + sq) * half)
+            addroot!((-p1 - sq) * half)
+        end
+    end
+    roots
+end
 
 # coordinate vectors over ℚ of elements of the field K_i (level i): linear relations among the
 # elements correspond exactly to linear relations among the vectors
@@ -888,10 +1165,13 @@ function flat(T::Tower{C}, i::Int, elems) where {C}
     [reduce(vcat, (parts[k][j] for k in 1:m); init = Q[]) for j in eachindex(elems)]
 end
 
-# solve  Σ r_j cols[j] = t  over ℚ (nothing if inconsistent)
-function solve_columns(cols::Vector{Vector{Q}}, t::Vector{Q})
+# solve  Σ r_j cols[j] = t  over a field S (nothing if inconsistent). S = ℚ for ℚ-linear
+# relations between generators; S = C for the Risch DE over C(x). Row operations are written
+# as loops so that S need not be a `Number` (no array-by-scalar arithmetic is used).
+function solve_columns(cols::Vector{Vector{S}}, t::Vector{S}) where {S}
     m, k = length(t), length(cols)
-    M = Q[j <= k ? cols[j][i] : t[i] for i in 1:m, j in 1:(k + 1)]
+    M = S[j <= k ? cols[j][i] : t[i] for i in 1:m, j in 1:(k + 1)]
+    ncol = k + 1
     piv = Int[]
     row = 1
     for col in 1:k
@@ -900,11 +1180,20 @@ function solve_columns(cols::Vector{Vector{Q}}, t::Vector{Q})
         p === nothing && continue
         p += row - 1
         if p != row
-            M[row, :], M[p, :] = M[p, :], M[row, :]
+            for j in 1:ncol
+                M[row, j], M[p, j] = M[p, j], M[row, j]
+            end
         end
-        M[row, :] = M[row, :] / M[row, col]
+        pv = inv(M[row, col])
+        for j in 1:ncol
+            M[row, j] = M[row, j] * pv
+        end
         for i in 1:m
-            i != row && !iszero(M[i, col]) && (M[i, :] = M[i, :] - M[i, col] * M[row, :])
+            (i == row || iszero(M[i, col])) && continue
+            f = M[i, col]
+            for j in 1:ncol
+                M[i, j] = M[i, j] - f * M[row, j]
+            end
         end
         push!(piv, col)
         row += 1
@@ -912,7 +1201,7 @@ function solve_columns(cols::Vector{Vector{Q}}, t::Vector{Q})
     for i in row:m
         iszero(M[i, k + 1]) || return nothing
     end
-    sol = fill(Q(0), k)
+    sol = fill(zero(S), k)
     for (i, col) in enumerate(piv)
         sol[col] = M[i, k + 1]
     end
@@ -932,9 +1221,45 @@ function add_level!(T::Tower, kind::Symbol, arg, dtheta, seq::Int)
     nothing
 end
 
+# --- change of constant field ---------------------------------------------------
+# For a field embedding φ : C -> C′ (e.g. ℚ -> ℚ(√d)), `change_constants(T, C′, φ)` builds
+# the same tower over C′: same generators, with every argument and every Dθᵢ mapped by φ.
+# `change_constants(T, T′, f, φ)` maps an element of T to the element of T′ with every base
+# coefficient (numerators AND denominators, at every level) replaced by its image.
+#
+# Because φ is a field embedding that fixes x and the θᵢ, it commutes with the derivation:
+#   D′(φ f) = φ(D f).
+# This is what makes it legitimate to do a sub-computation (a gcd, a residue) over C′ and
+# read the answer back. φ must be injective and multiplicative: a map that is only ℚ-linear
+# (e.g. "take the √d-component") is NOT allowed here, since it does not respect fractions.
+function change_constants(T::Tower, ::Type{C2}, φ) where {C2}
+    T2 = Tower(C2, T.xk, copy(T.scales), copy(T.consts))
+    T2.nexp = T.nexp
+    for lv in T.levels
+        j = length(T2.levels)                        # Kⱼ = coefficient field of this level
+        arg2 = map_constants(T, T2, lv.arg, φ, levelof(T, lv.arg))
+        K2 = T2.Ts[j + 1]
+        dθ2 = UPoly{K2}(K2[map_constants(T, T2, c, φ, j) for c in lv.dtheta.c])
+        add_level!(T2, lv.kind, arg2, dθ2, lv.seq)
+    end
+    T2
+end
+change_constants(T::Tower, T2::Tower, f, φ) = map_constants(T, T2, f, φ, levelof(T, f))
+
+function map_constants(T::Tower, T2::Tower, f, φ, i::Int)
+    if i == 0
+        C2 = ctype(T2)
+        P2 = UPoly{C2}
+        return frac(P2(C2[φ(c) for c in f.num.c]), P2(C2[φ(c) for c in f.den.c]))
+    end
+    K2 = T2.Ts[i]                                    # type of K′ᵢ₋₁
+    pm(p) = UPoly{K2}(K2[map_constants(T, T2, c, φ, i - 1) for c in p.c])
+    frac(pm(f.num), pm(f.den))
+end
+
 # --- exp and log of tower elements --------------------------------------------
 function make_exp(T::Tower, u)
-    c = const_value(T, u)
+    c = dconst_value(T, u)
     if c !== nothing
         iszero(c) && return one(T.Ts[1])
         throw(RischNotImplemented("exp of the nonzero constant $c involves the transcendental " *
@@ -976,7 +1301,7 @@ function make_exp(T::Tower, u)
 end
 
 function make_log(T::Tower, u)
-    c = const_value(T, u)
+    c = dconst_value(T, u)
     if c !== nothing
         isone(c) && return zero(T.Ts[1])
         throw(RischNotImplemented("log of the constant $c is a new transcendental constant " *
@@ -1009,10 +1334,10 @@ function make_log(T::Tower, u)
                 res = liftto(T, res, top) + lq(T, ρ, top) * liftto(T, theta(T, i), top)
             end
         end
-        cv = const_value(T, R)
+        cv = dconst_value(T, R)
         cv === nothing && throw(RischError("inconsistent logarithmic relation (not a constant ratio)"))
-        abs(cv) == 1 || throw(RischNotImplemented(
-            "log(u) = (combination of generators) + log($(abs(cv)))/$q: a new constant (Stage 5)"))
+        (isone(cv) || isone(-cv)) || throw(RischNotImplemented(
+            "log(u) = (combination of generators) + log(±$cv)/$q: a new constant (Stage 5)"))
         return liftto(T, res, top)
     end
     add_level!(T, :log, u, UPoly{K}(K[w]), 0)
@@ -1086,8 +1411,12 @@ function parse_tower(t, T::Tower)
                 base, ex = a
                 k = const_value(T, ex)
                 if k !== nothing
-                    isone(denominator(k)) && abs(k) <= 10_000 && return base^Int(numerator(k))
-                    throw(RischNotImplemented("rational power $k is an algebraic (radical) function"))
+                    kq = crational(k)
+                    kq === nothing && throw(RischNotImplemented(
+                        "power with the irrational constant exponent $k (needs exp(k·log u) " *
+                        "over the constant field; not implemented)"))
+                    isone(denominator(kq)) && abs(kq) <= 10_000 && return base^Int(numerator(kq))
+                    throw(RischNotImplemented("rational power $kq is an algebraic (radical) function"))
                 end
                 lg = make_log(T, base)
                 p, m = unify(T, ex, lg)
@@ -1108,10 +1437,10 @@ end
 
 # Build the tower for `f`. A Restart (a rational multiple such as exp(x/2) after
 # exp(x)) refines the generator and re-parses; the hints only ever grow.
-function build_tower(f, xk::String)
+function build_tower(f, xk::String; constants::Type = Q)
     scales = Dict{Int,Int}()
     for _ in 1:50
-        T = Tower(Q, xk, scales)
+        T = Tower(constants, xk, scales)
         try
             el = parse_tower(f, T)
             return minimal(T, el)
@@ -1184,7 +1513,7 @@ function tower_derivative(f, x; build = nothing, lift = nothing)
 end
 
 # ---------------------------------------------------------------------------
-# Stage 4: the Risch differential equation  y' + f y = g  over ℚ(x)
+# Stage 4: the Risch differential equation  y' + f y = g  over C(x)
 #
 # Used for  ∫ a θ^j  with θ = exp(u):  y' + (j u') y = a  (Bronstein ch. 6).
 # Since f = j u' is a derivative it has no simple poles, which makes the bounds
@@ -1194,19 +1523,20 @@ end
 #   Hence y = N/D with D built from the poles of g only.
 # At infinity (a = deg f, γ = deg g): a >= 0 gives deg y = γ - a, a <= -2 gives
 # deg y <= max(γ + 1, 0). The numerator N is then a polynomial of known degree
-# bound, found by exact linear algebra over ℚ (the solution is unique because the
+# bound, found by exact linear algebra over C (the solution is unique because the
 # homogeneous solution exp(-∫f) is not rational).
-# Returns y ∈ ℚ(x), or `nothing` if there is no rational solution.
+# Returns y ∈ C(x), or `nothing` if there is no rational solution.
 # ---------------------------------------------------------------------------
-function rde_base(f::CXF, g::CXF)
-    iszero(g) && return zero(CXF)
+function rde_base(f::Frac{UPoly{C}}, g::Frac{UPoly{C}}) where {C}
+    P = UPoly{C}
+    iszero(g) && return zero(Frac{P})
     iszero(f) && throw(RischError("RDE with f = 0 is plain integration"))
     Fn, Df = f.num, f.den
     G, Dg = g.num, g.den
     a = degree(Fn) - degree(Df)
     a == -1 && throw(RischNotImplemented("RDE with a simple pole of f at infinity"))
     # denominator bound
-    Dn = one(CX)
+    Dn = one(P)
     fparts = squarefree(Df)
     for (gk, k) in squarefree(Dg)
         remaining = gk
@@ -1224,19 +1554,19 @@ function rde_base(f::CXF, g::CXF)
     M = nup + degree(Dn)
     M < 0 && return nothing
     dD = deriv(Dn)
-    mono(k) = CX(vcat(fill(Q(0), k), [Q(1)]))
-    cols = CX[]
+    mono(k) = P(C[i == k + 1 ? one(C) : zero(C) for i in 1:(k + 1)])
+    cols = P[]
     for k in 0:M
         N = mono(k)
-        dN = k == 0 ? zero(CX) : k * mono(k - 1)
+        dN = k == 0 ? zero(P) : k * mono(k - 1)
         push!(cols, Df * Dg * (Dn * dN - dD * N) + Fn * Dg * Dn * N)
     end
     target = G * Df * Dn * Dn
     len = maximum(length(p.c) for p in [cols; target])
-    coords(p) = Q[i <= length(p.c) ? p.c[i] : Q(0) for i in 1:len]
+    coords(p) = C[i <= length(p.c) ? p.c[i] : zero(C) for i in 1:len]
     sol = solve_columns([coords(p) for p in cols], coords(target))
     sol === nothing && return nothing
-    y = frac(CX(sol), Dn)
+    y = frac(P(sol), Dn)
     dx(y) + f * y == g || throw(RischError("RDE solution failed its own check"))
     y
 end
@@ -1292,14 +1622,12 @@ function integrate_const(T::Tower, m::Int, g)
     catch e
         e isa NotElementary ? nothing : rethrow()
     end
-    (r === nothing || !isempty(r.logs) || !isempty(r.atans)) ? nothing : r.v
+    (r === nothing || !isempty(r.logs) || !isempty(r.atans) || !isempty(r.quads)) ? nothing : r.v
 end
 
 function rde(T::Tower, m::Int, f, g)
     iszero(g) && return zero(T.Ts[m + 1])
     if m == 0
-        ctype(T) === Q || throw(RischNotImplemented(
-            "the Risch differential equation over C(x) is implemented for C = ℚ only"))
         return rde_base(f, g)
     end
     lv = T.levels[m]
@@ -1343,8 +1671,11 @@ function rde(T::Tower, m::Int, f, g)
         # so the support of y may extend to i0.
         i0 = nothing
         if !iszero(wp)
-            cv = const_value(T, -get(fl, 0, zk) / wp)
-            cv !== nothing && isone(denominator(cv)) && (i0 = Int(numerator(cv)))
+            cv = dconst_value(T, -get(fl, 0, zk) / wp)
+            if cv !== nothing
+                n0 = cinteger(cv)
+                n0 === nothing || (i0 = Int(numerator(n0)))
+            end
         end
         if df == 0 && ef == 0                             # f ∈ k: decoupled RDEs in k
             for i in eg:dg
@@ -1396,6 +1727,7 @@ end
 # Stage 3: integration in a monomial extension  K(θ),  K = Kᵢ₋₁
 #
 #   ∫ f = v + Σ cⱼ log(wⱼ) (+ Σ dⱼ atan(uⱼ) at the base level),  v, wⱼ ∈ Kᵢ, cⱼ ∈ ℚ
+#        (+ quadratic-irrational pairs √d·log(…) / √e·atan(…) at any level, Stage 5b)
 #
 # 1. exp only: split off the special part θ^m of the denominator (Laurent terms).
 # 2. Hermite reduction (generic, uses the tower derivation) -> rational part g.
@@ -1411,9 +1743,91 @@ struct ElemIntegral{C}
     v::Any                              # rational part, element of Kᵢ
     logs::Vector{Tuple{C,Any}}          # (c, w):  c * log(w),  c ∈ C
     atans::Vector{Tuple{C,Any}}         # (c, u):  c * atan(u), u ∈ C(x) (base level only)
+    quads::Vector{Any}                  # TowerQuadLog / TowerQuadAtan (C = ℚ only)
+end
+ElemIntegral(v, logs, atans) = ElemIntegral(v, logs, atans, Any[])
+
+# Stage 5b: a pair of conjugate quadratic-irrational residues a, ā = α ± β√d (d squarefree)
+# of a residue polynomial over ℚ, at any level of the tower. With W = gcd(D, A - a·δD) computed
+# over ℚ(√d) (via `change_constants`) and split as W = U + √d V with U, V ∈ Kᵢ₋₁[θ]:
+#   a log W + ā log W̄ = α log(U² - d V²) + β√d log((U + √d V)/(U - √d V))       (d > 1)
+#                      = α log(U² + e V²) - 2β√e atan(√e V/U),   e = -d          (d < 0)
+# The α-part is an ordinary log term; the other part is one of these (U, V, u tower elements):
+struct TowerQuadLog             # β√d · log((U + √d V)/(U - √d V)),  d > 1
+    β::Q
+    d::Int
+    U::Any
+    V::Any
+end
+struct TowerQuadAtan            # c√e · atan(√e u)  (inverted = false)  or  c√e · atan(u/√e)  (true)
+    c::Q
+    e::Int
+    u::Any
+    inverted::Bool
 end
 
-# R(z) = res_θ(D, A - z δD) must have constant roots; returns [(c, gcd(D, A - c δD))]
+# the Stage 5a terms of a rational integral, as tower terms (U, V, u ∈ K₀ = ℚ(x))
+tower_quad(q::QuadLog) = TowerQuadLog(q.β, q.d, frac(q.U), frac(q.V))
+tower_quad(q::QuadAtan) = TowerQuadAtan(q.c, q.e, q.u, q.inverted)
+
+# The conjugate pair of roots of the irreducible quadratic `rest` ∈ ℚ[z] as log/atan terms
+# (see above), or nothing if this case is not handled. A, D, dD = δD ∈ Kᵢ₋₁[θᵢ].
+function tower_quad_terms(T::Tower, i::Int, A::UPoly, D::UPoly, dD::UPoly, rest::UPoly{Q})
+    rest = monic(rest)
+    p0, p1 = rest.c[1], rest.c[2]
+    α = -p1 / 2
+    Δ = p1^2 - 4 * p0
+    iszero(Δ) && return nothing
+    s, d = sqfree_split(numerator(Δ) * denominator(Δ))
+    (d == 1 || abs(d) > 10^9) && return nothing
+    β = Q(s) / (2 * denominator(Δ))                  # roots α ± β√d
+    dd = Int(d)
+    S = QS{dd}
+    φ(c) = cfromQ(S, c)                               # ℚ -> ℚ(√d)
+    σ(c) = S(c.a, -c.b)                               # √d -> -√d
+    ψ(c) = iszero(c.b) ? c.a : throw(RischError(      # back to ℚ, on σ-invariant elements
+        "splitting a quadratic-residue gcd: a σ-invariant coefficient is not rational"))
+    T2 = change_constants(T, S, φ)
+    K, K2 = T.Ts[i], T2.Ts[i]
+    up(p) = UPoly{K2}(K2[change_constants(T, T2, c, φ) for c in p.c])
+    # φ commutes with the derivation, so the image of δD is δ′ of the image of D
+    W = gcd(up(D), up(A) - scale(lconst(T2, S(α, β), i - 1), up(dD)))
+    degree(W) > 0 || return nothing
+    # W = U + √d V:  U = (W + σW)/2,  V = (W - σW)/(2√d). Both are σ-invariant, and a σ-invariant
+    # element in normalised form has σ-invariant base coefficients (the normal form is unique and
+    # σ preserves it), so ψ reads them back exactly.
+    half = lq(T2, Q(1) // 2, i - 1)
+    inv2r = lconst(T2, inv(S(Q(0), Q(2))), i - 1)
+    Uc, Vc = K[], K[]
+    for w in W.c
+        wσ = change_constants(T2, T2, w, σ)
+        push!(Uc, change_constants(T2, T, (w + wσ) * half, ψ))
+        push!(Vc, change_constants(T2, T, (w - wσ) * inv2r, ψ))
+    end
+    U, V = UPoly{K}(Uc), UPoly{K}(Vc)
+    logs = Tuple{Q,Any}[]
+    quads = Any[]
+    iszero(α) || push!(logs, (α, U * U - dd * (V * V)))
+    if !iszero(V)
+        Uf, Vf = frac(U), frac(V)
+        if dd > 0
+            push!(quads, TowerQuadLog(β, dd, Uf, Vf))
+        elseif !iszero(U)
+            e = -dd
+            if degree(V) == 0
+                push!(quads, TowerQuadAtan(2 * β, e, Uf / Vf, true))
+            else
+                push!(quads, TowerQuadAtan(-2 * β, e, Vf / Uf, false))
+            end
+        end
+    end
+    logs, quads
+end
+
+# R(z) = res_θ(D, A - z δD) must have constant roots. Returns (logs, quads): logs are
+# [(c, W)] with W = gcd(D, A - c δD) ∈ Kᵢ₋₁[θ] (also the α log(U² - dV²) terms of a quadratic
+# pair: for the exp correction Σ c·deg W they count exactly like the two conjugate logs), and
+# quads the TowerQuadLog / TowerQuadAtan terms of irreducible quadratic residue factors.
 function residue_logs(T::Tower, i::Int, A::UPoly, D::UPoly)
     K = T.Ts[i]
     Kz = Frac{UPoly{K}}
@@ -1429,11 +1843,12 @@ function residue_logs(T::Tower, i::Int, A::UPoly, D::UPoly)
     Rz = r.num
     CT = ctype(T)
     out = Tuple{CT,Any}[]
-    degree(Rz) <= 0 && return out
+    quads = Any[]
+    degree(Rz) <= 0 && return out, quads
     Rm = monic(Rz)
     qc = CT[]
     for c in Rm.c
-        v = const_value(T, c)
+        v = dconst_value(T, c)
         v === nothing && throw(NotElementary(
             "the residues of the integrand are not constants (residue criterion)"))
         push!(qc, v)
@@ -1446,12 +1861,22 @@ function residue_logs(T::Tower, i::Int, A::UPoly, D::UPoly)
         degree(W) > 0 && push!(out, (a, W))
         rest = quo(rest, UPoly{CT}(CT[-a, one(CT)]))
     end
+    if CT === Q && degree(rest) == 2                   # a conjugate pair in ℚ(√d) (Stage 5b)
+        qt = tower_quad_terms(T, i, A, D, dD, rest)
+        if qt !== nothing
+            append!(out, qt[1])
+            append!(quads, qt[2])
+            rest = one(rest)
+        end
+    end
     degree(rest) > 0 && throw(RischNotImplemented(
-        "the residues are irrational or complex constants; algebraic constants are planned for Stage 5"))
-    out
+        "the residues are algebraic constants of degree > 2 (or a quadratic pair over a constant " *
+        "field other than ℚ); general algebraic constants / RootSum are not implemented"))
+    out, quads
 end
 
-# ∫ p, p ∈ K[θ], θ = log(u): returns (q ∈ K[θ], logs (c, w ∈ K), atans) with Dq + Σ c w'/w = p
+# ∫ p, p ∈ K[θ], θ = log(u): returns (q ∈ K[θ], logs (c, w ∈ K), atans, quads) with
+# Dq + Σ c w'/w (+ atan and quadratic terms, which only come from the constant term) = p
 function integrate_log_poly(T::Tower, i::Int, p::UPoly)
     K = T.Ts[i]
     P = UPoly{K}
@@ -1460,21 +1885,23 @@ function integrate_log_poly(T::Tower, i::Int, p::UPoly)
     while degree(p) > 0
         n = degree(p)
         r = integrate_el(T, i - 1, lc(p))
-        isempty(r.atans) || throw(RischNotImplemented(
-            "an atan term would multiply a power of the logarithm (needs complex constants, Stage 5)"))
+        (isempty(r.atans) && isempty(r.quads)) || throw(RischNotImplemented(
+            "an atan (or quadratic-irrational log) term would multiply a power of the logarithm"))
         tgt = zero(K)                                   # Σ cⱼ wⱼ'/wⱼ, must equal c·u'/u
         for (cj, wj) in r.logs
             tgt = tgt + lconst(T, cj, i - 1) * (D(T, i - 1, wj) / wj)
         end
-        c = Q(0)
+        # ∫ lc(p) = r.v + c·log(u) with c a constant of the field (c ∈ C, not only ℚ:
+        # e.g. ∫ e·log(x)/x needs c = e). Lθ = u'/u ≠ 0, so c = tgt/Lθ, and it must be constant.
+        c = zero(ctype(T))
         if !iszero(tgt)
-            sol = solve_relation(T, tgt, K[Lθ])
-            sol === nothing && throw(NotElementary(
+            cv = dconst_value(T, tgt / Lθ)
+            cv === nothing && throw(NotElementary(
                 "the integral of the coefficient of log^$n involves logarithms other than log(u)"))
-            c = sol[1]
+            c = cv
         end
         coeffs = fill(zero(K), n + 2)
-        coeffs[n + 2] = lq(T, c / (n + 1), i - 1)
+        coeffs[n + 2] = lconst(T, c / cfromQ(ctype(T), Q(n + 1)), i - 1)
         coeffs[n + 1] = r.v
         qn = P(coeffs)
         q = q + qn
@@ -1483,13 +1910,15 @@ function integrate_log_poly(T::Tower, i::Int, p::UPoly)
     end
     logs = Tuple{ctype(T),Any}[]
     atans = Tuple{ctype(T),Any}[]
+    quads = Any[]
     if !iszero(p)
         r0 = integrate_el(T, i - 1, p.c[1])
         q = q + P(K[r0.v])
         append!(logs, r0.logs)
         append!(atans, r0.atans)
+        append!(quads, r0.quads)
     end
-    q, logs, atans
+    q, logs, atans, quads
 end
 
 function integrate_el(T::Tower, i::Int, f)::ElemIntegral
@@ -1497,11 +1926,10 @@ function integrate_el(T::Tower, i::Int, f)::ElemIntegral
         res = integrate_rational(f)
         isempty(res.unresolved) || throw(RischNotImplemented(
             "the logarithmic part has irrational residues; algebraic constants are planned for Stage 5"))
-        isempty(res.quads) || throw(RischNotImplemented(
-            "quadratic-irrational residues inside a tower are planned for Stage 5b"))
         return ElemIntegral(res.rational,
                             Tuple{ctype(T),Any}[(c, frac(w)) for (c, w) in res.logs],
-                            Tuple{ctype(T),Any}[(c, u) for (c, u) in res.atans])
+                            Tuple{ctype(T),Any}[(c, u) for (c, u) in res.atans],
+                            Any[tower_quad(q) for q in res.quads])
     end
     lv = T.levels[i]
     K = T.Ts[i]
@@ -1532,23 +1960,27 @@ function integrate_el(T::Tower, i::Int, f)::ElemIntegral
     end
     logs = Tuple{ctype(T),Any}[]
     atans = Tuple{ctype(T),Any}[]
+    quads = Any[]
     corr = zero(ctype(T))
     if !iszero(R)
-        for (c, W) in residue_logs(T, i, R, Dsf)
+        rl, rq = residue_logs(T, i, R, Dsf)
+        for (c, W) in rl
             push!(logs, (c, frac(W)))
             corr += c * degree(W)
         end
+        append!(quads, rq)                              # degree 0 in θ: no exp correction
     end
     v = g
     if lv.kind === :log
         maxj = maximum(keys(laurent); init = 0)
         p = P(K[get(laurent, j, zero(K)) for j in 0:maxj])
-        q, lp, ap = integrate_log_poly(T, i, p)
+        q, lp, ap, qp = integrate_log_poly(T, i, p)
         v = v + frac(q)
         for (c, w) in lp
             push!(logs, (c, frac(P(K[w]))))
         end
         append!(atans, ap)
+        append!(quads, qp)
     else
         for (j, α) in laurent                           # ∫ α θ^j = y θ^j  with  y' + j u' y = α
             (j == 0 || iszero(α)) && continue
@@ -1573,10 +2005,11 @@ function integrate_el(T::Tower, i::Int, f)::ElemIntegral
                 push!(logs, (c, frac(P(K[w]))))
             end
             append!(atans, r0.atans)
+            append!(quads, r0.quads)
         end
         iszero(corr) || (v = v - lconst(T, corr, i) * liftto(T, lv.arg, i))
     end
-    ElemIntegral(v, logs, atans)
+    ElemIntegral(v, logs, atans, quads)
 end
 
 # d/dx of the antiderivative, computed in the tower, must equal the integrand
@@ -1590,6 +2023,17 @@ function check_tower(T::Tower, L::Int, res::ElemIntegral, f)
         du = liftto(T, dx(u) / (one(T.Ts[1]) + u * u), L)
         tot = tot + lconst(T, c, L) * du
     end
+    for q in res.quads
+        if q isa TowerQuadLog   # d/dx [β√d log((U+√dV)/(U-√dV))] = 2βd (V'U - U'V)/(U² - dV²)
+            U, V = liftto(T, q.U, L), liftto(T, q.V, L)
+            num_ = D(T, L, V) * U - D(T, L, U) * V
+            tot = tot + lq(T, 2 * q.β * q.d, L) * num_ / (U * U - lq(T, Q(q.d), L) * (V * V))
+        else                    # c√e atan(√e u): c e u'/(1 + e u²);  c√e atan(u/√e): c e u'/(e + u²)
+            u, e = liftto(T, q.u, L), lq(T, Q(q.e), L)
+            den = q.inverted ? e + u * u : one(u) + e * u * u
+            tot = tot + lq(T, q.c * q.e, L) * D(T, L, u) / den
+        end
+    end
     tot == f
 end
 
@@ -1598,11 +2042,26 @@ function to_term(b::Builder, T::Tower, res::ElemIntegral)
     iszero(res.v) || push!(ts, tower_to_term(b, T, res.v))
     for (c, w) in res.logs
         l = mk(b, :log, tower_to_term(b, T, w))
-        push!(ts, isone(c) ? l : mk(b, :*, b.lift(num(c)), l))
+        push!(ts, isone(c) ? l : mk(b, :*, cterm(b, c), l))
     end
     for (c, u) in res.atans
         l = mk(b, :atan, frac_term(b, u))
-        push!(ts, isone(c) ? l : mk(b, :*, b.lift(num(c)), l))
+        push!(ts, isone(c) ? l : mk(b, :*, cterm(b, c), l))
+    end
+    for q in res.quads
+        if q isa TowerQuadLog
+            r = mk(b, :sqrt, b.lift(q.d))
+            Ut, Vt = tower_to_term(b, T, q.U), tower_to_term(b, T, q.V)
+            top = mk(b, :+, Ut, mk(b, :*, r, Vt))
+            bot = mk(b, :+, Ut, mk(b, :*, b.lift(-1), r, Vt))
+            l = mk(b, :log, mk(b, :/, top, bot))
+            push!(ts, isone(q.β) ? mk(b, :*, r, l) : mk(b, :*, cterm(b, q.β), r, l))
+        else
+            r = mk(b, :sqrt, b.lift(q.e))
+            ut = tower_to_term(b, T, q.u)
+            l = mk(b, :atan, q.inverted ? mk(b, :/, ut, r) : mk(b, :*, r, ut))
+            push!(ts, isone(q.c) ? mk(b, :*, r, l) : mk(b, :*, cterm(b, q.c), r, l))
+        end
     end
     isempty(ts) && return b.lift(0)
     length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
@@ -1811,7 +2270,7 @@ function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = t
             throw(RischError("internal check failed: derivative of the result differs from the integrand"))
         return to_term(bd, T, res)
     end
-    F = el::CXF
+    F = el                              # an element of K_0 = C(x)
     res = integrate_rational(F)
     if !isempty(res.unresolved)
         rest = res.unresolved[1][1]

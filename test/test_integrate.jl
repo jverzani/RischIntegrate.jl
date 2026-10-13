@@ -131,9 +131,32 @@ function run_tests(x, evalat, name)
         @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) / (x + log(x)), x)
     end
 
+    @testset "$name: quadratic residues inside towers (Stage 5b)" begin
+        pts = (1.9, 2.6, 3.3)
+        # (integrand, test points): for d > 0 the answer has log((U + √d V)/(U - √d V)), whose
+        # argument is negative between the roots of U² - dV²; SimpleExpressions evaluates in
+        # Float64, where log of a negative number throws, so those cases use points outside.
+        cases = ((1 / (x * (log(x)^2 + 1)), pts),              # atan(log x)
+                 (1 / (exp(x) + exp(-x)), pts),                # atan(exp x)
+                 (1 / (x * (log(x)^2 + 2)), pts),              # atan(log(x)/√2)/√2
+                 (1 / (x * (log(x)^2 - 2)), (4.6, 5.3, 6.1)),  # log((log x - √2)/(log x + √2))/(2√2): log x > √2
+                 ((log(x) + 1) / (x * (log(x)^2 + 1)), pts),   # log(log² x + 1)/2 + atan(log x): α ≠ 0
+                 (exp(x) / (exp(2x) + 3), pts),                # atan(exp(x)/√3)/√3
+                 (exp(x) / (exp(2x) - 2), pts),                # residues ±√2/4, d > 0: exp(x) > √2 here
+                 (1 / (exp(2x) + exp(x) + 1), pts),            # α = -1/2, d = -3: exp correction from α
+                 (exp(x) + 1 / (x^2 + 2), pts),                # Stage 5a term from the base, inside a tower
+                 (x * exp(x) + 1 / (x^2 - 2), pts))            # x > √2 here
+        for (f, as) in cases
+            F = Risch.risch_integrate(f, x)
+            for a in as
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+    end
+
     @testset "$name: awaiting later stages" begin
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / (x * (log(x)^2 + 1)), x)  # atan(log x)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / (exp(x) + exp(-x)), x)     # atan(exp x)
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / (x * (log(x)^4 + 1)), x)  # quartic residues
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(log(x) / (x^2 + 2), x)        # atan × log
     end
 end
 
