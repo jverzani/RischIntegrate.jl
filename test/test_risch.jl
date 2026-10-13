@@ -57,7 +57,13 @@ function run_tests(x, evalat, name)
                 @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5)
             end
         end
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(exp(x), x)
+        # exp(x) was refused when this file was written (Stage 1); since Stage 4 it integrates
+        let f = exp(x), F = Risch.risch_integrate(exp(x), x)
+            for a in (1.7, 2.6, 4.1)
+                @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5)
+            end
+        end
+        # residues that are roots of a quartic are still not representable
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(1/(x^4 + 1), x)
     end
 end
