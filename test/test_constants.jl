@@ -99,6 +99,100 @@ end
     @test roots(epoly(-2, 0, 1)) == Set{E1}()                                   # z² - 2: none
 end
 
+# --- Step 7, part 1: ℚ(i), ℚ(i)(√d), ℚ(i)(t) as constant fields; conjugation -----------
+const QI = Risch.QI
+zi(a, b) = QI(Q(a), Q(b))
+ipoly(cs...) = Risch.UPoly{QI}(QI[c isa QI ? c : zi(c, 0) for c in cs])
+const I1 = zi(0, 1)
+
+@testset "ℚ(i) arithmetic and interface" begin
+    u = zi(1, 2)
+    @test u * inv(u) == one(QI) && u^3 == u * u * u && u^-1 == inv(u)
+    @test u * 2 == 2 * u == zi(2, 4)
+    @test Risch.crational(zi(3, 0)) == Q(3) && Risch.crational(I1) === nothing
+    @test Risch.cflat_all(QI, [u, I1]) == [Q[1, 2], Q[0, 1]]
+    @test Risch.cconj(u) == zi(1, -2)
+    for x in (zi(-1, 0), zi(0, 2), zi(3, 4), zi(-4, 0), zi(9 // 4, 0), zi(-3, 4))
+        r = Risch.csqrt(x)
+        @test r !== nothing && r * r == x
+    end
+    @test Risch.csqrt(zi(2, 0)) === nothing
+    @test Risch.csqrt(zi(1, 1)) === nothing
+    @test Risch.csqrt(zi(-1 // 3, 0)) === nothing
+end
+
+@testset "roots in ℚ(i)" begin
+    roots(p) = Set(Risch.constant_roots(p))
+    lin(r) = Risch.UPoly{QI}(QI[-r, one(QI)])
+    @test roots(ipoly(1, 0, 1)) == Set([I1, -I1])                          # z² + 1
+    @test roots(ipoly(1 // 4, 0, 1)) == Set([I1 / zi(2, 0), -I1 / zi(2, 0)])  # residues of 1/(x²+1)
+    @test roots(lin(zi(1, 1)) * lin(zi(2, 0))) == Set([zi(1, 1), zi(2, 0)])
+    @test roots(lin(zi(3, 0)) * ipoly(1, 0, 1)) == Set([zi(3, 0), I1, -I1])
+    @test roots(lin(I1) * lin(zi(0, -2))) == Set([I1, zi(0, -2)])
+    @test roots(ipoly(1 // 3, 0, 1)) == Set{QI}()                          # ±i/√3 ∉ ℚ(i)
+end
+
+@testset "ℚ(i)(√3) and conjugation" begin
+    S3 = Risch.QSB{3,QI}
+    w(a, b) = S3(a isa QI ? a : zi(a, 0), b isa QI ? b : zi(b, 0))
+    @test Risch.QS{3} === Risch.QSB{3,Q}                                    # the old name still works
+    v = w(zi(1, 1), zi(0, 2))
+    @test v * inv(v) == one(S3) && v^2 == v * v
+    @test Risch.crational(w(5, 0)) == Q(5) && Risch.crational(w(I1, 0)) === nothing
+    @test Risch.cflat_all(S3, [v]) == [Q[1, 1, 0, 2]]
+    @test Risch.cconj(v) == w(zi(1, -1), zi(0, -2))
+    for x in (w(-3, 0), w(3, 0), w(zi(0, 2), 0), w(4, 2))                  # -3 = (i√3)², ..., (1+√3)²
+        r = Risch.csqrt(x)
+        @test r !== nothing && r * r == x
+    end
+    # residues of 1/(x² + 1/3), z² + 3/4: ±(i/2)√3 ∈ ℚ(i)(√3)
+    roots = Set(Risch.constant_roots(Risch.UPoly{S3}(S3[w(3 // 4, 0), zero(S3), one(S3)])))
+    @test roots == Set([w(0, zi(0, 1 // 2)), w(0, zi(0, -1 // 2))])
+    # conjugation on ℚ(√-3) negates √-3
+    @test Risch.cconj(Risch.QS{-3}(Q(1), Q(2))) == Risch.QS{-3}(Q(1), Q(-2))
+end
+
+@testset "ℚ(i)(t): constants over a complex base" begin
+    F = Risch.cfield(1, QI)
+    @test Risch.cdepth(F) == 1 && Risch.cbase(F) === QI && Risch.cbase(Risch.cfield(2)) === Q
+    t = Risch.tgen(F, 1)
+    k(c) = Risch.cfromQ(F, Q(c))
+    ii = Risch.kconst(I1)
+    @test Risch.crational(t / t) == Q(1) && Risch.crational(ii) === nothing
+    @test Risch.cconj(ii * t) == -ii * t
+    roots = Set(Risch.constant_roots(Risch.UPoly{F}(F[t * t, zero(F), one(F)])))    # z² + t²
+    @test roots == Set([ii * t, -ii * t])
+    r = Risch.csqrt(-4 * t * t)
+    @test r !== nothing && r * r == -4 * t * t
+end
+
+@testset "integration over ℚ(i): rational functions and an exp(ix) tower, verified exactly" begin
+    X = Risch.frac(Risch.xpoly(QI))
+    kc(c) = Risch.kconst(c isa QI ? c : zi(c, 0))
+    for f in (inv(X * X + kc(1)), X / (X * X + kc(4)), inv(X * X * X + X), inv((X - kc(I1))^2 * (X + kc(2))))
+        res = Risch.integrate_rational(f)
+        @test isempty(res.unresolved)
+        @test Risch.check_result(res, f)
+    end
+    @test !isempty(Risch.integrate_rational(inv(X * X + kc(1 // 3))).unresolved)   # residues ∉ ℚ(i)
+    # θ = exp(ix), built directly (trig parsing is part 2): Dθ = iθ
+    T = Risch.Tower(QI, "x", Dict{Int,Int}())
+    θ = Risch.make_exp(T, kc(I1) * X)
+    @test [lv.kind for lv in T.levels] == [:exp]
+    one1 = one(θ)
+    lc1(c) = Risch.lconst(T, c isa QI ? c : zi(c, 0), 1)
+    Xθ = Risch.liftto(T, X, 1)
+    for f in (θ,                                   # exp(ix)
+              Xθ * θ,                              # x exp(ix): Risch DE over ℚ(i)(x)
+              (θ + inv(θ)) * lc1(1 // 2),          # cos x
+              inv(θ + one1),                       # residue i, exp correction
+              θ / (θ * θ + lc1(4)),                # residues ±1/4 ... over ℚ(i)
+              (θ - inv(θ)) * (θ - inv(θ)))         # (2i sin x)²
+        res = Risch.integrate_el(T, 1, f)
+        @test Risch.check_tower(T, 1, res, f)
+    end
+end
+
 function run_tests(x, evalat, name)
     xk = string(x)
     fs = (exp(x), log(x) / x, exp(x) * log(x + 1) / (x^2 + 3), x^x, exp(exp(x)),

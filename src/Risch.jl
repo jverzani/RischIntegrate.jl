@@ -434,26 +434,29 @@ struct RationalIntegral{C}
 end
 RationalIntegral(r, l, a, u) = RationalIntegral(r, l, a, u, Any[])
 
-# the field ℚ(√D), D a squarefree integer (negative D gives a complex field)
-struct QS{D}
-    a::Q
-    b::Q
+# the field B(√D), D a squarefree integer, over a base field B (ℚ or ℚ(i)); elements a + b√D.
+# QS{D} = ℚ(√D) (negative D gives a complex field); ℚ(i)(√D) (Step 7) uses D > 0.
+struct QSB{D,B}
+    a::B
+    b::B
 end
-Base.zero(::Type{QS{D}}) where {D} = QS{D}(Q(0), Q(0))
-Base.one(::Type{QS{D}}) where {D} = QS{D}(Q(1), Q(0))
-Base.iszero(x::QS) = iszero(x.a) && iszero(x.b)
-Base.isone(x::QS) = isone(x.a) && iszero(x.b)
-Base.:(==)(x::QS{D}, y::QS{D}) where {D} = x.a == y.a && x.b == y.b
-Base.:+(x::QS{D}, y::QS{D}) where {D} = QS{D}(x.a + y.a, x.b + y.b)
-Base.:-(x::QS{D}, y::QS{D}) where {D} = QS{D}(x.a - y.a, x.b - y.b)
-Base.:-(x::QS{D}) where {D} = QS{D}(-x.a, -x.b)
-Base.:*(x::QS{D}, y::QS{D}) where {D} = QS{D}(x.a * y.a + D * x.b * y.b, x.a * y.b + x.b * y.a)
-Base.:*(n::Integer, x::QS{D}) where {D} = QS{D}(n * x.a, n * x.b)
-function Base.inv(x::QS{D}) where {D}
-    n = x.a^2 - D * x.b^2
-    QS{D}(x.a / n, -x.b / n)
+const QS{D} = QSB{D,Q}
+Base.zero(::Type{QSB{D,B}}) where {D,B} = QSB{D,B}(zero(B), zero(B))
+Base.one(::Type{QSB{D,B}}) where {D,B} = QSB{D,B}(one(B), zero(B))
+Base.iszero(x::QSB) = iszero(x.a) && iszero(x.b)
+Base.isone(x::QSB) = isone(x.a) && iszero(x.b)
+Base.:(==)(x::QSB{D,B}, y::QSB{D,B}) where {D,B} = x.a == y.a && x.b == y.b
+Base.:+(x::QSB{D,B}, y::QSB{D,B}) where {D,B} = QSB{D,B}(x.a + y.a, x.b + y.b)
+Base.:-(x::QSB{D,B}, y::QSB{D,B}) where {D,B} = QSB{D,B}(x.a - y.a, x.b - y.b)
+Base.:-(x::QSB{D,B}) where {D,B} = QSB{D,B}(-x.a, -x.b)
+Base.:*(x::QSB{D,B}, y::QSB{D,B}) where {D,B} =
+    QSB{D,B}(x.a * y.a + D * (x.b * y.b), x.a * y.b + x.b * y.a)
+Base.:*(n::Integer, x::QSB{D,B}) where {D,B} = QSB{D,B}(n * x.a, n * x.b)
+function Base.inv(x::QSB{D,B}) where {D,B}
+    n = x.a * x.a - D * (x.b * x.b)
+    QSB{D,B}(x.a / n, -x.b / n)
 end
-Base.:/(x::QS{D}, y::QS{D}) where {D} = x * inv(y)
+Base.:/(x::QSB{D,B}, y::QSB{D,B}) where {D,B} = x * inv(y)
 toQS(::Type{QS{D}}, p::UPoly{Q}) where {D} = UPoly{QS{D}}(QS{D}[QS{D}(c, Q(0)) for c in p.c])
 
 # n = s^2 d with d squarefree (sign kept in d)
@@ -971,16 +974,51 @@ cflat_all(::Type{Q}, cs) = [Q[c] for c in cs]
 cflat_all(::Type{T}, cs) where {T} = throw(RischNotImplemented(
     "coordinates over ℚ of constants of type $T are not implemented"))
 
-# --- ℚ(√d) as a constant field (d squarefree, d ≠ 0, 1) -----------------------------
-# Completes the arithmetic of QS{d} (defined with Stage 5a) and implements the constant-field
-# interface. 1 and √d are linearly independent over ℚ, so (a, b) are the ℚ-coordinates.
-Base.zero(::QS{d}) where {d} = zero(QS{d})
-Base.one(::QS{d}) where {d} = one(QS{d})
-Base.copy(x::QS) = x
-Base.hash(x::QS{d}, h::UInt) where {d} = hash(x.b, hash(x.a, hash(d, h)))
-Base.:*(x::QS{d}, n::Integer) where {d} = n * x
-function Base.:^(x::QS{d}, n::Integer) where {d}
-    n < 0 && return inv(x)^(-n)
+# --- B(√d) as a constant field (d squarefree, d ≠ 0, 1; B = ℚ or ℚ(i)) -------------
+# Completes the arithmetic of QSB (defined with Stage 5a) and implements the constant-field
+# interface. 1 and √d are linearly independent over B, so the ℚ-coordinates of a + b√d are
+# those of a followed by those of b.
+Base.zero(::QSB{d,B}) where {d,B} = zero(QSB{d,B})
+Base.one(::QSB{d,B}) where {d,B} = one(QSB{d,B})
+Base.copy(x::QSB) = x
+Base.hash(x::QSB{d}, h::UInt) where {d} = hash(x.b, hash(x.a, hash(d, h)))
+Base.:*(x::QSB, n::Integer) = n * x
+Base.:^(x::QSB, n::Integer) = field_pow(x, n)
+Base.show(io::IO, x::QSB{d}) where {d} = print(io, x.a, " + ", x.b, "√", d)
+
+cfromQ(::Type{QSB{d,B}}, q::Q) where {d,B} = QSB{d,B}(cfromQ(B, q), zero(B))
+crational(c::QSB) = iszero(c.b) ? crational(c.a) : nothing
+function cflat_all(::Type{QSB{d,B}}, cs) where {d,B}
+    A = cflat_all(B, B[c.a for c in cs])
+    Bv = cflat_all(B, B[c.b for c in cs])
+    [vcat(A[j], Bv[j]) for j in eachindex(cs)]
+end
+
+# square root in B(√d), or nothing:  (u + v√d)² = a + b√d  ⟺  u² + d v² = a, 2uv = b
+function qs_sqrt(x::QSB{d,B}) where {d,B}
+    S = QSB{d,B}
+    a, b = x.a, x.b
+    if iszero(b)
+        r = csqrt(a)
+        r !== nothing && return S(r, zero(B))
+        s = csqrt(a / cfromQ(B, Q(d)))              # u = 0:  d v² = a
+        return s === nothing ? nothing : S(zero(B), s)
+    end
+    disc = csqrt(a * a - d * (b * b))               # u² is a root of  t² - a t + d b²/4
+    disc === nothing && return nothing
+    half = inv(cfromQ(B, Q(2)))
+    for u2 in ((a + disc) * half, (a - disc) * half)
+        u = csqrt(u2)
+        (u === nothing || iszero(u)) && continue
+        y = S(u, b / (u + u))
+        y * y == x && return y
+    end
+    nothing
+end
+
+# x^n in a field (n < 0 allowed)
+function field_pow(x, n::Integer)
+    n < 0 && return field_pow(inv(x), -n)
     r, b = one(x), x
     while n > 0
         isodd(n) && (r = r * b)
@@ -989,46 +1027,54 @@ function Base.:^(x::QS{d}, n::Integer) where {d}
     end
     r
 end
-Base.show(io::IO, x::QS{d}) where {d} = print(io, x.a, " + ", x.b, "√", d)
 
-cfromQ(::Type{QS{d}}, q::Q) where {d} = QS{d}(q, Q(0))
-crational(c::QS) = iszero(c.b) ? c.a : nothing
-cflat_all(::Type{QS{d}}, cs) where {d} = [Q[c.a, c.b] for c in cs]
+# --- ℚ(i) as a constant field (Step 7) ------------------------------------------
+Base.zero(::QI) = zero(QI)
+Base.one(::QI) = one(QI)
+Base.copy(a::QI) = a
+Base.:*(a::QI, n::Integer) = n * a
+Base.:^(a::QI, n::Integer) = field_pow(a, n)
+Base.show(io::IO, a::QI) = print(io, a.re, " + ", a.im, "i")
+cfromQ(::Type{QI}, q::Q) = QI(q, Q(0))
+crational(c::QI) = iszero(c.im) ? c.re : nothing
+cflat_all(::Type{QI}, cs) = [Q[c.re, c.im] for c in cs]
 
-# square root in ℚ(√d), or nothing:  (u + v√d)² = a + b√d  ⟺  u² + d v² = a, 2uv = b
-function qs_sqrt(x::QS{d}) where {d}
-    a, b = x.a, x.b
-    if iszero(b)
-        r = rat_sqrt(a)
-        r !== nothing && return QS{d}(r, Q(0))
-        s = rat_sqrt(a / d)                      # u = 0:  d v² = a
-        return s === nothing ? nothing : QS{d}(Q(0), s)
+# square root in ℚ(i), or nothing:  (u + vi)² = p + qi  ⟺  u² - v² = p, 2uv = q
+function qi_sqrt(a::QI)
+    p, q = a.re, a.im
+    if iszero(q)
+        r = rat_sqrt(p)
+        r !== nothing && return QI(r, Q(0))
+        s = rat_sqrt(-p)
+        return s === nothing ? nothing : QI(Q(0), s)
     end
-    disc = rat_sqrt(a^2 - d * b^2)               # u² is a root of  t² - a t + d b²/4
-    disc === nothing && return nothing
-    for u2 in ((a + disc) / 2, (a - disc) / 2)
-        u = rat_sqrt(u2)
-        (u === nothing || iszero(u)) && continue
-        y = QS{d}(u, b / (2 * u))
-        y * y == x && return y
-    end
-    nothing
+    m = rat_sqrt(p^2 + q^2)                         # |a|, must be rational
+    m === nothing && return nothing
+    u = rat_sqrt((p + m) / 2)                       # u² = (p + |a|)/2 > 0 since q ≠ 0
+    u === nothing && return nothing
+    y = QI(u, q / (2 * u))
+    y * y == a ? y : nothing
 end
 
-# Distinct roots in ℚ(√d) that this finds: every rational root (common rational roots of the
-# two ℚ-components p = P₀ + √d P₁), and all roots once at most two remain (quadratic formula).
-# Possibly incomplete in degree ≥ 3, as allowed by the `constant_roots` contract.
-function constant_roots(p::UPoly{QS{d}}) where {d}
-    S = QS{d}
-    roots = S[]
+# Distinct roots in the constant field F that this finds: rational roots (common roots of the
+# ℚ-coordinate polynomials: p(r)·L = Σ rᵏ vₖ for r ∈ ℚ, zero iff every coordinate is), then all
+# roots once at most two remain (quadratic formula with `csqrt`). Possibly incomplete in
+# degree ≥ 3, as the `constant_roots` contract allows. Used for ℚ(i), B(√d) and ℚ(t₁, …).
+function constant_roots_generic(p::UPoly{F}) where {F}
+    roots = F[]
     iszero(p) && return roots
-    P0 = UPoly{Q}(Q[c.a for c in p.c])
-    P1 = UPoly{Q}(Q[c.b for c in p.c])
+    vs = cflat_all(F, p.c)
+    g = zero(UPoly{Q})
+    for j in eachindex(vs[1])
+        g = gcd(g, UPoly{Q}(Q[v[j] for v in vs]))
+    end
     rest = p
-    for r in rational_roots(gcd(P0, P1))
-        s = S(r, Q(0))
-        push!(roots, s)
-        rest = quo(rest, UPoly{S}(S[-s, one(S)]))
+    if degree(g) > 0
+        for r in rational_roots(g)
+            s = cfromQ(F, r)
+            push!(roots, s)
+            rest = quo(rest, UPoly{F}(F[-s, one(F)]))
+        end
     end
     addroot!(s) = (s in roots || push!(roots, s))
     if degree(rest) == 1
@@ -1036,15 +1082,29 @@ function constant_roots(p::UPoly{QS{d}}) where {d}
     elseif degree(rest) == 2
         m = monic(rest)
         p0, p1 = m.c[1], m.c[2]
-        sq = qs_sqrt(p1 * p1 - 4 * p0)
+        sq = csqrt(p1 * p1 - 4 * p0)
         if sq !== nothing
-            half = inv(2 * one(S))
+            half = inv(2 * one(F))
             addroot!((-p1 + sq) * half)
             addroot!((-p1 - sq) * half)
         end
     end
     roots
 end
+constant_roots(p::UPoly{QSB{d,B}}) where {d,B} = constant_roots_generic(p)
+constant_roots(p::UPoly{QI}) = constant_roots_generic(p)
+
+# complex conjugation σ on constants (i -> -i). ℚ and the generators tⱼ (real constants
+# e^a, log p) are fixed; in B(√d), √d is fixed for d > 0 and negated for d < 0 (B = ℚ).
+cconj(c::Q) = c
+cconj(c::QI) = QI(c.re, -c.im)
+function cconj(c::QSB{d,B}) where {d,B}
+    d > 0 && return QSB{d,B}(cconj(c.a), cconj(c.b))
+    B === Q && return QSB{d,B}(c.a, -c.b)
+    throw(RischError("conjugation on ℚ(i)(√d) with d < 0: use √d = i√(-d) instead"))
+end
+cconj(c::Frac{<:UPoly}) = frac(cpconj(c.num), cpconj(c.den))
+cpconj(p::UPoly{T}) where {T} = UPoly{T}(T[cconj(c) for c in p.c])
 
 # --- ℚ(t₁, …, tₖ) as a constant field (Step 6) -------------------------------------
 # Purely transcendental: the type is nested rational functions,  C₀ = ℚ,  Cⱼ = Cⱼ₋₁(tⱼ) =
@@ -1054,8 +1114,13 @@ end
 # Schanuel's conjecture, which every CAS assumes (were it false, a constant that is really
 # zero could be treated as nonzero). The meaning of each tⱼ is in `T.consts`.
 cdepth(::Type{Q}) = 0
+cdepth(::Type{QI}) = 0
 cdepth(::Type{Frac{UPoly{B}}}) where {B} = 1 + cdepth(B)
-cfield(k::Int) = k == 0 ? Q : Frac{UPoly{cfield(k - 1)}}
+# ℚ(t₁, …, tₖ), or ℚ(i)(t₁, …, tₖ) with base = QI (Step 7)
+cfield(k::Int, base::Type = Q) = k == 0 ? base : Frac{UPoly{cfield(k - 1, base)}}
+cbase(::Type{Q}) = Q
+cbase(::Type{QI}) = QI
+cbase(::Type{Frac{UPoly{B}}}) where {B} = cbase(B)
 # the generator tⱼ as an element of C = ℚ(t₁, …, tₖ), 1 ≤ j ≤ k
 function tgen(::Type{Frac{UPoly{B}}}, j::Int) where {B}
     k = 1 + cdepth(B)
@@ -1087,7 +1152,8 @@ end
 
 # square roots (nothing if there is none in the field)
 csqrt(q::Q) = rat_sqrt(q)
-csqrt(x::QS) = qs_sqrt(x)
+csqrt(x::QSB) = qs_sqrt(x)
+csqrt(x::QI) = qi_sqrt(x)
 function csqrt(c::Frac{<:UPoly})        # normal form is unique, so c = g² iff num, den are squares
     iszero(c) && return c
     a = psqrt(c.num)
@@ -1118,40 +1184,7 @@ function psqrt(p::UPoly{B}) where {B}
     r * r == p ? r : nothing
 end
 
-# Distinct roots in ℚ(t₁, …, tₖ) that this finds: rational roots (common roots of the
-# ℚ-coordinate polynomials), then all roots once at most two remain (quadratic formula).
-# Possibly incomplete in degree ≥ 3, as the `constant_roots` contract allows.
-function constant_roots(p::UPoly{F}) where {F<:Frac{<:UPoly}}
-    roots = F[]
-    iszero(p) && return roots
-    vs = cflat_all(F, p.c)                    # p(r)·L = Σ rᵏ vₖ for r ∈ ℚ: zero iff each coordinate is
-    g = zero(UPoly{Q})
-    for j in eachindex(vs[1])
-        g = gcd(g, UPoly{Q}(Q[v[j] for v in vs]))
-    end
-    rest = p
-    if degree(g) > 0
-        for r in rational_roots(g)
-            s = cfromQ(F, r)
-            push!(roots, s)
-            rest = quo(rest, UPoly{F}(F[-s, one(F)]))
-        end
-    end
-    addroot!(s) = (s in roots || push!(roots, s))
-    if degree(rest) == 1
-        addroot!(-rest.c[1] / rest.c[2])
-    elseif degree(rest) == 2
-        m = monic(rest)
-        p0, p1 = m.c[1], m.c[2]
-        sq = csqrt(p1 * p1 - 4 * p0)
-        if sq !== nothing
-            half = inv(2 * one(F))
-            addroot!((-p1 + sq) * half)
-            addroot!((-p1 - sq) * half)
-        end
-    end
-    roots
-end
+constant_roots(p::UPoly{F}) where {F<:Frac{<:UPoly}} = constant_roots_generic(p)
 
 # coordinate vectors over ℚ of elements of the field K_i (level i): linear relations among the
 # elements correspond exactly to linear relations among the vectors
