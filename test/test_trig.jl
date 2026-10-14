@@ -162,7 +162,10 @@ function run_tests(x, evalat, name)
         # -(Σα)·n/2·log(cos²u); no `im`, continuous across tan u = ±∞
         for (f, haslogcos) in ((1/(sin(x)^4 + 2cos(x)^4), false), (1/(ℯ + sin(x)^2), false),
                                (1/(sin(x)^2 + 2) + 1/(cos(x)^4 + 2sin(x)^4), false),
-                               (cos(x)^4/(sin(x)^4 + sin(x)*cos(x)^3 + 2cos(x)^4), true))
+                               (cos(x)^4/(sin(x)^4 + sin(x)*cos(x)^3 + 2cos(x)^4), true),
+                               # step SD: over ℚ(e) the e-free factor 1 + s² of the denominator is split off
+                               # (took minutes as one degree-6 residue polynomial)
+                               (cos(x)^4/(sin(x)^4 + sin(x)*cos(x)^3 + ℯ*cos(x)^4), false))
             F = Risch.risch_integrate(f, x)
             @test F isa Risch.IntegralWithRootSums && all(rs -> rs isa Risch.TermRootSum, F.rootsums)
             str = string(F)

@@ -881,7 +881,38 @@ function qs_down(f::Frac{UPoly{QSB{d,Q}}}) where {d}
     frac(down(f.num), down(f.den))
 end
 
+# Step SD. Over C = B(t) (t the outermost constant generator: e, log 2, …), the factor of D that does
+# not involve t: clear the denominators of D's coefficients and write D = Σ_k t^k E_k(s), E_k ∈ B[s];
+# G = gcd_k E_k. Returns G (as a polynomial over C) when 0 < deg G < deg D, else nothing.
+function tfree_factor(D::UPoly{Frac{UPoly{B}}}) where {B}
+    C = Frac{UPoly{B}}
+    PB = UPoly{B}
+    L = reduce((a, b) -> quo(a * b, gcd(a, b)), (c.den for c in D.c if !iszero(c)); init = one(PB))
+    Dh = PB[iszero(c) ? zero(PB) : c.num * quo(L, c.den) for c in D.c]   # coefficients in B[t]
+    kmax = maximum(degree(p) for p in Dh)
+    G = zero(PB)
+    for k in 0:kmax
+        Ek = PB(B[k < length(p.c) ? p.c[k + 1] : zero(B) for p in Dh])
+        iszero(Ek) || (G = iszero(G) ? monic(Ek) : gcd(G, Ek))
+    end
+    (0 < degree(G) < degree(D)) || return nothing
+    UPoly{C}(C[kconst(c) for c in G.c])
+end
+tfree_factor(D::UPoly) = nothing
+
 function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
+    if rational_tfield(C) && !iszero(A)
+        G = tfree_factor(D)
+        if G !== nothing                       # A/D = A₁/G + A₂/H: separate residue polynomials (SD)
+            H, r = divrem(D, G)
+            iszero(r) || throw(RischError("tfree_factor: G does not divide D"))
+            sH, uG, g = gcdex(H, G)            # sH·H + uG·G = 1 (D squarefree: G, H coprime)
+            isone(g) || throw(RischError("tfree_factor: G and D/G are not coprime"))
+            p1 = log_part(rem(A * sH, G), G)
+            p2 = log_part(rem(A * uG, H), monic(H))
+            return vcat(p1[1], p2[1]), vcat(p1[2], p2[2]), vcat(p1[3], p2[3]), vcat(p1[4], p2[4])
+        end
+    end
     CXl = UPoly{C}
     CXFl = Frac{UPoly{C}}
     logs = Tuple{C,CXl}[]

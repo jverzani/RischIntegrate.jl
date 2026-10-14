@@ -80,6 +80,15 @@ end
         el = Risch.RationalIntegral(res.rational, res.logs, res.atans, Any[], res.quads)
         @test Risch.derivative_of(el) + sum(Risch.rootsum_derivative(rs) for rs in rss) == f
     end
+    # step SD: the factor free of the generator e splits the residue computation
+    let C = Risch.Frac{Risch.UPoly{Q}}, e = Risch.tgen(C, 1), c = q -> Risch.cfromQ(C, Q(q))
+        P = Risch.UPoly{C}
+        D = P([c(1), c(0), c(1)]) * P([e, c(1), c(0), c(0), c(1)])
+        @test Risch.tfree_factor(D) == P([c(1), c(0), c(1)])
+        @test Risch.tfree_factor(P([e, c(1), c(0), c(0), c(1)])) === nothing
+        res = Risch.integrate_rational(Risch.frac(P([c(1)]), D))
+        @test sort([Risch.degree(u[1]) for u in res.unresolved]) == [2, 4]
+    end
     # Bareiss determinant
     @test Risch.field_det(Q[2 1 3; 0 4 1; 5 2 0]) == Q(-59)
     @test Risch.field_det(Q[0 1; 1 0]) == Q(-1)
@@ -261,7 +270,7 @@ function run_tests(x, evalat, name)
         re_simpson(g, a, b; n = 1000) = (h = (b - a) / n;
             h / 3 * (g(a) + g(b) + sum((isodd(k) ? 4 : 2) * g(a + k * h) for k in 1:(n - 1))))
         for f in (1/(x^3 + x + ℯ), 1/(x*(log(x)^3 + log(x) + ℯ)), exp(x)/(exp(3x) + ℯ*exp(x) + 1),
-                  exp(x) + 1/(x^3 + ℯ), 1/(x^4 + ℯ))
+                  exp(x) + 1/(x^3 + ℯ), 1/(x^4 + ℯ), 1/((x^2 + 1)*(x^4 + x + ℯ)))
             F = Risch.risch_integrate(f, x)
             @test F isa Risch.IntegralWithRootSums
             @test all(rs -> rs isa Risch.TermRootSum, F.rootsums)

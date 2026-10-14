@@ -506,6 +506,18 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   i.e. separate small residue polynomials.
   Tests: test_risch.jl exact testset: `lrt_logs` for three integrands incl. deg W = 2 (x/(x⁶+x²+1)),
   `field_det`.
+* **SD: splitting the denominator by its generator-free factor** (2026-10-14, done, tests green).
+  `log_part` over C = B(t) (`rational_tfield`): `tfree_factor(D)` clears the denominators of D's
+  coefficients, writes D = Σ_k t^k E_k(s) with E_k ∈ B[s] and returns G = gcd_k E_k when
+  0 < deg G < deg D. Then A/D = A₁/G + A₂/H (H = D/G, Bézout cofactors of H and G) and the log part is
+  computed for each piece, so the residue polynomials stay separate and small. Exact checks unchanged.
+  The motivating cos⁴x/(sin⁴x+sin x cos³x+ℯ cos⁴x) now takes ~4 s (SymEngine; minutes before):
+  a quadratic + a quartic RootSum over ℚ(e) instead of one of degree 6.
+  Not covered: the same split in towers (`residue_logs` over ℚ(t)), and splits that need inner
+  generators only (G is the factor free of the outermost generator; a recursive split happens only
+  through the recursive `log_part` calls).
+  Tests: test_risch.jl (`tfree_factor`, residue degrees [2, 4]; both packages 1/((x²+1)(x⁴+x+ℯ)));
+  test_trig.jl TT list: the ℚ(e) tan-rule case.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -737,16 +749,11 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR (all 2026-10-14).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD (all 2026-10-14).
 >
-> Next step: split the denominator before the log part over constant fields ℚ(t₁, …) (e, log 2, …),
-> as described at the end of the LR entry. Writing D as a polynomial in the generator with
-> coefficients in ℚ[s], the gcd of those coefficients is the generator-free factor (e.g. 1 + s² in
-> (1 + s²)(s⁴ + s + e)); splitting A/D there by partial fractions gives separate, small residue
-> polynomials. Motivating case: cos⁴x/(sin⁴x + sin x·cos³x + ℯ·cos⁴x) (Bioche tan rule over ℚ(e)),
-> which currently takes minutes because one degree-6 residue polynomial over ℚ(e) mixes both parts.
-> Other open items: nested-radical real forms (1/(x⁵ + 1)), iterated integrals on an
-> `IntegralWithRootSums`, half-angle shortcuts (1/(2 + cos x) keeps the tan(x/2) form).
+> Next steps (open items): nested-radical real forms (1/(x⁵ + 1)), iterated integrals on an
+> `IntegralWithRootSums`, half-angle shortcuts (1/(2 + cos x) keeps the tan(x/2) form), and the SD
+> split also inside towers (see the SD entry).
 >
 > Ground rules: one plan step at a time; every result self-verified exactly by differentiation;
 > `NotElementary` only when the theory decides the case, otherwise `RischNotImplemented`; never
