@@ -67,6 +67,26 @@ end
     @test any(p -> p[1] == poly(-1, 1) && p[2] == a, out)              # z = 1: b ≡ 0, gcd = a
     @test Risch.power_sums(poly(-1, 0, 0, 1)) == Q[3, 0, 0]            # z³ - 1
     @test Risch.power_sums(poly(2, -3, 1)) == Q[2, 3]                  # roots 1, 2
+    # quadratic residue factors are split off over ℚ: only the quartic is left for RootSum
+    res = Risch.integrate_rational(rf(poly(1), poly(3, 0, 1) * poly(2, 0, 0, 0, 1)))
+    @test [Risch.degree(u[1]) for u in res.unresolved] == [4]
+    @test !isempty(res.quads) || !isempty(res.atans)
+    res = Risch.integrate_rational(rf(poly(1), poly(4, 0, 0, 0, 1)))  # 1/(x⁴+4): fully elementary
+    @test isempty(res.unresolved) && Risch.check_result(res, rf(poly(1), poly(4, 0, 0, 0, 1)))
+end
+
+@testset "factorisation over ℚ" begin
+    for (f, degs) in ((poly(1, 0, 0, 0, 1), [4]),                      # z⁴+1 irreducible
+                      (poly(4, 0, 0, 0, 1), [2, 2]),                   # Sophie Germain
+                      (poly(6, 0, 5, 0, 1), [2, 2]),
+                      (poly(-1, 0, 0, 0, 0, 0, 1), [1, 1, 2, 2]),      # z⁶-1
+                      (poly(1, 1, 0, 0, 0, 1), [2, 3]),                # z⁵+z+1
+                      (poly(1 // 3, 0, 2, 0, 0, 7 // 2), [5]),
+                      (poly(-2, 0, 0, 1) * poly(-3, 0, 0, 1), [3, 3]))
+        fs = Risch.factor_Q(f)
+        @test prod(fs) == Risch.monic(f)
+        @test sort(Risch.degree.(fs)) == degs
+    end
 end
 
 # --- the same terms through each symbolic package

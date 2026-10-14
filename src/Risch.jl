@@ -347,6 +347,187 @@ function rat_sqrt(a::Q)
     (n^2 == numerator(a) && d^2 == denominator(a)) ? Q(n) // Q(d) : nothing
 end
 
+# --- factorisation in ℚ[z] (residue polynomials) ------------------------------------
+# Big prime method: the primitive integer form f of a squarefree polynomial is factored modulo
+# a prime p > 2·|lc f|·B, B = 2ⁿ‖f‖₂ (Mignotte: a bound on the coefficients of any factor), by
+# Cantor–Zassenhaus; the factors over ℤ are the products of modular ones (times lc f, in the
+# symmetric range), found by trying subsets in order of size. Every factor returned divides f
+# exactly; only their irreducibility rests on p being prime (Miller–Rabin), and callers never
+# depend on it for correctness (a reducible factor is merely handled less well).
+
+# polynomials over 𝔽ₚ: Vector{BigInt}, low -> high, entries in [0, p), no top zeros
+function fp_norm(a::Vector{BigInt}, p::BigInt)
+    b = BigInt[mod(c, p) for c in a]
+    while !isempty(b) && iszero(b[end])
+        pop!(b)
+    end
+    b
+end
+fp_sub(a, b, p) = fp_norm(BigInt[(i <= length(a) ? a[i] : big(0)) - (i <= length(b) ? b[i] : big(0))
+                                 for i in 1:max(length(a), length(b))], p)
+function fp_mul(a, b, p)
+    (isempty(a) || isempty(b)) && return BigInt[]
+    c = zeros(BigInt, length(a) + length(b) - 1)
+    for i in eachindex(a), j in eachindex(b)
+        c[i + j - 1] += a[i] * b[j]
+    end
+    fp_norm(c, p)
+end
+function fp_divrem(a, b, p)
+    q = zeros(BigInt, max(length(a) - length(b) + 1, 0))
+    li = invmod(b[end], p)
+    while length(a) >= length(b)
+        c = mod(a[end] * li, p)
+        s = length(a) - length(b)
+        q[s + 1] = c
+        a = copy(a)
+        for k in eachindex(b)
+            a[s + k] -= c * b[k]
+        end
+        a = fp_norm(a, p)
+    end
+    fp_norm(q, p), a
+end
+fp_monic(a, p) = isempty(a) ? a : fp_norm(a .* invmod(a[end], p), p)
+function fp_gcd(a, b, p)
+    while !isempty(b)
+        a, b = b, fp_divrem(a, b, p)[2]
+    end
+    fp_monic(a, p)
+end
+function fp_powmod(a, e::BigInt, f, p)
+    r = BigInt[1]
+    a = fp_divrem(a, f, p)[2]
+    while e > 0
+        isodd(e) && (r = fp_divrem(fp_mul(r, a, p), f, p)[2])
+        e >>= 1
+        e > 0 && (a = fp_divrem(fp_mul(a, a, p), f, p)[2])
+    end
+    r
+end
+
+function is_probable_prime(n::BigInt)
+    n < 2 && return false
+    small = (2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53)
+    for q in small
+        n % q == 0 && return n == q
+    end
+    d, s = n - 1, 0
+    while iseven(d)
+        d >>= 1
+        s += 1
+    end
+    for a in small
+        x = powermod(big(a), d, n)
+        (x == 1 || x == n - 1) && continue
+        composite = true
+        for _ in 1:(s - 1)
+            x = mod(x * x, n)
+            if x == n - 1
+                composite = false
+                break
+            end
+        end
+        composite && return false
+    end
+    true
+end
+
+# distinct-degree factorisation of a monic squarefree f: [(g, d)], g the product of the
+# irreducible factors of degree d
+function fp_ddf(f, p)
+    out = Tuple{Vector{BigInt},Int}[]
+    xp = BigInt[0, 1]
+    w = xp
+    d = 0
+    while length(f) - 1 >= 2 * (d + 1)
+        d += 1
+        w = fp_powmod(w, p, f, p)                       # x^(p^d) mod f
+        g = fp_gcd(f, fp_sub(w, xp, p), p)
+        if length(g) > 1
+            push!(out, (g, d))
+            f = fp_divrem(f, g, p)[1]
+            w = fp_divrem(w, f, p)[2]
+        end
+    end
+    length(f) > 1 && push!(out, (f, length(f) - 1))
+    out
+end
+
+# equal-degree splitting (p odd) of a monic g whose irreducible factors all have degree d;
+# the "random" elements come from a fixed LCG, so results are reproducible
+function fp_edf(g, d::Int, p, seed::Ref{BigInt})
+    n = length(g) - 1
+    n == d && return [g]
+    e = (p^d - 1) ÷ 2
+    while true
+        a = BigInt[]
+        for _ in 1:n
+            seed[] = mod(seed[] * 6364136223846793005 + 1442695040888963407, big(2)^128)
+            push!(a, mod(seed[] >> 32, p))
+        end
+        a = fp_norm(a, p)
+        length(a) <= 1 && continue
+        c = fp_gcd(g, fp_sub(fp_powmod(a, e, g, p), BigInt[1], p), p)
+        1 < length(c) < length(g) &&
+            return vcat(fp_edf(c, d, p, seed), fp_edf(fp_divrem(g, c, p)[1], d, p, seed))
+    end
+end
+
+combos(r::UnitRange{Int}, k::Int) =
+    k == 0 ? [Int[]] : [vcat(i, c) for i in r for c in combos((i + 1):last(r), k - 1)]
+
+# monic irreducible factors of a squarefree f ∈ ℚ[z] (product = monic(f))
+function factor_Q(f::UPoly{Q})
+    degree(f) <= 1 && return [monic(f)]
+    l = reduce(lcm, denominator.(f.c))
+    F = BigInt[numerator(c * l) for c in f.c]
+    F = F .÷ reduce(gcd, F)
+    n = length(F) - 1
+    p = 2 * abs(F[end]) * big(2)^n * (isqrt(sum(c^2 for c in F)) + 1) + 1
+    while true
+        p += 1
+        is_probable_prime(p) || continue
+        fm = fp_monic(fp_norm(F, p), p)
+        dfm = fp_norm(BigInt[k * fm[k + 1] for k in 1:n], p)
+        length(fp_gcd(fm, dfm, p)) == 1 && break        # squarefree mod p
+    end
+    seed = Ref(big(20240611))
+    mods = Vector{BigInt}[]
+    for (g, d) in fp_ddf(fp_monic(fp_norm(F, p), p), p)
+        append!(mods, fp_edf(g, d, p, seed))
+    end
+    out = UPoly{Q}[]
+    k = 1
+    while 2k <= length(mods)
+        hit = nothing
+        for S in combos(1:length(mods), k)
+            g = BigInt[mod(F[end], p)]
+            for i in S
+                g = fp_mul(g, mods[i], p)
+            end
+            g = BigInt[c > p ÷ 2 ? c - p : c for c in g]
+            g = g .÷ reduce(gcd, g)
+            qq, rr = divrem(UPoly{Q}(Q.(F)), UPoly{Q}(Q.(g)))
+            if iszero(rr)
+                hit = (S, g, qq)
+                break
+            end
+        end
+        if hit === nothing
+            k += 1
+        else
+            S, g, qq = hit
+            push!(out, monic(UPoly{Q}(Q.(g))))
+            all(c -> isone(denominator(c)), qq.c) || throw(RischError("factor_Q: non-integral cofactor"))
+            F = BigInt[numerator(c) for c in qq.c]
+            mods = mods[setdiff(1:length(mods), S)]
+        end
+    end
+    push!(out, monic(UPoly{Q}(Q.(F))))
+    out
+end
+
 # Gaussian rationals Q(i): the field in which complex residues are handled
 struct QI
     re::Q
@@ -512,6 +693,37 @@ function quad_terms(A::CX, D::CX, dD::CX, rest::CX)
     logs, quads
 end
 
+# log and atan terms for one irreducible quadratic residue factor q over ℚ; false if not handled.
+# Residues α ± βi (β rational): with W = gcd(D, A - (α + βi) D') = U + iV,
+#   α log(U² + V²) + 2β atan(U/V) (or -2β atan(V/U));  otherwise `quad_terms` (Stage 5a).
+function quad_factor!(logs, atans, quads, A::CX, D::CX, dD::CX, q::CX)
+    q = monic(q)
+    p0, p1 = q.c[1], q.c[2]
+    α = -p1 / 2
+    s = rat_sqrt(-(p1^2 - 4 * p0))          # sqrt(-discriminant), only if rational
+    if s !== nothing && !iszero(s)
+        β = s / 2
+        a = QI(α, β)
+        W = gcd(toQI(D), toQI(A) - scale(a, toQI(dD)))
+        U = CX(C[w.re for w in W.c])
+        V = CX(C[w.im for w in W.c])
+        iszero(α) || push!(logs, (α, U * U + V * V))
+        if !iszero(U) && !iszero(V)
+            if degree(V) == 0
+                push!(atans, (2 * β, frac(U, V)))
+            else
+                push!(atans, (-2 * β, frac(V, U)))
+            end
+        end
+        return true
+    end
+    qt = quad_terms(A, D, dD, q)            # irrational or non-square complex residues (5a)
+    qt === nothing && return false
+    append!(logs, qt[1])
+    append!(quads, qt[2])
+    true
+end
+
 function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
     CXl = UPoly{C}
     CXFl = Frac{UPoly{C}}
@@ -542,38 +754,15 @@ function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
         rest = quo(rest, CXl(C[-a, one(C)]))
     end
     degree(rest) == 0 && return logs, atans, unresolved, quads
-    handled = false
-    if C === Q && degree(rest) == 2           # quadratic residues: ℚ only for now (steps 5/5b)
-        rest = monic(rest)
-        p0, p1 = rest.c[1], rest.c[2]
-        α = -p1 / 2
-        s = rat_sqrt(-(p1^2 - 4 * p0))      # sqrt(-discriminant), only if rational
-        if s !== nothing && !iszero(s)
-            β = s / 2
-            a = QI(α, β)
-            W = gcd(toQI(D), toQI(A) - scale(a, toQI(dD)))
-            U = CXl(C[w.re for w in W.c])
-            V = CXl(C[w.im for w in W.c])
-            iszero(α) || push!(logs, (α, U * U + V * V))
-            if !iszero(U) && !iszero(V)
-                if degree(V) == 0
-                    push!(atans, (2 * β, frac(U, V)))
-                else
-                    push!(atans, (-2 * β, frac(V, U)))
-                end
-            end
-            handled = true
-        end
-        if !handled                          # irrational or non-square complex residues (5a)
-            qt = quad_terms(A, D, dD, rest)
-            if qt !== nothing
-                append!(logs, qt[1])
-                append!(quads, qt[2])
-                handled = true
-            end
+    hard = rest                              # residue factors left for RootSum
+    if C === Q                               # quadratic factors over ℚ: logs and atans (steps 5/5b)
+        hard = one(CXl)
+        for q in (degree(rest) > 2 ? factor_Q(rest) : [rest])
+            degree(q) == 2 && quad_factor!(logs, atans, quads, A, D, dD, q) && continue
+            hard = hard * q
         end
     end
-    handled || push!(unresolved, (rest, A, D))
+    degree(hard) > 0 && push!(unresolved, (hard, A, D))
     logs, atans, unresolved, quads
 end
 

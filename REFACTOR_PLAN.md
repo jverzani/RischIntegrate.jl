@@ -278,6 +278,17 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   Not covered: RootSums inside towers (1/(x(log⁴x + 1)), still `RischNotImplemented`), over
   constant fields other than ℚ, a real form (atan/log pairs) of the RootSum; `integrate(F, y)`
   (iterated) on an `IntegralWithRootSums` is not supported.
+* **Real form of RootSum**, in two steps (user's request after RootSum).
+  * **R1** (2026-10-14, done, tests green): factor the residue polynomial over ℚ (`factor_Q`: big
+    prime p > 2·|lc|·2ⁿ‖f‖₂, Cantor–Zassenhaus `fp_ddf`/`fp_edf` with a fixed LCG, Miller–Rabin
+    `is_probable_prime`, subset recombination checked by exact division over ℤ). In `log_part`
+    (C = ℚ) each quadratic factor goes through `quad_factor!` (the old degree-2 code, extracted:
+    log + atan, or `quad_terms`); only the product of the other factors stays `unresolved`.
+    E.g. 1/((x²+3)(x⁴+2)) → √3/33·atan(x/√3) + quartic RootSum; 1/(x⁵+1) → log + quartic RootSum.
+    Tests: `factorisation over ℚ` testset, quadratic split-off in the RootSum testset.
+  * **R2** (next): Rioboo / Bronstein §2.8 LogToReal for irreducible factors of degree > 2 with
+    complex roots, where the real and imaginary parts of the roots lie in a field the package can
+    print (ℚ(√d) at least: 1/(x⁴+1) → √2 log/atan answer); otherwise keep the RootSum.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
