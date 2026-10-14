@@ -4776,7 +4776,9 @@ RootSum{C}(poly, W, var) where {C} = RootSum{C}(poly, W, var, nothing)
 An antiderivative `elementary + Σ rootsums` (a term of the user's package plus `RootSum`s, or
 `TermRootSum`s for RootSums found inside a tower of exp/log monomials).
 `F(a)` evaluates it numerically at a real `a` and returns the real part (the real part of an
-antiderivative of a real integrand is an antiderivative too).
+antiderivative of a real integrand is an antiderivative too). The logarithms of a RootSum are
+continued along the real line from a fixed reference point (not principal values), so `F` is
+continuous wherever the integrand is finite and `F(b) - F(a)` is a definite integral.
 """
 struct IntegralWithRootSums
     elementary::Any
@@ -5229,8 +5231,76 @@ end
 rs_value(rs::RootSum, xk::String, a) = rs(rs.arg === nothing ? a : term_value(rs.arg, xk, a))
 (rs::TermRootSum)(a::Number) = rs_value(rs, rs.var, a)
 
+# --- continuous evaluation (step RN) -----------------------------------------------
+# A principal log W(α, x) jumps by 2πi where W crosses the negative real axis, and α·2πi then
+# shifts Re F by -2π Im α. F(a) instead continues each log along [x₀, a] from a fixed reference
+# point x₀ (the first of a few candidates where every W is finite and nonzero): the phase change
+# is accumulated in steps refined until each is < 0.5 rad. This changes F only by constants on
+# intervals, so it is still an antiderivative, now continuous.
+
+# numeric roots α and a closure x -> [W(α, x) for each α]
+function rs_numeric(rs::RootSum, xk::String)
+    αs = numeric_roots(ComplexF64[cnum(c) for c in rs.poly.c])
+    Wf(x) = (t = rs.arg === nothing ? ComplexF64(x) : term_value(rs.arg, xk, x);
+             [foldr((c, acc) -> acc * t + cpoly_at(c, α), rs.W; init = 0.0im) for α in αs])
+    αs, Wf
+end
+function rs_numeric(rs::TermRootSum, xk::String)
+    αs = numeric_roots(ComplexF64[cnum(c) for c in rs.poly.c])
+    Wf(x) = (vs = [cvalue(c, xk, x) for c in rs.coeffs];
+             [foldr((v, acc) -> acc * α + v, vs; init = 0.0im) for α in αs])
+    αs, Wf
+end
+
+const RS_REFERENCE_POINTS = (1.0, 2.0, 0.5, 3.0, 0.0, -1.0, 5.0, 10.0)
+
+w_ok(w) = all(z -> isfinite(z) && abs(z) > 1e-12, w)
+function safe_W(Wf, x)
+    try
+        Wf(x)
+    catch
+        nothing
+    end
+end
+
+# phases of W(α, ·) continued from s (phases θ, values ws) to t
+function continue_phase(Wf, s, t, ws, θ, depth::Int = 0)
+    wt = safe_W(Wf, t)
+    # a zero of W on the path is a pole of the integrand (F has a log singularity there): step over it
+    (wt === nothing || !w_ok(wt)) && return θ, ws
+    d = angle.(wt ./ ws)
+    if maximum(abs, d) > 0.5 && depth < 40
+        m = (s + t) / 2
+        θ, wm = continue_phase(Wf, s, m, ws, θ, depth + 1)
+        return continue_phase(Wf, m, t, wm, θ, depth + 1)
+    end
+    θ .+ d, wt
+end
+
+function rs_value_continuous(rs, xk::String, a::Real)
+    αs, Wf = rs_numeric(rs, xk)
+    x0 = nothing
+    w0 = nothing
+    for c in RS_REFERENCE_POINTS
+        w = safe_W(Wf, c)
+        if w !== nothing && w_ok(w)
+            x0, w0 = c, w
+            break
+        end
+    end
+    x0 === nothing && return rs_value(rs, xk, a)        # no reference point found: principal logs
+    θ, w = angle.(w0), w0
+    n = max(8, ceil(Int, 8 * abs(a - x0)))
+    xs = range(x0, a; length = n + 1)
+    for k in 2:length(xs)
+        θ, w = continue_phase(Wf, xs[k - 1], xs[k], w, θ)
+    end
+    sum(αs[k] * (log(abs(w[k])) + im * θ[k]) for k in eachindex(αs); init = 0.0im)
+end
+
 (F::IntegralWithRootSums)(a::Real) =
-    real(term_value(F.elementary, F.var, a) + sum(rs_value(rs, F.var, a) for rs in F.rootsums; init = 0.0im))
+    real(term_value(F.elementary, F.var, a) +
+         sum(rs_value_continuous(rs, F.var, a) for rs in F.rootsums; init = 0.0im))
 
 # ---------------------------------------------------------------------------
 # Public API

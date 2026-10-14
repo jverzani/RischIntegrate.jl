@@ -381,6 +381,21 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   Tests: test_risch.jl both packages, five trig integrands (derivative away from the jumps);
   test_integrate.jl "awaiting later stages" now uses residues over ℚ(e): 1/(x(log³x + log x + ℯ))
   (note: `exp(1)` is a Float64 in Julia; use `ℯ` for the symbolic constant).
+* **RN: continuous numeric evaluation of RootSums** (2026-10-14, done, tests green; user's choice
+  among: continuous trig answers via tan(u/2), real-valued LogToReal RootSums, or this). Finding: a
+  real form would NOT remove the jumps at trig levels — LogToAtan needs polynomials in one real
+  variable, and the existing Step 7 elementary trig answers jump too (max step on [0, 13]:
+  1/(2+cos x) 1.81, 1/(5+3 sin x) 1.57, cos x/(2+sin²x) 1.11). Not changed here; a possible
+  later step (tan(u/2) + LogToAtan, floor terms at u = π mod 2π).
+  `F(a)` of an `IntegralWithRootSums` now continues each log W(α, x) along [x₀, a] from a fixed
+  reference point x₀ (first of `RS_REFERENCE_POINTS` where every W is finite and nonzero):
+  `continue_phase` accumulates angle(W(t)/W(s)), bisecting while a step exceeds 0.5 rad (depth ≤ 40);
+  a zero of W on the path (a real pole of the integrand) is stepped over. `rs_numeric` gives the
+  roots and x ↦ [W(α, x)] for `RootSum` (incl. `arg`) and `TermRootSum` (incl. ℚ(i) pairs).
+  Printed answers and `rs(a)` (principal logs) are unchanged. Applies to all RootSum kinds.
+  Tests: test_risch.jl both packages, six integrands: continuity (step 0.05) and F(b) − F(a) against
+  Simpson's rule (atol 1e-8). Pitfall for test integrands: s³+s+2 = (s+1)(s²−s+2) has a real pole at
+  sin x = −1; cos x/(sin³x+sin x+1) has real poles too.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
