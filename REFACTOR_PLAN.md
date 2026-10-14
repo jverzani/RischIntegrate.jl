@@ -239,7 +239,18 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
     1/(x√(2x²+3)) (needs √3: second candidate), exp/sin of such radicals; decided
     exp(x)√(3−x²) `NotElementary`. Refused: never-positive radicands, answers needing two square
     roots (1/((x+1)√(3−x²)): √2 and √3).
-  * Possible next: several radicands
+  * 10d: done, tests green (2026-10-14). Two radicands, square roots of linear polynomials
+    u₁ = a x + b, u₂ = c x + d (`integrate_two_radicals`): y = √u₁ gives x = (y² − b)/a and
+    u₂ = (c/a) y² + d − c b/a, so √u₂ is the 10b/10c case in y (`euler_substitution` with the
+    Builder variable √u₁); composed: x = (φ₂(t)² − b)/a, √u₁ = φ₂(t), √u₂ = ψ₂(t). Both orders are
+    candidates. Refactor: radicals are grouped by radicand; `integrate_subst` takes
+    `radval(u, e)` (u^e ∈ S(t)); `try_substitutions` is shared by 10c/10d.
+    New: √x + √(x+1), √x √(x+1), 1/(√x + √(x+1)), 1/(√(x+1) − √(x−1)), √(2x+1)√(3x+2) (over ℚ(√6)),
+    √x √(1−x), log(√x + √(x+1)), exp(√x + √(x+1))(…); decided exp(x)√x√(x+1) `NotElementary`.
+    Refused: three or more radicands, other indices, higher-degree radicands (genus ≥ 1 in
+    general, e.g. √x √(x²+1)), radicands never real together; constant radicals such as
+    sqrt(2) in the integrand (SymEngine turns √x √(2x) into sqrt(2)·x).
+  * Possible next: constant radicals (sqrt(2) in the integrand, via `constants = QS{d}`);
     (e.g. √x and √(x+1)); RootSum.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.

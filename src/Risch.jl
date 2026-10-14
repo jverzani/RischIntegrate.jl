@@ -4059,22 +4059,21 @@ to_K0(T::Tower{C}, φ::Frac{UPoly{C}}) where {C} = φ
 
 function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::Bool = true)
     xk = string(x)
-    u = nothing
-    uterm = nothing
-    n = 1
+    groups = Any[]                                      # [radicand element, term, lcm of indices]
     for (e, ut) in rads
         ue = radicand_element(ut, xk)
         ue === nothing && throw(RischNotImplemented(
             "radical of a non-rational expression ($ut): only radicals of rational functions of x are supported"))
-        if u === nothing
-            u, uterm = ue, ut
-        elseif ue != u
-            throw(RischNotImplemented("radicals of several different radicands are not supported"))
-        end
-        n = lcm(n, Int(denominator(e)))
+        i = findfirst(g -> g[1] == ue, groups)
+        i === nothing && (push!(groups, Any[ue, ut, 1]); i = length(groups))
+        groups[i][3] = lcm(groups[i][3], Int(denominator(e)))
     end
     b0 = Builder(build === nothing ? auto_build(f, x) : build,
                  lift === nothing ? auto_lift(f, x) : lift, x)
+    length(groups) == 2 && return integrate_two_radicals(f, xk, groups, b0, verify)
+    length(groups) > 2 && throw(RischNotImplemented(
+        "radicals of more than two different radicands (a curve of genus ≥ 1 in general)"))
+    u, uterm, n = groups[1]
     N, Dd = u.num, u.den
     co(p, i) = i <= length(p.c) ? p.c[i] : Q(0)
     P = UPoly{Q}
@@ -4099,12 +4098,22 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
             "radicals of $uterm: supported are u^(p/q) with u = (ax+b)/(cx+d), and √ of a quadratic " *
             "polynomial; this needs the algebraic Risch algorithm or is not elementary in general"))
     end
-    # several substitutions only for 10c (different constant fields): the first one that is
-    # handled decides; a NotElementary from any of them is a proof
+    radval(radpow) = function (ue, e)                   # u^e = radpow(e n)
+        ue == u || throw(RischError("unexpected radicand"))
+        k = e * n
+        isone(denominator(k)) || throw(RischError("radical exponent not a multiple of 1/n"))
+        radpow(Int(numerator(k)))
+    end
+    try_substitutions(f, xk, Any[(S, φ, radval(radpow), tterm) for (S, φ, radpow, tterm) in cands], b0, verify)
+end
+
+# Several substitutions (different constant fields, 10c/10d): the first one that is handled
+# decides; a NotElementary from any of them is a proof (each is a rational parametrisation).
+function try_substitutions(f, xk::String, cands, b0::Builder, verify::Bool)
     err = nothing
-    for (S, φ, radpow, tterm) in cands
+    for (S, φ, radval, tterm) in cands
         try
-            return integrate_subst(f, xk, u, n, S, φ, radpow, Builder(b0.build, b0.lift, tterm), verify)
+            return integrate_subst(f, xk, S, φ, radval, Builder(b0.build, b0.lift, tterm), verify)
         catch e
             e isa RischNotImplemented || rethrow()
             err = e
@@ -4113,8 +4122,9 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
     throw(err)
 end
 
-# ∫ f dx with x = φ(t), u^(k/n) = radpow(k) ∈ S(t); the answer is printed with t as bt.x
-function integrate_subst(f, xk::String, u, n::Int, ::Type{S}, φ, radpow, bt::Builder, verify::Bool) where {S}
+# ∫ f dx with x = φ(t) and u^e = radval(u, e) ∈ S(t) for the radicands u ∈ ℚ(x);
+# the answer is printed with t as bt.x
+function integrate_subst(f, xk::String, ::Type{S}, φ, radval, bt::Builder, verify::Bool) where {S}
     dφ = dx(φ)
     function sub(term, T)
         if !safe_iscall(term)
@@ -4124,10 +4134,8 @@ function integrate_subst(f, xk::String, u, n::Int, ::Type{S}, φ, radpow, bt::Bu
         rp === nothing && return nothing
         e, ut = rp
         ue = radicand_element(ut, xk)
-        (ue !== nothing && ue == u) || throw(RischNotImplemented("radicals of several different radicands"))
-        k = e * n
-        isone(denominator(k)) || throw(RischError("radical exponent not a multiple of 1/n"))
-        to_K0(T, radpow(Int(numerator(k))))
+        ue === nothing && throw(RischNotImplemented("radical of a non-rational expression ($ut)"))
+        to_K0(T, radval(ue, e))
     end
     T, el = build_tower(f, xk; subst = sub, constants = S === Q ? nothing : S)
     T.subst = nothing
@@ -4135,6 +4143,49 @@ function integrate_subst(f, xk::String, u, n::Int, ::Type{S}, φ, radpow, bt::Bu
     T, g = minimal(T, g)
     bd = Builder(bt.build, bt.lift, bt.x, T.consts)
     integrate_built(T, g, bd, verify)
+end
+
+# ---------------------------------------------------------------------------
+# Step 10d: two radicands, square roots of linear polynomials u₁ = a x + b, u₂ = c x + d
+#
+# y = √u₁ gives x = (y² - b)/a and u₂ = (c/a) y² + d - c b/a, a quadratic in y without a
+# linear term, so √u₂ = R is the 10b/10c case in the variable y: y = φ₂(t), R = ψ₂(t) over S.
+# Then x = (φ₂(t)² - b)/a, u₁^(k/2) = φ₂(t)^k, u₂^(k/2) = ψ₂(t)^k (the curve y² = u₁, R² = u₂
+# is a conic). Both orders of the radicands are tried. Radicands of higher degree, other
+# indices, or three or more radicands give curves of genus ≥ 1 in general: refused.
+# ---------------------------------------------------------------------------
+function integrate_two_radicals(f, xk::String, groups, b0::Builder, verify::Bool)
+    linear(u) = isone(u.den) && degree(u.num) == 1
+    all(g -> g[3] == 2 && linear(g[1]), groups) || throw(RischNotImplemented(
+        "radicals of two different radicands: only square roots of two linear polynomials are supported"))
+    cands = Any[]
+    for (g1, g2) in (groups, reverse(groups))
+        u1, t1, _ = g1
+        u2, t2, _ = g2
+        b, a = u1.num.c
+        d, c = u2.num.c
+        by = Builder(b0.build, b0.lift, mk(b0, :sqrt, t1))   # the variable y = √u₁
+        eus = try
+            euler_substitution(c / a, Q(0), d - c * b / a, by, t2)
+        catch e
+            e isa RischNotImplemented || rethrow()
+            continue                                    # √u₂ never real where u₁ ≥ 0
+        end
+        for (S, φ2, ψ2, tterm) in eus
+            kS = q -> frac(UPoly{S}(S[cfromQ(S, q)]))
+            φ = (φ2 * φ2 - kS(b)) * kS(inv(a))
+            radval = function (ue, e)
+                k = 2 * e
+                isone(denominator(k)) || throw(RischError("radical exponent not a multiple of 1/2"))
+                ue == u1 ? φ2^Int(numerator(k)) :
+                ue == u2 ? ψ2^Int(numerator(k)) : throw(RischError("unexpected radicand"))
+            end
+            push!(cands, (S, φ, radval, tterm))
+        end
+    end
+    isempty(cands) && throw(RischNotImplemented(
+        "√($(groups[1][2])) and √($(groups[2][2])) are never real at the same point"))
+    try_substitutions(f, xk, cands, b0, verify)
 end
 
 # Euler substitutions for R = √(A x² + B x + C): (S, φ, ψ, t-term) with x = φ(t), R = ψ(t),

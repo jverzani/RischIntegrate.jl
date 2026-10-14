@@ -241,7 +241,7 @@ function run_tests(x, evalat, name)
                 @test antiderivative_ok(F, f, a, evalat)
             end
         end
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) + sqrt(x + 1), x)
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) + sqrt(x + 1) + sqrt(x + 2), x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / sqrt(x^3 + 1), x)  # elliptic
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(log(x)), x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(1 + sqrt(x)), x)  # nested
@@ -297,6 +297,33 @@ function run_tests(x, evalat, name)
         @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) * sqrt(3 - x^2), x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / sqrt(-x^2 - 1), x)       # never real
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x + 1) * sqrt(3 - x^2)), x)  # √2 and √3
+    end
+
+    @testset "$name: two radicands: square roots of linear polynomials (step 10d)" begin
+        inside = (0.2, 0.45, 0.7)
+        right = (1.3, 1.9, 2.6)
+        cases = ((sqrt(x) + sqrt(x + 1), right),        # t = √x + √(x+1): x = ((t - 1/t)/2)²
+                 (sqrt(x) * sqrt(x + 1), right),
+                 (1 / (sqrt(x) + sqrt(x + 1)), right),
+                 (1 / (sqrt(x + 1) - sqrt(x - 1)), right),
+                 (sqrt(x) / sqrt(x + 1), right),
+                 (1 / (sqrt(x) * sqrt(x + 1)), right),   # 2 log(√x + √(x+1))
+                 (x^(3//2) * sqrt(x + 1), right),
+                 (sqrt(x) / sqrt(4x + 1), right),
+                 (sqrt(2x + 1) * sqrt(3x + 2), right),   # over ℚ(√6)
+                 (sqrt(x) * sqrt(1 - x), inside),
+                 (log(sqrt(x) + sqrt(x + 1)), right),
+                 (exp(sqrt(x) + sqrt(x + 1)) * (1 / sqrt(x) + 1 / sqrt(x + 1)), right))
+        for (f, pts) in cases
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) * sqrt(x) * sqrt(x + 1), x)
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) * sqrt(-x - 1), x)   # never real
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) * sqrt(x^2 + 1), x)  # genus 1
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) * cbrt(x + 1), x)
     end
 
     @testset "$name: parametric Risch DE in towers (step 9d)" begin
