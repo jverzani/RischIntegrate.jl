@@ -205,9 +205,22 @@ function run_tests(x, evalat, name)
             end
         end
         @test_throws Risch.NotElementary Risch.risch_integrate(log(x)/(x^4 + 1), x)   # dilogarithm
+        # real form of quartic residues at a tower level (step RF): √d log/atan, no jumps
+        for (f, r) in ((1/(x*(log(x)^4 + 1)), 1.05:0.01:8), ((log(x) + 1)/(x*(log(x)^4 + 1)), 1.05:0.01:8),
+                       (1/(x*(log(x)^4 + 1)^2), 1.05:0.01:8), (1/(x*(log(x)^4 + 9)), 1.05:0.01:8),
+                       (exp(x)/(exp(4x) + 1), -2:0.01:2), (exp(x)/(exp(4x) - exp(2x) + 1), -2:0.01:2),
+                       (1/(x*log(x)*(log(log(x))^4 + 1)), 1.5:0.01:8))
+            F = Risch.risch_integrate(f, x)
+            @test !(F isa Risch.IntegralWithRootSums)
+            @test occursin("sqrt", string(F))
+            @test maximum(abs.(diff([evalat(F, a) for a in r]))) < 0.1
+            for a in r[[11, end - 10]]
+                @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5)
+            end
+        end
         # RootSums inside towers (step RT): at a log or exp level, nested, and base-level ones in a
         # tower; exp levels with Tr(α) ≠ 0 need the correction -Tr(α)·deg W·u
-        for f in (1/(x*(log(x)^4 + 1)), 1/(x*(log(x)^3 + log(x) + 1)), (log(x)^2)/(x*(log(x)^3 + log(x) + 1)^2),
+        for f in (1/(x*(log(x)^4 + 2)), 1/(x*(log(x)^3 + log(x) + 1)), (log(x)^2)/(x*(log(x)^3 + log(x) + 1)^2),
                   1/(exp(3x) + exp(x) + 1), exp(2x)/(exp(3x) + exp(x) + 1), 1/(exp(3x) + 2exp(2x) + 1),
                   1/(x*log(x)*(log(log(x))^3 + log(log(x)) + 1)),
                   exp(x) + 1/(x^3 + x + 1), (exp(x) + 1)/(exp(3x) + exp(x) + 1) + 1/(x^3 - 2))

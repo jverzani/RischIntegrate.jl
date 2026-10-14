@@ -352,6 +352,19 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   in log x, not the √2 log/atan form.
   Tests: test_risch.jl both packages (nine integrands: log/exp levels, nested log log, base-level in
   towers, Tr ≠ 0); test_integrate.jl "awaiting later stages" now uses the ℚ(i) case.
+* **RF: real form of quartic residues at tower levels** (2026-10-14, done, tests green; C = ℚ).
+  In `residue_logs`, an irreducible quartic factor goes first to `tower_quartic_real` (R2 at level
+  i): `conj_pair_factors` gives d and the pairs (u, v) in ℚ(√d); W = gcd(D, A − (u+iv)δD) over the
+  tower T3 with constants ℚ(i)(√d) (`change_constants`); U = (W + W̄)/2, V = (W − W̄)/(2i) are fixed
+  by i ↦ −i and read back into T2 (constants ℚ(√d)); terms u log(U²+V²) + v·LogToAtan(U, V) (atans of
+  polynomials in θ). `TowerRealForm(T2, logs, atans, corr, deriv)`: exact derivative computed in T2
+  and mapped into T (error if not over ℚ), `corr` = Σ u·deg(U²+V²) for exp levels; output with
+  `tower_to_term(b, T2, …)` (sqrt(d) constants). Otherwise the factor stays a RootSum (RT).
+  E.g. 1/(x(log⁴x+1)) → √2/8 log(log²x+√2 log x+1) − … + √2/4 atan(√2 log x ± 1); exp(x)/(e⁴ˣ+1);
+  exp(x)/(e⁴ˣ−e²ˣ+1) (√3); 1/(x log x (log⁴(log x)+1)). Pitfall: a parameter named `D` shadows the
+  derivation `D(T, i, f)` (hence `Dn`).
+  Tests: test_risch.jl both packages, seven integrands (no RootSum, sqrt present, continuity, derivative);
+  the RT list now uses 1/(x(log⁴x+2)) (2^(1/4): stays a RootSum).
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 

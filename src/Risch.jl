@@ -3471,6 +3471,13 @@ function residue_logs(T::Tower, i::Int, A::UPoly, D::UPoly)
                     continue
                 end
             end
+            if degree(q) == 4                          # real form with √d (step RF)
+                rf = tower_quartic_real(T, i, A, D, dD, q)
+                if rf !== nothing
+                    push!(quads, rf)
+                    continue
+                end
+            end
             hard = hard * q
         end
         degree(hard) > 0 && append!(quads, tower_root_sums(T, i, A, D, dD, hard))   # step RT
@@ -3596,6 +3603,7 @@ function integrate_el(T::Tower, i::Int, f)::ElemIntegral
         for q in rq                                     # 5b ratio terms: degree 0, no correction
             q isa ExtQuadPair && (corr += ext_corr(q))
             q isa TowerRootSum && (corr += rootsum_corr(q))
+            q isa TowerRealForm && (corr += q.corr)
         end
         append!(quads, rq)
     end
@@ -3666,8 +3674,9 @@ function check_tower(T::Tower, L::Int, res::ElemIntegral, f)
             u, e = liftto(T, q.u, L), lq(T, Q(q.e), L)
             den = q.inverted ? e + u * u : one(u) + e * u * u
             tot = tot + lq(T, q.c * q.e, L) * D(T, L, u) / den
-        elseif q isa SpecialTerm || q isa BaseTerms || q isa TowerRootSum || q isa BaseRootSum
-            # stored exact derivatives (8a, T1, RT)
+        elseif q isa SpecialTerm || q isa BaseTerms || q isa TowerRootSum || q isa BaseRootSum ||
+               q isa TowerRealForm
+            # stored exact derivatives (8a, T1, RT, RF)
             tot = tot + liftto(T, q.deriv, L)
         elseif q isa ExtQuadPair    # a W'/W + σ_d(a W'/W), computed over ℚ(i)(√d), read back in T
             T2 = q.T2
@@ -3705,6 +3714,15 @@ function to_term(b::Builder, T::Tower, res::ElemIntegral)
             push!(ts, special_out(b, q, cterm(b, q.c), z -> tower_to_term(b, T, z)))
         elseif q isa BaseTerms
             push!(ts, to_term(b, q.q))
+        elseif q isa TowerRealForm
+            for (c, w) in q.logs
+                l = mk(b, :log, tower_to_term(b, q.T2, w))
+                push!(ts, isone(c) ? l : mk(b, :*, cterm(b, c), l))
+            end
+            for (c, p) in q.atans
+                l = mk(b, :atan, tower_to_term(b, q.T2, p))
+                push!(ts, isone(c) ? l : mk(b, :*, cterm(b, c), l))
+            end
         elseif q.e == 1                              # residues ±i: c·atan(u), no sqrt(1)
             l = mk(b, :atan, tower_to_term(b, T, q.u))
             push!(ts, isone(q.c) ? l : mk(b, :*, cterm(b, q.c), l))
@@ -4879,6 +4897,85 @@ function rootsum_derivative(rs::RootSum{C}) where {C}
         num = num + scale(ztrace(ps, rem(zP * u * v, m)), xp^(i + j - 2))
     end
     frac(num, N)
+end
+
+# --- real form of a quartic RootSum at a tower level (step RF) ----------------------
+# As `quartic_real!`, at level i (θ = θᵢ): residues u ± iv, u′ ± iv′ with u, v ∈ ℚ(√d), d > 0
+# (`conj_pair_factors`). W = gcd(D, A - (u + iv) δD) is computed over the tower T3 with constants
+# ℚ(i)(√d), split as U = (W + W̄)/2, V = (W - W̄)/(2i) (conjugation i ↦ -i is a field automorphism
+# commuting with the derivation, so U, V are fixed by it and read back exactly into T2, the tower
+# over ℚ(√d)), and each pair gives u log(U² + V²) + v LogToAtan(U, V) (atans of polynomials in θ).
+# The exact derivative is computed in T2 and must lie in T (both pairs together are invariant under
+# √d ↦ -√d). `corr` is Σ u·deg_θ(U² + V²), the exp correction.
+struct TowerRealForm
+    T2::Any
+    logs::Vector{Any}        # (c ∈ ℚ(√d), w ∈ T2 at level i)
+    atans::Vector{Any}       # (c ∈ ℚ(√d), p ∈ T2 at level i, a polynomial in θ)
+    corr::Q
+    deriv::Any               # ∈ Kᵢ of T
+end
+
+function tower_quartic_real(T::Tower, i::Int, A::UPoly, Dn::UPoly, dD::UPoly, q::UPoly{Q})
+    for (d, q1) in conj_pair_factors(monic(q))
+        S = QS{d}
+        B3 = QSB{d,QI}
+        pairs = Tuple{S,S}[]
+        for qk in (q1, quo(toQS(S, monic(q)), q1))
+            u = -qk.c[2] / cfromQ(S, Q(2))
+            v = qs_sqrt(qk.c[1] - u * u)
+            (v === nothing || iszero(v)) && break
+            push!(pairs, (u, v))
+        end
+        length(pairs) == 2 || continue
+        T2 = change_constants(T, S, c -> cfromQ(S, c))
+        φ3(c) = B3(QI(c, Q(0)), zero(QI))
+        T3 = change_constants(T, B3, φ3)
+        K2, K3 = T2.Ts[i], T3.Ts[i]
+        up(p) = UPoly{K3}(K3[change_constants(T, T3, c, φ3) for c in p.c])
+        cj(c) = B3(QI(c.a.re, -c.a.im), QI(c.b.re, -c.b.im))
+        ψ(c) = (iszero(c.a.im) && iszero(c.b.im)) ? S(c.a.re, c.b.re) : throw(RischError(
+            "real form at a tower level: a conjugation-invariant coefficient is not real"))
+        half = lconst(T3, B3(QI(Q(1) // 2, Q(0)), zero(QI)), i - 1)
+        inv2i = lconst(T3, inv(B3(QI(Q(0), Q(2)), zero(QI))), i - 1)
+        logs, atans = Any[], Any[]
+        corr = zero(S)
+        ok = true
+        for (u, v) in pairs
+            W = gcd(up(Dn), up(A) - scale(lconst(T3, B3(QI(u.a, v.a), QI(u.b, v.b)), i - 1), up(dD)))
+            if degree(W) <= 0
+                ok = false
+                break
+            end
+            Uc, Vc = K2[], K2[]
+            for w in W.c
+                wc = change_constants(T3, T3, w, cj)
+                push!(Uc, change_constants(T3, T2, (w + wc) * half, ψ))
+                push!(Vc, change_constants(T3, T2, (w - wc) * inv2i, ψ))
+            end
+            U, V = UPoly{K2}(Uc), UPoly{K2}(Vc)
+            if !iszero(u)
+                w = U * U + V * V
+                push!(logs, (u, frac(w)))
+                corr = corr + degree(w) * u
+            end
+            if !iszero(U) && !iszero(V)
+                for p in log_to_atan(U, V)
+                    push!(atans, (2 * v, frac(p)))
+                end
+            end
+        end
+        ok || continue
+        tot = zero(T2.Ts[i + 1])
+        for (c, w) in logs
+            tot = tot + lconst(T2, c, i) * (D(T2, i, w) / w)
+        end
+        for (c, p) in atans
+            tot = tot + lconst(T2, c, i) * D(T2, i, p) / (one(p) + p * p)
+        end
+        down(c) = iszero(c.b) ? c.a : throw(RischError("real form at a tower level: derivative not over ℚ"))
+        return TowerRealForm(T2, logs, atans, down(corr), change_constants(T2, T, tot, down))
+    end
+    nothing
 end
 
 # --- RootSums inside towers (step RT) ---------------------------------------------
