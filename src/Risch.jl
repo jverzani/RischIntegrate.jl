@@ -46,7 +46,7 @@ using TermInterface: iscall, operation, arguments
 using SpecialFunctions: expinti, sinint, cosint, erf, erfi
 
 export risch_integrate, integrate_rational, tower_derivative, RischError, RischNotImplemented,
-       NotElementary
+       NotElementary, RootSum, IntegralWithRootSums
 
 const Q = Rational{BigInt}
 
@@ -4347,6 +4347,254 @@ function euler_point(::Type{S}, y0::S, A::Q, B::Q, x0::Q, b::Builder, uterm) whe
 end
 
 # ---------------------------------------------------------------------------
+# RootSum: residues that are algebraic of degree > 2 (base level, C = ℚ)
+#
+# For a residue factor Q(z) (squarefree, no rational roots) left by `log_part` for R/D,
+#   Σ_{Q(α)=0} α log W(α, x),   W = gcd(D, R - α D')  in (ℚ[z]/Q)[x], monic in x.
+# The gcd is computed by dynamic evaluation (`d5_gcd`): when a leading coefficient is a
+# zero divisor mod Q, Q splits (gcd with it) and both parts continue, so Q need not be
+# irreducible and no factorisation is needed. Verification is exact in ℚ(x): with the norm
+# N = Π_α W(α, x) = res_z(Q, W) and the cofactor N/W (division checked mod Q),
+#   d/dx Σ_α α log W(α, x) = Tr_{ℚ[z]/Q}(z · ∂ₓW · N/W) / N,
+# the trace through the power sums of the roots of Q (Newton). The result is returned as a
+# Risch-owned `RootSum` inside an `IntegralWithRootSums` (the user's packages have no RootSum).
+# ---------------------------------------------------------------------------
+
+"""
+    RootSum
+
+`Σ_{Q(α)=0} α log W(α, x)`: `poly` is `Q(z)` (monic, squarefree; coefficients low → high) and
+`W` the coefficients of `W(z, x)` in `x` (low → high), each a polynomial in `z` reduced mod `Q`.
+Callable: `rs(a)` evaluates the sum numerically (complex roots, principal logarithms).
+"""
+struct RootSum{C}
+    poly::UPoly{C}
+    W::Vector{UPoly{C}}
+    var::String
+end
+
+"""
+    IntegralWithRootSums
+
+An antiderivative `elementary + Σ rootsums` (a term of the user's package plus `RootSum`s).
+`F(a)` evaluates it numerically at a real `a` and returns the real part (the real part of an
+antiderivative of a real integrand is an antiderivative too).
+"""
+struct IntegralWithRootSums
+    elementary::Any
+    rootsums::Vector{RootSum}
+    var::String
+end
+
+# coefficients of p (x-poly with coefficients in C[z]) reduced mod m, top zeros dropped
+function zmod_trim(m::UPoly{C}, p::Vector{UPoly{C}}) where {C}
+    q = UPoly{C}[rem(c, m) for c in p]
+    while !isempty(q) && iszero(q[end])
+        pop!(q)
+    end
+    q
+end
+
+# p made monic in x modulo m: [(m′, p′)] over a splitting of m (p′ empty: p ≡ 0 mod m′)
+function d5_monic(m::UPoly{C}, p::Vector{UPoly{C}}) where {C}
+    p = zmod_trim(m, p)
+    isempty(p) && return [(m, p)]
+    g = monic(gcd(p[end], m))
+    if degree(g) == 0
+        s, _, g1 = gcdex(p[end], m)                     # s·lc + t·m = g1 ∈ C*
+        li = scale_div(s, lc(g1))
+        return [(m, zmod_trim(m, UPoly{C}[c * li for c in p]))]
+    end
+    out = d5_monic(g, p)                                # lc ≡ 0 mod g: the degree drops
+    m2 = quo(m, g)
+    degree(m2) > 0 && append!(out, d5_monic(m2, p))
+    out
+end
+
+# a mod b in (C[z]/m)[x], b monic
+function d5_rem(m::UPoly{C}, a::Vector{UPoly{C}}, b::Vector{UPoly{C}}) where {C}
+    a = copy(a)
+    nb = length(b)
+    while length(a) >= nb
+        c = a[end]
+        s = length(a) - nb
+        for k in 1:nb
+            a[s + k] = a[s + k] - c * b[k]
+        end
+        a = zmod_trim(m, a)
+    end
+    a
+end
+
+# monic gcd of a and b in (C[z]/m)[x]: [(m′, W)] with m = Π m′
+function d5_gcd(m::UPoly{C}, a::Vector{UPoly{C}}, b::Vector{UPoly{C}}) where {C}
+    out = Tuple{UPoly{C},Vector{UPoly{C}}}[]
+    for (m1, bm) in d5_monic(m, b)
+        if isempty(bm)
+            append!(out, d5_monic(m1, a))
+        else
+            append!(out, d5_gcd(m1, bm, d5_rem(m1, a, bm)))
+        end
+    end
+    out
+end
+
+# RootSums for an unresolved residue factor (rest, R, D) of `log_part` (D squarefree)
+function root_sums(rest::UPoly{C}, R::UPoly{C}, D::UPoly{C}, var::String) where {C}
+    P = UPoly{C}
+    dD = deriv(D)
+    n = max(length(R.c), length(dD.c))
+    ri(i) = i <= length(R.c) ? R.c[i] : zero(C)
+    di(i) = i <= length(dD.c) ? dD.c[i] : zero(C)
+    a = P[P(C[c]) for c in D.c]
+    b = P[P(C[ri(i), -di(i)]) for i in 1:n]             # R - z D'
+    out = RootSum{C}[]
+    for (m, W) in d5_gcd(monic(rest), a, b)
+        length(W) >= 2 || throw(RischError("RootSum: trivial gcd for a residue factor"))
+        push!(out, RootSum{C}(m, W, var))
+    end
+    out
+end
+
+# power sums p_k = Σ α^k (k = 0 … n-1) of the roots of the monic m (Newton's identities)
+function power_sums(m::UPoly{C}) where {C}
+    n = degree(m)
+    e(i) = m.c[n + 1 - i]                               # coefficient of z^(n-i): (-1)^i e_i
+    p = C[cfromQ(C, Q(n))]
+    for k in 1:(n - 1)
+        s = cfromQ(C, Q(k)) * e(k)
+        for i in 1:(k - 1)
+            s = s + e(i) * p[k - i + 1]
+        end
+        push!(p, -s)
+    end
+    p
+end
+ztrace(ps, g::UPoly{C}) where {C} = isempty(g.c) ? zero(C) : sum(g.c[k] * ps[k] for k in eachindex(g.c))
+
+# exact d/dx of the RootSum in C(x)
+function rootsum_derivative(rs::RootSum{C}) where {C}
+    m, W = rs.poly, rs.W
+    P = UPoly{C}
+    K = Frac{P}
+    xp = xpoly(C)
+    nz = degree(m)
+    Wz = UPoly{K}(K[frac(sum(scale(j <= length(W[k].c) ? W[k].c[j] : zero(C), xp^(k - 1)) for k in eachindex(W)))
+                    for j in 1:nz])
+    Nr = resultant(UPoly{K}(K[kconst(c) for c in m.c]), Wz)       # Π_α W(α, x), m monic
+    isone(Nr.den) || throw(RischError("RootSum: the norm is not a polynomial"))
+    N = Nr.num
+    Nv = P[P(C[c]) for c in N.c]
+    rest = copy(Nv)                                                # N = W · cof mod m
+    cof = [zero(P) for _ in 1:(length(Nv) - length(W) + 1)]
+    while length(rest) >= length(W)
+        c = rest[end]
+        s = length(rest) - length(W)
+        cof[s + 1] = c
+        for k in eachindex(W)
+            rest[s + k] = rest[s + k] - c * W[k]
+        end
+        rest = zmod_trim(m, rest)
+    end
+    isempty(rest) || throw(RischError("RootSum: W(α, x) does not divide its norm"))
+    dW = P[scale(cfromQ(C, Q(k - 1)), W[k]) for k in 2:length(W)]
+    zP = P(C[zero(C), one(C)])
+    ps = power_sums(m)
+    num = zero(P)
+    for (i, u) in enumerate(dW), (j, v) in enumerate(cof)
+        num = num + scale(ztrace(ps, rem(zP * u * v, m)), xp^(i + j - 2))
+    end
+    frac(num, N)
+end
+
+# --- printing and numeric evaluation ---------------------------------------------
+function zpoly_string(p::UPoly, v::String)
+    ts = String[]
+    for (k, c) in enumerate(p.c)
+        iszero(c) && continue
+        mon = k == 1 ? "" : (k == 2 ? v : "$v^$(k - 1)")
+        cs = c isa Rational ? (isone(denominator(c)) ? string(numerator(c)) :
+                               "$(numerator(c))/$(denominator(c))") : string(c)
+        push!(ts, mon == "" ? cs : (isone(c) ? mon : (c == -1 ? "-" * mon : cs * "*" * mon)))
+    end
+    isempty(ts) ? "0" : replace(join(reverse(ts), " + "), "+ -" => "- ")
+end
+function Base.show(io::IO, rs::RootSum)
+    x = rs.var
+    ts = String[]
+    for (k, c) in enumerate(rs.W)
+        iszero(c) && continue
+        cs = zpoly_string(c, "α")
+        mon = k == 1 ? "" : (k == 2 ? x : "$x^$(k - 1)")
+        push!(ts, mon == "" ? "($cs)" : (isone(c) ? mon : "($cs)*$mon"))
+    end
+    print(io, "RootSum(α -> α*log(", join(reverse(ts), " + "), "), ", zpoly_string(rs.poly, "α"), " = 0)")
+end
+function Base.show(io::IO, F::IntegralWithRootSums)
+    ts = Any[rs for rs in F.rootsums]
+    string(F.elementary) == "0" || pushfirst!(ts, F.elementary)
+    join(io, ts, " + ")
+end
+
+# all complex roots of a polynomial with complex coefficients (Aberth–Ehrlich iteration)
+function numeric_roots(cs::Vector{ComplexF64})
+    n = length(cs) - 1
+    cs = cs ./ cs[end]
+    r = 1 + maximum(abs.(cs[1:n]))
+    zs = [r * cis(2π * (k + 0.25) / n) for k in 0:(n - 1)]
+    pv(z) = foldr((c, acc) -> acc * z + c, cs)
+    dv(z) = foldr((c, acc) -> acc * z + c, [k * cs[k + 1] for k in 1:n]; init = 0.0im)
+    for _ in 1:500
+        δmax = 0.0
+        for i in 1:n
+            z = zs[i]
+            w = pv(z) / dv(z)
+            s = sum(1 / (z - zs[j]) for j in 1:n if j != i; init = 0.0im)
+            δ = w / (1 - w * s)
+            zs[i] = z - δ
+            δmax = max(δmax, abs(δ))
+        end
+        δmax < 1e-15 * r && break
+    end
+    zs
+end
+
+cnum(c::Q) = ComplexF64(Float64(c))
+cnum(c) = throw(RischNotImplemented("numeric evaluation of constants of type $(typeof(c))"))
+cpoly_at(p::UPoly, z) = foldr((c, acc) -> acc * z + cnum(c), p.c; init = 0.0im)
+
+function (rs::RootSum)(a::Number)
+    tot = 0.0im
+    for α in numeric_roots(ComplexF64[cnum(c) for c in rs.poly.c])
+        w = foldr((c, acc) -> acc * a + cpoly_at(c, α), rs.W; init = 0.0im)
+        tot += α * log(w)
+    end
+    tot
+end
+
+# numeric value of a term of the user's package at x = a (TermInterface walk)
+function term_value(t, xk::String, a)
+    if safe_iscall(t)
+        args = arguments(t)
+        if !isempty(args)
+            vs = [term_value(s, xk, a) for s in args]
+            n = opname(operation(t))
+            f = haskey(OPS, n) ? OPS[n] : (n === :- ? (-) : operation(t))
+            return ComplexF64(f(vs...))
+        end
+    end
+    string(t) == xk && return ComplexF64(a)
+    is_e_const(t) && return ComplexF64(ℯ)
+    string(t) in ("pi", "π") && return ComplexF64(π)
+    r = leaf_rational(t)
+    r === nothing && throw(RischError("cannot evaluate the leaf $t numerically"))
+    ComplexF64(Float64(r))
+end
+
+(F::IntegralWithRootSums)(a::Real) =
+    real(term_value(F.elementary, F.var, a) + sum(rs(a) for rs in F.rootsums; init = 0.0im))
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = true)
@@ -4384,10 +4632,17 @@ function integrate_built(T::Tower, el, bd::Builder, verify::Bool)
     F = el                              # an element of K_0 = C(x)
     res = integrate_rational(F)
     if !isempty(res.unresolved)
-        rest = res.unresolved[1][1]
-        throw(RischNotImplemented(
-            "the logarithmic part has irrational residues (roots of $(rest.c) in z, low->high); " *
-            "algebraic constants / RootSum are planned for Stage 5"))
+        ctype(T) === Q || throw(RischNotImplemented(
+            "the logarithmic part has residues of degree > 2 over the constant field $(ctype(T)) " *
+            "(RootSum is implemented over ℚ only)"))
+        rss = RootSum[]                 # algebraic residues of degree > 2: RootSum
+        for (rest, R, D) in res.unresolved
+            append!(rss, root_sums(rest, R, D, string(bd.x)))
+        end
+        el_part = RationalIntegral(res.rational, res.logs, res.atans, Any[], res.quads)
+        verify && derivative_of(el_part) + sum(rootsum_derivative(rs) for rs in rss) != F &&
+            throw(RischError("internal check failed: derivative of the result (with RootSums) differs from the integrand"))
+        return IntegralWithRootSums(to_term(bd, el_part), rss, string(bd.x))
     end
     verify && !check_result(res, F) &&
         throw(RischError("internal check failed: derivative of the result differs from the integrand"))

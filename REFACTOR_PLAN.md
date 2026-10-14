@@ -263,7 +263,21 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
     √6·√(3−x²) (needs √3 too), 1/(2 + cos(√2 x)) (quadratic residue pair over ℚ(i)(√2)).
     Note: special-function answers (Ei, erf, erfi) fail in SymEngine (`expinti(::Basic)` etc.
     undefined), e.g. ∫ exp(√2 x + x²), as already for ∫ exp(x²).
-  * Possible next: RootSum.
+* **RootSum** (2026-10-14, done, tests green; user's choice: a Risch-owned struct). Residues of
+  degree > 2 in ℚ(x) integrands (left by `log_part` as `unresolved`): for each factor Q(z),
+  W = gcd(D, R − z D′) in (ℚ[z]/Q)[x] by dynamic evaluation (`d5_monic`, `d5_rem`, `d5_gcd`: a
+  zero-divisor leading coefficient splits Q, so no factorisation and Q may be reducible), monic
+  in x → `RootSum(poly, W, var)` = Σ_{Q(α)=0} α log W(α, x). Exact verification in ℚ(x)
+  (`rootsum_derivative`): norm N = res_z(Q, W), cofactor N/W (division checked mod Q),
+  derivative Tr(z·∂ₓW·N/W)/N with `power_sums` (Newton). `integrate_built` (base level, C = ℚ)
+  returns `IntegralWithRootSums(elementary term, rootsums, var)`: printed as
+  `elementary + RootSum(α -> α*log(x + (…α…)), α^3 - … = 0)`, callable `F(a)` = real part of the
+  numeric value (`term_value` walks the package term via TermInterface; roots by Aberth,
+  `numeric_roots`). Exported: `RootSum`, `IntegralWithRootSums`. Tests: `test_risch.jl`
+  (exact testset incl. a d5 split; both packages numerically: 1/(x⁴+1), 1/(x³+x+1), 1/(x⁵+x+1), …).
+  Not covered: RootSums inside towers (1/(x(log⁴x + 1)), still `RischNotImplemented`), over
+  constant fields other than ℚ, a real form (atan/log pairs) of the RootSum; `integrate(F, y)`
+  (iterated) on an `IntegralWithRootSums` is not supported.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
