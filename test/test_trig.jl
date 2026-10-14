@@ -158,9 +158,19 @@ function run_tests(x, evalat, name)
             Fv(t) = isrs ? F(t) : evalat(F, t)
             @test isapprox(Fv(13) - Fv(-7), ts_simpson(t -> evalat(f, t), -7, 13); atol = 1e-8)
         end
-        # s = tan u with a RootSum: the jump at tan u = ±∞ has no closed form, so the ℚ(i) route
-        F = Risch.risch_integrate(1/(sin(x)^4 + 2cos(x)^4), x)
-        @test F isa Risch.IntegralWithRootSums && all(rs -> rs isa Risch.TermRootSum, F.rootsums)
+        # step TT: s = tan u with a RootSum, written with W̃ = cos(u)ⁿ W(α, tan u) (bounded, nonzero) and
+        # -(Σα)·n/2·log(cos²u); no `im`, continuous across tan u = ±∞
+        for (f, haslogcos) in ((1/(sin(x)^4 + 2cos(x)^4), false), (1/(ℯ + sin(x)^2), false),
+                               (1/(sin(x)^2 + 2) + 1/(cos(x)^4 + 2sin(x)^4), false),
+                               (cos(x)^4/(sin(x)^4 + sin(x)*cos(x)^3 + 2cos(x)^4), true))
+            F = Risch.risch_integrate(f, x)
+            @test F isa Risch.IntegralWithRootSums && all(rs -> rs isa Risch.TermRootSum, F.rootsums)
+            str = string(F)
+            @test !occursin("im", str) && occursin("cos(x)", str)
+            @test occursin("log(cos(x)", str) == haslogcos
+            @test maximum(abs.(diff([F(a) for a in -7:0.05:13]))) < 0.2
+            @test isapprox(F(13) - F(-7), ts_simpson(t -> evalat(f, t), -7, 13); atol = 1e-7)
+        end
         # real poles (cot x): the general route, whose logs are valid on both sides of a pole
         F = Risch.risch_integrate(cos(x)/sin(x), x)
         for a in (-2.0, -0.5, 0.7, 2.5)

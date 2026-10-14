@@ -471,9 +471,23 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   E.g. cos x/(sin³x+sin x+ℯ) → RootSum in sin x over ℚ(e) (was refused after SP, > 100 s before);
   sin x/(ℯ+cos x) → −log(ℯ+cos x); sin x/(cos x−ℯ) → −log(ℯ−cos x); cos³x/(ℯ+sin x) →
   ℯ sin x − sin²x/2 + (1−ℯ²) log(ℯ+sin x). cos x/(ℯ+sin²x) gives a quadratic RootSum (√ℯ ∉ ℚ(e)).
-  Not covered: tan rule with a RootSum (1/(sin²x+ℯ), refused over ℚ(i)(e)).
+  Not covered: tan rule with a RootSum (1/(sin²x+ℯ), refused over ℚ(i)(e)) — done in TT.
   Tests: test_trig.jl (TS testset) both packages: four ℚ(e) integrands (form, continuity, Simpson);
   test_integrate.jl "awaiting later stages" now 1/(sin²x+ℯ).
+* **TT: tan-rule Bioche with RootSums** (2026-10-14, done, tests green). G(tan u) with a RootSum jumped at
+  tan u = ±∞ (the correction ∫_ℝ g has no closed form). Instead W(α, tan u) = cos(u)^(−n) W̃(α),
+  W̃ = Σ w_k sin^k u cos^(n−k) u — bounded, nonzero on ℝ (W monic: W̃ = ±1 where cos u = 0) — so
+  Σ α log W = Σ α log W̃ − (Σα) n log cos u: a `TermRootSum` in W̃ (continuous via F(a), RN) plus the
+  real term −(Σα)·n/2·log(cos²u) (Σα ∈ RC), whose singularity cancels against the logs in tan u; atan
+  jumps as before (`tan_jump_terms`, factored out). The s-integral is still verified exactly; W ↦ W̃
+  is an identity. E.g. 1/(sin⁴x+2cos⁴x) → RootSum(α -> α*log(sin x + 40/3 cos x α + 512/3 cos x α³), …);
+  1/(ℯ+sin²x) → RootSum over ℚ(e) (was refused); cos⁴x/(sin⁴x+sin x cos³x+2cos⁴x) has the log(cos²) term.
+  `gcd` now makes remainders monic (same result; much less swell over ℚ(e)).
+  Not covered / slow: RootSums of degree ≥ 4 over ℚ(e), e.g. cos⁴x/(sin⁴x+sin x cos³x+ℯ cos⁴x), run
+  for minutes in `root_sums` (d5_gcd in (ℚ(e)[z]/m)[s]: coefficient swell). A fix would compute W by
+  Lazard–Rioboo–Trager (subresultants S_j(z) by evaluation/interpolation in z, then mod R_j).
+  Tests: test_trig.jl (TS testset) both packages: four integrands (TermRootSum, no `im`, log(cos²) term
+  present or not, continuity, Simpson); test_integrate.jl: the 1/(sin²x+ℯ) refusal removed.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 

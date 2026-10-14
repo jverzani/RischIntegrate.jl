@@ -169,9 +169,11 @@ function peval(p::UPoly{T}, a::T) where {T}
     r
 end
 
+# Euclid with monic remainders (same gcd; over function fields such as ℚ(e) this keeps the
+# coefficients from swelling)
 function Base.gcd(a::UPoly{T}, b::UPoly{T}) where {T}
     while !iszero(b)
-        a, b = b, rem(a, b)
+        a, b = b, monic(rem(a, b))
     end
     monic(a)
 end
@@ -5629,10 +5631,8 @@ function bioche(f, x; build = nothing, lift = nothing)
     real_root_count(gq.den, rng..., sg) == 0 || return nothing
     res = integrate_rational(gq)
     # residues of degree > 2 (step TR): a RootSum in s = cos u or sin u (over ℚ, real and continuous
-    # since g has no pole in [-1, 1]); for s = tan u the jump at tan u = ±∞ would need ∫ g over ℝ in
-    # closed form, so that case keeps the ℚ(i) route
+    # since g has no pole in [-1, 1]); for s = tan u see step TT below
     unres = res.unresolved
-    !isempty(unres) && kind === :tan && return nothing
     # each log argument has constant sign on the range: log(-w) where it is negative (at s = 0)
     w0s = [sg(peval(w, zero(RC))) for (c, w) in res.logs]
     any(isnothing, w0s) && return nothing
@@ -5659,13 +5659,57 @@ function bioche(f, x; build = nothing, lift = nothing)
         end
         derivative_of(res) + sum(rootsum_derivative(rs) for rs in rss) == gq ||
             throw(RischError("internal check failed: derivative of the result (with RootSums) differs from the integrand"))
-        rss = RC === Q ? rss : Any[base_term_rootsum(bs, rs) for rs in rss]
-        return IntegralWithRootSums(to_term(bs, res), rss, xk)
+        if kind !== :tan
+            rss = RC === Q ? rss : Any[base_term_rootsum(bs, rs) for rs in rss]
+            return IntegralWithRootSums(to_term(bs, res), rss, xk)
+        end
+        # step TT: W(α, tan u) = cos(u)^(-n) W̃(α), W̃ = Σ w_k sin^k(u) cos^(n-k)(u), bounded and nonzero on
+        # the real line (W monic: W̃ = ±1 where cos u = 0). So Σ α log W = Σ α log W̃ - (Σα) n log cos u,
+        # the first continuous (F(a), step RN), the second real: -(Σα)·n/2·log(cos²u) (Σα ∈ RC since
+        # m has coefficients in RC); its log singularity cancels against the logs in tan u, and the
+        # atan jumps are corrected below as for elementary answers
+        sin_t, cos_t = mk(bd, :sin, ut), mk(bd, :cos, ut)
+        pw(t, e) = e == 1 ? t : mk(bd, :^, t, bd.lift(e))
+        trs = Any[]
+        clc = zero(RC)
+        for rs in rss
+            n = length(rs.W) - 1
+            cs = Any[]
+            for j in 1:degree(rs.poly)
+                ts = Any[]
+                for kk in eachindex(rs.W)
+                    c = j <= length(rs.W[kk].c) ? rs.W[kk].c[j] : zero(RC)
+                    iszero(c) && continue
+                    mono = Any[]
+                    kk - 1 > 0 && push!(mono, pw(sin_t, kk - 1))
+                    n - kk + 1 > 0 && push!(mono, pw(cos_t, n - kk + 1))
+                    t = isempty(mono) ? cterm(bs, c) :
+                        isone(c) ? (length(mono) == 1 ? mono[1] : mk(bd, :*, mono...)) : mk(bd, :*, cterm(bs, c), mono...)
+                    push!(ts, t)
+                end
+                push!(cs, isempty(ts) ? nothing : length(ts) == 1 ? ts[1] : mk(bd, :+, ts...))
+            end
+            push!(trs, TermRootSum(rs.poly, cs, xk, RC === Q ? nothing : Any[cterm(bs, c) for c in rs.poly.c]))
+            clc = clc + n * (-rs.poly.c[end - 1])          # (Σα)·n, m monic
+        end
+        parts = Any[to_term(bs, res)]
+        corr = tan_jump_terms(bd, bs, res)
+        isempty(corr) || push!(parts, mk(bd, :*, length(corr) == 1 ? corr[1] : mk(bd, :+, corr...),
+                                         mk(bd, :+, ut, mk(bd, :*, bd.lift(-1), mk(bd, :atan, mk(bd, :tan, ut))))))
+        iszero(clc) || push!(parts, mk(bd, :*, cterm(bs, -clc / cfromQ(RC, Q(2))), mk(bd, :log, mk(bd, :^, cos_t, bd.lift(2)))))
+        return IntegralWithRootSums(length(parts) == 1 ? parts[1] : mk(bd, :+, parts...), trs, xk)
     end
     check_result(res, gq) || throw(RischError("internal check failed: derivative of the result differs from the integrand"))
     term = to_term(bs, res)
     kind === :tan || return term
-    # the jumps of G(tan u) where tan u = ±∞
+    corr = tan_jump_terms(bd, bs, res)
+    isempty(corr) && return term
+    cc = length(corr) == 1 ? corr[1] : mk(bd, :+, corr...)
+    mk(bd, :+, term, mk(bd, :*, cc, mk(bd, :+, ut, mk(bd, :*, bd.lift(-1), mk(bd, :atan, mk(bd, :tan, ut))))))
+end
+
+# the jumps of G(tan u) where tan u = ±∞: coefficient terms J with correction J·(u - atan(tan u))
+function tan_jump_terms(bd::Builder, bs::Builder, res::RationalIntegral)
     corr = Any[]
     J = Q(0)
     for (c, p) in res.atans
@@ -5681,9 +5725,7 @@ function bioche(f, x; build = nothing, lift = nothing)
             iszero(Jd) || push!(corr, cterm(bd, Jd))
         end
     end
-    isempty(corr) && return term
-    cc = length(corr) == 1 ? corr[1] : mk(bd, :+, corr...)
-    mk(bd, :+, term, mk(bd, :*, cc, mk(bd, :+, ut, mk(bd, :*, bd.lift(-1), mk(bd, :atan, mk(bd, :tan, ut))))))
+    corr
 end
 
 # ---------------------------------------------------------------------------
