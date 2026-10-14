@@ -549,6 +549,14 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   (2/√35)x + (2/√35) atan(cos 2x/(6+√35+sin 2x)). Kept: 1/(2+sin²x) + 1/(3+cos²x) (the general route
   gives a ℚ(i) RootSum there). Cost: tan-rule integrands are integrated twice (test_trig 66 → 73 s).
   Tests: test_trig.jl TS list (three tan-rule entries: one atan, "sin("), the kept tan form.
+* **TF: cot, sec, csc** (2026-10-14, done, tests green; user request). `parse_tower` reads them like
+  tan through θ = exp(i·u): cot = i(θ + 1/θ)/(θ − 1/θ), sec = 2/(θ + 1/θ), csc = 2i/(θ − 1/θ); added to
+  `TRIG`, `NONRATIONAL`, `has_trig` and `OPS` (numeric evaluation). Stage 5c refuses them (not
+  polynomial in sin/cos), Bioche/general route as for any rational trig integrand. E.g. cot x →
+  log(2 − 2cos 2x)/2, sec x → log(2 + 2 sin x)/2 − log(2 − 2 sin x)/2 (real poles: the |w|²-logs of
+  Step 7, valid on both sides), sec x tan x → 4 cos x/(2 + 2cos 2x). Forms are not simplified
+  (sec²x → 2 sin 2x/(2 + 2cos 2x) = tan x).
+  Tests: test_trig.jl, both packages, twelve integrands (derivative at points avoiding the poles).
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -780,7 +788,7 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB (all 2026-10-14).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF (all 2026-10-14).
 >
 > Next steps (open items): nested-radical real forms (1/(x⁵ + 1)), iterated integrals on an
 > `IntegralWithRootSums`.

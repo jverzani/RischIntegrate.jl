@@ -101,6 +101,17 @@ function run_tests(x, evalat, name)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(sin(x)), x)         # algebraic
     end
 
+    # step TF: cot, sec and csc, read as cos/sin, 1/cos and 1/sin of θ = exp(i·u) (points avoid the poles)
+    @testset "$name: cot, sec, csc (step TF)" begin
+        for f in (cot(x), sec(x), csc(x), sec(x)^2, csc(x)^2, sec(x)*tan(x), csc(x)*cot(x), cot(x)^2,
+                  sec(x)^3, x*sec(x)^2, cot(2x), 1/(2 + sec(x)))
+            F = Risch.risch_integrate(f, x)
+            for a in (0.3, 1.1, 2.3, 2.9)
+                @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5, atol = 1e-8)
+            end
+        end
+    end
+
     # steps TC/TH: real forms with atans of polynomials in tan(u/2) plus a linear correction, or (TH)
     # a linear term plus atan of a ratio whose denominator never vanishes, so the answers are
     # continuous for all real x and F(b) - F(a) is the definite integral (Simpson)

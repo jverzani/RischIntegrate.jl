@@ -1023,7 +1023,7 @@ function const_int(f::CXF)
     isone(denominator(c)) ? Int(numerator(c)) : nothing
 end
 
-const NONRATIONAL = (:exp, :log, :sin, :cos, :tan, :atan, :sinh, :cosh, :tanh, :abs, :sqrt, :cbrt)
+const NONRATIONAL = (:exp, :log, :sin, :cos, :tan, :cot, :sec, :csc, :atan, :sinh, :cosh, :tanh, :abs, :sqrt, :cbrt)
 
 function parse_rational(t, xk::String)::CXF
     if safe_iscall(t)
@@ -1090,7 +1090,7 @@ end
 Builder(build, lift, x) = Builder(build, lift, x, ConstGen[])
 const OPS = Dict{Symbol,Function}(:+ => +, :* => *, :/ => /, :^ => ^, :exp => exp,
                                   :log => log, :atan => atan, :sqrt => sqrt,
-                                  :sin => sin, :cos => cos, :tan => tan,
+                                  :sin => sin, :cos => cos, :tan => tan, :cot => cot, :sec => sec, :csc => csc,
                                   # SpecialFunctions (Step 8a): Ei, Si, Ci, erf, erfi
                                   :Ei => expinti, :Si => sinint, :Ci => cosint, :erf => erf, :erfi => erfi)
 mk(b::Builder, name::Symbol, args...) = b.build(OPS[name], args...)
@@ -1965,7 +1965,7 @@ end
 is_e_const(t) = !safe_iscall(t) && string(t) in ("ℯ", "E", "exp(1)")
 
 const ALGEBRAIC = (:sqrt, :cbrt)
-const TRIG = (:sin, :cos, :tan, :atan, :abs)
+const TRIG = (:sin, :cos, :tan, :cot, :sec, :csc, :atan, :abs)
 
 function parse_tower(t, T::Tower)
     if T.subst !== nothing                     # Step 10: x ↦ φ(t), radicals ↦ powers of t
@@ -1976,7 +1976,7 @@ function parse_tower(t, T::Tower)
         args = arguments(t)
         if !isempty(args)
             n = opname(operation(t))
-            if n in (:sin, :cos, :tan) && length(args) == 1     # Step 7: θ = exp(i·u) over ℚ(i)
+            if n in (:sin, :cos, :tan, :cot, :sec, :csc) && length(args) == 1   # Step 7: θ = exp(i·u) over ℚ(i)
                 C = ctype(T)
                 is_complex_field(C) || throw(NeedComplex())
                 u = parse_tower(args[1], T)
@@ -1987,10 +1987,13 @@ function parse_tower(t, T::Tower)
                 c2 = E + inv(E)                                  # 2 cos u
                 n === :sin && return s2i * lconst(T, inv(ci + ci), l)
                 n === :cos && return c2 * lconst(T, inv(cfromQ(C, Q(2))), l)
-                return s2i / (c2 * lconst(T, ci, l))             # tan = sin/cos
+                n === :tan && return s2i / (c2 * lconst(T, ci, l))   # tan = sin/cos
+                n === :cot && return c2 * lconst(T, ci, l) / s2i     # cot = cos/sin
+                n === :sec && return lconst(T, cfromQ(C, Q(2)), l) / c2       # sec = 1/cos
+                return lconst(T, ci + ci, l) / s2i                            # csc = 1/sin
             end
             n in TRIG && throw(RischNotImplemented(
-                "`$n` is not supported: only sin, cos and tan of tower elements are"))
+                "`$n` is not supported: only sin, cos, tan, cot, sec and csc of tower elements are"))
             n in ALGEBRAIC && throw(RischNotImplemented(
                 "`$n` is an algebraic (radical) function; only transcendental towers are supported"))
             if n === :^ && length(args) == 2 && is_e_const(args[1])
@@ -3977,7 +3980,7 @@ function ep_integrate(f::EP)
 end
 
 has_trig(t) = safe_iscall(t) && !isempty(arguments(t)) &&
-              (opname(operation(t)) in (:sin, :cos, :tan) || any(has_trig, arguments(t)))
+              (opname(operation(t)) in (:sin, :cos, :tan, :cot, :sec, :csc) || any(has_trig, arguments(t)))
 
 conj_poly(P::QIX) = QIX(QI[QI(c.re, -c.im) for c in P.c])
 
