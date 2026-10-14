@@ -223,6 +223,31 @@ function run_tests(x, evalat, name)
         @test Risch.logderiv_status(T, 0, dp1 / p1 + k0(1 // 2) * dp2 / p2) === :no
     end
 
+    @testset "$name: radicals by substitution (step 10a)" begin
+        fs = (sqrt(x), x * sqrt(x), 1 / sqrt(x),
+              x^2 * x^(1//3),                      # t = x^(1/3)
+              x / sqrt(x + 1),                     # 2(t³/3 - t), t = √(x+1)
+              sqrt(x + 1) / x,                     # 2t + log((t-1)/(t+1)): t > 1 here
+              1 / (x * sqrt(x - 1)),               # 2 atan(√(x-1))
+              sqrt(x) + x^(1//3),                  # n = 6
+              1 / (sqrt(x) + 1),                   # 2√x - 2 log(√x + 1)
+              sqrt((x + 2) / (x + 1)),             # linear-fractional radicand
+              exp(sqrt(x)),                        # 2(√x - 1) e^√x: an exp level over ℚ(t)
+              log(sqrt(x)),                        # a log level over ℚ(t)
+              sin(sqrt(x)))                        # trig over ℚ(i)(t): 2 sin √x - 2√x cos √x
+        for f in fs
+            F = Risch.risch_integrate(f, x)
+            for a in (1.3, 1.9, 2.6)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / sqrt(1 - x^2), x)   # Euler: step 10b
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) + sqrt(x + 1), x)
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / sqrt(x^3 + 1), x)  # elliptic
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(log(x)), x)
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(1 + sqrt(x)), x)  # nested
+    end
+
     @testset "$name: decided non-elementary" begin
         # through the new path: c keeps a normal denominator after step 1, so no solution
         @test_throws Risch.NotElementary Risch.risch_integrate(exp(exp(x)) / (exp(x) + 1), x)

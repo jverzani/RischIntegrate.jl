@@ -920,9 +920,10 @@ mutable struct Tower{C}          # C: type of the constants of the differential 
     scales::Dict{Int,Int}     # exp-generator refinement hints (see Restart)
     nexp::Int
     consts::Vector{ConstGen}  # meaning of the generators of C when C = ℚ(t₁, …, tₖ) (Step 6)
+    subst::Any                # parse hook (term, T) -> element or nothing (Step 10: radicals)
 end
 Tower(::Type{C}, xk::String, scales::Dict{Int,Int}, consts::Vector{ConstGen} = ConstGen[]) where {C} =
-    Tower{C}(xk, Level[], DataType[Frac{UPoly{C}}], scales, 0, consts)
+    Tower{C}(xk, Level[], DataType[Frac{UPoly{C}}], scales, 0, consts, nothing)
 ctype(::Tower{C}) where {C} = C
 
 # --- interface every constant field C must provide ----------------------------
@@ -1592,6 +1593,10 @@ const ALGEBRAIC = (:sqrt, :cbrt)
 const TRIG = (:sin, :cos, :tan, :atan, :abs)
 
 function parse_tower(t, T::Tower)
+    if T.subst !== nothing                     # Step 10: x ↦ φ(t), radicals ↦ powers of t
+        r = T.subst(t, T)
+        r === nothing || return r
+    end
     if safe_iscall(t)
         args = arguments(t)
         if !isempty(args)
@@ -1676,13 +1681,14 @@ end
 # exp(x)) refines the generator and re-parses; the hints only ever grow. A NewConstants
 # (a constant such as e or log 2 appeared) re-parses over the larger field ℚ(t₁, …, tₖ).
 # `constants` fixes the constant field instead (no constant generators can then be added).
-function build_tower(f, xk::String; constants::Union{Nothing,Type} = nothing)
+function build_tower(f, xk::String; constants::Union{Nothing,Type} = nothing, subst = nothing)
     scales = Dict{Int,Int}()
     consts = ConstGen[]
     base = Q                                   # becomes ℚ(i) when trigonometric functions appear
     for _ in 1:50
         C = constants === nothing ? cfield(length(consts), base) : constants
         T = Tower(C, xk, scales, copy(consts))
+        T.subst = subst
         try
             el = parse_tower(f, T)
             return minimal(T, el)
@@ -3652,9 +3658,117 @@ function to_term_real(b::Builder, T::Tower, L::Int, res::ElemIntegral, f)
 end
 
 # ---------------------------------------------------------------------------
+# Step 10a: radicals of one linear-fractional radicand, by substitution
+#
+# All radicals u^(p/q) (sqrt, cbrt, ^ with a non-integer rational exponent) must share one
+# radicand u = (a x + b)/(c x + d) ∈ ℚ(x) with ad - bc ≠ 0. With n = lcm of the q's and
+# t = u^(1/n):  x = φ(t) = (b - d tⁿ)/(c tⁿ - a),  u^(p/q) = t^(pn/q),  dx = φ'(t) dt.
+# The integrand is parsed straight into a tower over ℚ(t) (parse hook `T.subst`), multiplied
+# by φ'(t), integrated and verified exactly there; the answer is printed with the base
+# variable t written as the term u^(1/n) (sqrt(u) for n = 2), i.e. as a function of x.
+# Anything else with radicals (several radicands, radicands of degree ≥ 2, nested radicals)
+# raises RischNotImplemented. Principal roots: answers are valid where u > 0.
+# ---------------------------------------------------------------------------
+
+# (exponent, radicand term) when t is u^e with e ∈ ℚ \ ℤ (sqrt, cbrt, ^), else nothing
+function radical_parts(t)
+    safe_iscall(t) || return nothing
+    args = arguments(t)
+    isempty(args) && return nothing
+    n = opname(operation(t))
+    n === :sqrt && length(args) == 1 && return (Q(1) // 2, args[1])
+    n === :cbrt && length(args) == 1 && return (Q(1) // 3, args[1])
+    if n === :^ && length(args) == 2 && !is_e_const(args[1])
+        e = leaf_rational(args[2])
+        (e !== nothing && !isone(denominator(e))) && return (Q(e), args[1])
+    end
+    nothing
+end
+
+# all radicals of f: [(exponent, radicand term)]
+function collect_radicals(f, xk::String, out = Tuple{Q,Any}[])
+    rp = radical_parts(f)
+    rp === nothing || push!(out, rp)
+    if safe_iscall(f)
+        for a in arguments(f)
+            collect_radicals(a, xk, out)
+        end
+    end
+    out
+end
+
+# the radicand as an element of ℚ(x), or nothing
+function radicand_element(u, xk::String)
+    T, el = try
+        build_tower(u, xk)
+    catch e
+        (e isa RischNotImplemented || e isa RischError) && return nothing
+        rethrow()
+    end
+    (isempty(T.levels) && ctype(T) === Q) ? el : nothing
+end
+
+# φ ∈ ℚ(t) (same representation as ℚ(x)) as an element of K_0 of the tower T
+to_K0(T::Tower, φ::Frac{UPoly{Q}}) = (C = ctype(T); P = UPoly{C};
+    frac(P(C[cfromQ(C, c) for c in φ.num.c]), P(C[cfromQ(C, c) for c in φ.den.c])))
+
+function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::Bool = true)
+    xk = string(x)
+    u = nothing
+    uterm = nothing
+    n = 1
+    for (e, ut) in rads
+        ue = radicand_element(ut, xk)
+        ue === nothing && throw(RischNotImplemented(
+            "radical of a non-rational expression ($ut): only radicals of rational functions of x are supported"))
+        if u === nothing
+            u, uterm = ue, ut
+        elseif ue != u
+            throw(RischNotImplemented("radicals of several different radicands are not supported"))
+        end
+        n = lcm(n, Int(denominator(e)))
+    end
+    N, Dd = u.num, u.den                                # u = (a x + b)/(c x + d), den monic
+    (degree(N) <= 1 && degree(Dd) <= 1 && degree(N) + degree(Dd) >= 1) || throw(RischNotImplemented(
+        "radicand of degree ≥ 2 ($uterm): needs an Euler substitution (step 10b) or is not elementary in general"))
+    co(p, i) = i <= length(p.c) ? p.c[i] : Q(0)
+    a, b, c, d = co(N, 2), co(N, 1), co(Dd, 2), co(Dd, 1)
+    iszero(a * d - b * c) && throw(RischError("radicand is constant"))
+    P = UPoly{Q}
+    tn = xpoly(Q)^n
+    φ = frac(P(Q[b]) - scale(d, tn), scale(c, tn) - P(Q[a]))  # x = (b - d tⁿ)/(c tⁿ - a)
+    dφ = dx(φ)
+    function sub(term, T)
+        if !safe_iscall(term)
+            return string(term) == xk ? to_K0(T, φ) : nothing
+        end
+        rp = radical_parts(term)
+        rp === nothing && return nothing
+        e, ut = rp
+        ue = radicand_element(ut, xk)
+        (ue !== nothing && ue == u) || throw(RischNotImplemented("radicals of several different radicands"))
+        k = e * n
+        isone(denominator(k)) || throw(RischError("radical exponent not a multiple of 1/n"))
+        frac(xpoly(ctype(T)))^Int(numerator(k))
+    end
+    T, el = build_tower(f, xk; subst = sub)
+    T.subst = nothing
+    g = el * liftto(T, to_K0(T, dφ), levelof(T, el))     # f(φ(t), t) φ'(t)
+    T, g = minimal(T, g)
+    b0 = Builder(build === nothing ? auto_build(f, x) : build,
+                 lift === nothing ? auto_lift(f, x) : lift, x)
+    tterm = n == 2 ? mk(b0, :sqrt, uterm) : mk(b0, :^, uterm, b0.lift(Q(1) // n))
+    bd = Builder(b0.build, b0.lift, tterm, T.consts)
+    integrate_built(T, g, bd, verify)
+end
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    xk = string(x)
+    rads = collect_radicals(f, xk)
+    isempty(rads) || return integrate_radical(f, x, rads; build = build, lift = lift, verify = verify)
     if has_trig(f)                     # polynomial × exp × trig first (Stage 5c), else the ℚ(i) tower
         try
             return integrate_trig(f, x; build = build, lift = lift, verify = verify)
@@ -3662,10 +3776,15 @@ function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = t
             e isa RischNotImplemented || rethrow()
         end
     end
-    T, el = build_tower(f, string(x))
-    L = length(T.levels)
+    T, el = build_tower(f, xk)
     bd = Builder(build === nothing ? auto_build(f, x) : build,
                  lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
+    integrate_built(T, el, bd, verify)
+end
+
+# integrate an element of a built tower and return the term (base variable printed as bd.x)
+function integrate_built(T::Tower, el, bd::Builder, verify::Bool)
+    L = length(T.levels)
     if is_complex_field(ctype(T))      # Step 7: integrate over ℚ(i), then take the real part
         res = integrate_el(T, L, el)
         verify && !check_tower(T, L, res, el) &&
