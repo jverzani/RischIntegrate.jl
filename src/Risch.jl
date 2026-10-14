@@ -5545,7 +5545,11 @@ function bioche(f, x; build = nothing, lift = nothing)
     rng = kind === :tan ? (nothing, nothing) : (-1, 1)
     real_root_count(gq.den, rng...) == 0 || return nothing
     res = integrate_rational(gq)
-    isempty(res.unresolved) || return nothing
+    # residues of degree > 2 (step TR): a RootSum in s = cos u or sin u (over ℚ, real and continuous
+    # since g has no pole in [-1, 1]); for s = tan u the jump at tan u = ±∞ would need ∫ g over ℝ in
+    # closed form, so that case keeps the ℚ(i) route
+    unres = res.unresolved
+    !isempty(unres) && kind === :tan && return nothing
     # each log argument has constant sign on the range: log(-w) where it is negative (at s = 0)
     logs = Tuple{Q,UPoly{Q}}[(c, sign(peval(w, Q(0))) < 0 ? -w : w) for (c, w) in res.logs]
     # log((U + √dV)/(U - √dV)) with a negative ratio: the same as log((dV + √dU)/(dV - √dU))
@@ -5558,11 +5562,20 @@ function bioche(f, x; build = nothing, lift = nothing)
         end
         push!(quads, q)
     end
-    res = RationalIntegral(res.rational, logs, res.atans, res.unresolved, quads)
-    check_result(res, gq) || throw(RischError("internal check failed: derivative of the result differs from the integrand"))
+    res = RationalIntegral(res.rational, logs, res.atans, Any[], quads)
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     ut = isone(k) ? bd.x : mk(bd, :*, cterm(bd, k), bd.x)
     st = mk(bd, kind, ut)
+    if !isempty(unres)
+        rss = Any[]
+        for (rest, R, Dd) in unres
+            append!(rss, root_sums(rest, R, Dd, string(st); arg = st))
+        end
+        derivative_of(res) + sum(rootsum_derivative(rs) for rs in rss) == gq ||
+            throw(RischError("internal check failed: derivative of the result (with RootSums) differs from the integrand"))
+        return IntegralWithRootSums(to_term(Builder(bd.build, bd.lift, st), res), rss, xk)
+    end
+    check_result(res, gq) || throw(RischError("internal check failed: derivative of the result differs from the integrand"))
     term = to_term(Builder(bd.build, bd.lift, st), res)
     kind === :tan || return term
     # the jumps of G(tan u) where tan u = ±∞

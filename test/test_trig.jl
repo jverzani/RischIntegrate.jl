@@ -135,6 +135,20 @@ function run_tests(x, evalat, name)
             @test maximum(abs.(diff([evalat(F, a) for a in -7:0.02:13]))) < 0.05
             @test isapprox(evalat(F, 13) - evalat(F, -7), ts_simpson(t -> evalat(f, t), -7, 13); atol = 1e-8)
         end
+        # step TR: residues of degree > 2 give a RootSum over ℚ in s = sin u or cos u (no `im`),
+        # continuous through F(a) (step RN)
+        for (f, s) in ((cos(x)/(sin(x)^4 + 2), "sin"), (sin(x)/(cos(x)^5 + 2), "cos"),
+                       (cos(x)/(sin(x)^3 + sin(x) + 3), "sin"), (cos(x)/(sin(x)^3 + 2)^2, "sin"))
+            F = Risch.risch_integrate(f, x)
+            @test F isa Risch.IntegralWithRootSums
+            @test all(rs -> rs isa Risch.RootSum && occursin(s, rs.var), F.rootsums)
+            @test !occursin("im", string(F))
+            @test maximum(abs.(diff([F(a) for a in -7:0.05:13]))) < 0.1
+            @test isapprox(F(13) - F(-7), ts_simpson(t -> evalat(f, t), -7, 13); atol = 1e-8)
+        end
+        # s = tan u with a RootSum: the jump at tan u = ±∞ has no closed form, so the ℚ(i) route
+        F = Risch.risch_integrate(1/(sin(x)^4 + 2cos(x)^4), x)
+        @test F isa Risch.IntegralWithRootSums && all(rs -> rs isa Risch.TermRootSum, F.rootsums)
         # real poles (cot x): the general route, whose logs are valid on both sides of a pole
         F = Risch.risch_integrate(cos(x)/sin(x), x)
         for a in (-2.0, -0.5, 0.7, 2.5)

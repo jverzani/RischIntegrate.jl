@@ -429,6 +429,16 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   Tests: test_trig.jl both packages: nine integrands (form, atan count, continuity, Simpson), cot x.
   test_risch.jl: cos x/(sin⁴x+1) now gets a real form (√2, via s = sin x), so the RC/RN RootSum
   examples use cos x/(sin⁴x+2) and sin x/(cos⁴x+2) (2^(1/4): still RootSums).
+* **TR: Bioche with RootSums** (2026-10-14, done, tests green). In `bioche`, residues of degree > 2
+  of g(s) no longer send the integrand to the ℚ(i) route for s = cos u, sin u: `root_sums` in s with
+  `arg` = the term cos(kx)/sin(kx) (exact check: derivative of the elementary part + Σ
+  `rootsum_derivative` = g), returned as `IntegralWithRootSums(…, xk)`. A RootSum over ℚ, no `im`;
+  F(a) is continuous (RN) since s stays in [−1, 1] where g has no pole, so the continued logs are a
+  function of s. E.g. cos x/(sin⁴x+2) → RootSum(α -> α*log(sin(x) + 8α), α⁴ + 1/2048 = 0),
+  cos x/(sin³x+2)² → sin x/(6(2+sin³x)) + RootSum(… sin(x) …). s = tan u with a RootSum keeps the ℚ(i)
+  route (the jump at tan u = ±∞ is ∫_ℝ g, not available in closed form), e.g. 1/(sin⁴x+2cos⁴x).
+  Tests: test_trig.jl (TS testset) both packages: four integrands (RootSum in sin/cos, no `im`,
+  continuity, Simpson), the tan case.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
