@@ -447,10 +447,18 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   become TermRootSums (`base_term_rootsum`: α-coefficients `poly_term` in x). Exact checks unchanged.
   E.g. 1/(x³+x+ℯ), 1/(x(log³x+log x+ℯ)), exp(x)/(e³ˣ+ℯ eˣ+1), exp(x) + 1/(x³+ℯ); SymEngine log(Basic(2))
   likewise (Julia's `log(2)` is a Float64 and is rationalised as input). Complex fields with generators
-  (ℚ(i)(e)) still refused, e.g. sin(x) + 1/(x³+x+ℯ). Pre-existing, not addressed: cos x/(sin³x+sin x+ℯ)
-  runs > 100 s (also at HEAD before RE) somewhere in the ℚ(i)(e) trig route.
+  (ℚ(i)(e)) still refused, e.g. sin(x) + 1/(x³+x+ℯ). (cos x/(sin³x+sin x+ℯ) ran > 100 s: fixed in SP.)
   Tests: test_risch.jl both packages, five integrands (TermRootSum, derivative, Simpson);
   test_integrate.jl "awaiting later stages" now sin(x) + 1/(x³+x+ℯ).
+* **SP: residue resultant by interpolation** (2026-10-14, done, tests green). cos x/(sin³x+sin x+ℯ) ran
+  > 100 s (also before RE): `residue_logs` computed R(z) = res_θ(D, A − zδD) by Euclid over K(z) with
+  K = ℚ(i)(e)(x), normalising nested fractions at every step. `residue_resultant(D, A, dD)`: deg R ≤
+  deg D, so R is evaluated at deg D + 1 points z = j·1 (each a resultant over K alone; points where
+  A − z·dD drops below its formal degree are skipped) and interpolated (Newton). Used in
+  `residue_logs`, `residue_poly` and `log_part`. Now refused in ~2 s (RischNotImplemented: RootSum
+  over ℚ(i)(e)); test_risch.jl 46 s → 36 s, other files unchanged. The integral itself would need
+  Bioche over ℚ(i)(t) (s = sin x gives 1/(s³+s+ℯ) over ℚ(e), handled by RE) — a possible next step.
+  Tests: test_integrate.jl "awaiting later stages": the case is refused (no hang).
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 

@@ -882,17 +882,8 @@ function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
     quads = Any[]
     iszero(A) && return logs, atans, unresolved, quads
     dD = deriv(D)
-    # R(z) = res_x(D, A - z D') computed in the field C(z)
-    Kz = CXFl
-    n = max(length(A.c), length(dD.c))
-    ai(i) = i <= length(A.c) ? A.c[i] : zero(C)
-    di(i) = i <= length(dD.c) ? dD.c[i] : zero(C)
-    Dz = UPoly{Kz}(Kz[kconst(c) for c in D.c])
-    Bz = UPoly{Kz}(Kz[frac(CXl(C[ai(i), -di(i)])) for i in 1:n])
-    r = resultant(Dz, Bz)
-    iszero(r) && throw(RischError("zero resultant in the residue computation"))
-    isone(r.den) || throw(RischError("residue polynomial is not a polynomial"))
-    Rz = r.num
+    Rz = residue_resultant(D, A, dD)                 # R(z) = res_x(D, A - z D')
+    iszero(Rz) && throw(RischError("zero resultant in the residue computation"))
     degree(Rz) <= 0 && return logs, atans, unresolved, quads
     Rsf = quo(Rz, gcd(Rz, deriv(Rz)))        # distinct residues
     roots = constant_roots(Rsf)
@@ -2390,17 +2381,7 @@ polyD(T::Tower, m::Int, p::UPoly) = m == 0 ? deriv(p) : Dp(T, m, p)
 coeff_type(T::Tower, m::Int) = m == 0 ? ctype(T) : T.Ts[m]
 
 # R(z) = res_t(d, A - z dD) ∈ K[z]: its roots are the residues of A/d at the roots of d
-function residue_poly(::Type{K}, d::UPoly, A::UPoly, dD::UPoly) where {K}
-    Kz = Frac{UPoly{K}}
-    n = max(length(A.c), length(dD.c))
-    ai(k) = k <= length(A.c) ? A.c[k] : zero(K)
-    di(k) = k <= length(dD.c) ? dD.c[k] : zero(K)
-    Dz = UPoly{Kz}(Kz[frac(UPoly{K}(K[c])) for c in d.c])
-    Bz = UPoly{Kz}(Kz[frac(UPoly{K}(K[ai(k), -di(k)])) for k in 1:n])
-    r = resultant(Dz, Bz)
-    isone(r.den) || throw(RischError("residue polynomial is not a polynomial"))
-    r.num
-end
+residue_poly(::Type{K}, d::UPoly, A::UPoly, dD::UPoly) where {K} = residue_resultant(d, A, dD)
 
 # the simple-pole part d1 of the normal denominator of f (level m), and A with f = A/d1 + (no pole at d1)
 function simple_pole_part(T::Tower, m::Int, f)
@@ -3425,23 +3406,46 @@ function tower_quad_terms(T::Tower, i::Int, A::UPoly, D::UPoly, dD::UPoly, rest:
     logs, quads
 end
 
+# R(z) = res_θ(D, A - z·dD) ∈ K[z] (formal degree of A - z·dD: n = max(deg A, deg dD)) by evaluation
+# and interpolation: deg R ≤ deg D, so R is fixed by its values at deg D + 1 points z = 0, 1, 2, …
+# (j·1 in K), each a resultant over K alone; Euclid over K(z) instead normalises nested
+# fractions at every step and is far slower when K is itself ℚ(i)(e)(x)…. A point where A - z·dD
+# drops below degree n is skipped (the evaluated resultant then differs from R(z_j)).
+function residue_resultant(D::UPoly{K}, A::UPoly{K}, dD::UPoly{K}) where {K}
+    n = max(length(A.c), length(dD.c))
+    ai(k) = k <= length(A.c) ? A.c[k] : zero(K)
+    di(k) = k <= length(dD.c) ? dD.c[k] : zero(K)
+    zs, vs = K[], K[]
+    j = 0
+    while length(zs) <= degree(D)
+        z = j * one(K)
+        j += 1
+        B = UPoly{K}(K[ai(k) - z * di(k) for k in 1:n])
+        length(B.c) == n || continue
+        push!(zs, z)
+        push!(vs, resultant(D, B))
+    end
+    # Newton divided differences, then expand
+    c = copy(vs)
+    for l in 2:length(zs), m in length(zs):-1:l
+        c[m] = (c[m] - c[m - 1]) / (zs[m] - zs[m - l + 1])
+    end
+    R = UPoly{K}(K[c[end]])
+    for m in (length(zs) - 1):-1:1
+        R = R * UPoly{K}(K[-zs[m], one(K)]) + UPoly{K}(K[c[m]])
+    end
+    R
+end
+
 # R(z) = res_θ(D, A - z δD) must have constant roots. Returns (logs, quads): logs are
 # [(c, W)] with W = gcd(D, A - c δD) ∈ Kᵢ₋₁[θ] (also the α log(U² - dV²) terms of a quadratic
 # pair: for the exp correction Σ c·deg W they count exactly like the two conjugate logs), and
 # quads the TowerQuadLog / TowerQuadAtan terms of irreducible quadratic residue factors.
 function residue_logs(T::Tower, i::Int, A::UPoly, D::UPoly)
     K = T.Ts[i]
-    Kz = Frac{UPoly{K}}
     dD = Dp(T, i, D)
-    n = max(length(A.c), length(dD.c))
-    ai(k) = k <= length(A.c) ? A.c[k] : zero(K)
-    di(k) = k <= length(dD.c) ? dD.c[k] : zero(K)
-    Dz = UPoly{Kz}(Kz[frac(UPoly{K}(K[c])) for c in D.c])
-    Bz = UPoly{Kz}(Kz[frac(UPoly{K}(K[ai(k), -di(k)])) for k in 1:n])
-    r = resultant(Dz, Bz)
-    iszero(r) && throw(RischError("zero resultant in the residue computation"))
-    isone(r.den) || throw(RischError("residue polynomial is not a polynomial"))
-    Rz = r.num
+    Rz = residue_resultant(D, A, dD)
+    iszero(Rz) && throw(RischError("zero resultant in the residue computation"))
     CT = ctype(T)
     out = Tuple{CT,Any}[]
     quads = Any[]
