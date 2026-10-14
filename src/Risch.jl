@@ -1529,6 +1529,8 @@ cfield(k::Int, base::Type = Q) = k == 0 ? base : Frac{UPoly{cfield(k - 1, base)}
 cbase(::Type{Q}) = Q
 cbase(::Type{QI}) = QI
 cbase(::Type{Frac{UPoly{B}}}) where {B} = cbase(B)
+# ℚ(t₁, …, tₖ) with k ≥ 1 (RootSums over it: step RE)
+rational_tfield(::Type{C}) where {C} = C <: Frac && cbase(C) === Q
 # the generator tⱼ as an element of C = ℚ(t₁, …, tₖ), 1 ≤ j ≤ k
 function tgen(::Type{Frac{UPoly{B}}}, j::Int) where {B}
     k = 1 + cdepth(B)
@@ -3494,6 +3496,9 @@ function residue_logs(T::Tower, i::Int, A::UPoly, D::UPoly)
             append!(quads, tower_root_sums(T, i, A, D, dD, rest))
             rest = one(rest)
         end
+    elseif rational_tfield(CT) && degree(rest) > 0          # RootSum over ℚ(t₁, …) (step RE; no factoring)
+        append!(quads, tower_root_sums(T, i, A, D, dD, rest))
+        rest = one(rest)
     end
     degree(rest) > 0 && throw(RischNotImplemented(
         "the residues are algebraic constants of degree ≥ 2 over the constant field $CT " *
@@ -3553,7 +3558,7 @@ end
 function integrate_el(T::Tower, i::Int, f)::ElemIntegral
     if i == 0
         res = integrate_rational(f)
-        isempty(res.unresolved) || ctype(T) === Q || ctype(T) === QI || throw(RischNotImplemented(
+        isempty(res.unresolved) || ctype(T) === Q || ctype(T) === QI || rational_tfield(ctype(T)) || throw(RischNotImplemented(
             "the logarithmic part has residues of degree > 2 over the constant field $(ctype(T))"))
         quads = Any[tower_quad(q) for q in res.quads]
         for (rest, R, Dd) in res.unresolved, rs in root_sums(rest, R, Dd, "x")    # step RT
@@ -5185,8 +5190,24 @@ struct TermRootSum
     poly::UPoly              # over ℚ, or ℚ(i) (then each coefficient is a pair (re, im) of terms)
     coeffs::Vector{Any}
     var::String
+    pterms::Any              # nothing, or the coefficients of poly as terms (constants e, log 2, …)
+end
+TermRootSum(poly, coeffs, var) = TermRootSum(poly, coeffs, var, nothing)
+
+# a base-level RootSum over C = ℚ(t₁, …) as a TermRootSum (step RE): α-coefficients are polynomials
+# in x over C, printed with `poly_term`; the polynomial's coefficients are terms too
+function base_term_rootsum(b::Builder, rs::RootSum{C}) where {C}
+    xp = xpoly(C)
+    cs = Any[]
+    for j in 1:degree(rs.poly)
+        p = sum((j <= length(rs.W[k].c) ? scale(rs.W[k].c[j], xp^(k - 1)) : zero(UPoly{C})) for k in eachindex(rs.W))
+        push!(cs, iszero(p) ? nothing : poly_term(b, p))
+    end
+    TermRootSum(rs.poly, cs, string(b.x), Any[cterm(b, c) for c in rs.poly.c])
 end
 function TermRootSum(b::Builder, T::Tower, q::TowerRootSum)
+    C = ctype(T)
+    pt = (C === Q || C === QI) ? nothing : Any[cterm(b, c) for c in q.mq.c]
     K = T.Ts[q.i]
     P = UPoly{K}
     W = q.W
@@ -5195,7 +5216,7 @@ function TermRootSum(b::Builder, T::Tower, q::TowerRootSum)
         cz = P(K[j <= length(W[k].c) ? W[k].c[j] : zero(K) for k in eachindex(W)])
         push!(cs, iszero(cz) ? nothing : tower_to_term(b, T, frac(cz)))
     end
-    TermRootSum(q.mq, cs, string(b.x))
+    TermRootSum(q.mq, cs, string(b.x), pt)
 end
 
 # a RootSum over ℚ(i) (trig tower, step RC): each α-coefficient w (an element of level i, or of
@@ -5318,8 +5339,14 @@ function Base.show(io::IO, rs::TermRootSum)
         c === nothing && continue
         push!(ts, j == 1 ? "($c)" : (j == 2 ? "($c)*α" : "($c)*α^$(j - 1)"))
     end
-    print(io, "RootSum(α -> α*log(", join(ts, " + "), "), ", zpoly_string(rs.poly, "α"), " = 0)")
+    ps = rs.pterms === nothing ? zpoly_string(rs.poly, "α") :
+         join(reverse([k == 1 ? "($t)" : (isone(rs.poly.c[k]) ? "" : "($t)*") * (k == 2 ? "α" : "α^$(k - 1)")
+                       for (k, t) in enumerate(rs.pterms) if !iszero(rs.poly.c[k])]), " + ")
+    print(io, "RootSum(α -> α*log(", join(ts, " + "), "), ", ps, " = 0)")
 end
+# numeric coefficients of the RootSum polynomial
+rs_poly_numeric(rs::TermRootSum, xk::String) =
+    rs.pterms === nothing ? ComplexF64[cnum(c) for c in rs.poly.c] : ComplexF64[term_value(t, xk, 0.0) for t in rs.pterms]
 coeff_string((r, i)::Tuple) = (r === nothing && i === nothing) ? nothing :
     join(filter(!isempty, [r === nothing ? "" : string(r), i === nothing ? "" : "im*($i)"]), " + ")
 cvalue(c, xk, a) = c === nothing ? 0.0im :
@@ -5327,7 +5354,7 @@ cvalue(c, xk, a) = c === nothing ? 0.0im :
 function rs_value(rs::TermRootSum, xk::String, a)
     vs = [cvalue(c, xk, a) for c in rs.coeffs]
     tot = 0.0im
-    for α in numeric_roots(ComplexF64[cnum(c) for c in rs.poly.c])
+    for α in numeric_roots(rs_poly_numeric(rs, xk))
         tot += α * log(foldr((v, acc) -> acc * α + v, vs; init = 0.0im))
     end
     tot
@@ -5350,7 +5377,7 @@ function rs_numeric(rs::RootSum, xk::String)
     αs, Wf
 end
 function rs_numeric(rs::TermRootSum, xk::String)
-    αs = numeric_roots(ComplexF64[cnum(c) for c in rs.poly.c])
+    αs = numeric_roots(rs_poly_numeric(rs, xk))
     Wf(x) = (vs = [cvalue(c, xk, x) for c in rs.coeffs];
              [foldr((v, acc) -> acc * α + v, vs; init = 0.0im) for α in αs])
     αs, Wf
@@ -5648,17 +5675,19 @@ function integrate_built(T::Tower, el, bd::Builder, verify::Bool)
             throw(RischError("internal check failed: derivative of the result differs from the integrand"))
         isrs(q) = q isa TowerRootSum || q isa BaseRootSum
         any(isrs, res.quads) || return to_term(bd, T, res)
-        rss = Any[q isa BaseRootSum ? RootSum{Q}(q.rs.poly, q.rs.W, string(bd.x), bd.x) : TermRootSum(bd, T, q)
-                  for q in res.quads if isrs(q)]
+        rss = Any[q isa BaseRootSum ?
+                  (ctype(T) === Q ? RootSum{Q}(q.rs.poly, q.rs.W, string(bd.x), bd.x) : base_term_rootsum(bd, q.rs)) :
+                  TermRootSum(bd, T, q) for q in res.quads if isrs(q)]
         el_part = ElemIntegral(res.v, res.logs, res.atans, Any[q for q in res.quads if !isrs(q)])
         return IntegralWithRootSums(to_term(bd, T, el_part), rss, string(bd.x))
     end
     F = el                              # an element of K_0 = C(x)
     res = integrate_rational(F)
     if !isempty(res.unresolved)
-        ctype(T) === Q || throw(RischNotImplemented(
-            "the logarithmic part has residues of degree > 2 over the constant field $(ctype(T)) " *
-            "(RootSum is implemented over ℚ only)"))
+        C = ctype(T)
+        (C === Q || rational_tfield(C)) || throw(RischNotImplemented(
+            "the logarithmic part has residues of degree > 2 over the constant field $C " *
+            "(RootSum is implemented over ℚ and ℚ(t₁, …) only)"))
         rss = RootSum[]                 # algebraic residues of degree > 2: RootSum
         for (rest, R, D) in res.unresolved
             append!(rss, root_sums(rest, R, D, string(bd.x); arg = bd.x))
@@ -5666,7 +5695,8 @@ function integrate_built(T::Tower, el, bd::Builder, verify::Bool)
         el_part = RationalIntegral(res.rational, res.logs, res.atans, Any[], res.quads)
         verify && derivative_of(el_part) + sum(rootsum_derivative(rs) for rs in rss) != F &&
             throw(RischError("internal check failed: derivative of the result (with RootSums) differs from the integrand"))
-        return IntegralWithRootSums(to_term(bd, el_part), rss, string(bd.x))
+        out = C === Q ? Any[rs for rs in rss] : Any[base_term_rootsum(bd, rs) for rs in rss]   # step RE
+        return IntegralWithRootSums(to_term(bd, el_part), out, string(bd.x))
     end
     verify && !check_result(res, F) &&
         throw(RischError("internal check failed: derivative of the result differs from the integrand"))

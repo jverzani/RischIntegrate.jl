@@ -240,6 +240,20 @@ function run_tests(x, evalat, name)
             @test maximum(abs.(diff([F(c) for c in a:0.05:b]))) < 0.1
             @test isapprox(F(b) - F(a), simpson(t -> evalat(f, t), a, b); atol = 1e-8)
         end
+        # RootSums over a transcendental constant field ℚ(e) (step RE): polynomial coefficients are
+        # terms (exp(1)), base level, log/exp levels and base-level RootSums inside a tower
+        re_simpson(g, a, b; n = 1000) = (h = (b - a) / n;
+            h / 3 * (g(a) + g(b) + sum((isodd(k) ? 4 : 2) * g(a + k * h) for k in 1:(n - 1))))
+        for f in (1/(x^3 + x + ℯ), 1/(x*(log(x)^3 + log(x) + ℯ)), exp(x)/(exp(3x) + ℯ*exp(x) + 1),
+                  exp(x) + 1/(x^3 + ℯ), 1/(x^4 + ℯ))
+            F = Risch.risch_integrate(f, x)
+            @test F isa Risch.IntegralWithRootSums
+            @test all(rs -> rs isa Risch.TermRootSum, F.rootsums)
+            for a in (1.3, 2.1, 2.9)
+                @test isapprox(fd(F, a), evalat(f, a); rtol = 1e-5)
+            end
+            @test isapprox(F(3.0) - F(1.1), re_simpson(t -> evalat(f, t), 1.1, 3.0); atol = 1e-8)
+        end
         # RootSums inside towers (step RT): at a log or exp level, nested, and base-level ones in a
         # tower; exp levels with Tr(α) ≠ 0 need the correction -Tr(α)·deg W·u
         for f in (1/(x*(log(x)^4 + 2)), 1/(x*(log(x)^3 + log(x) + 1)), (log(x)^2)/(x*(log(x)^3 + log(x) + 1)^2),

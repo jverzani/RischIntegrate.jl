@@ -439,6 +439,18 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   route (the jump at tan u = ±∞ is ∫_ℝ g, not available in closed form), e.g. 1/(sin⁴x+2cos⁴x).
   Tests: test_trig.jl (TS testset) both packages: four integrands (RootSum in sin/cos, no `im`,
   continuity, Simpson), the tan case.
+* **RE: RootSums over ℚ(t₁, …) (e, log 2, …)** (2026-10-14, done, tests green). `rational_tfield(C)`
+  (C <: Frac with base ℚ). `residue_logs`: a leftover residue factor over such C → `tower_root_sums`
+  (generic; no factorisation, d5 copes). Base level (`integrate_el(T, 0, …)`, `integrate_built` L = 0):
+  `root_sums` over C. Output: `TermRootSum` got a 4th field `pterms` (the polynomial's coefficients as
+  terms via `cterm`, e.g. exp(1); used for printing and `rs_poly_numeric`); base-level RootSums over C
+  become TermRootSums (`base_term_rootsum`: α-coefficients `poly_term` in x). Exact checks unchanged.
+  E.g. 1/(x³+x+ℯ), 1/(x(log³x+log x+ℯ)), exp(x)/(e³ˣ+ℯ eˣ+1), exp(x) + 1/(x³+ℯ); SymEngine log(Basic(2))
+  likewise (Julia's `log(2)` is a Float64 and is rationalised as input). Complex fields with generators
+  (ℚ(i)(e)) still refused, e.g. sin(x) + 1/(x³+x+ℯ). Pre-existing, not addressed: cos x/(sin³x+sin x+ℯ)
+  runs > 100 s (also at HEAD before RE) somewhere in the ℚ(i)(e) trig route.
+  Tests: test_risch.jl both packages, five integrands (TermRootSum, derivative, Simpson);
+  test_integrate.jl "awaiting later stages" now sin(x) + 1/(x³+x+ℯ).
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
