@@ -493,6 +493,23 @@ function run_tests(x, evalat, name)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(asin(x) * acos(x), x)   # needs π
     end
 
+    # step AC: acot(u) = atan(1/u); acsc(u) = asin(1/u), asec(u) = acos(1/u) by the reciprocal
+    # substitution 1/u = sin t (cos t), answers valid for u > 1; results tidied (rational parts collected)
+    @testset "$name: acot, asec, acsc (step AC)" begin
+        for (f, pts) in ((acot(x), (0.4, 1.3, -0.7)), (x * acot(x), (0.4, 1.3)), (asec(x), (1.3, 2.2, 4.0)),
+                         (acsc(x), (1.3, 2.2, 4.0)), (x * asec(x), (1.3, 2.2)), (asec(x) / x^2, (1.3, 2.2)),
+                         (asec(2x + 1), (0.4, 1.3)), (asec(x) / (x * sqrt(x^2 - 1)), (1.3, 2.2)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        @test occursin("asec", string(Risch.risch_integrate(x * asec(x), x)))
+        @test count("asec", string(Risch.risch_integrate(x * asec(x), x))) == 1      # collected
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(acot(x) + atan(x), x)   # needs π/2
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(asec(x) + acsc(x), x)
+    end
+
     @testset "$name: awaiting later stages" begin
         # RootSums over ℚ, ℚ(i), ℚ(e) (steps RT, RC, RE) are tested in test_risch.jl; over ℚ(i)(e)
         # (trigonometric input with e) they are not handled

@@ -589,6 +589,19 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   Not covered: RootSums after the substitution, √K irrational (√(2−x²) keeps the Euler form),
   asin of non-linear arguments; like terms are not collected (x² asin x).
   Tests: test_integrate.jl "asin, acos (step AS)", both packages (17 integrands, forms, refusal).
+* **AC: acot, acsc, asec** (2026-10-14, done, tests green; user request; domain u > 1 for acsc/asec by
+  the user's choice). acot(u) ↦ atan(1/u) (`rewrite_acot`; Julia's definition for all u ≠ 0), then TA;
+  together with atan(u) it is refused (π/2). acsc(u) = asin(1/u), asec(u) = acos(1/u): the AS
+  substitution in a reciprocal mode (`recip` in `integrate_arcsin`): 1/u = sin t (cos t), x ↦
+  (1/p − b)/a, dx = ∓r/(a p²), √(u² − 1) ↦ r/p (u > 0); mapped back with s = 1/u (A(1/u) as a rational
+  function of u) and √(1 − 1/u²) = √(u² − 1)/u. The original acsc/asec terms stay in the answer.
+  Valid for u > 1 (principal branch t ∈ (0, π/2)); on u < −1 some terms have the wrong sign.
+  New `tidy_terms` on the mapped-back answers (also AS): rational factors of products/quotients/powers
+  multiplied into one canonical ℚ(x) factor, a rational factor distributed over a single sum, and sum
+  terms with the same non-rational part collected. E.g. asec x → x asec x + ½ log(2 − 2√(x²−1)/x)
+  − ½ log(2 + 2√(x²−1)/x); x asec x → x²/2 asec x − ½√(x²−1); x² asin x → x³/3 asin x + (2/9 + x²/9)√(1−x²).
+  Not covered: radicals written as √(1 − 1/u²).
+  Tests: test_integrate.jl "acot, asec, acsc (step AC)", both packages (eight integrands, forms, refusals).
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -820,7 +833,7 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS (all 2026-10-14).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC (all 2026-10-14).
 >
 > Next steps (open items): nested-radical real forms (1/(x⁵ + 1)), iterated integrals on an
 > `IntegralWithRootSums`.
