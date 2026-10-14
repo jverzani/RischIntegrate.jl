@@ -680,6 +680,40 @@ function log_to_atan(A::UPoly{T}, B::UPoly{T}) where {T}
     end
 end
 
+# LogToAtan(U, √e V) for a real non-square e > 0 (the d < 0 case of a quadratic pair), without
+# adjoining √e: under √e ↦ -√e, A = U is even and B = √e V odd, and this persists through the
+# recursion, so every pⱼ = √e uⱼ and only the rational parts are needed. Two states:
+#   even: A = a, B = √e b  (gcdex: e b d - a c = G; D = √e d, C = c; next: odd with (d, c))
+#   odd:  A = √e a, B = b  (gcdex: b D - e a c = G; C = √e c;        next: even with (D, c))
+# Returns [uⱼ] with Σ 2 atan(√e uⱼ) ≡ 2 atan(U/(√e V)). `ek` is e in the coefficient field, so
+# this also works at a tower level (U, V ∈ K[θ]).
+function log_to_atan_sqrt(a::UPoly{T}, b::UPoly{T}, ek::T) where {T}
+    out = UPoly{T}[]
+    even = true
+    while true
+        q, r = divrem(a, b)
+        if iszero(r)                                    # A/B = √e·q/e (even) or √e·q (odd)
+            push!(out, even ? scale(inv(ek), q) : q)
+            return out
+        end
+        if degree(a) < degree(b)                        # (A, B) -> (-B, A)
+            a, b = -b, a
+            even = !even
+            continue
+        end
+        if even
+            d, c, G = gcdex(scale(ek, b), -a)
+        else
+            d, c, G = gcdex(b, -scale(ek, a))
+        end
+        u, r = divrem(a * d + b * c, G)                 # (A D + B C)/G = √e u in both states
+        iszero(r) || throw(RischError("log_to_atan_sqrt: G does not divide the numerator"))
+        push!(out, u)
+        a, b = d, c
+        even = !even
+    end
+end
+
 # Residues are the two roots a = α ± β√d of the irreducible quadratic `rest`. With
 # W = gcd(D, A - a D') = U + √d V:   a log W + ā log W̄ is
 #   α log(U² - d V²) + β√d log((U + √d V)/(U - √d V))                 (d > 1)
@@ -707,13 +741,10 @@ function quad_terms(A::CX, D::CX, dD::CX, rest::CX)
         if dd > 0
             push!(quads, QuadLog(β, dd, U, V))
         elseif !iszero(U)
-            # W = U + i√e V: β√e LogToAtan(U, √e V). Every pⱼ is √e uⱼ with uⱼ ∈ ℚ[x] (A even and
-            # B odd under √e ↦ -√e stays so through the recursion), i.e. 2β√e atan(√e uⱼ).
+            # W = U + i√e V: β√e LogToAtan(U, √e V) = Σ 2β√e atan(√e uⱼ)
             e = -dd
-            E = QS{e}
-            for p in log_to_atan(UPoly{E}(E[E(c, Q(0)) for c in U.c]), UPoly{E}(E[E(Q(0), c) for c in V.c]))
-                all(c -> iszero(c.a), p.c) || throw(RischError("log_to_atan: unexpected rational part"))
-                push!(quads, QuadAtan(2 * β, e, frac(CX(Q[c.b for c in p.c])), false))
+            for u in log_to_atan_sqrt(U, V, Q(e))
+                push!(quads, QuadAtan(2 * β, e, frac(u), false))
             end
         end
     end
@@ -3260,7 +3291,7 @@ ElemIntegral(v, logs, atans) = ElemIntegral(v, logs, atans, Any[])
 # of a residue polynomial over ℚ, at any level of the tower. With W = gcd(D, A - a·δD) computed
 # over ℚ(√d) (via `change_constants`) and split as W = U + √d V with U, V ∈ Kᵢ₋₁[θ]:
 #   a log W + ā log W̄ = α log(U² - d V²) + β√d log((U + √d V)/(U - √d V))       (d > 1)
-#                      = α log(U² + e V²) - 2β√e atan(√e V/U),   e = -d          (d < 0)
+#                      = α log(U² + e V²) + β√e LogToAtan(U, √e V),  e = -d     (d < 0)
 # The α-part is an ordinary log term; the other part is one of these (U, V, u tower elements):
 struct TowerQuadLog             # β√d · log((U + √d V)/(U - √d V)),  d > 1
     β::Q
@@ -3331,6 +3362,15 @@ end
 tower_quad(q::QuadLog) = TowerQuadLog(q.β, q.d, frac(q.U), frac(q.V))
 tower_quad(q::QuadAtan) = TowerQuadAtan(q.c, q.e, q.u, q.inverted)
 
+# Step T1: the real form of a quartic RootSum (R2), a RationalIntegral over ℚ(√d) in x only, as a
+# tower term: its derivative is in K₀ = ℚ(x) (stored, for `check_tower`), output by `to_term`.
+# It has no θ, so it adds nothing to the exp correction Σ c·deg W.
+struct BaseTerms
+    q::RationalIntegral
+    deriv::Any
+end
+tower_quad(q::RationalIntegral) = BaseTerms(q, qs_down(derivative_of(q)))
+
 # The conjugate pair of roots of the irreducible quadratic `rest` ∈ ℚ[z] as log/atan terms
 # (see above), or nothing if this case is not handled. A, D, dD = δD ∈ Kᵢ₋₁[θᵢ].
 function tower_quad_terms(T::Tower, i::Int, A::UPoly, D::UPoly, dD::UPoly, rest::UPoly{Q})
@@ -3373,12 +3413,10 @@ function tower_quad_terms(T::Tower, i::Int, A::UPoly, D::UPoly, dD::UPoly, rest:
         Uf, Vf = frac(U), frac(V)
         if dd > 0
             push!(quads, TowerQuadLog(β, dd, Uf, Vf))
-        elseif !iszero(U)
+        elseif !iszero(U)                            # β√e LogToAtan(U, √e V) (step T2)
             e = -dd
-            if degree(V) == 0
-                push!(quads, TowerQuadAtan(2 * β, e, Uf / Vf, true))
-            else
-                push!(quads, TowerQuadAtan(-2 * β, e, Vf / Uf, false))
+            for u in log_to_atan_sqrt(U, V, lq(T, Q(e), i - 1))
+                push!(quads, TowerQuadAtan(2 * β, e, frac(u), false))
             end
         end
     end
@@ -3496,8 +3534,6 @@ function integrate_el(T::Tower, i::Int, f)::ElemIntegral
         res = integrate_rational(f)
         isempty(res.unresolved) || throw(RischNotImplemented(
             "the logarithmic part has irrational residues; algebraic constants are planned for Stage 5"))
-        any(q -> q isa RationalIntegral, res.quads) && throw(RischNotImplemented(
-            "the real form of a quartic RootSum (R2) is implemented for rational integrands only"))
         return ElemIntegral(res.rational,
                             Tuple{ctype(T),Any}[(c, frac(w)) for (c, w) in res.logs],
                             Tuple{ctype(T),Any}[(c, u) for (c, u) in res.atans],
@@ -3618,7 +3654,7 @@ function check_tower(T::Tower, L::Int, res::ElemIntegral, f)
             u, e = liftto(T, q.u, L), lq(T, Q(q.e), L)
             den = q.inverted ? e + u * u : one(u) + e * u * u
             tot = tot + lq(T, q.c * q.e, L) * D(T, L, u) / den
-        elseif q isa SpecialTerm    # Step 8a: the stored exact derivative
+        elseif q isa SpecialTerm || q isa BaseTerms    # stored exact derivatives (8a, T1)
             tot = tot + liftto(T, q.deriv, L)
         elseif q isa ExtQuadPair    # a W'/W + σ_d(a W'/W), computed over ℚ(i)(√d), read back in T
             T2 = q.T2
@@ -3654,6 +3690,11 @@ function to_term(b::Builder, T::Tower, res::ElemIntegral)
             push!(ts, isone(q.β) ? mk(b, :*, r, l) : mk(b, :*, cterm(b, q.β), r, l))
         elseif q isa SpecialTerm
             push!(ts, special_out(b, q, cterm(b, q.c), z -> tower_to_term(b, T, z)))
+        elseif q isa BaseTerms
+            push!(ts, to_term(b, q.q))
+        elseif q.e == 1                              # residues ±i: c·atan(u), no sqrt(1)
+            l = mk(b, :atan, tower_to_term(b, T, q.u))
+            push!(ts, isone(q.c) ? l : mk(b, :*, cterm(b, q.c), l))
         else
             r = mk(b, :sqrt, b.lift(q.e))
             ut = tower_to_term(b, T, q.u)

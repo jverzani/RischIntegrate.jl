@@ -318,6 +318,22 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
     `risch_integrate` sets `var` to the integration variable.
     Tests: `Rioboo's LogToAtan` testset (derivative identity, Bronstein's answer, polynomial
     arguments); both packages: continuity on [−3, 3], RootSums under substitutions, the refusal.
+  * **T: real forms inside towers** (2026-10-14, done, tests green).
+    * T1: an R2 result (RationalIntegral over ℚ(√d), x only) reaching a tower through
+      `integrate_el(T, 0, …)` becomes `BaseTerms(q, deriv)`: exact derivative in ℚ(x) stored for
+      `check_tower`, output by the base `to_term`; no θ, so no exp correction. E.g.
+      exp(x) + 1/(x⁴+1), log(x) + 1/(x⁴+1). The limited-integration rule (a coefficient of logⁿ whose
+      integral has residues outside C is not elementary) covers it unchanged: log(x)/(x⁴+1) →
+      NotElementary (dilogarithm).
+    * T2: `log_to_atan_sqrt(a, b, e)`: LogToAtan(U, √e V) without adjoining √e (parity: every
+      pⱼ = √e uⱼ; two states even/odd on the rational parts), so it runs over K[θ] at any tower level.
+      Used in `tower_quad_terms` (d < 0) and, replacing R3's ℚ(√e) detour, in `quad_terms`. E.g.
+      exp(x)(−e²ˣ−3)/(e⁴ˣ−4e²ˣ+9) and (−log²x−3)/(x(log⁴x−4log²x+9)): the answers no longer jump
+      by π (max step 2.2 before). Tower atans with e = 1 no longer print `sqrt(1)`.
+    Not changed: ExtQuadPair (Step 7, over ℚ(i)) and the real-form output of trig towers; RootSums
+    of degree > 2 inside towers are still refused.
+    Tests: LogToAtan testset (identity for `log_to_atan_sqrt`); both packages: six tower integrands
+    (derivative, continuity on fine grids, no `sqrt(1)`), log(x)/(x⁴+1) not elementary.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 

@@ -102,6 +102,13 @@ end
         ps = Risch.log_to_atan(A, B)
         @test sum(datan(rf(p, poly(1))) for p in ps) == datan(rf(A, B))
     end
+    # B = √e V without adjoining √e:  Σ uⱼ'/(1 + e uⱼ²) = (U'V - UV')/(U² + eV²)
+    for (U, V, e) in ((poly(-3, 0, 1), poly(0, 1), 2), (poly(1, 2, 0, 1), poly(3, 1), 5),
+                      (poly(0, 0, 0, 1), poly(1), 3), (poly(2, 1), poly(1, 0, 1), 7))
+        us = Risch.log_to_atan_sqrt(U, V, Q(e))
+        lhs = sum(rf(Risch.deriv(u), poly(1) + poly(e) * u * u) for u in us)
+        @test lhs == rf(Risch.deriv(U) * V - U * Risch.deriv(V), U * U + poly(e) * V * V)
+    end
     @test Risch.log_to_atan(poly(0, -3, 0, 1), poly(-2, 0, 1)) ==
           [poly(0, 1 // 2, 0, -3 // 2, 0, 1 // 2), poly(0, 0, 0, 1), poly(0, 1)]
     # every atan argument is a polynomial (no jumps at the poles of U/V)
@@ -184,8 +191,20 @@ function run_tests(x, evalat, name)
                 @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5)
             end
         end
-        # the real form of a quartic RootSum is not lifted into towers yet: refused, not a crash
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(exp(x) + 1/(x^4 + 1), x)
+        # real forms inside towers: R2 terms as tower terms (T1), LogToAtan at a tower level (T2)
+        for (f, r) in ((exp(x) + 1/(x^4 + 1), 0.3:0.5:2.8), (log(x) + 1/(x^4 + 1), 1.3:0.5:2.8),
+                       (exp(x)*(x^2 + 1) + 1/(x^4 - x^2 + 1), 0.3:0.5:2.8),
+                       (exp(x)*(-exp(2x) - 3)/(exp(4x) - 4exp(2x) + 9), -1:0.01:2),
+                       ((-log(x)^2 - 3)/(x*(log(x)^4 - 4log(x)^2 + 9)), 1.05:0.02:8),
+                       ((log(x)^4 - 3log(x)^2 + 6)/(x*(log(x)^6 - 5log(x)^4 + 5log(x)^2 + 4)), 1.05:0.02:8))
+            F = Risch.risch_integrate(f, x)
+            @test !occursin("sqrt(1)", string(F))
+            step(r) < 0.1 && @test maximum(abs.(diff([evalat(F, a) for a in r]))) < 0.5   # no ±π jumps
+            for a in r[[2, end - 1]]
+                @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5)
+            end
+        end
+        @test_throws Risch.NotElementary Risch.risch_integrate(log(x)/(x^4 + 1), x)   # dilogarithm
     end
 end
 
