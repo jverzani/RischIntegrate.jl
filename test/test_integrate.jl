@@ -326,6 +326,38 @@ function run_tests(x, evalat, name)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) * cbrt(x + 1), x)
     end
 
+    # SimpleExpressions evaluates sqrt(2) eagerly to a Float64: symbolic constant radicals
+    # exist only in SymEngine
+    x isa SymEngine.Basic && @testset "$name: square roots of rational constants (step 10e)" begin
+        s2, s3 = sqrt(SymEngine.Basic(2)), sqrt(SymEngine.Basic(3))
+        right = (1.3, 1.9, 2.6)
+        inside = (0.2, 0.45, 0.7)
+        cases = ((s2 * x, right),
+                 (sqrt(x) * sqrt(2x), right),            # merged by SymEngine into sqrt(2)·x
+                 (SymEngine.Basic(2)^(3//2) * x, right), # 2√2 x
+                 (1 / (x - s2), right),
+                 (sqrt(SymEngine.Basic(8)) / (x + s2), right),
+                 (1 / (x^2 + s2 * x + 1), right),        # √2 atan(√2 x + 1)
+                 (log(x + s2), right),
+                 (exp(s2 * x), right),
+                 (x * exp(s2 * x), right),
+                 (sin(s2 * x), right),                   # trig over ℚ(i)(√2)
+                 (exp(x) / (exp(x) + s2), right),
+                 (s2 * sqrt(x), right),                  # with a radical of x (10a)
+                 (s2 * sqrt(x) * sqrt(x + 1), right),    # 10d
+                 (s2 * sqrt(3 - x^2), inside))           # 10c through the point (1, √2)
+        for (f, pts) in cases
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        @test_throws Risch.NotElementary Risch.risch_integrate(s2 * exp(x) * sqrt(3 - x^2), x)
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(s2 * s3 * x, x)              # ℚ(√2, √3)
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(cbrt(SymEngine.Basic(2)) * x, x)
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(SymEngine.Basic(6)) * sqrt(3 - x^2), x)
+    end
+
     @testset "$name: parametric Risch DE in towers (step 9d)" begin
         # exact: every basis element (y, c) of y' + f y = Σ cᵢ gᵢ is verified inside `prde`
         Qr = Rational{BigInt}

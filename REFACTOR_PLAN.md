@@ -250,8 +250,20 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
     Refused: three or more radicands, other indices, higher-degree radicands (genus ≥ 1 in
     general, e.g. √x √(x²+1)), radicands never real together; constant radicals such as
     sqrt(2) in the integrand (SymEngine turns √x √(2x) into sqrt(2)·x).
-  * Possible next: constant radicals (sqrt(2) in the integrand, via `constants = QS{d}`);
-    (e.g. √x and √(x+1)); RootSum.
+  * 10e: done, tests green (2026-10-14). Square roots of rational constants in the integrand
+    (sqrt(2), 2^(3/2), sqrt(8)): radicals whose radicand is a constant (`is_const_radicand`) are
+    constants v^(p/2) = v^((p−1)/2)·σ√d (`const_radical_field`); all must share one squarefree d,
+    and the tower is built over ℚ(i)(√d) (= `QSB{d,QI}`, as in 10c: atan, trig, real-form output).
+    `try_substitutions` / `integrate_subst` take the context `cfix` (field, value function):
+    substitutions over ℚ are embedded, over ℚ(i)(√d) kept, over another ℚ(i)(√d') skipped;
+    `euler_substitution(…; pref = d)` first looks for a point (x₀, y₀) with y₀ ∈ ℚ√d
+    (√2·√(3−x²) through (1, √2)). Only constant radicals: the identity substitution x = t.
+    Tests SymEngine only (SimpleExpressions evaluates sqrt(2) eagerly to a Float64).
+    Refused: √2 and √3 together, cube roots of constants, √ of negative constants,
+    √6·√(3−x²) (needs √3 too), 1/(2 + cos(√2 x)) (quadratic residue pair over ℚ(i)(√2)).
+    Note: special-function answers (Ei, erf, erfi) fail in SymEngine (`expinti(::Basic)` etc.
+    undefined), e.g. ∫ exp(√2 x + x²), as already for ∫ exp(x²).
+  * Possible next: RootSum.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 

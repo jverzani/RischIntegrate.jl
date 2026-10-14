@@ -4060,17 +4060,30 @@ to_K0(T::Tower{C}, φ::Frac{UPoly{C}}) where {C} = φ
 function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::Bool = true)
     xk = string(x)
     groups = Any[]                                      # [radicand element, term, lcm of indices]
+    cvs = Q[]                                           # radicands of constant radicals (10e)
     for (e, ut) in rads
         ue = radicand_element(ut, xk)
         ue === nothing && throw(RischNotImplemented(
             "radical of a non-rational expression ($ut): only radicals of rational functions of x are supported"))
+        if is_const_radicand(ue)
+            denominator(e) == 2 || throw(RischNotImplemented(
+                "the constant radical $ut: only square roots of rational constants are supported"))
+            push!(cvs, const_radicand(ue))
+            continue
+        end
         i = findfirst(g -> g[1] == ue, groups)
         i === nothing && (push!(groups, Any[ue, ut, 1]); i = length(groups))
         groups[i][3] = lcm(groups[i][3], Int(denominator(e)))
     end
     b0 = Builder(build === nothing ? auto_build(f, x) : build,
                  lift === nothing ? auto_lift(f, x) : lift, x)
-    length(groups) == 2 && return integrate_two_radicals(f, xk, groups, b0, verify)
+    cfix = const_radical_field(cvs)
+    if isempty(groups)                                  # only constant radicals: x = t
+        tt = frac(xpoly(Q))
+        return try_substitutions(f, xk, Any[(Q, tt, (ue, e) -> throw(RischError("unexpected radicand")), x)],
+                                 b0, verify, cfix)
+    end
+    length(groups) == 2 && return integrate_two_radicals(f, xk, groups, b0, verify, cfix)
     length(groups) > 2 && throw(RischNotImplemented(
         "radicals of more than two different radicands (a curve of genus ≥ 1 in general)"))
     u, uterm, n = groups[1]
@@ -4092,7 +4105,7 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         # over ℚ, or over ℚ(i)(√d) when the conic R² = Q has no small rational point);
         # Q^(k/2) = ψ(t)^k
         cands = Any[(S, φ, k -> ψ^k, tterm)
-                    for (S, φ, ψ, tterm) in euler_substitution(co(N, 3), co(N, 2), co(N, 1), b0, uterm)]
+                    for (S, φ, ψ, tterm) in euler_substitution(co(N, 3), co(N, 2), co(N, 1), b0, uterm; pref = cfix_d(cfix))]
     else
         throw(RischNotImplemented(
             "radicals of $uterm: supported are u^(p/q) with u = (ax+b)/(cx+d), and √ of a quadratic " *
@@ -4104,16 +4117,20 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         isone(denominator(k)) || throw(RischError("radical exponent not a multiple of 1/n"))
         radpow(Int(numerator(k)))
     end
-    try_substitutions(f, xk, Any[(S, φ, radval(radpow), tterm) for (S, φ, radpow, tterm) in cands], b0, verify)
+    try_substitutions(f, xk, Any[(S, φ, radval(radpow), tterm) for (S, φ, radpow, tterm) in cands], b0, verify, cfix)
 end
 
 # Several substitutions (different constant fields, 10c/10d): the first one that is handled
 # decides; a NotElementary from any of them is a proof (each is a rational parametrisation).
-function try_substitutions(f, xk::String, cands, b0::Builder, verify::Bool)
-    err = nothing
+# With constant radicals (10e, `cfix` = (field, value function)) the tower is built over
+# cfix.C; a substitution over another field ℚ(i)(√d') is not combinable (skipped).
+function try_substitutions(f, xk::String, cands, b0::Builder, verify::Bool, cfix = nothing)
+    err = RischNotImplemented("the radicals of x need a constant field other than the one fixed by the constant radicals ($(cfix === nothing ? Q : cfix.C))")
     for (S, φ, radval, tterm) in cands
+        C = cfix === nothing || cfix.C === Q ? (S === Q ? nothing : S) :
+            (S === Q || S === cfix.C) ? cfix.C : continue
         try
-            return integrate_subst(f, xk, S, φ, radval, Builder(b0.build, b0.lift, tterm), verify)
+            return integrate_subst(f, xk, S, φ, radval, Builder(b0.build, b0.lift, tterm), verify, C, cfix)
         catch e
             e isa RischNotImplemented || rethrow()
             err = e
@@ -4124,7 +4141,8 @@ end
 
 # ∫ f dx with x = φ(t) and u^e = radval(u, e) ∈ S(t) for the radicands u ∈ ℚ(x);
 # the answer is printed with t as bt.x
-function integrate_subst(f, xk::String, ::Type{S}, φ, radval, bt::Builder, verify::Bool) where {S}
+function integrate_subst(f, xk::String, ::Type{S}, φ, radval, bt::Builder, verify::Bool,
+                         constants = S === Q ? nothing : S, cfix = nothing) where {S}
     dφ = dx(φ)
     function sub(term, T)
         if !safe_iscall(term)
@@ -4135,14 +4153,53 @@ function integrate_subst(f, xk::String, ::Type{S}, φ, radval, bt::Builder, veri
         e, ut = rp
         ue = radicand_element(ut, xk)
         ue === nothing && throw(RischNotImplemented("radical of a non-rational expression ($ut)"))
+        if is_const_radicand(ue)
+            C = ctype(T)
+            c = cfix.val(const_radicand(ue), e)
+            return frac(UPoly{C}(C[c isa Q ? cfromQ(C, c) : c]))
+        end
         to_K0(T, radval(ue, e))
     end
-    T, el = build_tower(f, xk; subst = sub, constants = S === Q ? nothing : S)
+    T, el = build_tower(f, xk; subst = sub, constants = constants)
     T.subst = nothing
     g = el * liftto(T, to_K0(T, dφ), levelof(T, el))     # f(φ(t), …) φ'(t)
     T, g = minimal(T, g)
     bd = Builder(bt.build, bt.lift, bt.x, T.consts)
     integrate_built(T, g, bd, verify)
+end
+
+# ---------------------------------------------------------------------------
+# Step 10e: square roots of rational constants (sqrt(2), 2^(3/2), sqrt(8), …) as constants
+#
+# All must lie in one field ℚ(√d) (d the squarefree part of the radicands, d > 0); the tower
+# is then built over ℚ(i)(√d) (as in 10c: i for the atan terms, real-form output, sqrt(d)
+# symbolic). v^(p/2) = v^((p-1)/2) √v, √v = σ√d. Radicals of x combine with it when their
+# substitution is over ℚ or over the same field.
+# ---------------------------------------------------------------------------
+is_const_radicand(u) = degree(u.num) <= 0 && degree(u.den) <= 0
+cfix_d(cfix) = cfix === nothing || cfix.C === Q ? 1 : cfix.C.parameters[1]   # d of ℚ(i)(√d)
+const_radicand(u) = isempty(u.num.c) ? Q(0) : u.num.c[1] / u.den.c[1]
+
+# (C, val) with val(v, e) = v^e ∈ C for the constant radicands vs, or nothing if there are none
+function const_radical_field(vs)
+    isempty(vs) && return nothing
+    any(v -> v < 0, vs) && throw(RischNotImplemented(
+        "square roots of negative constants (complex constants in the integrand) are not supported"))
+    ds = unique([sqfree_split(numerator(v) * denominator(v))[2] for v in vs if !iszero(v)])
+    filter!(!isone, ds)
+    length(ds) > 1 && throw(RischNotImplemented(
+        "square roots of constants with different squarefree parts $(Int.(ds)) (would need ℚ(√d₁, √d₂))"))
+    C = isempty(ds) ? Q : QSB{Int(ds[1]),QI}
+    function val(v::Q, e::Q)
+        iszero(v) && return C === Q ? Q(0) : zero(C)
+        p = numerator(2 * e)                            # odd: e = p/2
+        r = v^((p - 1) ÷ 2)
+        sv = rat_sqrt(v)
+        sv !== nothing && return r * sv
+        _, s = qs_field(v)
+        cfromQ(C, r) * s
+    end
+    (C = C, val = val)
 end
 
 # ---------------------------------------------------------------------------
@@ -4154,7 +4211,7 @@ end
 # is a conic). Both orders of the radicands are tried. Radicands of higher degree, other
 # indices, or three or more radicands give curves of genus ≥ 1 in general: refused.
 # ---------------------------------------------------------------------------
-function integrate_two_radicals(f, xk::String, groups, b0::Builder, verify::Bool)
+function integrate_two_radicals(f, xk::String, groups, b0::Builder, verify::Bool, cfix = nothing)
     linear(u) = isone(u.den) && degree(u.num) == 1
     all(g -> g[3] == 2 && linear(g[1]), groups) || throw(RischNotImplemented(
         "radicals of two different radicands: only square roots of two linear polynomials are supported"))
@@ -4166,7 +4223,7 @@ function integrate_two_radicals(f, xk::String, groups, b0::Builder, verify::Bool
         d, c = u2.num.c
         by = Builder(b0.build, b0.lift, mk(b0, :sqrt, t1))   # the variable y = √u₁
         eus = try
-            euler_substitution(c / a, Q(0), d - c * b / a, by, t2)
+            euler_substitution(c / a, Q(0), d - c * b / a, by, t2; pref = cfix_d(cfix))
         catch e
             e isa RischNotImplemented || rethrow()
             continue                                    # √u₂ never real where u₁ ≥ 0
@@ -4185,7 +4242,7 @@ function integrate_two_radicals(f, xk::String, groups, b0::Builder, verify::Bool
     end
     isempty(cands) && throw(RischNotImplemented(
         "√($(groups[1][2])) and √($(groups[2][2])) are never real at the same point"))
-    try_substitutions(f, xk, cands, b0, verify)
+    try_substitutions(f, xk, cands, b0, verify, cfix)
 end
 
 # Euler substitutions for R = √(A x² + B x + C): (S, φ, ψ, t-term) with x = φ(t), R = ψ(t),
@@ -4198,7 +4255,7 @@ end
 # a small rational point (S = ℚ), else S = ℚ(i)(√d) with √A (A > 0, the point at infinity) or
 # y₀ = √Q(x₀) (x₀ = 0 if C > 0, else the vertex). i is there for the atan terms (residues
 # ±i·r); the answer is real (Step 7 real form, sqrt(d) kept symbolic).
-function euler_substitution(A::Q, B::Q, C::Q, b::Builder, uterm)
+function euler_substitution(A::Q, B::Q, C::Q, b::Builder, uterm; pref::Int = 1)
     P = UPoly{Q}
     t = frac(xpoly(Q))
     kq(c) = frac(P(Q[c]))
@@ -4237,6 +4294,15 @@ function euler_substitution(A::Q, B::Q, C::Q, b::Builder, uterm)
     # advance, e.g. ∫ dx/(x √(2x² + 3)) needs √3, not √2): √A (A > 0), the point (0, √C)
     # (C > 0), the vertex (A < 0: the maximum of Q, positive if Q ever is)
     cands = Any[]
+    if pref > 1                     # 10e: the constant field ℚ(i)(√pref) is fixed: a point with y₀ ∈ ℚ √pref
+        for h in 1:12, q in 1:h, p in (h - q, q - h)
+            gcd(p, q) == 1 || continue
+            x0 = Q(p) // Q(q)
+            (Qv(x0) > 0 && rat_sqrt(Qv(x0) / pref) !== nothing) || continue
+            push!(cands, euler_point(qs_field(Qv(x0))..., A, B, x0, b, uterm))
+            break
+        end
+    end
     if A > 0                                            # point at infinity: R = t - √A x
         S, s = qs_field(A)
         PS = UPoly{S}
