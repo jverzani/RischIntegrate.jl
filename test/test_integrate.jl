@@ -474,6 +474,25 @@ function run_tests(x, evalat, name)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(atan(1 / x) + atan(x), x)
     end
 
+    # step AS: asin / acos (and integrands whose only radicals are √(K(1 - u²)), √K rational) by the
+    # substitution u = sin t / cos t; answers in asin(u), acos(u), u and √(1 - u²), valid for -1 < u < 1
+    @testset "$name: asin, acos (step AS)" begin
+        for f in (asin(x), acos(x), x * asin(x), asin(x)^2, asin(x) / sqrt(1 - x^2), x * acos(x),
+                  asin(x) / x^2, exp(asin(x)) / sqrt(1 - x^2), x^2 * asin(x), sqrt(1 - x^2) * asin(x),
+                  1 / sqrt(1 - x^2), sqrt(1 - x^2), x^2 / sqrt(1 - x^2), 1 / sqrt(x - x^2),
+                  sqrt(4 - x^2), x / sqrt(9 - 4x^2), asin(2x - 1))
+            F = Risch.risch_integrate(f, x)
+            for a in (0.15, 0.4, 0.7)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        for (f, s) in ((1 / sqrt(1 - x^2), "asin"), (sqrt(1 - x^2), "asin"), (1 / sqrt(x - x^2), "asin"),
+                       (acos(x), "acos"))
+            @test occursin(s, string(Risch.risch_integrate(f, x)))
+        end
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(asin(x) * acos(x), x)   # needs π
+    end
+
     @testset "$name: awaiting later stages" begin
         # RootSums over ℚ, ℚ(i), ℚ(e) (steps RT, RC, RE) are tested in test_risch.jl; over ℚ(i)(e)
         # (trigonometric input with e) they are not handled

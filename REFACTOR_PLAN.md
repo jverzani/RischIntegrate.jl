@@ -571,8 +571,24 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   (the structure arguments are for exp/log towers). E.g. atan x → x atan x − ½ log(1+x²);
   atan(x)/(1+x²) → atan²x/2; atan(log x)/x → log x atan(log x) − ½ log(1+log²x);
   exp(atan x)/(1+x²) → exp(atan x). Refused: atan(x)/x, atan(x) log x, atan(eˣ) (dilogarithms).
-  Not done: asin, acos (θ' = u'/√(1−u²) is algebraic).
+  asin, acos: step AS.
   Tests: test_integrate.jl "atan (step TA)", both packages (ten integrands, three refusals).
+* **AS: asin, acos by the substitution u = sin t / cos t** (2026-10-14, done, tests green; user request).
+  `risch_integrate` first collects asin/acos subterms (`collect_arcs`); all must be of one kind (mixing
+  needs π) with one linear u = a x + b. `integrate_arcsin` rebuilds the integrand in the user's package
+  with x as t (asin: x ↦ (sin x − b)/a, asin(u) ↦ x, √(1−u²) ↦ cos x, times cos x/a; acos: cos/sin
+  swapped, times −sin x/a; principal branches), integrates it by `risch_integrate` (verified there),
+  and maps the answer back (`back`): x ↦ asin(u), sin(kx), cos(kx), tan(kx) (k ∈ ℤ) and tan(x/2)
+  through (cos t + i sin t)^k computed exactly as A(u) + B(u)·√(1 − u²) (pairs with r² = 1 − u²).
+  Also integrands whose only radicals are q^(k/2), q = K(1 − u²) with √K rational (completing the
+  square, `unit_circle_radicand`) go this way first (fallback: the radical route), and the answer
+  reuses the integrand's radical (√q/√K). `term_rebuild` rebuilds terms through `OPS`; asin, acos added
+  to `OPS`. Correctness: chain rule + the identities sin(asin u) = u, cos(asin u) = √(1−u²) on −1 < u < 1.
+  E.g. asin x → x asin x + √(1−x²); asin²x → (asin²x − 2)x + 2 asin x √(1−x²); 1/√(1−x²) → asin x;
+  √(1−x²) → ½ asin x + ½ x√(1−x²); 1/√(x−x²) → asin(2x−1); √(4−x²) → 2 asin(x/2) + x√(4−x²)/2.
+  Not covered: RootSums after the substitution, √K irrational (√(2−x²) keeps the Euler form),
+  asin of non-linear arguments; like terms are not collected (x² asin x).
+  Tests: test_integrate.jl "asin, acos (step AS)", both packages (17 integrands, forms, refusal).
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -804,7 +820,7 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA (all 2026-10-14).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS (all 2026-10-14).
 >
 > Next steps (open items): nested-radical real forms (1/(x⁵ + 1)), iterated integrals on an
 > `IntegralWithRootSums`.

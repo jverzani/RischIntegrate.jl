@@ -1091,6 +1091,7 @@ Builder(build, lift, x) = Builder(build, lift, x, ConstGen[])
 const OPS = Dict{Symbol,Function}(:+ => +, :* => *, :/ => /, :^ => ^, :exp => exp,
                                   :log => log, :atan => atan, :sqrt => sqrt,
                                   :sin => sin, :cos => cos, :tan => tan, :cot => cot, :sec => sec, :csc => csc,
+                                  :asin => asin, :acos => acos,
                                   # SpecialFunctions (Step 8a): Ei, Si, Ci, erf, erfi
                                   :Ei => expinti, :Si => sinint, :Ci => cosint, :erf => erf, :erfi => erfi)
 mk(b::Builder, name::Symbol, args...) = b.build(OPS[name], args...)
@@ -6081,11 +6082,169 @@ function tan_jump_terms(bd::Builder, bs::Builder, res::RationalIntegral)
 end
 
 # ---------------------------------------------------------------------------
+# Step AS: asin and acos by the substitution u = sin t (u = cos t)
+#
+# All asin(u) (or all acos(u)) in f must share one linear u = a x + b (asin and acos together would
+# need π). The integrand is rebuilt in the user's package with x playing the role of t:
+#   asin:  x ↦ (sin x - b)/a,  asin(u) ↦ x,  √(1 - u²) ↦ cos x,  dx ↦ cos x/a dx
+#   acos:  x ↦ (cos x - b)/a,  acos(u) ↦ x,  √(1 - u²) ↦ sin x,  dx ↦ -sin x/a dx
+# (principal branches: t ∈ (-π/2, π/2) resp. (0, π), where cos t resp. sin t is ≥ 0), integrated by
+# `risch_integrate` (verified there), and the answer mapped back: x ↦ asin(u), and sin(kx), cos(kx),
+# tan(kx) (k ∈ ℤ), tan(x/2) through (cos t + i sin t)^k computed exactly as A(u) + B(u)·√(1 - u²)
+# (with √(1 - u²)² = 1 - u²). By the chain rule the result is an antiderivative for -1 < u < 1.
+# ---------------------------------------------------------------------------
+
+# when every radical of f is q^(k/2) for one quadratic q = K (1 - u²), u = a x + b linear (a > 0), with
+# √K rational (completing the square: K = γ - β²/(4α), α < 0): (arcs list [(:asin, u term,
+# asin(u) term)], √K) for an asin substitution, else nothing
+function unit_circle_radicand(f, x, rads, xk::String; build = nothing, lift = nothing)
+    all(r -> denominator(r[1]) == 2, rads) || return nothing
+    q = radicand_element(rads[1][2], xk)
+    (q !== nothing && isone(q.den) && degree(q.num) == 2) || return nothing
+    all(r -> radicand_element(r[2], xk) == q, rads) || return nothing
+    γ, β, α = q.num.c
+    α < 0 || return nothing
+    K = γ - β^2 / (4α)
+    K > 0 || return nothing
+    sK, a = rat_sqrt(K), rat_sqrt(-α / K)
+    (sK === nothing || a === nothing) && return nothing
+    b = a * β / (2α)                                    # u = a (x + β/(2α))
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    ut = poly_term(bd, UPoly{Q}(Q[b, a]))
+    Any[(:asin, ut, mk(bd, :asin, ut))], sK, rads[1][2]
+end
+
+# [(kind, argument term, whole term)] of the asin / acos subterms of f
+function collect_arcs(f, xk::String, out = Any[])
+    if safe_iscall(f)
+        args = arguments(f)
+        n = opname(operation(f))
+        n in (:asin, :acos) && length(args) == 1 && push!(out, (n, args[1], f))
+        for a in args
+            collect_arcs(a, xk, out)
+        end
+    end
+    out
+end
+
+# rebuild a term with its arguments mapped (operations called as functions, as in `term_value`)
+function term_rebuild(b::Builder, t, args)
+    n = opname(operation(t))
+    fn = haskey(OPS, n) ? OPS[n] : (n === :- ? (-) : operation(t))
+    b.build(fn, args...)
+end
+
+function integrate_arcsin(f, x, arcs; sK::Q = Q(1), radicand = nothing, build = nothing, lift = nothing,
+                          verify::Bool = true)
+    xk = string(x)
+    kind = arcs[1][1]
+    all(a -> a[1] === kind, arcs) || throw(RischNotImplemented(
+        "asin and acos together (acos = π/2 - asin needs π)"))
+    u = radicand_element(arcs[1][2], xk)
+    (u !== nothing && isone(u.den) && degree(u.num) == 1) || throw(RischNotImplemented(
+        "asin/acos of $(arcs[1][2]): only linear arguments a x + b are supported"))
+    all(a -> radicand_element(a[2], xk) == u, arcs) || throw(RischNotImplemented(
+        "asin/acos of different arguments"))
+    a, b = u.num.c[2], u.num.c[1]
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    issin = kind === :asin
+    st, ct = mk(bd, :sin, bd.x), mk(bd, :cos, bd.x)
+    pt, rt = issin ? (st, ct) : (ct, st)                 # u = p(t), √(1 - u²) = r(t)
+    xt = mk(bd, :/, mk(bd, :+, pt, cterm(bd, -b)), cterm(bd, a))
+    one_minus_u2 = frac(UPoly{Q}(Q[1])) - u * u
+    rad = frac(UPoly{Q}(Q[sK^2])) * one_minus_u2         # K (1 - u²) with √K = sK
+    function sub(t)
+        if safe_iscall(t) && !isempty(arguments(t))
+            n = opname(operation(t))
+            n in (:asin, :acos) && return bd.x
+            rp = radical_parts(t)
+            if rp !== nothing && denominator(rp[1]) == 2 && radicand_element(rp[2], xk) == rad
+                e = Int(numerator(rp[1]))               # (K (1 - u²))^(e/2) = (√K)^e r^e
+                re = e == 1 ? rt : mk(bd, :^, rt, bd.lift(e))
+                return isone(sK) ? re : mk(bd, :*, cterm(bd, sK^e), re)
+            end
+            return term_rebuild(bd, t, Any[sub(s) for s in arguments(t)])
+        end
+        string(t) == xk ? xt : t
+    end
+    dxdt = mk(bd, :*, cterm(bd, (issin ? 1 : -1) // a), rt)
+    g = mk(bd, :*, sub(f), dxdt)
+    G = risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    G isa IntegralWithRootSums && throw(RischNotImplemented("a RootSum after an arcsine substitution"))
+    # map back
+    arcterm = arcs[1][3]
+    bu = Builder(bd.build, bd.lift, arcs[1][2])        # polynomials in u printed with the u term
+    P = UPoly{Q}
+    sP = xpoly(Q)
+    rr = P(Q[1, 0, -1])                                 # 1 - u²
+    # √(1 - u²) in the answer: the integrand's own radical √q / √K when there is one
+    rterm = radicand === nothing ? mk(bd, :sqrt, poly_term(bu, rr)) :
+            isone(sK) ? mk(bd, :sqrt, radicand) : mk(bd, :/, mk(bd, :sqrt, radicand), cterm(bd, sK))
+    mul((A1, B1), (A2, B2)) = (A1 * A2 + rr * B1 * B2, A1 * B2 + A2 * B1)
+    sub2((A1, B1), (A2, B2)) = (A1 - A2, B1 - B2)
+    add2((A1, B1), (A2, B2)) = (A1 + A2, B1 + B2)
+    zP = (zero(P), zero(P))
+    ccos, csin = issin ? ((zero(P), one(P)), (sP, zero(P))) : ((sP, zero(P)), (zero(P), one(P)))
+    function cis(k::Int)                                # (cos kt, sin kt) as pairs
+        c, sn = (one(P), zero(P)), zP
+        for _ in 1:abs(k)
+            c, sn = sub2(mul(c, ccos), mul(sn, csin)), add2(mul(c, csin), mul(sn, ccos))
+        end
+        k < 0 ? (c, (-sn[1], -sn[2])) : (c, sn)
+    end
+    function pterm((A, B))
+        ts = Any[]
+        iszero(A) || push!(ts, poly_term(bu, A))
+        if !iszero(B)
+            push!(ts, isone(B) ? rterm : mk(bd, :*, poly_term(bu, B), rterm))
+        end
+        isempty(ts) ? bd.lift(0) : length(ts) == 1 ? ts[1] : mk(bd, :+, ts...)
+    end
+    function back(t)
+        if safe_iscall(t) && !isempty(arguments(t))
+            n = opname(operation(t))
+            args = arguments(t)
+            if n in (:sin, :cos, :tan) && length(args) == 1
+                e = radicand_element(args[1], xk)
+                if e !== nothing && isone(e.den) && degree(e.num) == 1 && iszero(e.num.c[1])
+                    c = e.num.c[2]
+                    if isone(denominator(c))
+                        cc, sn = cis(Int(numerator(c)))
+                        n === :sin && return pterm(sn)
+                        n === :cos && return pterm(cc)
+                        return mk(bd, :/, pterm(sn), pterm(cc))
+                    elseif c == 1 // 2 && n === :tan          # tan(t/2) = sin t/(1 + cos t)
+                        return mk(bd, :/, pterm(csin), mk(bd, :+, bd.lift(1), pterm(ccos)))
+                    end
+                end
+            end
+            return term_rebuild(bd, t, Any[back(s) for s in args])
+        end
+        string(t) == xk ? arcterm : t
+    end
+    back(G)
+end
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = true)
     xk = string(x)
+    arcs = collect_arcs(f, xk)                  # asin / acos: substitution u = sin t / cos t (step AS)
+    isempty(arcs) || return integrate_arcsin(f, x, arcs; build = build, lift = lift, verify = verify)
     rads = collect_radicals(f, xk)
+    if !isempty(rads)
+        # only powers of √(1 - u²), u linear: the substitution u = sin t first (gives asin(u)), step AS
+        a1 = unit_circle_radicand(f, x, rads, xk; build = build, lift = lift)
+        if a1 !== nothing
+            try
+                return integrate_arcsin(f, x, a1[1]; sK = a1[2], radicand = a1[3], build = build, lift = lift,
+                                        verify = verify)
+            catch e
+                e isa RischNotImplemented || rethrow()
+            end
+        end
+    end
     if !isempty(rads)                  # a RootSum is in the substitution variable t: evaluate through x
         F = integrate_radical(f, x, rads; build = build, lift = lift, verify = verify)
         return F isa IntegralWithRootSums ? IntegralWithRootSums(F.elementary, F.rootsums, xk) : F
