@@ -178,7 +178,8 @@ function Base.gcd(a::UPoly{T}, b::UPoly{T}) where {T}
     monic(a)
 end
 
-# s*a + t*b = g, with g monic
+# s*a + t*b = g, with g monic. Remainders are made monic as they appear (s, t scaled along, so
+# s*a + t*b = r stays true): the same result, without coefficient swell over function fields.
 function gcdex(a::UPoly{T}, b::UPoly{T}) where {T}
     P = typeof(a)
     r0, r1 = a, b
@@ -186,9 +187,14 @@ function gcdex(a::UPoly{T}, b::UPoly{T}) where {T}
     t0, t1 = zero(P), one(P)
     while !iszero(r1)
         q, r = divrem(r0, r1)
+        s2, t2 = s0 - q * s1, t0 - q * t1
+        if !iszero(r)
+            l = lc(r)
+            r, s2, t2 = scale_div(r, l), scale_div(s2, l), scale_div(t2, l)
+        end
         r0, r1 = r1, r
-        s0, s1 = s1, s0 - q * s1
-        t0, t1 = t1, t0 - q * t1
+        s0, s1 = s1, s2
+        t0, t1 = t1, t2
     end
     iszero(r0) && return (s0, t0, r0)
     l = lc(r0)
@@ -3427,7 +3433,11 @@ function residue_resultant(D::UPoly{K}, A::UPoly{K}, dD::UPoly{K}) where {K}
         push!(zs, z)
         push!(vs, resultant(D, B))
     end
-    # Newton divided differences, then expand
+    interpolate(zs, vs)
+end
+
+# the polynomial over K through the points (zs[k], vs[k]) (Newton divided differences)
+function interpolate(zs::Vector{K}, vs::Vector{K}) where {K}
     c = copy(vs)
     for l in 2:length(zs), m in length(zs):-1:l
         c[m] = (c[m] - c[m - 1]) / (zs[m] - zs[m - l + 1])
@@ -4955,6 +4965,118 @@ function d5_gcd(m::UPoly{C}, a::Vector{UPoly{C}}, b::Vector{UPoly{C}}) where {C}
 end
 
 # RootSums for an unresolved residue factor (rest, R, D) of `log_part` (D squarefree)
+# --- Lazard–Rioboo–Trager (step LR) ------------------------------------------------
+# W(α, s) = gcd(D, A - α δD) for the roots α of m, without Euclid in (K[z]/m)[s] (whose coefficients
+# swell over function fields such as ℚ(e)). With R(z) = res_s(D, A - z δD) = Π Q_j^j (squarefree),
+# a residue of multiplicity j has deg W = j, and W = S_j(α, s), S_j the subresultant of degree j of
+# D and A - z δD (Bronstein, IntRationalLogPart), after removing the content of S_j that vanishes
+# on Q_j: S_j / Π_k gcd(L_k, Q_j)^k, lc_s(S_j) = Π L_k^k (squarefree). S_j is computed by
+# evaluation at z = 0, 1, 2, … (determinants over K) and interpolation: its coefficients have
+# degree ≤ deg D - j in z. Then reduced mod m_j = gcd(m, Q_j) and made monic (`d5_monic`). Returns
+# [(m′, W)] like `d5_gcd`, or nothing (the caller then uses `d5_gcd`).
+
+# determinant over a field by Bareiss's fraction-free elimination: every division is exact, so
+# entries that are polynomials (e.g. in e, when K = ℚ(e)) stay polynomials of bounded size instead
+# of becoming growing rational functions as in Gaussian elimination
+function field_det(M::Matrix{K}) where {K}
+    M = copy(M)
+    n = size(M, 1)
+    n == 0 && return one(K)
+    sgn = 1
+    prev = one(K)
+    for c in 1:(n - 1)
+        if iszero(M[c, c])
+            r = findfirst(k -> !iszero(M[k, c]), (c + 1):n)
+            r === nothing && return zero(K)
+            r += c
+            M[c, :], M[r, :] = M[r, :], M[c, :]
+            sgn = -sgn
+        end
+        for k in (c + 1):n, l in (c + 1):n
+            M[k, l] = (M[c, c] * M[k, l] - M[k, c] * M[c, l]) / prev
+        end
+        prev = M[c, c]
+    end
+    sgn == 1 ? M[n, n] : -M[n, n]
+end
+
+# coefficients (s^0 … s^j) of the subresultant of degree j of P (degree m) and Q (degree n), j < m
+function subresultant_coeffs(P::UPoly{K}, Q::UPoly{K}, j::Int) where {K}
+    m, n = degree(P), degree(Q)
+    N = m + n - j                                       # powers s^0 … s^(N-1)
+    rows = Vector{K}[]
+    for k in 0:(n - j - 1)
+        r = fill(zero(K), N)
+        for (l, c) in enumerate(P.c)
+            r[k + l] = c
+        end
+        push!(rows, r)
+    end
+    for k in 0:(m - j - 1)
+        r = fill(zero(K), N)
+        for (l, c) in enumerate(Q.c)
+            r[k + l] = c
+        end
+        push!(rows, r)
+    end
+    hi = collect((N - 1):-1:(j + 1))                    # power indices of the fixed columns
+    out = K[]
+    for i in 0:j
+        cols = vcat(hi, i)
+        push!(out, isempty(rows) ? zero(K) : field_det(K[rows[r][c + 1] for r in eachindex(rows), c in cols]))
+    end
+    out
+end
+
+function lrt_logs(m::UPoly{K}, D::UPoly{K}, A::UPoly{K}, dD::UPoly{K}) where {K}
+    P = UPoly{K}
+    mdeg = degree(D)
+    n = max(length(A.c), length(dD.c))
+    ai(k) = k <= length(A.c) ? A.c[k] : zero(K)
+    di(k) = k <= length(dD.c) ? dD.c[k] : zero(K)
+    Bat(z) = P(K[ai(k) - z * di(k) for k in 1:n])
+    Rz = residue_resultant(D, A, dD)
+    out = Tuple{P,Vector{P}}[]
+    covered = one(P)
+    for (Qj, j) in squarefree(Rz)
+        mj = gcd(monic(m), Qj)
+        degree(mj) > 0 || continue
+        covered = covered * mj
+        if j == mdeg
+            S = P[P(K[c]) for c in D.c]
+        elseif j > mdeg
+            return nothing
+        else
+            zs, vals = K[], Vector{K}[]
+            t = 0
+            while length(zs) <= mdeg - j
+                z = t * one(K)
+                t += 1
+                B = Bat(z)
+                length(B.c) == n || continue
+                push!(zs, z)
+                push!(vals, subresultant_coeffs(D, B, j))
+            end
+            S = P[interpolate(zs, K[v[i] for v in vals]) for i in 1:(j + 1)]
+            for (L, k) in squarefree(S[end])            # content vanishing on Q_j
+                g = gcd(L, Qj)
+                degree(g) > 0 || continue
+                gk = g^k
+                for l in eachindex(S)
+                    q, r = divrem(S[l], gk)
+                    iszero(r) || return nothing
+                    S[l] = q
+                end
+            end
+        end
+        for (m2, W) in d5_monic(mj, S)
+            length(W) == j + 1 || return nothing
+            push!(out, (m2, W))
+        end
+    end
+    degree(covered) == degree(m) ? out : nothing
+end
+
 function root_sums(rest::UPoly{C}, R::UPoly{C}, D::UPoly{C}, var::String; arg = nothing) where {C}
     P = UPoly{C}
     dD = deriv(D)
@@ -4964,7 +5086,8 @@ function root_sums(rest::UPoly{C}, R::UPoly{C}, D::UPoly{C}, var::String; arg = 
     a = P[P(C[c]) for c in D.c]
     b = P[P(C[ri(i), -di(i)]) for i in 1:n]             # R - z D'
     out = RootSum{C}[]
-    for (m, W) in d5_gcd(monic(rest), a, b)
+    lr = lrt_logs(monic(rest), D, R, dD)
+    for (m, W) in (lr === nothing ? d5_gcd(monic(rest), a, b) : lr)
         length(W) >= 2 || throw(RischError("RootSum: trivial gcd for a residue factor"))
         push!(out, RootSum{C}(m, W, var, arg))
     end
@@ -5130,7 +5253,8 @@ function tower_root_sums(T::Tower{C}, i::Int, A::UPoly{K}, D::UPoly{K}, dD::UPol
     a = P[P(K[c]) for c in D.c]
     b = P[P(K[ai(k), -di(k)]) for k in 1:n]             # A - z δD
     out = Any[]
-    for (m, W) in d5_gcd(mK, a, b)
+    lr = lrt_logs(mK, D, A, dD)
+    for (m, W) in (lr === nothing ? d5_gcd(mK, a, b) : lr)
         length(W) >= 2 || throw(RischError("RootSum: trivial gcd for a residue factor"))
         cs = C[]
         for c in m.c

@@ -67,6 +67,22 @@ end
     @test any(p -> p[1] == poly(-1, 1) && p[2] == a, out)              # z = 1: b ≡ 0, gcd = a
     @test Risch.power_sums(poly(-1, 0, 0, 1)) == Q[3, 0, 0]            # z³ - 1
     @test Risch.power_sums(poly(2, -3, 1)) == Q[2, 3]                  # roots 1, 2
+    # Lazard–Rioboo–Trager (step LR): W from subresultants, also for a residue shared by two roots
+    # (x/(x⁶+x²+1): residues 1/(2(3y²+1)) at y³+y+1 = 0, y = x², so deg W = 2)
+    for (A, D, degW) in ((poly(1), poly(1, 1, 0, 1), 1), (poly(1), poly(2, 0, 0, 0, 1), 1),
+                         (poly(0, 1), poly(1, 0, 1, 0, 0, 0, 1), 2))
+        f = rf(A, D)
+        res = Risch.integrate_rational(f)
+        rest, R, Dd = res.unresolved[1]
+        lr = Risch.lrt_logs(Risch.monic(rest), Dd, R, Risch.deriv(Dd))
+        @test lr !== nothing && all(p -> length(p[2]) == degW + 1, lr)
+        rss = Risch.root_sums(rest, R, Dd, "x")
+        el = Risch.RationalIntegral(res.rational, res.logs, res.atans, Any[], res.quads)
+        @test Risch.derivative_of(el) + sum(Risch.rootsum_derivative(rs) for rs in rss) == f
+    end
+    # Bareiss determinant
+    @test Risch.field_det(Q[2 1 3; 0 4 1; 5 2 0]) == Q(-59)
+    @test Risch.field_det(Q[0 1; 1 0]) == Q(-1)
     # quadratic residue factors are split off over ℚ: only the quartic is left for RootSum
     res = Risch.integrate_rational(rf(poly(1), poly(3, 0, 1) * poly(2, 0, 0, 0, 1)))
     @test [Risch.degree(u[1]) for u in res.unresolved] == [4]

@@ -488,6 +488,24 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   Lazard–Rioboo–Trager (subresultants S_j(z) by evaluation/interpolation in z, then mod R_j).
   Tests: test_trig.jl (TS testset) both packages: four integrands (TermRootSum, no `im`, log(cos²) term
   present or not, continuity, Simpson); test_integrate.jl: the 1/(sin²x+ℯ) refusal removed.
+* **LR: Lazard–Rioboo–Trager for RootSums** (2026-10-14, done, tests green; motivating case not solved).
+  `lrt_logs(m, D, A, dD)` (used by `root_sums` and `tower_root_sums`; falls back to `d5_gcd` on any
+  surprise): R(z) = Π Q_j^j (`squarefree` of `residue_resultant`); for m_j = gcd(m, Q_j), W = S_j(α, s),
+  the degree-j subresultant of D and A − zδD (Bronstein IntRationalLogPart), its content vanishing on
+  Q_j removed (S_j / Π gcd(L_k, Q_j)^k over the squarefree factors L_k of lc_s S_j), reduced mod m_j
+  and made monic (`d5_monic`). S_j by evaluation at z = 0, 1, … (points where A − zδD drops degree are
+  skipped) — `subresultant_coeffs` (Sylvester submatrix determinants, `field_det` = Bareiss,
+  fraction-free) — and `interpolate` (Newton; factored out of `residue_resultant`), degree ≤ deg D − j.
+  `gcdex` now keeps remainders monic too (Bézout cofactors scaled along). Exact checks unchanged.
+  Suite times unchanged (test_trig 43 → 45 s, test_risch 35 → 39 s).
+  Finding: cos⁴x/(sin⁴x+sin x cos³x+ℯ cos⁴x) still impractical: LRT itself 66 s, then
+  `rootsum_derivative` minutes. Over ℚ(e) the residue factor m is not factored, so the residues of the
+  1+s² part share a degree-6 m with the quartic ones; arithmetic mod m has coefficients of ~1200
+  characters. Next: split D before the log part by its content w.r.t. the generators (D as a
+  polynomial in e with coefficients in ℚ[s]: the gcd of those is the e-free factor, here 1+s²),
+  i.e. separate small residue polynomials.
+  Tests: test_risch.jl exact testset: `lrt_logs` for three integrands incl. deg W = 2 (x/(x⁶+x²+1)),
+  `field_det`.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
