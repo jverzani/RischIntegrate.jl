@@ -194,6 +194,35 @@ function run_tests(x, evalat, name)
         @test Risch.rde(T, 1, one1 / X, one1 / (X * X * (X + one1))) === nothing
     end
 
+    @testset "$name: weak normalisation and residue splitting (step 9c)" begin
+        T, t = Risch.build_tower(log(x), string(x))
+        Qr = Rational{BigInt}
+        X0 = Risch.frac(Risch.xpoly(Qr))                  # x at the base
+        k0(c) = Risch.kconst(Qr(c))
+        X = Risch.liftto(T, X0, 1)
+        one1 = one(t)
+        # base level, f with simple poles (rde_base used to refuse these)
+        for (f, y) in ((k0(2) / X0, X0),                   # residue 2: q = x², then plain integration
+                       (one(X0) / (X0 + k0(1)), X0 * X0),  # residue 1 at x = -1
+                       (one(X0) / (k0(2) * X0), X0))       # residue 1/2: weakly normalised already
+            g = Risch.D(T, 0, y) + f * y
+            r = Risch.rde(T, 0, f, g)
+            @test r !== nothing && Risch.D(T, 0, r) + f * r == g
+        end
+        # log level, f with a simple pole at t = log x
+        for (f, y) in ((one1 + (2 * one1 / X) / t, t * t),  # residue 2 at t: q = t², then f̃ = 1
+                       ((one1 / X) / t, one1))              # residue 1: f̃ = 0, z = log x = t
+            g = Risch.D(T, 1, y) + f * y
+            r = Risch.rde(T, 1, f, g)
+            @test r !== nothing && Risch.D(T, 1, r) + f * r == g
+        end
+        # residue (Rothstein–Trager) splitting: exponents 1 and 3 on irreducible quadratics
+        p1, p2 = X0 * X0 + k0(1), X0 * X0 + X0 + k0(1)
+        dp1, dp2 = Risch.D(T, 0, p1), Risch.D(T, 0, p2)
+        @test Risch.logderiv_status(T, 0, dp1 / p1 + k0(3) * dp2 / p2) === :yes
+        @test Risch.logderiv_status(T, 0, dp1 / p1 + k0(1 // 2) * dp2 / p2) === :no
+    end
+
     @testset "$name: decided non-elementary" begin
         # through the new path: c keeps a normal denominator after step 1, so no solution
         @test_throws Risch.NotElementary Risch.risch_integrate(exp(exp(x)) / (exp(x) + 1), x)

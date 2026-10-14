@@ -1790,7 +1790,7 @@ function rde_base(f::Frac{UPoly{C}}, g::Frac{UPoly{C}}) where {C}
     Fn, Df = f.num, f.den
     G, Dg = g.num, g.den
     a = degree(Fn) - degree(Df)
-    a == -1 && throw(RischNotImplemented("RDE with a simple pole of f at infinity"))
+    a == -1 && return :general                          # simple pole of f at infinity (step 9c)
     # denominator bound
     Dn = one(P)
     fparts = squarefree(Df)
@@ -1799,12 +1799,13 @@ function rde_base(f::Frac{UPoly{C}}, g::Frac{UPoly{C}}) where {C}
         for (fi, i) in fparts
             part = gcd(remaining, fi)
             degree(part) > 0 || continue
-            i == 1 && throw(RischNotImplemented("RDE: f has a simple pole (cancellation case)"))
+            i == 1 && return :general                   # simple pole of f (step 9c)
             Dn = Dn * part^max(0, k - i)
             remaining = quo(remaining, part)
         end
         Dn = Dn * remaining^max(0, k - 1)
     end
+    any(i == 1 for (_, i) in fparts) && return :general # simple poles of f elsewhere: weak normalisation
     γ = degree(G) - degree(Dg)
     nup = a >= 0 ? γ - a : max(γ + 1, 0)
     M = nup + degree(Dn)
@@ -1884,7 +1885,8 @@ end
 function rde(T::Tower, m::Int, f, g)
     iszero(g) && return zero(T.Ts[m + 1])
     if m == 0
-        return rde_base(f, g)
+        r = rde_base(f, g)
+        return r === :general ? rde_general(T, 0, f, g) : r
     end
     lv = T.levels[m]
     k = T.Ts[m]
@@ -2020,9 +2022,9 @@ tval(p::UPoly) = iszero(p) ? typemax(Int) ÷ 2 : findfirst(c -> !iszero(c), p.c)
 # t-valuation of an element whose denominator is a power of t
 tval(f::Frac) = iszero(f) ? typemax(Int) ÷ 2 : tval(f.num) - degree(f.den)
 
-# (normal, special) parts of a polynomial in t: special = t^v for exp, 1 for log
+# (normal, special) parts of a polynomial in t: special = t^v for exp, 1 for log and the base (x)
 function split_factor(T::Tower, m::Int, p::UPoly)
-    T.levels[m].kind === :exp || return p, one(p)
+    (m > 0 && T.levels[m].kind === :exp) || return p, one(p)
     v = tval(p)
     st = xpoly(T.Ts[m])^v
     quo(p, st), st
@@ -2031,10 +2033,75 @@ end
 # the element f of K_m as a polynomial in t, or nothing
 as_poly(f::Frac) = isone(f.den) ? f.num : nothing
 
+# the derivation on polynomials in the generator of level m (m = 0: d/dx on C[x])
+polyD(T::Tower, m::Int, p::UPoly) = m == 0 ? deriv(p) : Dp(T, m, p)
+# the coefficient field of the polynomials of level m (C at the base)
+coeff_type(T::Tower, m::Int) = m == 0 ? ctype(T) : T.Ts[m]
+
+# R(z) = res_t(d, A - z dD) ∈ K[z]: its roots are the residues of A/d at the roots of d
+function residue_poly(::Type{K}, d::UPoly, A::UPoly, dD::UPoly) where {K}
+    Kz = Frac{UPoly{K}}
+    n = max(length(A.c), length(dD.c))
+    ai(k) = k <= length(A.c) ? A.c[k] : zero(K)
+    di(k) = k <= length(dD.c) ? dD.c[k] : zero(K)
+    Dz = UPoly{Kz}(Kz[frac(UPoly{K}(K[c])) for c in d.c])
+    Bz = UPoly{Kz}(Kz[frac(UPoly{K}(K[ai(k), -di(k)])) for k in 1:n])
+    r = resultant(Dz, Bz)
+    isone(r.den) || throw(RischError("residue polynomial is not a polynomial"))
+    r.num
+end
+
+# the simple-pole part d1 of the normal denominator of f (level m), and A with f = A/d1 + (no pole at d1)
+function simple_pole_part(T::Tower, m::Int, f)
+    dn, _ = split_factor(T, m, f.den)
+    degree(dn) <= 0 && return nothing
+    g = gcd(dn, deriv(dn))
+    dstar = quo(dn, g)
+    d1 = monic(quo(dstar, gcd(dstar, g)))
+    degree(d1) <= 0 && return nothing
+    s, _, _ = gcdex(quo(f.den, d1), d1)
+    d1, rem(s * f.num, d1)
+end
+
+# positive integer roots of R ∈ k[z] (k = coefficients of level m): through the ℚ-coordinates
+function positive_integer_roots(T::Tower, m::Int, R::UPoly)
+    iszero(R) && throw(RischError("zero residue polynomial"))
+    vs = m == 0 ? cflat_all(ctype(T), R.c) : flat(T, m - 1, R.c)
+    g = zero(UPoly{Q})
+    for j in eachindex(vs[1])
+        g = gcd(g, UPoly{Q}(Q[v[j] for v in vs]))
+    end
+    degree(g) > 0 || return Int[]
+    ns = Int[]
+    for r in rational_roots(g)
+        (isone(denominator(r)) && r > 0) || continue
+        r <= 1000 || throw(RischNotImplemented("weak normalisation with a residue $r > 1000"))
+        push!(ns, Int(numerator(r)))
+    end
+    ns
+end
+
+# Bronstein 6.1, WeakNormalizer: q ∈ k[t] such that f - Dq/q has no simple normal pole with a
+# positive integer residue (then the normal-denominator bound is valid)
+function weak_normalizer(T::Tower, m::Int, f)
+    P = typeof(f.den)
+    sp = simple_pole_part(T, m, f)
+    sp === nothing && return one(P)
+    d1, a = sp
+    dd1 = polyD(T, m, d1)
+    R = residue_poly(coeff_type(T, m), d1, a, dd1)
+    q = one(P)
+    for n in positive_integer_roots(T, m, R)
+        q = q * gcd(a - n * dd1, d1)^n
+    end
+    q
+end
+
 # z ∈ k* (k = K_km) with z'/z = h: (:yes, z), :no or :unknown. Candidates as in
 # `cancellation_exponent` (without w'): z = Π θᵢ^nᵢ (exp generators) Π aᵢ^nᵢ (log arguments)
 # Π qⱼ^eⱼ (normal factors of the denominators of h), integer exponents; z is verified.
 function logderiv_solve(T::Tower, km::Int, h)
+    km < 0 && return iszero(h) ? (:yes, one(h)) : :no     # constants: z' = 0
     K = T.Ts[km + 1]
     iszero(h) && return (:yes, one(K))
     logderiv_shape_ok(T, h) || return :no
@@ -2052,13 +2119,12 @@ function logderiv_solve(T::Tower, km::Int, h)
         push!(gen_is_log, lv.kind === :log)
     end
     ngen = length(cands)
-    qs = Tuple{Int,Any}[]
-    normal_factors!(qs, T, h, levelof(T, h))
-    for (l, q) in unique(qs)
+    qs, exact = factor_candidates(T, Any[h, gen_logderivs(T, km)...])
+    for (l, q) in qs
         push!(cands, lift(D(T, l, q) / q))
         push!(bases, lift(q))
     end
-    coarse = !isempty(qs)
+    coarse = !exact
     r = solve_relation(T, lift(h), cands)
     r === nothing && return coarse ? :unknown : :no
     if !all(x -> isone(denominator(x)), r)
@@ -2143,16 +2209,23 @@ function spde(T::Tower, m::Int, a::UPoly, b::UPoly, c::UPoly, n::Int)
     r0 = s * c
     qd, r = divrem(r0, a)                        # b r + a z = c with deg r < deg a
     z = t * c + qd * b
-    res = spde(T, m, a, b + Dp(T, m, a), z - Dp(T, m, r), n - degree(a))
+    res = spde(T, m, a, b + polyD(T, m, a), z - polyD(T, m, r), n - degree(a))
     res === nothing && return nothing
     b̄, c̄, M, α, β = res
     (b̄, c̄, M, a * α, a * β + r)
 end
 
 function rde_general(T::Tower, m::Int, f, g)
-    lv = T.levels[m]
-    islog = lv.kind === :log
-    k = T.Ts[m]
+    # 0. weak normalisation (step 9c): y = z/q, z' + (f - Dq/q) z = g q
+    q0 = weak_normalizer(T, m, f)
+    if !isone(q0)
+        qF = frac(q0)
+        z = rde_general(T, m, f - frac(polyD(T, m, q0)) / qF, g * qF)
+        return z === nothing ? nothing : z / qF
+    end
+    lv = m == 0 ? nothing : T.levels[m]
+    islog = m == 0 || lv.kind === :log                  # the base behaves as t = x primitive over C
+    k = coeff_type(T, m)
     P = UPoly{k}
     F = T.Ts[m + 1]
     t = xpoly(k)
@@ -2160,13 +2233,11 @@ function rde_general(T::Tower, m::Int, f, g)
     # 1. normal denominator
     dn, _ = split_factor(T, m, f.den)
     en, _ = split_factor(T, m, g.den)
-    any(kk == 1 for (_, kk) in squarefree(dn)) && throw(RischNotImplemented(
-        "Risch DE with simple normal poles in f (needs weak normalisation)"))
     p = gcd(dn, en)
     h = quo(gcd(en, deriv(en)), gcd(p, deriv(p)))
     hF, dnF = frac(h), frac(dn)
     aP = dn * h
-    bF = dnF * hF * f - dnF * frac(Dp(T, m, h))
+    bF = dnF * hF * f - dnF * frac(polyD(T, m, h))
     cF = dnF * hF * hF * g
     nb_, _ = split_factor(T, m, bF.den)                 # denominators must be special
     degree(nb_) > 0 && throw(RischError("RDE: b has a normal denominator after the normal-denominator step"))
@@ -2255,12 +2326,16 @@ end
 # h' + b h = c in k[t], deg h ≤ M; returns h, nothing (no solution) or :unknown
 function poly_rde_reduced(T::Tower, m::Int, b::UPoly, c::UPoly, M::Int)
     P = typeof(b)
-    k = T.Ts[m]
+    k = coeff_type(T, m)
     zk = zero(k)
     iszero(c) && return zero(P)
     M < 0 && return nothing
-    lv = T.levels[m]
-    if degree(b) > 0                                    # no cancellation (Bronstein 6.5)
+    if m == 0 && iszero(b)                              # base: h' = c in C[x]
+        h = integrate_poly(c)
+        return degree(h) <= M ? h : nothing
+    end
+    lv = m == 0 ? nothing : T.levels[m]
+    if degree(b) > 0 || m == 0                          # no cancellation (6.5); at the base also b ∈ C*
         h = zero(P)
         n = M
         while !iszero(c)
@@ -2271,12 +2346,13 @@ function poly_rde_reduced(T::Tower, m::Int, b::UPoly, c::UPoly, M::Int)
             pq = P(cs)
             h = h + pq
             n = mm - 1
-            c = c - Dp(T, m, pq) - b * pq
+            c = c - polyD(T, m, pq) - b * pq
         end
         return h
     end
-    if iszero(b)                                        # h' = c: no new logarithms
-        v = integrate_const(T, m, frac(c))
+    if iszero(b)                                        # h' = c: no new logarithms (log: κ t allowed)
+        v = lv.kind === :log ? integrate_poly_t(T, m, frac(c)) : integrate_const(T, m, frac(c))
+        v isa Symbol && return v
         (v === nothing || !isone(v.den) || degree(v.num) > M) && return nothing
         return v.num
     end
@@ -2314,6 +2390,10 @@ end
 # -lc(b)/lc(a) = m t' + z' with z ∈ k and m ∈ ℤ, t = log u (limited integration, Bronstein 7.2)?
 # Returns the integer m, nothing (no such m) or :unknown.
 function limited_log_multiple(T::Tower, m::Int, α)
+    if m == 0                                           # α ∈ C, t = x: α = m·1 + w' with w' = 0
+        mi = cinteger(α)
+        return mi === nothing ? nothing : Int(numerator(mi))
+    end
     r = try
         integrate_el(T, m - 1, α)
     catch e
@@ -2361,13 +2441,12 @@ function cancellation_exponent(T::Tower, m::Int, f0, wp)
         push!(gen_is_log, lv.kind === :log)
     end
     ngen = length(cands)
-    qs = Tuple{Int,Any}[]
-    normal_factors!(qs, T, f0, levelof(T, f0))
-    normal_factors!(qs, T, wp, levelof(T, wp))
-    for (l, q) in unique(qs)
+    # factors of f0, w' and of the generators' own log-derivatives (e.g. a'/a of a log), refined
+    qs, exact = factor_candidates(T, Any[f0, wp, gen_logderivs(T, km)...])
+    for (l, q) in qs
         push!(cands, lift(D(T, l, q) / q))
     end
-    coarse = !isempty(qs)
+    coarse = !exact
     r = solve_relation(T, lift(f0), K[cands; lift(wp)])
     r === nothing && return coarse ? :unknown : nothing
     s = -r[end]
@@ -2382,38 +2461,134 @@ function cancellation_exponent(T::Tower, m::Int, f0, wp)
     Int(numerator(s))
 end
 
-# squarefree normal factors of the denominators in h (level l), at every level: (level, q)
-function normal_factors!(out, T::Tower, h, l::Int)
-    iszero(h) && return out
-    if l == 0
-        d = h.den
-        degree(d) > 0 || return out
-        rest = quo(d, gcd(d, deriv(d)))
-        CC = eltype(d.c)
-        for r in constant_roots(rest)                   # split off linear factors x - r
-            lin = UPoly{CC}(CC[-r, one(CC)])
-            push!(out, (0, frac(lin)))
-            rest = quo(rest, lin)
-        end
-        degree(rest) > 0 && push!(out, (0, frac(monic(rest))))
-        return out
-    end
-    d = h.den
-    if T.levels[l].kind === :exp                        # θ^v in the denominator is special, not normal
-        v = findfirst(c -> !iszero(c), d.c) - 1
-        v > 0 && (d = quo(d, xpoly(T.Ts[l])^v))
-    end
+# Normal factors (level, q) of the denominators in h (level l), at every level. At h's own top
+# level the simple-pole factors are split by residue (Rothstein–Trager): q_c = gcd(d1, A - c·Dd1)
+# collects the irreducible factors where h has residue c. Lower levels (coefficients of h) are
+# split by rational roots at the base only. Returns `exact`: every group either has a uniform
+# residue in h or is linear (irreducible); otherwise a log-derivative test using these factors
+# may be incomplete, and callers answer :unknown instead of "no".
+function normal_factors!(out, T::Tower, h, l::Int; top::Bool = true)
+    iszero(h) && return true
+    exact = true
+    d, _ = split_factor(T, l, h.den)
     if degree(d) > 0
-        sq = quo(d, gcd(d, deriv(d)))
-        degree(sq) > 0 && push!(out, (l, frac(monic(sq))))
+        for (p, k) in squarefree(d)
+            p = monic(p)
+            exact &= (top && k == 1) ? residue_split!(out, T, l, h, p) : linear_split!(out, T, l, p)
+        end
     end
-    for c in h.num.c
-        normal_factors!(out, T, c, l - 1)
+    if l > 0
+        for c in h.num.c
+            exact &= normal_factors!(out, T, c, l - 1; top = false)
+        end
+        for c in h.den.c
+            exact &= normal_factors!(out, T, c, l - 1; top = false)
+        end
     end
-    for c in h.den.c
-        normal_factors!(out, T, c, l - 1)
+    exact
+end
+
+# rational-root split at the base (linear factors are irreducible); elsewhere only degree 1 is exact
+function linear_split!(out, T::Tower, l::Int, p::UPoly)
+    if l > 0
+        push!(out, (l, frac(p)))
+        return degree(p) == 1
     end
-    out
+    rest = p
+    CC = eltype(p.c)
+    for r in constant_roots(rest)
+        lin = UPoly{CC}(CC[-r, one(CC)])
+        push!(out, (0, frac(lin)))
+        rest = quo(rest, lin)
+    end
+    degree(rest) > 0 || return true
+    push!(out, (0, frac(monic(rest))))
+    degree(rest) == 1
+end
+
+# split the simple factor p of h's denominator (level l) by the residues of h
+function residue_split!(out, T::Tower, l::Int, h, p::UPoly)
+    s, _, _ = gcdex(quo(h.den, p), p)
+    A = rem(s * h.num, p)
+    dP = polyD(T, l, p)
+    K = coeff_type(T, l)
+    R = residue_poly(K, p, A, dP)
+    if degree(R) <= 0
+        push!(out, (l, frac(p)))
+        return degree(p) == 1
+    end
+    Rm = monic(R)
+    CT = ctype(T)
+    cs = CT[]
+    for c in Rm.c                                      # residues must be constants
+        v = l == 0 ? c : dconst_value(T, c)
+        if v === nothing
+            push!(out, (l, frac(p)))
+            return degree(p) == 1
+        end
+        push!(cs, v)
+    end
+    Rc = UPoly{CT}(cs)
+    Rc = quo(Rc, gcd(Rc, deriv(Rc)))
+    rest = p
+    for c in constant_roots(Rc)
+        cl = l == 0 ? c : lconst(T, c, l - 1)
+        gc = gcd(rest, A - scale(cl, dP))
+        degree(gc) > 0 || continue
+        push!(out, (l, frac(monic(gc))))
+        rest = quo(rest, gc)
+    end
+    degree(rest) > 0 || return true
+    push!(out, (l, frac(monic(rest))))
+    degree(rest) == 1
+end
+
+# the element as an element of the lowest level it lies in (inverse of `liftto`)
+function unlift(T::Tower, h)
+    l = levelof(T, h)
+    while l > 0 && isone(h.den) && degree(h.num) <= 0
+        h = isempty(h.num.c) ? zero(T.Ts[l]) : h.num.c[1]
+        l -= 1
+    end
+    h
+end
+
+# the generators' logarithmic derivatives of K_km at their own levels (exp: b', log: a'/a)
+gen_logderivs(T::Tower, km::Int) =
+    Any[lv.kind === :exp ? D(T, i - 1, lv.arg) : lv.dtheta.c[1] for (i, lv) in enumerate(T.levels[1:km])]
+
+# factors of the given elements (each at its own level), refined; and whether they are exact
+function factor_candidates(T::Tower, elems)
+    qs = Tuple{Int,Any}[]
+    exact = true
+    for e in elems
+        u = unlift(T, e)
+        exact &= normal_factors!(qs, T, u, levelof(T, u))
+    end
+    refine_factors(qs), exact
+end
+
+# common refinement of factor lists (same level): replace overlapping q, q' by gcd and cofactors
+function refine_factors(qs)
+    L = unique(qs)
+    changed = true
+    while changed
+        changed = false
+        for i in eachindex(L), j in (i + 1):length(L)
+            (li, fi), (lj, fj) = L[i], L[j]
+            li == lj || continue
+            g = gcd(fi.num, fj.num)
+            degree(g) > 0 || continue
+            new = Tuple{Int,Any}[(li, frac(monic(g)))]
+            a, b = quo(fi.num, g), quo(fj.num, g)
+            degree(a) > 0 && push!(new, (li, frac(monic(a))))
+            degree(b) > 0 && push!(new, (lj, frac(monic(b))))
+            L = unique(vcat([L[x] for x in eachindex(L) if x != i && x != j], new))
+            changed = true
+            break
+        end
+    end
+    L
 end
 
 # ---------------------------------------------------------------------------
