@@ -175,6 +175,25 @@ function run_tests(x, evalat, name)
         end
     end
 
+    @testset "$name: Risch DE cancellation cases (step 9b)" begin
+        # direct calls of the tower RDE y' + f y = g with t = log x and f = ±1/x = z'/z (z ∈ ℚ(x)):
+        # the homogeneous solution 1/z lies in k, so the triangular/degree arguments need z
+        T, t = Risch.build_tower(log(x), string(x))
+        X = Risch.liftto(T, Risch.frac(Risch.xpoly(Rational{BigInt})), 1)
+        one1 = one(t)
+        rhs(f, y) = Risch.D(T, 1, y) + f * y
+        for (f, y) in ((one1 / X, t * t),                  # Laurent path, (x y)' = x g
+                       (-(one1 / X), X * t),               # ∫ z g = log x = t is allowed
+                       (one1 / X, one1 / (t + one1)),      # normal denominator, deg b = deg a
+                       (-(one1 / X), X * t / (t + one1)))
+            g = rhs(f, y)
+            r = Risch.rde(T, 1, f, g)
+            @test r !== nothing && rhs(f, r) == g
+        end
+        # no solution: ∫ x · 1/(x²(x+1)) needs log(x + 1), which is not polynomial in t
+        @test Risch.rde(T, 1, one1 / X, one1 / (X * X * (X + one1))) === nothing
+    end
+
     @testset "$name: decided non-elementary" begin
         # through the new path: c keeps a normal denominator after step 1, so no solution
         @test_throws Risch.NotElementary Risch.risch_integrate(exp(exp(x)) / (exp(x) + 1), x)

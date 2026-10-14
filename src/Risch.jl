@@ -1902,10 +1902,20 @@ function rde(T::Tower, m::Int, f, g)
     if islog
         tp = lv.dtheta.c[1]
         if df == 0                                        # f ∈ k: triangular system of RDEs in k
+            st = logderiv_solve(T, m - 1, fl[0])
+            if st isa Tuple                               # f = z'/z: (z y)' = z g (step 9b)
+                yp = prim_cancel(T, m, st[2], g.num, typemax(Int) ÷ 2)
+                yp isa Symbol && cancellation_undecided()
+                yp === nothing && return nothing
+                return frac(yp)
+            end
             for i in dg:-1:0
                 rhs = get(gl, i, zk) - (i + 1) * get(c, i + 1, zk) * tp
                 ci = rde(T, m - 1, fl[0], rhs)
-                ci === nothing && return nothing
+                if ci === nothing
+                    st === :unknown && cancellation_undecided()
+                    return nothing
+                end
                 iszero(ci) || (c[i] = ci)
             end
         else                                              # deg y = deg g - deg f, algebraic
@@ -2021,16 +2031,24 @@ end
 # the element f of K_m as a polynomial in t, or nothing
 as_poly(f::Frac) = isone(f.den) ? f.num : nothing
 
-# z'/z = h for some z ∈ k* (k = K_km)? :yes / :no / :unknown (same candidates as
-# `cancellation_exponent`, without w')
-function logderiv_status(T::Tower, km::Int, h)
-    iszero(h) && return :yes
+# z ∈ k* (k = K_km) with z'/z = h: (:yes, z), :no or :unknown. Candidates as in
+# `cancellation_exponent` (without w'): z = Π θᵢ^nᵢ (exp generators) Π aᵢ^nᵢ (log arguments)
+# Π qⱼ^eⱼ (normal factors of the denominators of h), integer exponents; z is verified.
+function logderiv_solve(T::Tower, km::Int, h)
     K = T.Ts[km + 1]
+    iszero(h) && return (:yes, one(K))
+    logderiv_shape_ok(T, h) || return :no
     lift(e) = liftto(T, e, km)
-    cands = K[]
+    cands, bases = K[], K[]
     gen_is_log = Bool[]
     for (i, lv) in enumerate(T.levels[1:km])
-        push!(cands, lift(lv.kind === :exp ? D(T, i - 1, lv.arg) : lv.dtheta.c[1]))
+        if lv.kind === :exp
+            push!(cands, lift(D(T, i - 1, lv.arg)))
+            push!(bases, lift(theta(T, i)))
+        else
+            push!(cands, lift(lv.dtheta.c[1]))
+            push!(bases, lift(lv.arg))
+        end
         push!(gen_is_log, lv.kind === :log)
     end
     ngen = length(cands)
@@ -2038,12 +2056,69 @@ function logderiv_status(T::Tower, km::Int, h)
     normal_factors!(qs, T, h, levelof(T, h))
     for (l, q) in unique(qs)
         push!(cands, lift(D(T, l, q) / q))
+        push!(bases, lift(q))
     end
     coarse = !isempty(qs)
     r = solve_relation(T, lift(h), cands)
     r === nothing && return coarse ? :unknown : :no
-    all(x -> isone(denominator(x)), r) && return :yes
-    (coarse || any(gen_is_log[i] && !isone(denominator(r[i])) for i in 1:ngen)) ? :unknown : :no
+    if !all(x -> isone(denominator(x)), r)
+        return (coarse || any(gen_is_log[i] && !isone(denominator(r[i])) for i in 1:ngen)) ? :unknown : :no
+    end
+    z = one(K)
+    for (ρ, bs) in zip(r, bases)
+        iszero(ρ) || (z = z * bs^Int(numerator(ρ)))
+    end
+    D(T, km, z) / z == lift(h) ? (:yes, z) : :unknown
+end
+logderiv_status(T::Tower, km::Int, h) = (r = logderiv_solve(T, km, h); r isa Tuple ? :yes : r)
+
+# a necessary condition for h to be a logarithmic derivative in a tower: in its top generator θ_ℓ,
+# the polynomial part has degree ≤ 0 (θ'/θ = w', δq/q = (deg q) w' + proper for exp; proper for
+# log; lower levels have degree 0), and at an exp level there is no θ^(-v) part
+function logderiv_shape_ok(T::Tower, h)
+    l = levelof(T, h)
+    l == 0 && return true
+    q, _ = divrem(h.num, h.den)
+    degree(q) <= 0 || return false
+    !(T.levels[l].kind === :exp && tval(h.den) > 0)
+end
+
+# v ∈ K_m with D v = h, where the only new logarithm allowed is κ log(u) = κ t (t = θ_m = log u):
+# v, nothing (no such v) or :unknown
+function integrate_poly_t(T::Tower, m::Int, h)
+    r = try
+        integrate_el(T, m, h)
+    catch e
+        e isa NotElementary && return nothing
+        e isa RischNotImplemented && return :unknown
+        rethrow()
+    end
+    any(q -> q isa SpecialTerm, r.quads) && return nothing
+    (isempty(r.atans) && isempty(r.quads)) || return :unknown
+    v = liftto(T, r.v, m)
+    tgt = zero(T.Ts[m + 1])
+    for (cj, wj) in r.logs
+        w = liftto(T, wj, m)
+        tgt = tgt + lconst(T, cj, m) * (D(T, m, w) / w)
+    end
+    iszero(tgt) && return v
+    T.levels[m].kind === :log || return nothing
+    θ = theta(T, m)
+    κ = dconst_value(T, tgt / D(T, m, θ))
+    κ === nothing && return nothing
+    v + lconst(T, κ, m) * θ
+end
+
+# primitive cancellation (Bronstein 6.6): h' + b h = c in k[t] (t = log u) with b = z'/z, z ∈ k*:
+# (z h)' = z c, so h = (∫ z c)/z, polynomial in t of degree ≤ M. Returns h, nothing or :unknown.
+function prim_cancel(T::Tower, m::Int, z, c::UPoly, M::Int)
+    zm = liftto(T, z, m)
+    w = integrate_poly_t(T, m, zm * frac(c))
+    w isa Symbol && return w
+    w === nothing && return nothing
+    hq = w / zm                                         # + κ/z for any constant κ: degree 0 in t
+    (isone(hq.den) && degree(hq.num) <= M) || return nothing
+    hq.num
 end
 
 # SPDE (Bronstein 6.4): a q' + b q = c, deg q ≤ n, a, b, c ∈ k[t]. Returns (b̄, c̄, M, α, β):
@@ -2135,9 +2210,19 @@ function rde_general(T::Tower, m::Int, f, g)
             mm = limited_log_multiple(T, m, -lc(bP) / lc(aP))
             mm === :unknown && (undecided = true)
             mm isa Int && (n = max(n, mm))
-        else                                            # db == da: -lc(b)/lc(a) a log-derivative?
+        else                                            # db == da: -lc(b)/lc(a) = z'/z? (step 9b)
             n = max(0, dc - db)
-            logderiv_status(T, m - 1, -lc(bP) / lc(aP)) === :no || (undecided = true)
+            st = logderiv_solve(T, m - 1, -lc(bP) / lc(aP))
+            if st === :unknown
+                undecided = true
+            elseif st isa Tuple                         # β = -[t^(da-1)](a z' + b z)/(z lc(a)) = m t' + w'?
+                z = st[2]
+                e = scale(D(T, m - 1, z), aP) + scale(z, bP)
+                ec = da >= 1 && length(e.c) >= da ? e.c[da] : zero(k)
+                mm = limited_log_multiple(T, m, -ec / (z * lc(aP)))
+                mm === :unknown && (undecided = true)
+                mm isa Int && (n = max(n, mm))
+            end
         end
     else
         n = max(0, dc - max(da, db))
@@ -2210,8 +2295,9 @@ function poly_rde_reduced(T::Tower, m::Int, b::UPoly, c::UPoly, M::Int)
         end
         return P(cs)
     end
-    # log: triangular, h_i' + b h_i = c_i - (i+1) h_(i+1) t'
-    st = logderiv_status(T, m - 1, -b0)
+    # log: b = z'/z → (z h)' = z c (step 9b); else triangular, h_i' + b h_i = c_i - (i+1) h_(i+1) t'
+    st = logderiv_solve(T, m - 1, b0)
+    st isa Tuple && return prim_cancel(T, m, st[2], c, M)
     tp = lv.dtheta.c[1]
     for i in M:-1:0
         ci = i + 1 <= length(c.c) ? c.c[i + 1] : zk
@@ -2264,6 +2350,8 @@ cancellation_undecided() = throw(RischNotImplemented(
 # Returns an Int, `nothing` (no cancellation) or :unknown.
 function cancellation_exponent(T::Tower, m::Int, f0, wp)
     km = m - 1
+    # s w' cannot change the top-level shape of f0 when f0 lies higher than w'
+    (levelof(T, f0) > levelof(T, wp) && !logderiv_shape_ok(T, f0)) && return nothing
     K = T.Ts[m]                                         # the type of k = K_km
     lift(e) = liftto(T, e, km)
     cands = K[]
