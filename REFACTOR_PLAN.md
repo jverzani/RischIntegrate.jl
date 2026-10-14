@@ -729,11 +729,32 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 
 ## 6. Message to paste into the new session
 
-> I'm continuing a Julia project: `Risch.jl`, an implementation of the Risch integration algorithm
-> (Bronstein) that works on any symbolic term type implementing TermInterface (`iscall`, `operation`,
-> `arguments`), tested with SimpleExpressions.jl and SymEngine.jl; it also loads SpecialFunctions.jl
-> (Ei, Si, Ci, erf, erfi in answers). I attached `REFACTOR_PLAN.md`,
-> `Risch.jl` and five passing test files. Please read the plan first (step 9d, parametric Risch DE in
-> towers — done 2026-10-14), and after that the possible next steps listed under Progress (step 10),
-> one at a time: radicands needing ℚ(√d) (e.g. √(2 − x²)), several radicands, RootSum, … Julia is
-> installed locally, so run the tests yourself. Keep every result self-verified, and do one plan step at a time.
+> I'm continuing a Julia project at `/Users/jverzani/julia/RischIntegrate`, branch `claude`: an
+> implementation of the Risch integration algorithm (Bronstein) that works on any symbolic term type
+> implementing TermInterface (`iscall`, `operation`, `arguments`), tested with SimpleExpressions.jl and
+> SymEngine.jl; it also loads SpecialFunctions.jl. The single source is `src/Risch.jl`
+> (`test/Risch.jl` is a symlink to it). Run tests from `test/` with `julia --project=. test_X.jl` for
+> the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
+> pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
+> lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR (all 2026-10-14).
+>
+> Next step: split the denominator before the log part over constant fields ℚ(t₁, …) (e, log 2, …),
+> as described at the end of the LR entry. Writing D as a polynomial in the generator with
+> coefficients in ℚ[s], the gcd of those coefficients is the generator-free factor (e.g. 1 + s² in
+> (1 + s²)(s⁴ + s + e)); splitting A/D there by partial fractions gives separate, small residue
+> polynomials. Motivating case: cos⁴x/(sin⁴x + sin x·cos³x + ℯ·cos⁴x) (Bioche tan rule over ℚ(e)),
+> which currently takes minutes because one degree-6 residue polynomial over ℚ(e) mixes both parts.
+> Other open items: nested-radical real forms (1/(x⁵ + 1)), iterated integrals on an
+> `IntegralWithRootSums`, half-angle shortcuts (1/(2 + cos x) keeps the tan(x/2) form).
+>
+> Ground rules: one plan step at a time; every result self-verified exactly by differentiation;
+> `NotElementary` only when the theory decides the case, otherwise `RischNotImplemented`; never
+> evaluate constants numerically in answers (numeric sign decisions that only choose a form are
+> allowed, see TE). Add a Progress entry for each step. Commit only when I ask, named after the step,
+> ending with the Co-Authored-By line. Do not commit or stash my own edits (`README.md`,
+> `src/RischIntegrate.jl`, `test/runtests.jl`, `test/test_apostol.jl`, Emacs backup files), and do not
+> use `git stash` (I edit files while you work; use a temporary `git worktree` to compare against
+> HEAD). Keep scratch files outside the repository. Test pitfalls: helper names must be unique per
+> test file; in Julia `exp(1)` and `log(2)` are floats — use `ℯ` (and SymEngine's `log(Basic(2))`)
+> for symbolic constants; avoid test integrands with real poles when checking continuity.
