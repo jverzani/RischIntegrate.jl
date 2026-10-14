@@ -724,6 +724,101 @@ function quad_factor!(logs, atans, quads, A::CX, D::CX, dD::CX, q::CX)
     true
 end
 
+# Step R2 (real form of a RootSum). An irreducible quartic residue factor q over ℚ whose roots
+# are u ± iv, u′ ± iv′ with u, v, u′, v′ in one real quadratic field ℚ(√d) (then ℚ(α) = ℚ(i, √d)
+# and q = q₁·q₂ over ℚ(√d), qₖ = z² - 2uₖ z + uₖ² + vₖ²). The sum s of a conjugate pair is a root of
+#   S(t) = Π_{i<j} (t - αᵢ - αⱼ),   S² = res_z(q(z), q(t - z)) / (16 q(t/2)),
+# so d is read off a linear or quadratic factor of S over ℚ. Returns candidates (d, q₁), q₁ monic
+# quadratic over ℚ(√d) dividing q (not yet checked for complex roots).
+function conj_pair_factors(q::CX)
+    c = q.c
+    K = CXF
+    lin = UPoly{K}(K[frac(xpoly(Q)), kconst(Q(-1))])            # t - z, as a polynomial in z
+    qtz = foldr((ci, acc) -> acc * lin + UPoly{K}(K[kconst(ci)]), c; init = zero(UPoly{K}))
+    r = resultant(UPoly{K}(K[kconst(ci) for ci in c]), qtz)
+    out = Any[]
+    isone(r.den) || return out
+    S2, r0 = divrem(r.num, CX(Q[16 * c[k] / Q(2)^(k - 1) for k in eachindex(c)]))
+    iszero(r0) || return out
+    for g in factor_Q(quo(S2, gcd(S2, deriv(S2))))
+        degree(g) <= 2 || continue
+        # the quadratic whose roots are in ℚ(√d): for a linear g (s rational) both pairs have sum
+        # s, so q = (z² - sz + p₁)(z² - sz + p₂) and p₁, p₂ are the roots of y² - P y + Pr
+        if degree(g) == 1
+            s = -g.c[1]
+            c[4] == -2s || continue
+            P, Pr = c[3] - s^2, c[1]
+            e0, e1 = Pr, -P                                     # y² + e1 y + e0
+        else
+            e0, e1 = g.c[1], g.c[2]
+        end
+        Δ = e1^2 - 4 * e0
+        Δ > 0 || continue
+        sd, d = sqfree_split(numerator(Δ) * denominator(Δ))
+        (d == 1 || d > 10^9) && continue
+        S = QS{Int(d)}
+        root = S(-e1 / 2, Q(sd) / (2 * denominator(Δ)))         # (-e1 + √Δ)/2
+        qS = toQS(S, q)
+        if degree(g) == 1
+            q1 = UPoly{S}(S[root, cfromQ(S, -s), one(S)])
+        else                                                    # q₁ = gcd(q(z), q(s - z))
+            l = UPoly{S}(S[root, -one(S)])
+            q1 = gcd(qS, foldr((ci, acc) -> acc * l + UPoly{S}(S[ci]), qS.c; init = zero(UPoly{S})))
+        end
+        degree(q1) == 2 && iszero(rem(qS, q1)) && push!(out, (Int(d), q1))
+    end
+    out
+end
+
+# log and atan terms over ℚ(√d) for an irreducible quartic residue factor q (see above); false if
+# its roots are not of that kind (q then stays a RootSum). Each conjugate pair u ± iv gives, as in
+# `quad_factor!`, with W = gcd(D, A - (u + iv) D') = U + iV, U, V ∈ ℚ(√d)[x]:
+#   u log(U² + V²) + 2v atan(U/V)  (or -2v atan(V/U)).
+# The terms of both pairs (σ-conjugate, σ: √d ↦ -√d) are returned together as one
+# RationalIntegral over ℚ(√d) in `quads`: only their sum has a derivative in ℚ(x).
+function quartic_real!(quads, A::CX, D::CX, dD::CX, q::CX)
+    for (d, q1) in conj_pair_factors(monic(q))
+        S = QS{d}
+        B2 = QSB{d,QI}
+        qS = toQS(S, monic(q))
+        pairs = Tuple{S,S}[]
+        for qk in (q1, quo(qS, q1))
+            u = -qk.c[2] / cfromQ(S, Q(2))
+            v = qs_sqrt(qk.c[1] - u * u)                        # a square in ℚ(√d), d > 0: v² > 0
+            (v === nothing || iszero(v)) && break
+            push!(pairs, (u, v))
+        end
+        length(pairs) == 2 || continue
+        toB2(p::CX) = UPoly{B2}(B2[B2(QI(a, Q(0)), zero(QI)) for a in p.c])
+        logs = Tuple{S,UPoly{S}}[]
+        atans = Tuple{S,Frac{UPoly{S}}}[]
+        for (u, v) in pairs
+            α = B2(QI(u.a, v.a), QI(u.b, v.b))
+            W = gcd(toB2(D), toB2(A) - scale(α, toB2(dD)))
+            U = UPoly{S}(S[S(w.a.re, w.b.re) for w in W.c])
+            V = UPoly{S}(S[S(w.a.im, w.b.im) for w in W.c])
+            iszero(u) || push!(logs, (u, U * U + V * V))
+            if !iszero(U) && !iszero(V)
+                if degree(V) == 0
+                    push!(atans, (2 * v, frac(U, V)))
+                else
+                    push!(atans, (-2 * v, frac(V, U)))
+                end
+            end
+        end
+        push!(quads, RationalIntegral(zero(Frac{UPoly{S}}), logs, atans, Any[]))
+        return true
+    end
+    false
+end
+
+# an element of ℚ(√d)(x) that lies in ℚ(x) (normal form: then every coefficient is rational)
+function qs_down(f::Frac{UPoly{QSB{d,Q}}}) where {d}
+    down(p) = all(c -> iszero(c.b), p.c) ? CX(Q[c.a for c in p.c]) :
+              throw(RischError("real form of a RootSum: derivative not in ℚ(x)"))
+    frac(down(f.num), down(f.den))
+end
+
 function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
     CXl = UPoly{C}
     CXFl = Frac{UPoly{C}}
@@ -759,6 +854,7 @@ function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
         hard = one(CXl)
         for q in (degree(rest) > 2 ? factor_Q(rest) : [rest])
             degree(q) == 2 && quad_factor!(logs, atans, quads, A, D, dD, q) && continue
+            degree(q) == 4 && quartic_real!(quads, A, D, dD, q) && continue
             hard = hard * q
         end
     end
@@ -786,7 +882,9 @@ function derivative_of(res::RationalIntegral{C}) where {C}
         tot = tot + kconst(c) * dx(u) / (one(F) + u * u)
     end
     for q in res.quads
-        if q isa QuadLog      # d/dx [β√d log(W/W̄)] = 2βd (V'U - U'V)/(U² - dV²)
+        if q isa RationalIntegral                    # real form of a quartic RootSum, over ℚ(√d)
+            tot = tot + qs_down(derivative_of(q))
+        elseif q isa QuadLog  # d/dx [β√d log(W/W̄)] = 2βd (V'U - U'V)/(U² - dV²)
             U, V = q.U, q.V
             tot = tot + kconst(2 * q.β * q.d) * frac(deriv(V) * U - deriv(U) * V, U * U - q.d * (V * V))
         else                  # c√e atan(√e u):  c e u'/(1 + e u²);  c√e atan(u/√e):  c e u'/(e + u²)
@@ -1067,7 +1165,9 @@ function to_term(b::Builder, res::RationalIntegral)
         push!(ts, isone(c) ? l : mk(b, :*, cterm(b, c), l))
     end
     for q in res.quads
-        if q isa QuadLog
+        if q isa RationalIntegral
+            push!(ts, to_term(b, q))
+        elseif q isa QuadLog
             r = mk(b, :sqrt, b.lift(q.d))
             top = mk(b, :+, poly_term(b, q.U), mk(b, :*, r, poly_term(b, q.V)))
             bot = mk(b, :+, poly_term(b, q.U), mk(b, :*, b.lift(-1), r, poly_term(b, q.V)))

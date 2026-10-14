@@ -286,9 +286,22 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
     log + atan, or `quad_terms`); only the product of the other factors stays `unresolved`.
     E.g. 1/((x²+3)(x⁴+2)) → √3/33·atan(x/√3) + quartic RootSum; 1/(x⁵+1) → log + quartic RootSum.
     Tests: `factorisation over ℚ` testset, quadratic split-off in the RootSum testset.
-  * **R2** (next): Rioboo / Bronstein §2.8 LogToReal for irreducible factors of degree > 2 with
-    complex roots, where the real and imaginary parts of the roots lie in a field the package can
-    print (ℚ(√d) at least: 1/(x⁴+1) → √2 log/atan answer); otherwise keep the RootSum.
+  * **R2** (2026-10-14, done, tests green): real form for an irreducible quartic residue factor q
+    whose roots u ± iv lie in ℚ(i, √d), d > 0 (`quartic_real!`, called from `log_part` after R1).
+    `conj_pair_factors`: pair sums are the roots of S(t), S² = res_z(q(z), q(t−z)) / 16q(t/2);
+    a linear (then p₁, p₂ from a quadratic over ℚ) or quadratic factor of S gives d and
+    q₁ = z² − 2uz + u² + v² over ℚ(√d) (gcd(q(z), q(s−z)), checked to divide q); v = `qs_sqrt`
+    (u² + v² − u²). Each pair: W = gcd(D, A − (u+iv)D′) over ℚ(i)(√d) = U + iV and, as in
+    `quad_factor!`, u log(U²+V²) ± 2v atan(U/V or V/U). Both pairs go into one
+    `RationalIntegral{QS{d}}` kept in `quads` (only their sum has a derivative in ℚ(x));
+    `derivative_of` maps it back with `qs_down` (error if not in ℚ(x)), `to_term` prints it with
+    sqrt(d). E.g. 1/(x⁴+1) → √2/8 log(x²+√2x+1) − √2/8 log(x²−√2x+1) + √2/4 atan(√2x+1) +
+    √2/4 atan(√2x−1); also 1/(x⁴+9) (√6), 1/(x⁴−x²+1) (√3), 1/(x⁸−1), 1/(x⁶+1).
+    Not covered (stay RootSum): roots needing other fields, e.g. 1/(x⁴+2) (2^(1/4)), 1/(x⁵+1)
+    (Im ζ₅ = √(10+2√5)/4: nested), degree ≥ 6 factors (the octic of 1/(x¹²+1)); atan arguments
+    are rational functions, not Rioboo's polynomial LogToAtan form.
+    Tests: `real form of quartic RootSums (R2)` testset (exact), both packages numerically;
+    `risch_sym_eval` drops roundoff imaginary parts of SymEngine's `N` (as `trig_sym_eval`).
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 

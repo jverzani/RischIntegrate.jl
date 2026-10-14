@@ -41,12 +41,12 @@ end
         @test length(res.atans) == natans
     end
     # irrational residues are reported, not mis-integrated
-    res = Risch.integrate_rational(rf(poly(1), poly(1, 0, 0, 0, 1)))   # 1/(x^4+1)
+    res = Risch.integrate_rational(rf(poly(1), poly(2, 0, 0, 0, 1)))   # 1/(x^4+2)
     @test !isempty(res.unresolved)
 end
 
 @testset "RootSum: residues of degree > 2, verified in the exact field" begin
-    for f in (rf(poly(1), poly(1, 0, 0, 0, 1)),                       # 1/(x⁴+1)
+    for f in (rf(poly(1), poly(2, 0, 0, 0, 1)),                       # 1/(x⁴+2): needs 2^(1/4)
               rf(poly(1), poly(1, 1, 0, 1)),                          # 1/(x³+x+1)
               rf(poly(0, 1), poly(1, 1, 0, 1)^2),                     # x/(x³+x+1)²  (Hermite part too)
               rf(poly(1), poly(-2, 0, 0, 1) * poly(-3, 0, 0, 1)),     # 1/((x³-2)(x³-3))
@@ -73,6 +73,26 @@ end
     @test !isempty(res.quads) || !isempty(res.atans)
     res = Risch.integrate_rational(rf(poly(1), poly(4, 0, 0, 0, 1)))  # 1/(x⁴+4): fully elementary
     @test isempty(res.unresolved) && Risch.check_result(res, rf(poly(1), poly(4, 0, 0, 0, 1)))
+end
+
+@testset "real form of quartic RootSums (R2)" begin
+    y = poly(-1, 1)
+    D4 = y^4 + poly(6) * y^2 + poly(1)                                 # (x-1)⁴ + 6(x-1)² + 1
+    for f in (rf(poly(1), poly(1, 0, 0, 0, 1)),                       # 1/(x⁴+1): ℚ(√2)
+              rf(poly(1, 1), poly(1, 0, 0, 0, 1)),                    # (x+1)/(x⁴+1)
+              rf(poly(1), poly(1, 0, 0, 0, 1)^2),                     # 1/(x⁴+1)²
+              rf(poly(1), poly(9, 0, 0, 0, 1)),                       # 1/(x⁴+9): ℚ(√6)
+              rf(poly(1), poly(1, 0, -1, 0, 1)),                      # 1/(x⁴-x²+1): ℚ(√3)
+              rf(poly(1), poly(-1, 0, 0, 0, 0, 0, 0, 0, 1)),          # 1/(x⁸-1)
+              rf(poly(0, 1) * Risch.deriv(D4), D4))                   # residues 1 ± i(1 ± √2): pair sum rational
+        res = Risch.integrate_rational(f)
+        @test isempty(res.unresolved)
+        @test any(q -> q isa Risch.RationalIntegral, res.quads)
+        @test Risch.check_result(res, f)
+    end
+    # roots not in ℚ(i, √d): stays a RootSum
+    @test !isempty(Risch.integrate_rational(rf(poly(1), poly(2, 0, 0, 0, 1))).unresolved)
+    @test !isempty(Risch.integrate_rational(rf(poly(1), poly(1, 0, 0, 0, 0, 1))).unresolved)   # 1/(x⁵+1)
 end
 
 @testset "factorisation over ℚ" begin
@@ -107,9 +127,18 @@ function run_tests(x, evalat, name)
                 @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5)
             end
         end
+        # quartic residues with roots in ℚ(i, √d): real form with √d (R2)
+        for f in (1/(x^4 + 1), (x + 1)/(x^4 + 1), 1/(x^4 + 9), 1/(x^4 - x^2 + 1), 1/(x^8 - 1))
+            F = Risch.risch_integrate(f, x)
+            @test !(F isa Risch.IntegralWithRootSums)
+            @test occursin("sqrt", string(F))
+            for a in (1.7, 2.6, 4.1)
+                @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5)
+            end
+        end
         # residues algebraic of degree > 2: elementary part + RootSums (verified exactly
         # inside), evaluated numerically by F(a)
-        for f in (1/(x^4 + 1), 1/(x^3 + x + 1), x/(x^3 + x + 1), 1/(x^3 + x + 1)^2,
+        for f in (1/(x^4 + 2), 1/(x^3 + x + 1), x/(x^3 + x + 1), 1/(x^3 + x + 1)^2,
                   1/(x^5 + x + 1), (x^2 + 1)/(x^6 + x + 1), 1/((x^2 + 3)*(x^4 + 2)))
             F = Risch.risch_integrate(f, x)
             @test F isa Risch.IntegralWithRootSums
@@ -124,4 +153,12 @@ end
 simple_x = let; SimpleExpressions.@symbolic x; x; end
 sym_x = let; SymEngine.@vars x; x; end
 run_tests(simple_x, (e, a) -> e isa Function ? e(a) : e, "SimpleExpressions")
-run_tests(sym_x, (e, a) -> Float64(SymEngine.N(SymEngine.subs(e, sym_x => a))), "SymEngine")
+# SymEngine may evaluate a real answer (atan, log with sqrt(2) inside) with a roundoff-size
+# imaginary part; drop only that (as `trig_sym_eval` in test_trig.jl)
+function risch_sym_eval(e, a)
+    z = SymEngine.N(SymEngine.subs(e, sym_x => a))
+    z isa Complex || return Float64(z)
+    w = ComplexF64(z)
+    abs(imag(w)) <= 1e-10 * max(1.0, abs(w)) ? real(w) : w
+end
+run_tests(sym_x, risch_sym_eval, "SymEngine")
