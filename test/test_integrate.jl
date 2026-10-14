@@ -162,7 +162,22 @@ function run_tests(x, evalat, name)
         end
     end
 
+    @testset "$name: Risch DE with normal denominators in towers (step 9a)" begin
+        fs = (exp(exp(x)) * exp(2x) / (exp(x) + 1)^2,                 # exp(e^x)/(e^x + 1)
+              exp(exp(x)) * exp(x) * (1 / (exp(x) + 2) - 1 / (exp(x) + 2)^2),   # exp(e^x)/(e^x + 2)
+              (1 / (log(x) + 1) - 1 / (x * (log(x) + 1)^2)) * exp(x),           # e^x/(log x + 1)
+              exp(sin(x)) * (cos(x) / (2 + cos(x)) + sin(x) / (2 + cos(x))^2)) # exp(sin x)/(2 + cos x), over ℚ(i)
+        for f in fs
+            F = Risch.risch_integrate(f, x)
+            for a in (1.3, 1.9, 2.6)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+    end
+
     @testset "$name: decided non-elementary" begin
+        # through the new path: c keeps a normal denominator after step 1, so no solution
+        @test_throws Risch.NotElementary Risch.risch_integrate(exp(exp(x)) / (exp(x) + 1), x)
         @test_throws Risch.NotElementary Risch.risch_integrate(log(x) / (x + 1), x)      # dilogarithm
         @test_throws Risch.NotElementary Risch.risch_integrate(1 / (x + log(x)), x)
         @test_throws Risch.NotElementary Risch.risch_integrate(x^x, x)

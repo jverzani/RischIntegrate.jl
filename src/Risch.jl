@@ -1890,6 +1890,8 @@ function rde(T::Tower, m::Int, f, g)
     k = T.Ts[m]
     zk = zero(k)
     islog = lv.kind === :log
+    # normal denominators (or a log-level fraction): the general solver (step 9a)
+    (laurent_shape(T, m, f, islog) && laurent_shape(T, m, g, islog)) || return rde_general(T, m, f, g)
     fl = laurent_of(T, m, f, islog)
     gl = laurent_of(T, m, g, islog)
     isempty(fl) && throw(RischError("RDE with f = 0 is plain integration"))
@@ -1983,6 +1985,268 @@ function rde(T::Tower, m::Int, f, g)
     D(T, m, y) + f * y == g && return y
     undecided && cancellation_undecided()
     nothing
+end
+
+laurent_shape(T::Tower, m::Int, h, polynomial::Bool) =
+    isone(h.den) || (!polynomial && h.den == xpoly(T.Ts[m])^degree(h.den))
+
+# ---------------------------------------------------------------------------
+# Step 9a: the Risch DE  y' + f y = g  in K_m = k(t) with arbitrary denominators
+# (Bronstein ch. 6), when the Laurent-shaped solver above does not apply.
+#   1. normal denominator (6.1): h = gcd(e, ∂e)/gcd(p, ∂p) (e = normal part of den g,
+#      p = gcd(normal part of den f, e)); y = q/h gives a q' + b q = c with a = d_n h,
+#      b = d_n h f - d_n Dh, c = d_n h² g, whose denominators are special (else: no solution).
+#      Valid for weakly normalised f; f = j u' (all callers) has no simple normal poles.
+#   2. special denominator (6.2, exp only): ν_t(q) ≥ n_t, q = r t^(n_t), clear t-powers.
+#   3. degree bound (6.3) for a r' + b r = c in k[t].
+#   4. SPDE (6.4): r = α h + β with h' + b̄ h = c̄, deg h ≤ M.
+#   5. h: deg b̄ > 0 → top-down (6.5, no cancellation); b̄ ∈ k* → decoupled (exp) or
+#      triangular (log) RDEs in k; b̄ = 0 → integration in K_m without new logarithms.
+# Cancellation cases (Bronstein 6.6) are recognised, not solved: if one cannot be excluded
+# and no solution is found, RischNotImplemented is raised instead of "no solution".
+# The candidate is always verified exactly.
+# ---------------------------------------------------------------------------
+tval(p::UPoly) = iszero(p) ? typemax(Int) ÷ 2 : findfirst(c -> !iszero(c), p.c) - 1
+# t-valuation of an element whose denominator is a power of t
+tval(f::Frac) = iszero(f) ? typemax(Int) ÷ 2 : tval(f.num) - degree(f.den)
+
+# (normal, special) parts of a polynomial in t: special = t^v for exp, 1 for log
+function split_factor(T::Tower, m::Int, p::UPoly)
+    T.levels[m].kind === :exp || return p, one(p)
+    v = tval(p)
+    st = xpoly(T.Ts[m])^v
+    quo(p, st), st
+end
+
+# the element f of K_m as a polynomial in t, or nothing
+as_poly(f::Frac) = isone(f.den) ? f.num : nothing
+
+# z'/z = h for some z ∈ k* (k = K_km)? :yes / :no / :unknown (same candidates as
+# `cancellation_exponent`, without w')
+function logderiv_status(T::Tower, km::Int, h)
+    iszero(h) && return :yes
+    K = T.Ts[km + 1]
+    lift(e) = liftto(T, e, km)
+    cands = K[]
+    gen_is_log = Bool[]
+    for (i, lv) in enumerate(T.levels[1:km])
+        push!(cands, lift(lv.kind === :exp ? D(T, i - 1, lv.arg) : lv.dtheta.c[1]))
+        push!(gen_is_log, lv.kind === :log)
+    end
+    ngen = length(cands)
+    qs = Tuple{Int,Any}[]
+    normal_factors!(qs, T, h, levelof(T, h))
+    for (l, q) in unique(qs)
+        push!(cands, lift(D(T, l, q) / q))
+    end
+    coarse = !isempty(qs)
+    r = solve_relation(T, lift(h), cands)
+    r === nothing && return coarse ? :unknown : :no
+    all(x -> isone(denominator(x)), r) && return :yes
+    (coarse || any(gen_is_log[i] && !isone(denominator(r[i])) for i in 1:ngen)) ? :unknown : :no
+end
+
+# SPDE (Bronstein 6.4): a q' + b q = c, deg q ≤ n, a, b, c ∈ k[t]. Returns (b̄, c̄, M, α, β):
+# q = α h + β with h' + b̄ h = c̄, deg h ≤ M; or nothing (no solution).
+function spde(T::Tower, m::Int, a::UPoly, b::UPoly, c::UPoly, n::Int)
+    P = typeof(a)
+    if n < 0
+        return iszero(c) ? (zero(P), zero(P), 0, zero(P), zero(P)) : nothing
+    end
+    if degree(a) == 0
+        ia = inv(a.c[1])
+        return (scale(ia, b), scale(ia, c), n, one(P), zero(P))
+    end
+    g = gcd(a, b)
+    if degree(g) > 0
+        cq, cr = divrem(c, g)
+        iszero(cr) || return nothing
+        a, b, c = quo(a, g), quo(b, g), cq
+        degree(a) == 0 && return spde(T, m, a, b, c, n)
+    end
+    s, t, _ = gcdex(b, a)                       # s b + t a = 1
+    r0 = s * c
+    qd, r = divrem(r0, a)                        # b r + a z = c with deg r < deg a
+    z = t * c + qd * b
+    res = spde(T, m, a, b + Dp(T, m, a), z - Dp(T, m, r), n - degree(a))
+    res === nothing && return nothing
+    b̄, c̄, M, α, β = res
+    (b̄, c̄, M, a * α, a * β + r)
+end
+
+function rde_general(T::Tower, m::Int, f, g)
+    lv = T.levels[m]
+    islog = lv.kind === :log
+    k = T.Ts[m]
+    P = UPoly{k}
+    F = T.Ts[m + 1]
+    t = xpoly(k)
+    undecided = false
+    # 1. normal denominator
+    dn, _ = split_factor(T, m, f.den)
+    en, _ = split_factor(T, m, g.den)
+    any(kk == 1 for (_, kk) in squarefree(dn)) && throw(RischNotImplemented(
+        "Risch DE with simple normal poles in f (needs weak normalisation)"))
+    p = gcd(dn, en)
+    h = quo(gcd(en, deriv(en)), gcd(p, deriv(p)))
+    hF, dnF = frac(h), frac(dn)
+    aP = dn * h
+    bF = dnF * hF * f - dnF * frac(Dp(T, m, h))
+    cF = dnF * hF * hF * g
+    nb_, _ = split_factor(T, m, bF.den)                 # denominators must be special
+    degree(nb_) > 0 && throw(RischError("RDE: b has a normal denominator after the normal-denominator step"))
+    nc_, _ = split_factor(T, m, cF.den)
+    degree(nc_) > 0 && return nothing                   # Bronstein 6.1: then no solution exists
+    # 2. special denominator
+    nt = 0
+    if islog
+        bP, cP = bF.num, cF.num                         # denominators are 1
+    else
+        wp = liftto(T, D(T, m - 1, lv.arg), m)          # w' as an element of K_m
+        nb, nc = tval(bF), tval(cF)
+        lowq = nb < 0 ? nc - nb : min(nc, 0)
+        if nb == 0
+            b0 = bF.num.c[1 + degree(bF.den)]           # coefficient of t^0 (den = t^v)
+            s0 = cancellation_exponent(T, m, b0 / aP.c[1], D(T, m - 1, lv.arg))
+            s0 === :unknown && (undecided = true)
+            s0 isa Int && (lowq = min(lowq, s0))
+        end
+        nt = min(0, lowq)
+        tn = frac(t)^nt
+        b1 = bF + lq(T, Q(nt), m) * wp * frac(aP)
+        c1 = cF / tn
+        N = max(0, -tval(b1), -tval(c1))
+        tN = frac(t^N)
+        aP = aP * t^N
+        bP, cP = as_poly(b1 * tN), as_poly(c1 * tN)
+        (bP === nothing || cP === nothing) && throw(RischError("RDE: special denominator not cleared"))
+    end
+    # 3. degree bound for a r' + b r = c
+    da, db, dc = degree(aP), degree(bP), degree(cP)
+    if islog
+        if iszero(bP)                                   # a r' = c
+            n = max(0, dc - da + 1)
+        elseif db > da
+            n = max(0, dc - db)
+        elseif db < da - 1
+            n = max(0, dc - da + 1)
+        elseif db == da - 1                             # cancellation: -lc(b)/lc(a) = m t' + z'?
+            n = max(0, dc - db)
+            mm = limited_log_multiple(T, m, -lc(bP) / lc(aP))
+            mm === :unknown && (undecided = true)
+            mm isa Int && (n = max(n, mm))
+        else                                            # db == da: -lc(b)/lc(a) a log-derivative?
+            n = max(0, dc - db)
+            logderiv_status(T, m - 1, -lc(bP) / lc(aP)) === :no || (undecided = true)
+        end
+    else
+        n = max(0, dc - max(da, db))
+        if db == da
+            s0 = cancellation_exponent(T, m, lc(bP) / lc(aP), D(T, m - 1, lv.arg))
+            s0 === :unknown && (undecided = true)
+            s0 isa Int && (n = max(n, s0))
+        end
+    end
+    # 4. SPDE, 5. solve h' + b̄ h = c̄
+    y = nothing
+    sp = spde(T, m, aP, bP, cP, n)
+    if sp !== nothing
+        b̄, c̄, M, α, β = sp
+        hsol = poly_rde_reduced(T, m, b̄, c̄, M)
+        if hsol isa Symbol                              # :unknown from a cancellation case
+            undecided = true
+        elseif hsol !== nothing
+            q = α * hsol + β
+            num_, den_ = q, h
+            nt >= 0 ? (num_ = num_ * t^nt) : (den_ = den_ * t^(-nt))
+            y = frac(num_, den_)
+        end
+    end
+    y !== nothing && D(T, m, y) + f * y == g && return y
+    undecided && cancellation_undecided()
+    nothing
+end
+
+# h' + b h = c in k[t], deg h ≤ M; returns h, nothing (no solution) or :unknown
+function poly_rde_reduced(T::Tower, m::Int, b::UPoly, c::UPoly, M::Int)
+    P = typeof(b)
+    k = T.Ts[m]
+    zk = zero(k)
+    iszero(c) && return zero(P)
+    M < 0 && return nothing
+    lv = T.levels[m]
+    if degree(b) > 0                                    # no cancellation (Bronstein 6.5)
+        h = zero(P)
+        n = M
+        while !iszero(c)
+            mm = degree(c) - degree(b)
+            (n < 0 || mm < 0 || mm > n) && return nothing
+            cs = fill(zk, mm + 1)
+            cs[mm + 1] = lc(c) / lc(b)
+            pq = P(cs)
+            h = h + pq
+            n = mm - 1
+            c = c - Dp(T, m, pq) - b * pq
+        end
+        return h
+    end
+    if iszero(b)                                        # h' = c: no new logarithms
+        v = integrate_const(T, m, frac(c))
+        (v === nothing || !isone(v.den) || degree(v.num) > M) && return nothing
+        return v.num
+    end
+    b0 = b.c[1]                                         # b ∈ k*
+    degree(c) > M && return nothing
+    cs = fill(zk, M + 1)
+    if lv.kind === :exp                                 # decoupled: h_i' + (b + i w') h_i = c_i
+        wp = D(T, m - 1, lv.arg)
+        for i in 0:M
+            ci = i + 1 <= length(c.c) ? c.c[i + 1] : zk
+            iszero(ci) && continue
+            fi = b0 + i * wp
+            hi = iszero(fi) ? integrate_const(T, m - 1, ci) : rde(T, m - 1, fi, ci)
+            hi === nothing && return nothing
+            cs[i + 1] = hi
+        end
+        return P(cs)
+    end
+    # log: triangular, h_i' + b h_i = c_i - (i+1) h_(i+1) t'
+    st = logderiv_status(T, m - 1, -b0)
+    tp = lv.dtheta.c[1]
+    for i in M:-1:0
+        ci = i + 1 <= length(c.c) ? c.c[i + 1] : zk
+        rhs = i + 1 <= M ? ci - (i + 1) * cs[i + 2] * tp : ci
+        hi = iszero(rhs) ? zk : rde(T, m - 1, b0, rhs)
+        if hi === nothing
+            return st === :no ? nothing : :unknown
+        end
+        cs[i + 1] = hi
+    end
+    P(cs)
+end
+
+# -lc(b)/lc(a) = m t' + z' with z ∈ k and m ∈ ℤ, t = log u (limited integration, Bronstein 7.2)?
+# Returns the integer m, nothing (no such m) or :unknown.
+function limited_log_multiple(T::Tower, m::Int, α)
+    r = try
+        integrate_el(T, m - 1, α)
+    catch e
+        e isa NotElementary && return nothing
+        e isa RischNotImplemented && return :unknown
+        rethrow()
+    end
+    any(q -> q isa SpecialTerm, r.quads) && return nothing   # ∫α is not elementary at all
+    (isempty(r.atans) && isempty(r.quads)) || return :unknown
+    K = T.Ts[m]
+    tgt = zero(K)
+    for (cj, wj) in r.logs
+        tgt = tgt + lconst(T, cj, m - 1) * (D(T, m - 1, wj) / wj)
+    end
+    iszero(tgt) && return 0
+    cv = dconst_value(T, tgt / T.levels[m].dtheta.c[1])
+    cv === nothing && return nothing
+    mi = cinteger(cv)
+    mi === nothing ? nothing : Int(numerator(mi))
 end
 
 cancellation_undecided() = throw(RischNotImplemented(
