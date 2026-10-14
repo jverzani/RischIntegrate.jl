@@ -205,6 +205,19 @@ function run_tests(x, evalat, name)
             end
         end
         @test_throws Risch.NotElementary Risch.risch_integrate(log(x)/(x^4 + 1), x)   # dilogarithm
+        # RootSums inside towers (step RT): at a log or exp level, nested, and base-level ones in a
+        # tower; exp levels with Tr(α) ≠ 0 need the correction -Tr(α)·deg W·u
+        for f in (1/(x*(log(x)^4 + 1)), 1/(x*(log(x)^3 + log(x) + 1)), (log(x)^2)/(x*(log(x)^3 + log(x) + 1)^2),
+                  1/(exp(3x) + exp(x) + 1), exp(2x)/(exp(3x) + exp(x) + 1), 1/(exp(3x) + 2exp(2x) + 1),
+                  1/(x*log(x)*(log(log(x))^3 + log(log(x)) + 1)),
+                  exp(x) + 1/(x^3 + x + 1), (exp(x) + 1)/(exp(3x) + exp(x) + 1) + 1/(x^3 - 2))
+            F = Risch.risch_integrate(f, x)
+            @test F isa Risch.IntegralWithRootSums
+            @test occursin("RootSum", string(F))
+            for a in (1.7, 2.6, 3.4)
+                @test isapprox(fd(F, a), evalat(f, a); rtol = 1e-5)
+            end
+        end
     end
 end
 

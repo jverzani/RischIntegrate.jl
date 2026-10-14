@@ -334,6 +334,24 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
     of degree > 2 inside towers are still refused.
     Tests: LogToAtan testset (identity for `log_to_atan_sqrt`); both packages: six tower integrands
     (derivative, continuity on fine grids, no `sqrt(1)`), log(x)/(x⁴+1) not elementary.
+* **RT: RootSums inside towers** (2026-10-14, done, tests green; C = ℚ). In `residue_logs` the
+  residue polynomial left after rational roots is factored (`factor_Q`); quadratic factors go to
+  `tower_quad_terms`, the rest to `tower_root_sums`: `d5_gcd` over K = Kᵢ₋₁ (ℚ is algebraically
+  closed in K, so splits of m are over ℚ, read back with `dconst_value`) gives `TowerRootSum(i, mq,
+  W, deriv)`, W θ-major with coefficients in K[z]/m. Exact derivative (`tower_rootsum_derivative`):
+  norm N = res_z(m, W) over Kᵢ, cofactor N/W mod m, δW = coefficientwise derivation + ∂_θW·Dθ,
+  Tr(z·δW·N/W)/N with `power_sums`. Exp levels: correction Tr(α)·deg W (`rootsum_corr`), e.g.
+  1/(e³ˣ+eˣ+1) = x + RootSum(…). Base-level RootSums inside a tower (exp(x) + 1/(x³+x+1)) become
+  `BaseRootSum` (derivative from `rootsum_derivative`). `check_tower` uses the stored derivatives;
+  `integrate_built` returns `IntegralWithRootSums` with `TermRootSum`s (new, exported: α-coefficients
+  are terms of the user's package, e.g. `RootSum(α -> α*log((4/9 + log(x)) + (31/9)*α + …), …)`) or
+  `RootSum`s (base level, `arg` = bd.x). `F(a)` evaluates both (`rs_value`). The limited-integration
+  rule (coefficients of logⁿ with residues outside C → NotElementary) covers RootSum terms unchanged.
+  Not covered: constant fields other than ℚ (trig towers over ℚ(i): `cos x/(sin³x+sin x+1)` is still
+  `RischNotImplemented`); the real form (R2/R3) at tower levels: 1/(x(log⁴x+1)) is a quartic RootSum
+  in log x, not the √2 log/atan form.
+  Tests: test_risch.jl both packages (nine integrands: log/exp levels, nested log log, base-level in
+  towers, Tr ≠ 0); test_integrate.jl "awaiting later stages" now uses the ℚ(i) case.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 

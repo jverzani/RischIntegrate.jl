@@ -46,7 +46,7 @@ using TermInterface: iscall, operation, arguments
 using SpecialFunctions: expinti, sinint, cosint, erf, erfi
 
 export risch_integrate, integrate_rational, tower_derivative, RischError, RischNotImplemented,
-       NotElementary, RootSum, IntegralWithRootSums
+       NotElementary, RootSum, TermRootSum, IntegralWithRootSums
 
 const Q = Rational{BigInt}
 
@@ -3460,13 +3460,21 @@ function residue_logs(T::Tower, i::Int, A::UPoly, D::UPoly)
         degree(W) > 0 && push!(out, (a, W))
         rest = quo(rest, UPoly{CT}(CT[-a, one(CT)]))
     end
-    if CT === Q && degree(rest) == 2                   # a conjugate pair in ℚ(√d) (Stage 5b)
-        qt = tower_quad_terms(T, i, A, D, dD, rest)
-        if qt !== nothing
-            append!(out, qt[1])
-            append!(quads, qt[2])
-            rest = one(rest)
+    if CT === Q && degree(rest) >= 2
+        hard = one(rest)
+        for q in (degree(rest) > 2 ? factor_Q(rest) : [rest])
+            if degree(q) == 2                          # a conjugate pair in ℚ(√d) (Stage 5b)
+                qt = tower_quad_terms(T, i, A, D, dD, q)
+                if qt !== nothing
+                    append!(out, qt[1])
+                    append!(quads, qt[2])
+                    continue
+                end
+            end
+            hard = hard * q
         end
+        degree(hard) > 0 && append!(quads, tower_root_sums(T, i, A, D, dD, hard))   # step RT
+        rest = one(rest)
     elseif CT === QI && degree(rest) == 2              # a pair α ± β√d over ℚ(i) (Step 7)
         qt = ext_quad_terms(T, i, A, D, dD, rest)
         if qt !== nothing
@@ -3475,8 +3483,8 @@ function residue_logs(T::Tower, i::Int, A::UPoly, D::UPoly)
         end
     end
     degree(rest) > 0 && throw(RischNotImplemented(
-        "the residues are algebraic constants of degree > 2 (or a quadratic pair over a constant " *
-        "field other than ℚ); general algebraic constants / RootSum are not implemented"))
+        "the residues are algebraic constants of degree ≥ 2 over the constant field $CT " *
+        "(RootSum inside towers is implemented over ℚ only)"))
     out, quads
 end
 
@@ -3532,12 +3540,15 @@ end
 function integrate_el(T::Tower, i::Int, f)::ElemIntegral
     if i == 0
         res = integrate_rational(f)
-        isempty(res.unresolved) || throw(RischNotImplemented(
-            "the logarithmic part has irrational residues; algebraic constants are planned for Stage 5"))
+        isempty(res.unresolved) || ctype(T) === Q || throw(RischNotImplemented(
+            "the logarithmic part has residues of degree > 2 over the constant field $(ctype(T))"))
+        quads = Any[tower_quad(q) for q in res.quads]
+        for (rest, R, Dd) in res.unresolved, rs in root_sums(rest, R, Dd, "x")    # step RT
+            push!(quads, BaseRootSum(rs, rootsum_derivative(rs)))
+        end
         return ElemIntegral(res.rational,
                             Tuple{ctype(T),Any}[(c, frac(w)) for (c, w) in res.logs],
-                            Tuple{ctype(T),Any}[(c, u) for (c, u) in res.atans],
-                            Any[tower_quad(q) for q in res.quads])
+                            Tuple{ctype(T),Any}[(c, u) for (c, u) in res.atans], quads)
     end
     lv = T.levels[i]
     K = T.Ts[i]
@@ -3584,6 +3595,7 @@ function integrate_el(T::Tower, i::Int, f)::ElemIntegral
         end
         for q in rq                                     # 5b ratio terms: degree 0, no correction
             q isa ExtQuadPair && (corr += ext_corr(q))
+            q isa TowerRootSum && (corr += rootsum_corr(q))
         end
         append!(quads, rq)
     end
@@ -3654,7 +3666,8 @@ function check_tower(T::Tower, L::Int, res::ElemIntegral, f)
             u, e = liftto(T, q.u, L), lq(T, Q(q.e), L)
             den = q.inverted ? e + u * u : one(u) + e * u * u
             tot = tot + lq(T, q.c * q.e, L) * D(T, L, u) / den
-        elseif q isa SpecialTerm || q isa BaseTerms    # stored exact derivatives (8a, T1)
+        elseif q isa SpecialTerm || q isa BaseTerms || q isa TowerRootSum || q isa BaseRootSum
+            # stored exact derivatives (8a, T1, RT)
             tot = tot + liftto(T, q.deriv, L)
         elseif q isa ExtQuadPair    # a W'/W + σ_d(a W'/W), computed over ℚ(i)(√d), read back in T
             T2 = q.T2
@@ -4736,13 +4749,14 @@ RootSum{C}(poly, W, var) where {C} = RootSum{C}(poly, W, var, nothing)
 """
     IntegralWithRootSums
 
-An antiderivative `elementary + Σ rootsums` (a term of the user's package plus `RootSum`s).
+An antiderivative `elementary + Σ rootsums` (a term of the user's package plus `RootSum`s, or
+`TermRootSum`s for RootSums found inside a tower of exp/log monomials).
 `F(a)` evaluates it numerically at a real `a` and returns the real part (the real part of an
 antiderivative of a real integrand is an antiderivative too).
 """
 struct IntegralWithRootSums
     elementary::Any
-    rootsums::Vector{RootSum}
+    rootsums::Vector{Any}            # RootSum (base level) / TermRootSum (inside a tower)
     var::String
 end
 
@@ -4867,6 +4881,114 @@ function rootsum_derivative(rs::RootSum{C}) where {C}
     frac(num, N)
 end
 
+# --- RootSums inside towers (step RT) ---------------------------------------------
+# At level i (θ = θᵢ, K = Kᵢ₋₁): Σ_{m(α)=0} α log W(α, θ), W = gcd(D, A - α δD) in (K[z]/m)[θ]
+# monic in θ (`d5_gcd` over K: ℚ is algebraically closed in K, so a split of m is over ℚ). W is
+# stored θ-major (W[k]: coefficient of θ^(k-1), a polynomial in z over K, reduced mod m). The
+# exact derivative is computed as for the base (`rootsum_derivative`), with the tower derivation:
+#   δW = Σ_k (δc_k) θ^(k-1) + ∂_θW · Dθ   (z is a constant),   Σ α δW/W = Tr(z·δW·N/W)/N.
+struct TowerRootSum
+    i::Int
+    mq::UPoly{Q}             # m, monic, over ℚ
+    W::Vector{Any}           # Vector{UPoly{K}}
+    deriv::Any               # exact derivative ∈ Kᵢ
+end
+# a base-level RootSum (in x) inside a tower; W in x as in `RootSum`
+struct BaseRootSum
+    rs::RootSum
+    deriv::Any               # ∈ K₀ = ℚ(x)
+end
+# exp correction: Σ_α α·deg_θ W = Tr(α)·deg W
+rootsum_corr(q::TowerRootSum) = -q.mq.c[end - 1] * (length(q.W) - 1)
+
+function tower_root_sums(T::Tower, i::Int, A::UPoly{K}, D::UPoly{K}, dD::UPoly{K}, rest::UPoly{Q}) where {K}
+    P = UPoly{K}
+    mK = P(K[lq(T, c, i - 1) for c in monic(rest).c])
+    n = max(length(A.c), length(dD.c))
+    ai(k) = k <= length(A.c) ? A.c[k] : zero(K)
+    di(k) = k <= length(dD.c) ? dD.c[k] : zero(K)
+    a = P[P(K[c]) for c in D.c]
+    b = P[P(K[ai(k), -di(k)]) for k in 1:n]             # A - z δD
+    out = Any[]
+    for (m, W) in d5_gcd(mK, a, b)
+        length(W) >= 2 || throw(RischError("RootSum: trivial gcd for a residue factor"))
+        cs = Q[]
+        for c in m.c
+            v = dconst_value(T, c)
+            v === nothing && throw(RischNotImplemented("RootSum: a split of the residue polynomial is not over ℚ"))
+            push!(cs, v)
+        end
+        mq = UPoly{Q}(cs)
+        push!(out, TowerRootSum(i, mq, W, tower_rootsum_derivative(T, i, m, mq, W)))
+    end
+    out
+end
+
+function tower_rootsum_derivative(T::Tower, i::Int, m::UPoly{K}, mq::UPoly{Q}, W::Vector) where {K}
+    P = UPoly{K}
+    F = T.Ts[i + 1]                                     # Kᵢ
+    θ = xpoly(K)
+    nz = degree(m)
+    coefz(j) = P(K[j <= length(W[k].c) ? W[k].c[j] : zero(K) for k in eachindex(W)])
+    Wz = UPoly{F}(F[frac(coefz(j)) for j in 1:nz])
+    Nr = resultant(UPoly{F}(F[frac(P(K[c])) for c in m.c]), Wz)       # Π_α W(α, θ)
+    isone(Nr.den) || throw(RischError("RootSum: the norm is not a polynomial"))
+    N = Nr.num
+    rest = P[P(K[c]) for c in N.c]                                    # N = W · cof mod m
+    cof = [zero(P) for _ in 1:(length(rest) - length(W) + 1)]
+    while length(rest) >= length(W)
+        c = rest[end]
+        s = length(rest) - length(W)
+        cof[s + 1] = c
+        for k in eachindex(W)
+            rest[s + k] = rest[s + k] - c * W[k]
+        end
+        rest = zmod_trim(m, rest)
+    end
+    isempty(rest) || throw(RischError("RootSum: W(α, θ) does not divide its norm"))
+    dθ = T.levels[i].dtheta
+    dW = [P(K[D(T, i - 1, e) for e in W[k].c]) for k in eachindex(W)]
+    for k in 2:length(W), (l, e) in enumerate(dθ.c)
+        idx = k - 2 + l
+        while length(dW) < idx
+            push!(dW, zero(P))
+        end
+        dW[idx] = dW[idx] + scale(e * lq(T, Q(k - 1), i - 1), W[k])
+    end
+    dW = zmod_trim(m, dW)
+    zP = P(K[zero(K), one(K)])
+    ps = [lq(T, c, i - 1) for c in power_sums(mq)]
+    num = zero(P)
+    for (a, u) in enumerate(dW), (b, v) in enumerate(cof)
+        num = num + scale(ztrace(ps, rem(zP * u * v, m)), θ^(a + b - 2))
+    end
+    frac(num, N)
+end
+
+"""
+    TermRootSum
+
+`Σ_{Q(α)=0} α log W(α)` with `W(α) = Σ_j coeffs[j] α^(j-1)`, the `coeffs` being terms of the
+user's package (a RootSum found inside a tower, e.g. in log(x)). `rs(a)` evaluates numerically
+at x = a.
+"""
+struct TermRootSum
+    poly::UPoly{Q}
+    coeffs::Vector{Any}
+    var::String
+end
+function TermRootSum(b::Builder, T::Tower, q::TowerRootSum)
+    K = T.Ts[q.i]
+    P = UPoly{K}
+    W = q.W
+    cs = Any[]
+    for j in 1:degree(q.mq)
+        cz = P(K[j <= length(W[k].c) ? W[k].c[j] : zero(K) for k in eachindex(W)])
+        push!(cs, iszero(cz) ? nothing : tower_to_term(b, T, frac(cz)))
+    end
+    TermRootSum(q.mq, cs, string(b.x))
+end
+
 # --- printing and numeric evaluation ---------------------------------------------
 function zpoly_string(p::UPoly, v::String)
     ts = String[]
@@ -4951,9 +5073,27 @@ function term_value(t, xk::String, a)
     ComplexF64(Float64(r))
 end
 
+function Base.show(io::IO, rs::TermRootSum)
+    ts = String[]
+    for (j, c) in enumerate(rs.coeffs)
+        c === nothing && continue
+        push!(ts, j == 1 ? "($c)" : (j == 2 ? "($c)*α" : "($c)*α^$(j - 1)"))
+    end
+    print(io, "RootSum(α -> α*log(", join(ts, " + "), "), ", zpoly_string(rs.poly, "α"), " = 0)")
+end
+function rs_value(rs::TermRootSum, xk::String, a)
+    vs = [c === nothing ? 0.0im : term_value(c, xk, a) for c in rs.coeffs]
+    tot = 0.0im
+    for α in numeric_roots(ComplexF64[cnum(c) for c in rs.poly.c])
+        tot += α * log(foldr((v, acc) -> acc * α + v, vs; init = 0.0im))
+    end
+    tot
+end
+rs_value(rs::RootSum, xk::String, a) = rs(rs.arg === nothing ? a : term_value(rs.arg, xk, a))
+(rs::TermRootSum)(a::Number) = rs_value(rs, rs.var, a)
+
 (F::IntegralWithRootSums)(a::Real) =
-    real(term_value(F.elementary, F.var, a) +
-         sum(rs(rs.arg === nothing ? a : term_value(rs.arg, F.var, a)) for rs in F.rootsums; init = 0.0im))
+    real(term_value(F.elementary, F.var, a) + sum(rs_value(rs, F.var, a) for rs in F.rootsums; init = 0.0im))
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -4991,7 +5131,12 @@ function integrate_built(T::Tower, el, bd::Builder, verify::Bool)
         res = integrate_el(T, L, el)
         verify && !check_tower(T, L, res, el) &&
             throw(RischError("internal check failed: derivative of the result differs from the integrand"))
-        return to_term(bd, T, res)
+        isrs(q) = q isa TowerRootSum || q isa BaseRootSum
+        any(isrs, res.quads) || return to_term(bd, T, res)
+        rss = Any[q isa BaseRootSum ? RootSum{Q}(q.rs.poly, q.rs.W, string(bd.x), bd.x) : TermRootSum(bd, T, q)
+                  for q in res.quads if isrs(q)]
+        el_part = ElemIntegral(res.v, res.logs, res.atans, Any[q for q in res.quads if !isrs(q)])
+        return IntegralWithRootSums(to_term(bd, T, el_part), rss, string(bd.x))
     end
     F = el                              # an element of K_0 = C(x)
     res = integrate_rational(F)

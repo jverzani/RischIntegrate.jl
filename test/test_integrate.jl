@@ -459,7 +459,9 @@ function run_tests(x, evalat, name)
     end
 
     @testset "$name: awaiting later stages" begin
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / (x * (log(x)^4 + 1)), x)  # quartic residues
+        # RootSums inside towers are implemented over ℚ (step RT, tested in test_risch.jl); over
+        # ℚ(i) (trigonometric towers, Step 7) they are not
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(cos(x) / (sin(x)^3 + sin(x) + 1), x)
     end
 end
 
