@@ -518,6 +518,16 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   through the recursive `log_part` calls).
   Tests: test_risch.jl (`tfree_factor`, residue degrees [2, 4]; both packages 1/((x²+1)(x⁴+x+ℯ)));
   test_trig.jl TT list: the ℚ(e) tan-rule case.
+* **ST: SD inside towers** (2026-10-14, done, tests green). `residue_logs` over ℚ(t₁, …):
+  `tower_tfree_factor(T, i, D)` specialises the outermost generator to two rationals (a ring map on
+  the constants via `change_constants`/`map_constants`, only to find a candidate; a bad point is
+  skipped), takes G = gcd of the two images of D, lifts it back (constants in B, `kconst`) and accepts
+  it only if G | D exactly; then A/D = A₁/G + A₂/H and `residue_logs` on each part. Also
+  `tower_rootsum_derivative`: the norm N(θ) = res_z(m, W) is interpolated from resultants over K at
+  θ = 0, 1, … (m monic: Π W(α) at every point) instead of Euclid over Kᵢ (82% of the time before).
+  E.g. 1/(x(log²x+1)(log⁴x+log x+ℯ)), exp(x)/((e²ˣ+1)(e⁴ˣ+eˣ+ℯ)): > 90 s → ~3 s (warm).
+  Tests: test_risch.jl RE list, both packages (derivative now with atol 1e-9 for tiny values);
+  test_risch 44 → 56 s.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -749,11 +759,10 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD (all 2026-10-14).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST (all 2026-10-14).
 >
 > Next steps (open items): nested-radical real forms (1/(x⁵ + 1)), iterated integrals on an
-> `IntegralWithRootSums`, half-angle shortcuts (1/(2 + cos x) keeps the tan(x/2) form), and the SD
-> split also inside towers (see the SD entry).
+> `IntegralWithRootSums`, half-angle shortcuts (1/(2 + cos x) keeps the tan(x/2) form).
 >
 > Ground rules: one plan step at a time; every result self-verified exactly by differentiation;
 > `NotElementary` only when the theory decides the case, otherwise `RischNotImplemented`; never

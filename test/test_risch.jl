@@ -270,12 +270,14 @@ function run_tests(x, evalat, name)
         re_simpson(g, a, b; n = 1000) = (h = (b - a) / n;
             h / 3 * (g(a) + g(b) + sum((isodd(k) ? 4 : 2) * g(a + k * h) for k in 1:(n - 1))))
         for f in (1/(x^3 + x + ℯ), 1/(x*(log(x)^3 + log(x) + ℯ)), exp(x)/(exp(3x) + ℯ*exp(x) + 1),
-                  exp(x) + 1/(x^3 + ℯ), 1/(x^4 + ℯ), 1/((x^2 + 1)*(x^4 + x + ℯ)))
+                  exp(x) + 1/(x^3 + ℯ), 1/(x^4 + ℯ), 1/((x^2 + 1)*(x^4 + x + ℯ)),
+                  # step ST: the e-free factor split off at a log / an exp level
+                  1/(x*(log(x)^2 + 1)*(log(x)^4 + log(x) + ℯ)), exp(x)/((exp(2x) + 1)*(exp(4x) + exp(x) + ℯ)))
             F = Risch.risch_integrate(f, x)
             @test F isa Risch.IntegralWithRootSums
             @test all(rs -> rs isa Risch.TermRootSum, F.rootsums)
             for a in (1.3, 2.1, 2.9)
-                @test isapprox(fd(F, a), evalat(f, a); rtol = 1e-5)
+                @test isapprox(fd(F, a), evalat(f, a); rtol = 1e-5, atol = 1e-9)
             end
             @test isapprox(F(3.0) - F(1.1), re_simpson(t -> evalat(f, t), 1.1, 3.0); atol = 1e-8)
         end

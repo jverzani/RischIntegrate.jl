@@ -3484,7 +3484,49 @@ end
 # [(c, W)] with W = gcd(D, A - c δD) ∈ Kᵢ₋₁[θ] (also the α log(U² - dV²) terms of a quadratic
 # pair: for the exp correction Σ c·deg W they count exactly like the two conjugate logs), and
 # quads the TowerQuadLog / TowerQuadAtan terms of irreducible quadratic residue factors.
+# Step ST (SD inside towers). The factor of D ∈ K[θ] free of the outermost constant generator t
+# (C = B(t)): specialise t to two rationals (a ring map on the constants, only used to find a
+# candidate), take G = gcd of the two images of D, lift it back (its constants lie in B) and accept
+# it only if it divides D exactly. Returns G (monic) or nothing.
+inner_field(::Type{Frac{UPoly{B}}}) where {B} = B
+function tower_tfree_factor(T::Tower{C}, i::Int, D::UPoly) where {C}
+    rational_tfield(C) || return nothing
+    B = inner_field(C)
+    cands = Any[]
+    for t in (2, 3, 5, 7, 11, 13)
+        length(cands) == 2 && break
+        bt = cfromQ(B, Q(t))
+        φ(c) = (d = peval(c.den, bt); iszero(d) ? throw(DomainError(t)) : peval(c.num, bt) / d)
+        try
+            Tt = change_constants(T, B, φ)
+            Kt = Tt.Ts[i]
+            Dt = UPoly{Kt}(Kt[map_constants(T, Tt, c, φ, i - 1) for c in D.c])
+            degree(Dt) == degree(D) && push!(cands, (Tt, Dt))
+        catch e
+            e isa InterruptException && rethrow()     # a bad specialisation point: try the next one
+        end
+    end
+    length(cands) == 2 || return nothing
+    G = gcd(cands[1][2], cands[2][2])
+    (0 < degree(G) < degree(D)) || return nothing
+    K = T.Ts[i]
+    GL = UPoly{K}(K[map_constants(cands[1][1], T, c, kconst, i - 1) for c in G.c])
+    iszero(rem(D, GL)) ? monic(GL) : nothing
+end
+
 function residue_logs(T::Tower, i::Int, A::UPoly, D::UPoly)
+    if rational_tfield(ctype(T)) && !iszero(A)
+        G = tower_tfree_factor(T, i, D)
+        if G !== nothing                       # A/D = A₁/G + A₂/H, residues separately (step ST)
+            H, r = divrem(D, G)
+            iszero(r) || throw(RischError("tower_tfree_factor: G does not divide D"))
+            sH, uG, g = gcdex(H, G)
+            isone(g) || throw(RischError("tower_tfree_factor: G and D/G are not coprime"))
+            o1, q1 = residue_logs(T, i, rem(A * sH, G), G)
+            o2, q2 = residue_logs(T, i, rem(A * uG, H), H)
+            return vcat(o1, o2), vcat(q1, q2)
+        end
+    end
     K = T.Ts[i]
     dD = Dp(T, i, D)
     Rz = residue_resultant(D, A, dD)
@@ -5304,11 +5346,16 @@ function tower_rootsum_derivative(T::Tower, i::Int, m::UPoly{K}, mq::UPoly, W::V
     F = T.Ts[i + 1]                                     # Kᵢ
     θ = xpoly(K)
     nz = degree(m)
-    coefz(j) = P(K[j <= length(W[k].c) ? W[k].c[j] : zero(K) for k in eachindex(W)])
-    Wz = UPoly{F}(F[frac(coefz(j)) for j in 1:nz])
-    Nr = resultant(UPoly{F}(F[frac(P(K[c])) for c in m.c]), Wz)       # Π_α W(α, θ)
-    isone(Nr.den) || throw(RischError("RootSum: the norm is not a polynomial"))
-    N = Nr.num
+    # norm N(θ) = Π_α W(α, θ) = res_z(m, W(z, θ)) (m monic): degree ≤ deg m · deg_θ W in θ, so it is
+    # interpolated from resultants over K at θ = 0, 1, 2, … (Euclid over Kᵢ = K(θ) swells, step ST)
+    θs, vals = K[], K[]
+    for t in 0:(nz * (length(W) - 1))
+        θ0 = t * one(K)
+        Wt = P(K[sum((j <= length(W[k].c) ? W[k].c[j] : zero(K)) * θ0^(k - 1) for k in eachindex(W)) for j in 1:nz])
+        push!(θs, θ0)
+        push!(vals, resultant(m, Wt))
+    end
+    N = interpolate(θs, vals)
     rest = P[P(K[c]) for c in N.c]                                    # N = W · cof mod m
     cof = [zero(P) for _ in 1:(length(rest) - length(W) + 1)]
     while length(rest) >= length(W)
