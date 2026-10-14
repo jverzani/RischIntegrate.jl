@@ -459,9 +459,9 @@ function run_tests(x, evalat, name)
     end
 
     @testset "$name: awaiting later stages" begin
-        # RootSums inside towers are implemented over ℚ (step RT, tested in test_risch.jl); over
-        # ℚ(i) (trigonometric towers, Step 7) they are not
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(cos(x) / (sin(x)^3 + sin(x) + 1), x)
+        # RootSums inside towers (steps RT, RC) are tested in test_risch.jl; residues algebraic over
+        # a transcendental constant field ℚ(e) are not handled
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / (x * (log(x)^3 + log(x) + ℯ)), x)
     end
 end
 

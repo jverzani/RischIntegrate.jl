@@ -365,6 +365,22 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   derivation `D(T, i, f)` (hence `Dn`).
   Tests: test_risch.jl both packages, seven integrands (no RootSum, sqrt present, continuity, derivative);
   the RT list now uses 1/(x(log⁴x+2)) (2^(1/4): stays a RootSum).
+* **RC: RootSums over ℚ(i) in trigonometric towers** (2026-10-14, done, tests green). `residue_logs`
+  (CT = ℚ(i)): after `ext_quad_terms`, a leftover residue factor becomes `tower_root_sums` (now generic
+  in C; no factorisation over ℚ(i), `d5_gcd` copes with reducible m); base-level RootSums of a ℚ(i)
+  tower (sin(x) + 1/(x³+x+1)) as in RT. Exact check in the complex tower as before. Output
+  (`integrate_built`, complex branch): the RootSums stay complex — `complex_term_rootsum` writes each
+  α-coefficient w as R + i·I, R = (w + σw)/2, I = (w − σw)/(2i) (σ: i ↦ −i, θ ↦ 1/θ; `real_term`),
+  stored as (R, I) pairs in a `TermRootSum` whose poly is over ℚ(i) (printed `(a + b*im)`), e.g.
+  cos x/(sin³x + sin x + 1) → RootSum(α -> α*log((−1 − 8/9 sin x + cos 2x + im*(sin 2x + 8/9 cos x)) + …),
+  α³ − 3/31 α − 1/31 = 0). The elementary part is put in real form by `to_term_real`, checked against
+  f − Re(Σ RootSum′) with Re = (d + σd)/2. `F(a)` = real part (`cvalue`, `cnum(::QI)`).
+  Limitation: Re(α log W) jumps by 2π·Im α where W crosses the branch cut of the principal log, so
+  F is an antiderivative only between those points (max step ≈ 1–1.7 on [0, 6] for the examples);
+  a real form (pairing α with the conjugate data, Rioboo-style) would remove the jumps.
+  Tests: test_risch.jl both packages, five trig integrands (derivative away from the jumps);
+  test_integrate.jl "awaiting later stages" now uses residues over ℚ(e): 1/(x(log³x + log x + ℯ))
+  (note: `exp(1)` is a Float64 in Julia; use `ℯ` for the symbolic constant).
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 

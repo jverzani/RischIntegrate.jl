@@ -218,6 +218,17 @@ function run_tests(x, evalat, name)
                 @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5)
             end
         end
+        # RootSums over ℚ(i) in trigonometric towers (step RC): complex coefficients R + i·I in cos/sin;
+        # F(a) is the real part (an antiderivative between the branch-cut jumps of the complex logs)
+        for f in (cos(x)/(sin(x)^3 + sin(x) + 1), 1/(cos(x)^3 + 2), cos(x)/(sin(x)^4 + 1),
+                  sin(x) + 1/(x^3 + x + 1), 1/(sin(x)^3 + 2))
+            F = Risch.risch_integrate(f, x)
+            @test F isa Risch.IntegralWithRootSums
+            @test occursin("RootSum", string(F))
+            for a in (0.3, 1.1, 2.3)
+                @test isapprox(fd(F, a), evalat(f, a); rtol = 1e-5)
+            end
+        end
         # RootSums inside towers (step RT): at a log or exp level, nested, and base-level ones in a
         # tower; exp levels with Tr(α) ≠ 0 need the correction -Tr(α)·deg W·u
         for f in (1/(x*(log(x)^4 + 2)), 1/(x*(log(x)^3 + log(x) + 1)), (log(x)^2)/(x*(log(x)^3 + log(x) + 1)^2),
