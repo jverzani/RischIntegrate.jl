@@ -95,6 +95,26 @@ end
     @test !isempty(Risch.integrate_rational(rf(poly(1), poly(1, 0, 0, 0, 0, 1))).unresolved)   # 1/(x⁵+1)
 end
 
+@testset "Rioboo's LogToAtan: atans of polynomials" begin
+    datan(u) = Risch.dx(u) / (one(u) + u * u)                          # d/dx atan(u)
+    for (A, B) in ((poly(0, -3, 0, 1), poly(-2, 0, 1)),                # Bronstein's example
+                   (poly(1, 2, 0, 1), poly(3, 1)), (poly(-1, 0, 1), poly(0, 0, 0, 2)))
+        ps = Risch.log_to_atan(A, B)
+        @test sum(datan(rf(p, poly(1))) for p in ps) == datan(rf(A, B))
+    end
+    @test Risch.log_to_atan(poly(0, -3, 0, 1), poly(-2, 0, 1)) ==
+          [poly(0, 1 // 2, 0, -3 // 2, 0, 1 // 2), poly(0, 0, 0, 1), poly(0, 1)]
+    # every atan argument is a polynomial (no jumps at the poles of U/V)
+    for f in (rf(poly(6, 0, -3, 0, 1), poly(4, 0, 5, 0, -5, 0, 1)),     # residues ±i, W cubic
+              rf(poly(-3, 0, -1), poly(9, 0, -4, 0, 1)))               # residues ±i/√2·…: QuadAtan
+        res = Risch.integrate_rational(f)
+        @test Risch.check_result(res, f)
+        @test all(a -> isone(a[2].den), res.atans)
+        @test all(q -> !(q isa Risch.QuadAtan) || isone(q.u.den), res.quads)
+        @test !isempty(res.atans) || any(q -> q isa Risch.QuadAtan, res.quads)
+    end
+end
+
 @testset "factorisation over ℚ" begin
     for (f, degs) in ((poly(1, 0, 0, 0, 1), [4]),                      # z⁴+1 irreducible
                       (poly(4, 0, 0, 0, 1), [2, 2]),                   # Sophie Germain
@@ -147,6 +167,25 @@ function run_tests(x, evalat, name)
                 @test isapprox(fd(F, a), evalat(f, a); rtol = 1e-5)
             end
         end
+        # a RootSum in a substitution variable (t = sqrt(1 + x), Euler's t) is evaluated through x
+        for f in (1/((x^2 + 1)*sqrt(x + 1)), 1/((x^3 + x + 1)*sqrt(x^2 + 1)))
+            F = Risch.risch_integrate(f, x)
+            @test F isa Risch.IntegralWithRootSums
+            for a in (0.3, 1.7, 2.6)
+                @test isapprox(fd(F, a), evalat(f, a); rtol = 1e-5)
+            end
+        end
+        # atans of polynomials (Rioboo): the antiderivative is continuous across the zeros of V
+        for f in ((x^4 - 3x^2 + 6)/(x^6 - 5x^4 + 5x^2 + 4), (-x^2 - 3)/(x^4 - 4x^2 + 9))
+            F = Risch.risch_integrate(f, x)
+            vals = [evalat(F, a) for a in -3:0.01:3]
+            @test maximum(abs.(diff(vals))) < 0.1
+            for a in (-2.2, 0.3, 1.7)
+                @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5)
+            end
+        end
+        # the real form of a quartic RootSum is not lifted into towers yet: refused, not a crash
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(exp(x) + 1/(x^4 + 1), x)
     end
 end
 

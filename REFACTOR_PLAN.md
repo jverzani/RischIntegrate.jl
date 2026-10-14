@@ -302,6 +302,22 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
     are rational functions, not Rioboo's polynomial LogToAtan form.
     Tests: `real form of quartic RootSums (R2)` testset (exact), both packages numerically;
     `risch_sym_eval` drops roundoff imaginary parts of SymEngine's `N` (as `trig_sym_eval`).
+  * **R3: atans of polynomials** (2026-10-14, done, tests green). `log_to_atan(A, B)` (Rioboo,
+    Bronstein §2.8): polynomials pⱼ with Σ 2 atan(pⱼ) ≡ 2 atan(A/B), so the antiderivative has no
+    ±π jumps at the real zeros of B. Used at the base level in `quad_factor!` (over ℚ),
+    `quartic_real!` (over ℚ(√d)) and `quad_terms` for d < 0 (over ℚ(√e): A = U is even and
+    B = √e V odd under √e ↦ −√e, so every pⱼ = √e uⱼ, uⱼ ∈ ℚ[x], and the output stays
+    `QuadAtan(2β, e, uⱼ, false)`, which towers already lift). E.g. Bronstein's
+    (x⁴−3x²+6)/(x⁶−5x⁴+5x²+4) → atan((x⁵−3x³+x)/2) + atan(x³) + atan(x) (was −atan((x²−2)/(x³−3x)),
+    jumping by π at 0, ±√3). Not changed: tower levels (`TowerQuadAtan`, polynomials in θ) and the
+    real-form output of Step 7.
+    Fixed with it: (1) R2 terms reaching a tower (exp(x) + 1/(x⁴+1)) raised a MethodError in
+    `tower_quad`; now `RischNotImplemented` (lifting R2 terms into towers is a possible next step).
+    (2) `F(a)` of an `IntegralWithRootSums` from a radical substitution evaluated the RootSum at x
+    instead of t (e.g. t = sqrt(1+x)): `RootSum` has a field `arg` (the term of its variable),
+    `risch_integrate` sets `var` to the integration variable.
+    Tests: `Rioboo's LogToAtan` testset (derivative identity, Bronstein's answer, polynomial
+    arguments); both packages: continuity on [−3, 3], RootSums under substitutions, the refusal.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 

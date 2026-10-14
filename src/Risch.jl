@@ -655,10 +655,35 @@ function sqfree_split(n::BigInt)
     s, (n < 0 ? -d : d)
 end
 
+# Rioboo's LogToAtan (Bronstein §2.8). For A, B ∈ K[x] (K real), B ≠ 0: polynomials p₁, …, pₖ with
+#   Σ 2 atan(pⱼ)  ≡  2 atan(A/B)  ≡  i log((A + iB)/(A - iB))      (equal derivatives)
+# Unlike atan(A/B), which jumps by ±π at the real zeros of B, a sum of atans of polynomials is
+# continuous on the real line. Recursion: B | A gives A/B; deg A < deg B swaps to (-B, A);
+# otherwise B D - A C = G = gcd(A, B) and 2 atan((A D + B C)/G) + LogToAtan(D, C).
+function log_to_atan(A::UPoly{T}, B::UPoly{T}) where {T}
+    out = UPoly{T}[]
+    while true
+        q, r = divrem(A, B)
+        if iszero(r)
+            push!(out, q)
+            return out
+        end
+        if degree(A) < degree(B)
+            A, B = -B, A
+            continue
+        end
+        D, C, G = gcdex(B, -A)
+        p, r = divrem(A * D + B * C, G)
+        iszero(r) || throw(RischError("log_to_atan: G does not divide A D + B C"))
+        push!(out, p)
+        A, B = D, C
+    end
+end
+
 # Residues are the two roots a = α ± β√d of the irreducible quadratic `rest`. With
 # W = gcd(D, A - a D') = U + √d V:   a log W + ā log W̄ is
 #   α log(U² - d V²) + β√d log((U + √d V)/(U - √d V))                 (d > 1)
-#   α log(U² + e V²) - 2β√e atan(√e V/U),   e = -d                     (d < 0)
+#   α log(U² + e V²) + β√e LogToAtan(U, √e V),   e = -d               (d < 0)
 function quad_terms(A::CX, D::CX, dD::CX, rest::CX)
     rest = monic(rest)
     p0, p1 = rest.c[1], rest.c[2]
@@ -682,11 +707,13 @@ function quad_terms(A::CX, D::CX, dD::CX, rest::CX)
         if dd > 0
             push!(quads, QuadLog(β, dd, U, V))
         elseif !iszero(U)
+            # W = U + i√e V: β√e LogToAtan(U, √e V). Every pⱼ is √e uⱼ with uⱼ ∈ ℚ[x] (A even and
+            # B odd under √e ↦ -√e stays so through the recursion), i.e. 2β√e atan(√e uⱼ).
             e = -dd
-            if degree(V) == 0
-                push!(quads, QuadAtan(2 * β, e, frac(U, V), true))
-            else
-                push!(quads, QuadAtan(-2 * β, e, frac(V, U), false))
+            E = QS{e}
+            for p in log_to_atan(UPoly{E}(E[E(c, Q(0)) for c in U.c]), UPoly{E}(E[E(Q(0), c) for c in V.c]))
+                all(c -> iszero(c.a), p.c) || throw(RischError("log_to_atan: unexpected rational part"))
+                push!(quads, QuadAtan(2 * β, e, frac(CX(Q[c.b for c in p.c])), false))
             end
         end
     end
@@ -695,7 +722,7 @@ end
 
 # log and atan terms for one irreducible quadratic residue factor q over ℚ; false if not handled.
 # Residues α ± βi (β rational): with W = gcd(D, A - (α + βi) D') = U + iV,
-#   α log(U² + V²) + 2β atan(U/V) (or -2β atan(V/U));  otherwise `quad_terms` (Stage 5a).
+#   α log(U² + V²) + β LogToAtan(U, V)  (atans of polynomials);  otherwise `quad_terms` (Stage 5a).
 function quad_factor!(logs, atans, quads, A::CX, D::CX, dD::CX, q::CX)
     q = monic(q)
     p0, p1 = q.c[1], q.c[2]
@@ -709,10 +736,8 @@ function quad_factor!(logs, atans, quads, A::CX, D::CX, dD::CX, q::CX)
         V = CX(C[w.im for w in W.c])
         iszero(α) || push!(logs, (α, U * U + V * V))
         if !iszero(U) && !iszero(V)
-            if degree(V) == 0
-                push!(atans, (2 * β, frac(U, V)))
-            else
-                push!(atans, (-2 * β, frac(V, U)))
+            for p in log_to_atan(U, V)              # β LogToAtan(U, V) ≡ 2β atan(U/V)
+                push!(atans, (2 * β, frac(p)))
             end
         end
         return true
@@ -773,7 +798,7 @@ end
 # log and atan terms over ℚ(√d) for an irreducible quartic residue factor q (see above); false if
 # its roots are not of that kind (q then stays a RootSum). Each conjugate pair u ± iv gives, as in
 # `quad_factor!`, with W = gcd(D, A - (u + iv) D') = U + iV, U, V ∈ ℚ(√d)[x]:
-#   u log(U² + V²) + 2v atan(U/V)  (or -2v atan(V/U)).
+#   u log(U² + V²) + v LogToAtan(U, V)  (atans of polynomials).
 # The terms of both pairs (σ-conjugate, σ: √d ↦ -√d) are returned together as one
 # RationalIntegral over ℚ(√d) in `quads`: only their sum has a derivative in ℚ(x).
 function quartic_real!(quads, A::CX, D::CX, dD::CX, q::CX)
@@ -799,10 +824,8 @@ function quartic_real!(quads, A::CX, D::CX, dD::CX, q::CX)
             V = UPoly{S}(S[S(w.a.im, w.b.im) for w in W.c])
             iszero(u) || push!(logs, (u, U * U + V * V))
             if !iszero(U) && !iszero(V)
-                if degree(V) == 0
-                    push!(atans, (2 * v, frac(U, V)))
-                else
-                    push!(atans, (-2 * v, frac(V, U)))
+                for p in log_to_atan(U, V)
+                    push!(atans, (2 * v, frac(p)))
                 end
             end
         end
@@ -3473,6 +3496,8 @@ function integrate_el(T::Tower, i::Int, f)::ElemIntegral
         res = integrate_rational(f)
         isempty(res.unresolved) || throw(RischNotImplemented(
             "the logarithmic part has irrational residues; algebraic constants are planned for Stage 5"))
+        any(q -> q isa RationalIntegral, res.quads) && throw(RischNotImplemented(
+            "the real form of a quartic RootSum (R2) is implemented for rational integrands only"))
         return ElemIntegral(res.rational,
                             Tuple{ctype(T),Any}[(c, frac(w)) for (c, w) in res.logs],
                             Tuple{ctype(T),Any}[(c, u) for (c, u) in res.atans],
@@ -4654,13 +4679,18 @@ end
 
 `Σ_{Q(α)=0} α log W(α, x)`: `poly` is `Q(z)` (monic, squarefree; coefficients low → high) and
 `W` the coefficients of `W(z, x)` in `x` (low → high), each a polynomial in `z` reduced mod `Q`.
-Callable: `rs(a)` evaluates the sum numerically (complex roots, principal logarithms).
+`var` is how the variable prints and `arg` the term it stands for (after a substitution such as
+t = sqrt(1 + x) this is that term; `nothing` when it is the integration variable itself).
+Callable: `rs(t)` evaluates the sum numerically at the value `t` of its variable (complex roots,
+principal logarithms).
 """
 struct RootSum{C}
     poly::UPoly{C}
     W::Vector{UPoly{C}}
     var::String
+    arg::Any
 end
+RootSum{C}(poly, W, var) where {C} = RootSum{C}(poly, W, var, nothing)
 
 """
     IntegralWithRootSums
@@ -4729,7 +4759,7 @@ function d5_gcd(m::UPoly{C}, a::Vector{UPoly{C}}, b::Vector{UPoly{C}}) where {C}
 end
 
 # RootSums for an unresolved residue factor (rest, R, D) of `log_part` (D squarefree)
-function root_sums(rest::UPoly{C}, R::UPoly{C}, D::UPoly{C}, var::String) where {C}
+function root_sums(rest::UPoly{C}, R::UPoly{C}, D::UPoly{C}, var::String; arg = nothing) where {C}
     P = UPoly{C}
     dD = deriv(D)
     n = max(length(R.c), length(dD.c))
@@ -4740,7 +4770,7 @@ function root_sums(rest::UPoly{C}, R::UPoly{C}, D::UPoly{C}, var::String) where 
     out = RootSum{C}[]
     for (m, W) in d5_gcd(monic(rest), a, b)
         length(W) >= 2 || throw(RischError("RootSum: trivial gcd for a residue factor"))
-        push!(out, RootSum{C}(m, W, var))
+        push!(out, RootSum{C}(m, W, var, arg))
     end
     out
 end
@@ -4881,7 +4911,8 @@ function term_value(t, xk::String, a)
 end
 
 (F::IntegralWithRootSums)(a::Real) =
-    real(term_value(F.elementary, F.var, a) + sum(rs(a) for rs in F.rootsums; init = 0.0im))
+    real(term_value(F.elementary, F.var, a) +
+         sum(rs(rs.arg === nothing ? a : term_value(rs.arg, F.var, a)) for rs in F.rootsums; init = 0.0im))
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -4889,7 +4920,10 @@ end
 function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = true)
     xk = string(x)
     rads = collect_radicals(f, xk)
-    isempty(rads) || return integrate_radical(f, x, rads; build = build, lift = lift, verify = verify)
+    if !isempty(rads)                  # a RootSum is in the substitution variable t: evaluate through x
+        F = integrate_radical(f, x, rads; build = build, lift = lift, verify = verify)
+        return F isa IntegralWithRootSums ? IntegralWithRootSums(F.elementary, F.rootsums, xk) : F
+    end
     if has_trig(f)                     # polynomial × exp × trig first (Stage 5c), else the ℚ(i) tower
         try
             return integrate_trig(f, x; build = build, lift = lift, verify = verify)
@@ -4926,7 +4960,7 @@ function integrate_built(T::Tower, el, bd::Builder, verify::Bool)
             "(RootSum is implemented over ℚ only)"))
         rss = RootSum[]                 # algebraic residues of degree > 2: RootSum
         for (rest, R, D) in res.unresolved
-            append!(rss, root_sums(rest, R, D, string(bd.x)))
+            append!(rss, root_sums(rest, R, D, string(bd.x); arg = bd.x))
         end
         el_part = RationalIntegral(res.rational, res.logs, res.atans, Any[], res.quads)
         verify && derivative_of(el_part) + sum(rootsum_derivative(rs) for rs in rss) != F &&
