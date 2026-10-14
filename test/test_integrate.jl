@@ -522,3 +522,31 @@ sym_x = let; SymEngine.@vars x; x; end
 run_tests(simple_x, (e, a) -> e isa Function ? e(a) : e, "SimpleExpressions")
 run_tests(sym_x, (e, a) -> (z = SymEngine.N(SymEngine.subs(e, sym_x => a));
                             z isa Complex ? ComplexF64(z) : Float64(z)), "SymEngine")
+
+# step SY: symbolic parameters as indeterminates of the constant field (answers for generic values).
+# Each package makes its own parameter; derivatives are checked at p = 0.2, x > p.
+function sy_tests(x, p, q, r, ev, name)
+    @testset "$name: symbolic parameters (step SY)" begin
+        sy_fd(F, a) = (ev(F, a + 1e-6) - ev(F, a - 1e-6)) / 2e-6
+        for f in (p * x, exp(p * x), x * exp(p * x), 1 / (x + p), 1 / (x^2 - p^2), 1 / (x^2 + p^2), p / (1 + x^2),
+                  sin(p * x), x * cos(p * x), log(p * x), x^p, atan(p * x), x / (x^4 + p^2), 1 / (p^2 + exp(2x)))
+            F = Risch.risch_integrate(f, x)
+            for a in (0.5, 0.75)
+                @test isapprox(sy_fd(F, a), ev(f, a); rtol = 1e-5, atol = 1e-8)
+            end
+        end
+        @test occursin("atan", string(Risch.risch_integrate(1 / (x^2 + p^2), x)))   # not a RootSum
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(exp(p) * x, x)  # exp of a parameter
+        # at most MAX_PARAMS = 2 parameters (the nested constant field gets too slow beyond)
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / (p * x^2 + q * x + r), x)
+    end
+end
+let
+    SimpleExpressions.@symbolic x p
+    q, r = let; SimpleExpressions.@symbolic_variables q r; (q, r); end   # only for the cap test
+    sy_tests(x, p, q, r, (e, a) -> e isa Function ? e(a, 0.2) : e, "SimpleExpressions")
+end
+let
+    SymEngine.@vars x p q r
+    sy_tests(x, p, q, r, (e, a) -> real(ComplexF64(SymEngine.N(SymEngine.subs(e, x => a, p => 0.2)))), "SymEngine")
+end

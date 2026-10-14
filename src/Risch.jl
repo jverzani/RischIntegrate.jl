@@ -900,6 +900,40 @@ function tfree_factor(D::UPoly{Frac{UPoly{B}}}) where {B}
 end
 tfree_factor(D::UPoly) = nothing
 
+# Step SY: a quadratic residue factor over C = ℚ(t₁, …) (parameters, e, log p) with roots α ± iβ,
+# α, β ∈ C (-Δ a square in C): as `quad_factor!`, over the complex field ℚ(i)(t₁, …): W = U + iV with
+# U = (W + W̄)/2, V = (W - W̄)/(2i) (conjugation acts on the coefficients; the generators are real),
+# α log(U² + V²) + β LogToAtan(U, V). false if not of this kind (then RootSum).
+cplx_type(::Type{Q}) = QI
+cplx_type(::Type{Frac{UPoly{B}}}) where {B} = Frac{UPoly{cplx_type(B)}}
+function quad_factor_t!(logs, atans, A::UPoly{C}, D::UPoly{C}, dD::UPoly{C}, q::UPoly{C}) where {C}
+    q = monic(q)
+    p0, p1 = q.c[1], q.c[2]
+    two = cfromQ(C, Q(2))
+    α = -p1 / two
+    s = csqrt(-(p1 * p1 - 2 * two * p0))
+    (s === nothing || iszero(s)) && return false
+    β = s / two
+    CC = cplx_type(C)
+    I = cimag(CC)
+    up(p) = UPoly{CC}(CC[to_complex(CC, c) for c in p.c])
+    a = to_complex(CC, α) + I * to_complex(CC, β)
+    W = gcd(up(D), up(A) - scale(a, up(dD)))
+    degree(W) > 0 || return false
+    h = inv(cfromQ(CC, Q(2)))
+    Uc = [to_real((w + cconj(w)) * h) for w in W.c]
+    Vc = [to_real((w - cconj(w)) * inv(I + I)) for w in W.c]
+    (any(isnothing, Uc) || any(isnothing, Vc)) && return false
+    U, V = UPoly{C}(C[Uc...]), UPoly{C}(C[Vc...])
+    iszero(α) || push!(logs, (α, U * U + V * V))
+    if !iszero(U) && !iszero(V)
+        for p in log_to_atan(U, V)
+            push!(atans, (2 * β, frac(p)))
+        end
+    end
+    true
+end
+
 function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
     if rational_tfield(C) && !iszero(A)
         G = tfree_factor(D)
@@ -941,6 +975,9 @@ function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
             degree(q) == 4 && quartic_real!(quads, A, D, dD, q) && continue
             hard = hard * q
         end
+    end
+    if rational_tfield(C) && degree(rest) == 2 && quad_factor_t!(logs, atans, A, D, dD, rest)   # step SY
+        hard = one(CXl)
     end
     degree(hard) > 0 && push!(unresolved, (hard, A, D))
     logs, atans, unresolved, quads
@@ -1075,11 +1112,14 @@ end
 # log(arg), arg ∈ ℚ. The field type only knows "k indeterminates"; what they stand for is
 # this list, kept by the tower (`T.consts`) and by the Builder (for output).
 struct ConstGen
-    kind::Symbol          # :exp or :log
+    kind::Symbol          # :exp, :log, :expi, or :sym (a symbolic parameter, step SY)
     arg::Q
+    term::Any             # :sym: the user's symbol (printed back as itself), else nothing
 end
-Base.:(==)(a::ConstGen, b::ConstGen) = a.kind === b.kind && a.arg == b.arg
-Base.hash(g::ConstGen, h::UInt) = hash(g.arg, hash(g.kind, h))
+ConstGen(kind::Symbol, arg::Q) = ConstGen(kind, arg, nothing)
+symname(g::ConstGen) = g.kind === :sym ? string(g.term) : ""
+Base.:(==)(a::ConstGen, b::ConstGen) = a.kind === b.kind && a.arg == b.arg && symname(a) == symname(b)
+Base.hash(g::ConstGen, h::UInt) = hash(symname(g), hash(g.arg, hash(g.kind, h)))
 
 struct Builder
     build::Any
@@ -1163,6 +1203,7 @@ end
 constgen_term(b::Builder, g::ConstGen) =
     g.kind === :exp ? mk(b, :exp, cterm(b, g.arg)) :
     g.kind === :log ? mk(b, :log, cterm(b, g.arg)) :
+    g.kind === :sym ? g.term :
     throw(RischError("unknown constant generator kind $(g.kind)"))
 function cpoly_term(b::Builder, p::UPoly, t)
     iszero(p) && return b.lift(0)
@@ -1878,6 +1919,7 @@ cimag(::Type{Frac{UPoly{B}}}) where {B} = kconst(cimag(B))
 cimag(::Type{T}) where {T} = throw(RischNotImplemented("the constant field $T does not contain i"))
 is_complex_field(::Type{C}) where {C} = C === QI || C <: QSB{<:Any,QI} || (C <: Frac && cbase(C) === QI)
 const MAX_CONSTS = 8
+const MAX_PARAMS = 2          # symbolic parameters (step SY): see the cap in `parse_tower`
 
 # the value of c at depth `d` of the nested constant field, if c lies in that subfield
 function const_below(c, d::Int)
@@ -2069,11 +2111,11 @@ function parse_tower(t, T::Tower)
                 k = const_value(T, ex)
                 if k !== nothing
                     kq = crational(k)
-                    kq === nothing && throw(RischNotImplemented(
-                        "power with the irrational constant exponent $k (needs exp(k·log u) " *
-                        "over the constant field; not implemented)"))
-                    isone(denominator(kq)) && abs(kq) <= 10_000 && return base^Int(numerator(kq))
-                    throw(RischNotImplemented("rational power $kq is an algebraic (radical) function"))
+                    if kq !== nothing
+                        isone(denominator(kq)) && abs(kq) <= 10_000 && return base^Int(numerator(kq))
+                        throw(RischNotImplemented("rational power $kq is an algebraic (radical) function"))
+                    end
+                    # a non-rational constant exponent (a parameter, e, …): u^k = exp(k log u) (SY)
                 end
                 lg = make_log(T, base)
                 p, m = unify(T, ex, lg)
@@ -2087,8 +2129,18 @@ function parse_tower(t, T::Tower)
     is_e_const(t) && return lconst(T, const_exp(T, one(ctype(T))), 0)
     r = leaf_rational(t)
     r !== nothing && return lq(T, r, 0)
-    throw(RischNotImplemented("symbol `$t` is not the integration variable; " *
-                              "symbolic parameters are not supported yet"))
+    # step SY: any other symbol is a parameter, a new indeterminate of the constant field
+    # ℚ(…, a) (answers hold for generic values of a)
+    g = ConstGen(:sym, Q(0), t)
+    j = findfirst(==(g), T.consts)
+    if j === nothing
+        # each parameter nests the constant field one level deeper; the arithmetic cost grows steeply
+        # (four parameters did not finish in minutes), so their number is capped
+        count(c -> c.kind === :sym, T.consts) < MAX_PARAMS || throw(RischNotImplemented(
+            "more than $MAX_PARAMS symbolic parameters"))
+        throw(NewConstants(ConstGen[T.consts; g]))
+    end
+    lconst(T, tgen(ctype(T), j), 0)
 end
 
 # Build the tower for `f`. A Restart (a rational multiple such as exp(x/2) after
@@ -5873,6 +5925,7 @@ end
 csign(c::Q, gens) = Int(sign(c))
 function csign(c, gens)
     iszero(c) && return 0
+    any(g -> g.kind === :sym, gens) && return nothing     # a parameter: no sign (step SY)
     v = setprecision(() -> cbig(c, gens), BigFloat, 256)
     abs(v) < big(10)^-40 ? nothing : Int(sign(v))
 end
@@ -5903,10 +5956,10 @@ function real_root_count(p::UPoly{R}, a, b, sg = c -> Int(sign(c))) where {R}
 end
 
 # x-jump coefficient of an atan argument p(s) at s = ±∞ (Σ c σ for odd degree), as a real sign
-function atan_infinity_sign(p::Frac)
+function atan_infinity_sign(p::Frac, sg = c -> Int(real_sign(c)))
     d = degree(p.num) - degree(p.den)
     (d > 0 && isodd(d)) || return 0
-    Int(real_sign(lc(p.num) / lc(p.den)))
+    sg(lc(p.num) / lc(p.den))                           # nothing: undecided (a parameter, step SY)
 end
 
 function bioche(f, x; build = nothing, lift = nothing)
@@ -5919,7 +5972,7 @@ function bioche(f, x; build = nothing, lift = nothing)
     end
     C = ctype(T)
     # C = ℚ(i), or ℚ(i)(t₁, …) with real generators e^a, log p (step TE)
-    (C === QI || (C <: Frac && cbase(C) === QI && all(g -> g.kind in (:exp, :log), T.consts))) || return nothing
+    (C === QI || (C <: Frac && cbase(C) === QI && all(g -> g.kind in (:exp, :log, :sym), T.consts))) || return nothing
     (length(T.levels) == 1 && T.levels[1].kind === :exp) || return nothing
     RC = real_ctype(C)
     I = cimag(C)
@@ -6047,7 +6100,8 @@ function bioche(f, x; build = nothing, lift = nothing)
             clc = clc + n * (-rs.poly.c[end - 1])          # (Σα)·n, m monic
         end
         parts = Any[to_term(bs, res)]
-        corr = tan_jump_terms(bd, bs, res)
+        corr = tan_jump_terms(bd, bs, res, sg)
+        corr === nothing && return nothing
         isempty(corr) || push!(parts, mk(bd, :*, length(corr) == 1 ? corr[1] : mk(bd, :+, corr...),
                                          mk(bd, :+, ut, mk(bd, :*, bd.lift(-1), mk(bd, :atan, mk(bd, :tan, ut))))))
         iszero(clc) || push!(parts, mk(bd, :*, cterm(bs, -clc / cfromQ(RC, Q(2))), mk(bd, :log, mk(bd, :^, cos_t, bd.lift(2)))))
@@ -6056,20 +6110,24 @@ function bioche(f, x; build = nothing, lift = nothing)
     check_result(res, gq) || throw(RischError("internal check failed: derivative of the result differs from the integrand"))
     term = to_term(bs, res)
     kind === :tan || return term
-    corr = tan_jump_terms(bd, bs, res)
+    corr = tan_jump_terms(bd, bs, res, sg)
+    corr === nothing && return nothing
     isempty(corr) && return term
     cc = length(corr) == 1 ? corr[1] : mk(bd, :+, corr...)
     mk(bd, :+, term, mk(bd, :*, cc, mk(bd, :+, ut, mk(bd, :*, bd.lift(-1), mk(bd, :atan, mk(bd, :tan, ut))))))
 end
 
 # the jumps of G(tan u) where tan u = ±∞: coefficient terms J with correction J·(u - atan(tan u))
-function tan_jump_terms(bd::Builder, bs::Builder, res::RationalIntegral)
+# (nothing when a sign is undecided: the caller then uses the general route)
+function tan_jump_terms(bd::Builder, bs::Builder, res::RationalIntegral, sg = c -> Int(real_sign(c)))
     corr = Any[]
-    J = Q(0)
+    J = nothing
     for (c, p) in res.atans
-        J += c * atan_infinity_sign(p)
+        σ = atan_infinity_sign(p, sg)
+        σ === nothing && return nothing
+        J = J === nothing ? σ * c : J + σ * c
     end
-    iszero(J) || push!(corr, cterm(bd, J))
+    (J === nothing || iszero(J)) || push!(corr, cterm(bs, J))
     for q in res.quads
         if q isa QuadAtan
             σ = atan_infinity_sign(q.u)

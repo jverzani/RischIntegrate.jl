@@ -180,7 +180,7 @@ function run_tests(x, evalat, name)
                                (cos(x)^4/(sin(x)^4 + sin(x)*cos(x)^3 + 2cos(x)^4), true),
                                # step SD: over ℚ(e) the e-free factor 1 + s² of the denominator is split off
                                # (took minutes as one degree-6 residue polynomial)
-                               (cos(x)^4/(sin(x)^4 + sin(x)*cos(x)^3 + ℯ*cos(x)^4), false))
+                               (cos(x)^4/(sin(x)^4 + sin(x)*cos(x)^3 + ℯ*cos(x)^4), true))   # quadratic part elementary (SY)
             F = Risch.risch_integrate(f, x)
             @test F isa Risch.IntegralWithRootSums && all(rs -> rs isa Risch.TermRootSum, F.rootsums)
             str = string(F)

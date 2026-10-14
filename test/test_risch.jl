@@ -87,7 +87,8 @@ end
         @test Risch.tfree_factor(D) == P([c(1), c(0), c(1)])
         @test Risch.tfree_factor(P([e, c(1), c(0), c(0), c(1)])) === nothing
         res = Risch.integrate_rational(Risch.frac(P([c(1)]), D))
-        @test sort([Risch.degree(u[1]) for u in res.unresolved]) == [2, 4]
+        @test sort([Risch.degree(u[1]) for u in res.unresolved]) == [4]   # the 1+s² part: real form (SY)
+        @test !isempty(res.atans)
     end
     # Bareiss determinant
     @test Risch.field_det(Q[2 1 3; 0 4 1; 5 2 0]) == Q(-59)

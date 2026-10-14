@@ -602,6 +602,36 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   − ½ log(2 + 2√(x²−1)/x); x asec x → x²/2 asec x − ½√(x²−1); x² asin x → x³/3 asin x + (2/9 + x²/9)√(1−x²).
   Not covered: radicals written as √(1 − 1/u²).
   Tests: test_integrate.jl "acot, asec, acsc (step AC)", both packages (eight integrands, forms, refusals).
+* **SY: symbolic parameters** (2026-10-14, done, tests green; user request). A leaf that is neither x,
+  e nor a number becomes a new indeterminate of the constant field: `ConstGen(:sym, 0, term)` (new
+  field `term`; equality by name), added via `NewConstants` like e / log p (step 6); printed back as the
+  user's symbol (`constgen_term`). Answers hold for generic parameter values (as usual in a CAS).
+  `csign` is undecided (nothing) when a parameter is present, so numeric sign decisions fall back.
+  Powers with a non-rational constant exponent (x^a, x^ℯ) are now exp(k·log u) instead of refused.
+  New `quad_factor_t!`: a quadratic residue factor over ℚ(t₁, …) with roots α ± iβ, α, β in the field
+  (−Δ a square: `csqrt`), gets the real log + LogToAtan form, computed over ℚ(i)(t₁, …) (`cplx_type`,
+  W = U + iV by conjugation, `to_real`) — e.g. 1/(x²+a²) → atan(x/a)/a, a/(1+x²) → a atan x,
+  1/((x+a)²+b²) → atan((x+a)/b)/b, and also 1/(x²+ℯ²) → atan(x/e)/e (was a RootSum). The Bioche tan
+  jump correction takes the field's sign function (`tan_jump_terms(…, sg)`; undecided → general route).
+  Works in both packages (SimpleExpressions `@symbolic x p`, SymEngine symbols). E.g. x·exp(a x) →
+  exp(a x)(x/a − 1/a²); x^a → x exp(a log x)/(1 + a); atan(a x) → x atan(a x) − log(1/a² + x²)/(2a).
+  Cap: at most `MAX_PARAMS = 2` parameters (RischNotImplemented beyond). Each parameter nests the
+  constant field one level deeper and the normalising gcds grow steeply: in test_apostol.jl,
+  (c sin x + d cos x)/(a sin x + b cos x) (four parameters) did not finish in minutes, and three-parameter
+  integrals took ~1 min. With the cap test_apostol.jl completes: 148/175 (HEAD before SY: 139), 98 s
+  (47.5 s before; the extra time is the newly passing parameter integrals, the slowest
+  1/(a² sin²x + b² cos²x) at 23 s). The monic-remainder `gcd` (TT) is not the cause (without it that
+  case took > 9 min).
+  Not covered: constants exp(a) (refused: would need exp(a) as a further generator with its relations),
+  asin of a·x with symbolic a (AS needs rational coefficients), sign/branch-dependent forms.
+  Tests: test_integrate.jl `sy_tests`, both packages (14 integrands, the atan form, exp(p) refused);
+  test_risch.jl SD test: only the quartic is left unresolved; test_trig.jl TS list expectation.
+* **Later: faster arithmetic in constant fields with several generators** (user's choice, 2026-10-14).
+  Constants of ℚ(i)(a, b, …) are nested `Frac`s normalised by gcds at every level, which is what makes
+  parameter integrals slow (23 s for 1/(a² sin²x + b² cos²x)) and forces the MAX_PARAMS cap. Ideas: a
+  fraction-free / delayed-normalisation representation of multivariate rational functions, building
+  the tower once and reusing it across `bioche`, TB and the general route (each parses it again), and
+  not running the rational integrator before TB's check. Then raise MAX_PARAMS.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -833,10 +863,11 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC (all 2026-10-14).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY (all 2026-10-14).
 >
 > Next steps (open items): nested-radical real forms (1/(x⁵ + 1)), iterated integrals on an
-> `IntegralWithRootSums`.
+> `IntegralWithRootSums`; later: faster arithmetic for constant fields with several parameters (see the
+> "Later" entry), then raise MAX_PARAMS.
 >
 > Ground rules: one plan step at a time; every result self-verified exactly by differentiation;
 > `NotElementary` only when the theory decides the case, otherwise `RischNotImplemented`; never
