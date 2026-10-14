@@ -241,7 +241,6 @@ function run_tests(x, evalat, name)
                 @test antiderivative_ok(F, f, a, evalat)
             end
         end
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / sqrt(2 - x^2), x)   # would need √2
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) + sqrt(x + 1), x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / sqrt(x^3 + 1), x)  # elliptic
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(log(x)), x)
@@ -271,6 +270,33 @@ function run_tests(x, evalat, name)
         end
         @test_throws Risch.RischNotImplemented Risch.risch_integrate((x^2 + 1)^(1//3), x)   # index 3
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt((x^2 + 1) / (x + 1)), x)
+    end
+
+    @testset "$name: square roots of quadratics over ℚ(√d) (step 10c)" begin
+        inside = (0.2, 0.45, 0.7)
+        right = (1.3, 1.9, 2.6)
+        cases = ((1 / sqrt(2 - x^2), inside),           # rational point (1, 1): stays over ℚ
+                 (sqrt(2 - x^2), inside),
+                 (1 / sqrt(3 - x^2), inside),           # point (0, √3) over ℚ(i)(√3): 2 atan((√Q - √3)/x)
+                 (sqrt(3 - x^2), inside),
+                 (x^2 / sqrt(3 - x^2), inside),
+                 (1 / (x * sqrt(3 - x^2)), .-(inside)),   # log((√Q - √3)/x): argument > 0 for x < 0
+                 (1 / sqrt(4x - x^2 - 1), right),       # C < 0: the vertex (2, √3)
+                 (1 / sqrt(2x^2 + 3), right),           # √A = √2: (√2/2) log(√2 x + √Q)
+                 (sqrt(2x^2 + 3), right),
+                 (1 / ((x^2 + 1) * sqrt(2x^2 + 3)), right),
+                 (1 / (x * sqrt(2x^2 + 3)), right),     # needs √3: second candidate (0, √3)
+                 (exp(sqrt(3 - x^2)) * x / sqrt(3 - x^2), inside),
+                 (sin(sqrt(2x^2 + 3)) * x / sqrt(2x^2 + 3), right))   # trig over ℚ(i)(√2)
+        for (f, pts) in cases
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) * sqrt(3 - x^2), x)
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / sqrt(-x^2 - 1), x)       # never real
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x + 1) * sqrt(3 - x^2)), x)  # √2 and √3
     end
 
     @testset "$name: parametric Risch DE in towers (step 9d)" begin

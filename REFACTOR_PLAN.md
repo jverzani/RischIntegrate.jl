@@ -226,7 +226,20 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
     pipeline is shared with 10a (`integrate_radical` now takes φ and a radical-power map).
     Refused: Q needing ℚ(√d) (e.g. √(2 − x²)), other indices, quadratic denominators.
     Tests: asin/asinh/acosh-type integrands, √C and rational-root cases, exp(√(x²+1))·x/√(x²+1).
-  * Possible next: √(2 − x²)-type radicands via a ℚ(√d) constant field; several radicands
+  * 10c: done, tests green (2026-10-14). √Q, Q quadratic, without a ℚ-rational Euler substitution.
+    `euler_substitution` now returns candidates [(S, φ, ψ, t-term)], tried in order by
+    `integrate_radical` (body moved to `integrate_subst`; the first handled one decides, a
+    `NotElementary` from any is a proof): the 10b cases, then a small rational point (x₀, y₀) of
+    R² = Q (height ≤ 12, `euler_point`: R = y₀ + t(x − x₀), S = ℚ), then over S = ℚ(i)(√d)
+    (`QSB{d,QI}`, `qs_field`): √A (A > 0), the point (0, √C) (C > 0), the vertex (A < 0).
+    i is in S for the atan terms; `is_complex_field` includes `QSB{d,QI}` (real-form output, and
+    trig parsing over it). Real form: `merge_pieces` combines conjugate atan/log pieces
+    (atan(−u) = −atan(u)); at the base atan(V/U) with V constant becomes −atan(U/V) (no pole at U = 0,
+    e.g. 2 atan((√(3−x²) − √3)/x)). New: 1/√(2−x²), √(3−x²), 1/√(4x−x²−1), 1/√(2x²+3),
+    1/(x√(2x²+3)) (needs √3: second candidate), exp/sin of such radicals; decided
+    exp(x)√(3−x²) `NotElementary`. Refused: never-positive radicands, answers needing two square
+    roots (1/((x+1)√(3−x²)): √2 and √3).
+  * Possible next: several radicands
     (e.g. √x and √(x+1)); RootSum.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.

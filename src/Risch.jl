@@ -1468,7 +1468,7 @@ cimag(::Type{QI}) = QI(Q(0), Q(1))
 cimag(::Type{QSB{d,B}}) where {d,B} = QSB{d,B}(cimag(B), zero(B))
 cimag(::Type{Frac{UPoly{B}}}) where {B} = kconst(cimag(B))
 cimag(::Type{T}) where {T} = throw(RischNotImplemented("the constant field $T does not contain i"))
-is_complex_field(::Type{C}) where {C} = C === QI || (C <: Frac && cbase(C) === QI)
+is_complex_field(::Type{C}) where {C} = C === QI || C <: QSB{<:Any,QI} || (C <: Frac && cbase(C) === QI)
 const MAX_CONSTS = 8
 
 # the value of c at depth `d` of the nested constant field, if c lies in that subfield
@@ -1603,7 +1603,7 @@ function parse_tower(t, T::Tower)
             n = opname(operation(t))
             if n in (:sin, :cos, :tan) && length(args) == 1     # Step 7: θ = exp(i·u) over ℚ(i)
                 C = ctype(T)
-                (C === QI || (C <: Frac && cbase(C) === QI)) || throw(NeedComplex())
+                is_complex_field(C) || throw(NeedComplex())
                 u = parse_tower(args[1], T)
                 ci = cimag(C)
                 E = make_exp(T, u * lconst(T, ci, levelof(T, u)))
@@ -3920,8 +3920,36 @@ function real_log_pieces(T::Tower, kinds, c, w)
     iszero(cr) || push!(pieces, (cr * half, :log, w * sw))
     U = (w + sw) * lconst(T, half, j)
     V = (w - sw) * lconst(T, inv(I + I), j)
-    (iszero(ci) || iszero(U) || iszero(V)) || push!(pieces, (-ci, :atan, V / U))  # U = 0: w/σw = -1, constant
+    if !(iszero(ci) || iszero(U) || iszero(V))          # U = 0: w/σw = -1, constant
+        a = V / U
+        # at the base, atan(V/U) with V constant has a pole where U = 0; -atan(U/V) has the same
+        # derivative and is continuous there (e.g. atan(1/t) -> -atan(t))
+        if j == 0 && degree(a.num) <= 0 && degree(a.den) > 0
+            push!(pieces, (ci, :atan, inv(a)))
+        else
+            push!(pieces, (-ci, :atan, a))
+        end
+    end
     pieces
+end
+
+# combine real pieces with the same argument (atan(-u) = -atan(u)); zero coefficients dropped
+function merge_pieces(pieces)
+    out = Tuple{Any,Symbol,Any}[]
+    for (c, k, a) in pieces
+        i = findfirst(p -> p[2] === k && p[3] == a, out)
+        if i !== nothing
+            out[i] = (out[i][1] + c, k, a)
+            continue
+        end
+        i = k === :atan ? findfirst(p -> p[2] === :atan && p[3] == -a, out) : nothing
+        if i !== nothing
+            out[i] = (out[i][1] - c, k, out[i][3])
+            continue
+        end
+        push!(out, (c, k, a))
+    end
+    filter(p -> !iszero(p[1]), out)
 end
 
 # the real form of an integral over ℚ(i) as a term, verified: D(real form) == f in T
@@ -3944,9 +3972,11 @@ function to_term_real(b::Builder, T::Tower, L::Int, res::ElemIntegral, f)
         end
         ds
     end
+    pieces = Tuple{Any,Symbol,Any}[]
     for (c, w) in res.logs
-        tot = tot + emit!(T, kinds, real_log_pieces(T, kinds, c, w))
+        append!(pieces, real_log_pieces(T, kinds, c, w))
     end
+    tot = tot + emit!(T, kinds, merge_pieces(pieces))
     isempty(res.atans) || throw(RischError("unexpected atan terms over ℚ(i)"))
     for q in res.quads
         q isa SpecialTerm || continue
@@ -4021,9 +4051,11 @@ function radicand_element(u, xk::String)
     (isempty(T.levels) && ctype(T) === Q) ? el : nothing
 end
 
-# φ ∈ ℚ(t) (same representation as ℚ(x)) as an element of K_0 of the tower T
+# φ ∈ S(t) (same representation as S(x); S = ℚ or the tower's constant field) as an element
+# of K_0 of the tower T
 to_K0(T::Tower, φ::Frac{UPoly{Q}}) = (C = ctype(T); P = UPoly{C};
     frac(P(C[cfromQ(C, c) for c in φ.num.c]), P(C[cfromQ(C, c) for c in φ.den.c])))
+to_K0(T::Tower{C}, φ::Frac{UPoly{C}}) where {C} = φ
 
 function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::Bool = true)
     xk = string(x)
@@ -4054,21 +4086,35 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         iszero(a * d - b * c) && throw(RischError("radicand is constant"))
         tn = tt^n
         φ = (kq(b) - kq(d) * tn) / (kq(c) * tn - kq(a))
-        radpow = k -> tt^k                              # u^(k/n)
         tterm = n == 2 ? mk(b0, :sqrt, uterm) : mk(b0, :^, uterm, b0.lift(Q(1) // n))
+        cands = Any[(Q, φ, k -> tt^k, tterm)]          # u^(k/n) = t^k
     elseif isone(Dd) && degree(N) == 2 && n == 2
-        # 10b: √Q, Q = A x² + B x + C, by an Euler substitution (rational parametrisation over ℚ)
-        eu = euler_substitution(co(N, 3), co(N, 2), co(N, 1), b0, uterm)
-        eu === nothing && throw(RischNotImplemented(
-            "√($uterm): no rational Euler substitution over ℚ (needs √A or √C rational, or rational " *
-            "roots); would need the constant field ℚ(√d)"))
-        φ, ψ, tterm = eu
-        radpow = k -> ψ^k                               # Q^(k/2) = ψ(t)^k
+        # 10b/10c: √Q, Q = A x² + B x + C, by an Euler substitution (rational parametrisation
+        # over ℚ, or over ℚ(i)(√d) when the conic R² = Q has no small rational point);
+        # Q^(k/2) = ψ(t)^k
+        cands = Any[(S, φ, k -> ψ^k, tterm)
+                    for (S, φ, ψ, tterm) in euler_substitution(co(N, 3), co(N, 2), co(N, 1), b0, uterm)]
     else
         throw(RischNotImplemented(
             "radicals of $uterm: supported are u^(p/q) with u = (ax+b)/(cx+d), and √ of a quadratic " *
             "polynomial; this needs the algebraic Risch algorithm or is not elementary in general"))
     end
+    # several substitutions only for 10c (different constant fields): the first one that is
+    # handled decides; a NotElementary from any of them is a proof
+    err = nothing
+    for (S, φ, radpow, tterm) in cands
+        try
+            return integrate_subst(f, xk, u, n, S, φ, radpow, Builder(b0.build, b0.lift, tterm), verify)
+        catch e
+            e isa RischNotImplemented || rethrow()
+            err = e
+        end
+    end
+    throw(err)
+end
+
+# ∫ f dx with x = φ(t), u^(k/n) = radpow(k) ∈ S(t); the answer is printed with t as bt.x
+function integrate_subst(f, xk::String, u, n::Int, ::Type{S}, φ, radpow, bt::Builder, verify::Bool) where {S}
     dφ = dx(φ)
     function sub(term, T)
         if !safe_iscall(term)
@@ -4083,20 +4129,24 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         isone(denominator(k)) || throw(RischError("radical exponent not a multiple of 1/n"))
         to_K0(T, radpow(Int(numerator(k))))
     end
-    T, el = build_tower(f, xk; subst = sub)
+    T, el = build_tower(f, xk; subst = sub, constants = S === Q ? nothing : S)
     T.subst = nothing
     g = el * liftto(T, to_K0(T, dφ), levelof(T, el))     # f(φ(t), …) φ'(t)
     T, g = minimal(T, g)
-    bd = Builder(b0.build, b0.lift, tterm, T.consts)
+    bd = Builder(bt.build, bt.lift, bt.x, T.consts)
     integrate_built(T, g, bd, verify)
 end
 
-# Euler substitutions for R = √(A x² + B x + C) over ℚ: (φ, ψ, t-term) with x = φ(t), R = ψ(t)
-# (identities for the principal root), or nothing.
+# Euler substitutions for R = √(A x² + B x + C): (S, φ, ψ, t-term) with x = φ(t), R = ψ(t),
+# φ, ψ ∈ S(t) (identities for the principal root). Over S = ℚ (10b):
 #   √A = s ∈ ℚ₊:    R = t - s x,        t = R + s x,        x = (t² - C)/(B + 2 s t)
 #   √C = s ∈ ℚ₊:    R = x t + s,        t = (R - s)/x,      x = (2 s t - B)/(A - t²)
 #   roots r₁ ≠ r₂:  R = t (x - r₁),     t = R/(x - r₁),     x = (A r₂ - r₁ t²)/(A - t²)
 #   (r₁ chosen so that x - r₁ > 0 on the real domain: the smaller root when A < 0)
+# Otherwise (10c) through a point (x₀, y₀) of the conic R² = Q(x), y₀ > 0, see `euler_point`:
+# a small rational point (S = ℚ), else S = ℚ(i)(√d) with √A (A > 0, the point at infinity) or
+# y₀ = √Q(x₀) (x₀ = 0 if C > 0, else the vertex). i is there for the atan terms (residues
+# ±i·r); the answer is real (Step 7 real form, sqrt(d) kept symbolic).
 function euler_substitution(A::Q, B::Q, C::Q, b::Builder, uterm)
     P = UPoly{Q}
     t = frac(xpoly(Q))
@@ -4107,14 +4157,14 @@ function euler_substitution(A::Q, B::Q, C::Q, b::Builder, uterm)
         φ = (t * t - kq(C)) / (kq(B) + kq(2 * sA) * t)
         ψ = t - kq(sA) * φ
         tterm = mk(b, :+, R, isone(sA) ? b.x : mk(b, :*, cterm(b, sA), b.x))
-        return φ, ψ, tterm
+        return [(Q, φ, ψ, tterm)]
     end
     sC = C > 0 ? rat_sqrt(C) : nothing
     if sC !== nothing
         φ = (kq(2 * sC) * t - kq(B)) / (kq(A) - t * t)
         ψ = φ * t + kq(sC)
         tterm = mk(b, :/, mk(b, :+, R, cterm(b, -sC)), b.x)
-        return φ, ψ, tterm
+        return [(Q, φ, ψ, tterm)]
     end
     rts = rational_roots(P(Q[C, B, A]))
     if length(rts) == 2
@@ -4122,9 +4172,61 @@ function euler_substitution(A::Q, B::Q, C::Q, b::Builder, uterm)
         φ = (kq(A * r2) - kq(r1) * t * t) / (kq(A) - t * t)
         ψ = t * (φ - kq(r1))
         xr = iszero(r1) ? b.x : mk(b, :+, b.x, cterm(b, -r1))
-        return φ, ψ, mk(b, :/, R, xr)
+        return [(Q, φ, ψ, mk(b, :/, R, xr))]
     end
-    nothing
+    Qv(x0) = (A * x0 + B) * x0 + C
+    for h in 1:12, q in 1:h, p in (h - q, q - h)        # small rational points, by height
+        gcd(p, q) == 1 || continue
+        x0 = Q(p) // Q(q)
+        y0 = rat_sqrt(Qv(x0))
+        (y0 === nothing || iszero(y0)) && continue
+        return [euler_point(Q, y0, A, B, x0, b, uterm)]
+    end
+    # over ℚ(i)(√d), several candidates (the constants the answer needs are not known in
+    # advance, e.g. ∫ dx/(x √(2x² + 3)) needs √3, not √2): √A (A > 0), the point (0, √C)
+    # (C > 0), the vertex (A < 0: the maximum of Q, positive if Q ever is)
+    cands = Any[]
+    if A > 0                                            # point at infinity: R = t - √A x
+        S, s = qs_field(A)
+        PS = UPoly{S}
+        ts = frac(xpoly(S))
+        kS = c -> frac(PS(S[c]))
+        φ = (ts * ts - kS(cfromQ(S, C))) / (kS(cfromQ(S, B)) + kS(s + s) * ts)
+        ψ = ts - kS(s) * φ
+        push!(cands, (S, φ, ψ, mk(b, :+, R, mk(b, :*, cterm(b, s), b.x))))
+    end
+    for x0 in (Q(0), A < 0 ? -B / (2 * A) : nothing)
+        (x0 === nothing || Qv(x0) <= 0) && continue
+        any(c -> c[1] === Q, cands) && break
+        y0 = rat_sqrt(Qv(x0))
+        y0 === nothing ? push!(cands, euler_point(qs_field(Qv(x0))..., A, B, x0, b, uterm)) :
+                         push!(cands, euler_point(Q, y0, A, B, x0, b, uterm))
+    end
+    isempty(cands) && throw(RischNotImplemented("√($uterm): the radicand is never positive: no real square root"))
+    unique(c -> c[1], cands)                            # one candidate per constant field
+end
+
+# S = ℚ(i)(√d) and √v ∈ S for v ∈ ℚ₊ not a square (v = σ² d, d squarefree)
+function qs_field(v::Q)
+    σ, d = sqfree_split(numerator(v) * denominator(v))
+    S = QSB{Int(d),QI}
+    S, S(zero(QI), QI(Q(σ) // Q(denominator(v)), Q(0)))
+end
+
+# Euler substitution through the point (x₀, y₀) of R² = Q(x) (y₀ ∈ S, y₀ > 0):
+# R = y₀ + t (x - x₀), t = (R - y₀)/(x - x₀); with h = x - x₀, Q(x) = y₀² + Q'(x₀) h + A h²
+# gives h = (2 y₀ t - Q'(x₀))/(A - t²), x = x₀ + h, R = y₀ + t h.
+function euler_point(::Type{S}, y0::S, A::Q, B::Q, x0::Q, b::Builder, uterm) where {S}
+    PS = UPoly{S}
+    t = frac(xpoly(S))
+    kS(c) = frac(PS(S[c]))
+    c(q::Q) = cfromQ(S, q)
+    h = (kS(y0 + y0) * t - kS(c(2 * A * x0 + B))) / (kS(c(A)) - t * t)
+    φ = kS(c(x0)) + h
+    ψ = kS(y0) + t * h
+    R = mk(b, :sqrt, uterm)
+    xr = iszero(x0) ? b.x : mk(b, :+, b.x, cterm(b, -x0))
+    S, φ, ψ, mk(b, :/, mk(b, :+, R, cterm(b, -y0)), xr)
 end
 
 # ---------------------------------------------------------------------------
