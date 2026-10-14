@@ -528,6 +528,18 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   E.g. 1/(x(log²x+1)(log⁴x+log x+ℯ)), exp(x)/((e²ˣ+1)(e⁴ˣ+eˣ+ℯ)): > 90 s → ~3 s (warm).
   Tests: test_risch.jl RE list, both packages (derivative now with atol 1e-9 for tiny values);
   test_risch 44 → 56 s.
+* **TH: half-angle shortcuts** (2026-10-14, done, tests green). In `continuous_arg_pieces` (trig level,
+  constant coefficients) the winding number s = (n − m)/2 of w is known from TC; for integer s,
+  `shifted_arg_pieces`: arg w = s·u + arg v, v = θ^(−s) w = A + iB (A = (v + σv)/2, B = (v − σv)/(2i),
+  real trig polynomials). If A never vanishes on ℝ, arg v ≡ atan(B/A); else if B never does,
+  −atan(A/B); else the TC tan(u/2) form. "Never vanishes" exactly: A·(1+t²)^K = Σ a_k (1+it)^(K+k)
+  (1−it)^(K−k) has no real roots (`real_root_count`, Sturm, `real_sign` over ℚ or ℚ(√d)) and A(π) ≠ 0.
+  The atan argument is printed as real_term(B)/real_term(A) (printing the reduced B/A would square
+  the conjugate denominator). Pieces still differentiated and checked in `to_term_real`.
+  E.g. 1/(2+cos x) → x/√3 − (2/√3) atan(sin x/(2+√3+cos x)); 1/(5+3 sin x) → x/4 + ½ atan(cos x/(3+sin x));
+  1/(3+sin 2x) → (√2/4)x + (√2/4) atan(cos 2x/(3+2√2+sin 2x)). Not changed: Bioche tan-rule answers
+  (1/(1+sin²x) keeps atan(√2 tan x) + correction).
+  Tests: test_trig.jl TC testset (four integrands: one atan, no tan(…)); the TC loop checks "atan".
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -759,10 +771,10 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST (all 2026-10-14).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH (all 2026-10-14).
 >
 > Next steps (open items): nested-radical real forms (1/(x⁵ + 1)), iterated integrals on an
-> `IntegralWithRootSums`, half-angle shortcuts (1/(2 + cos x) keeps the tan(x/2) form).
+> `IntegralWithRootSums`; Bioche tan-rule answers could use the TH form (1/(1 + sin²x)).
 >
 > Ground rules: one plan step at a time; every result self-verified exactly by differentiation;
 > `NotElementary` only when the theory decides the case, otherwise `RischNotImplemented`; never

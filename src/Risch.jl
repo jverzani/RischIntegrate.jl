@@ -4473,9 +4473,57 @@ function continuous_arg_pieces(T::Tower, kinds, j::Int, w)
         push!(out, (-one(C), :atan, peval_el(p), b -> rpoly_term(b, p, zterm(b))))
         trig && isodd(degree(p)) && (m += Int(real_sign(lc(p))))
     end
+    if trig && iseven(n - m)                            # the shortcut without tan(u/2) (step TH)
+        sh = shifted_arg_pieces(T, kinds, j, w, (n - m) ÷ 2, uel, uterm)
+        sh === nothing || return sh
+    end
     if trig
         n != m && push!(out, (cfromQ(C, Q(n - m) // 2), :lin, uel, uterm))
         m != 0 && push!(out, (cfromQ(C, Q(m)), :atan, zel, zterm))
+    end
+    out
+end
+
+# Step TH. At a trig level, w of winding number s around the unit circle (s = (n - m)/2 above):
+# arg w = s·u + arg v, v = θ^(-s) w, and v = A + iB with A = (v + σv)/2, B = (v - σv)/(2i) real
+# trigonometric polynomials. If A never vanishes on the real line, arg v ≡ atan(B/A) (continuous);
+# if B never does, arg v ≡ -atan(A/B). "Never vanishes" is decided exactly: with t = tan(u/2),
+# A·(1 + t²)^K = Σ a_k (1+it)^(K+k) (1-it)^(K-k) is a real polynomial without real roots (Sturm), and
+# A(π) = Σ a_k (-1)^k ≠ 0. Returns the pieces of arg w, or nothing (then the tan(u/2) form is used).
+function shifted_arg_pieces(T::Tower, kinds, j::Int, w, s::Int, uel, uterm)
+    C = ctype(T)
+    RT = real_field(C)
+    I = cimag(C)
+    θel = frac(xpoly(T.Ts[j]))
+    v = s >= 0 ? w / θel^s : w * θel^(-s)
+    sv = tconj(T, kinds, v, j)
+    half = lconst(T, inv(cfromQ(C, Q(2))), j)
+    Av, Bv = (v + sv) * half, (v - sv) * lconst(T, inv(I + I), j)
+    (iszero(Av) || iszero(Bv)) && return nothing
+    # Laurent coefficients a_k (k = -K … ) of a σ-invariant X = N/θ^K, as real constants
+    function nonvanishing(X)
+        degree(X.den) == length(X.den.c) - 1 && all(iszero, X.den.c[1:(end - 1)]) || return false
+        K = degree(X.den)
+        a = [const_value(T, c) for c in X.num.c]
+        any(isnothing, a) && return false
+        P = UPoly{C}
+        ap, am = P(C[one(C), I]), P(C[one(C), -I])
+        Ah = sum(scale(a[l + 1], ap^l * am^(2K - l)) for l in eachindex(a) .- 1)
+        all(c -> iszero(im_part(c)), Ah.c) || return false
+        Ar = UPoly{RT}(RT[re_part(c) for c in Ah.c])
+        Aπ = sum(re_part(a[l + 1]) * (iseven(l - K) ? 1 : -1) for l in eachindex(a) .- 1)
+        !iszero(Aπ) && real_root_count(Ar, nothing, nothing, c -> Int(real_sign(c))) == 0
+    end
+    out = Any[]
+    s != 0 && push!(out, (cfromQ(C, Q(s)), :lin, uel, uterm))
+    # printed as real_term(B)/real_term(A): each is σ-invariant (no conjugate denominator to multiply in)
+    ratio(X, Y) = b -> mk(b, :/, real_term(b, T, kinds, X, j), real_term(b, T, kinds, Y, j))
+    if nonvanishing(Av)
+        push!(out, (one(C), :atan, Bv / Av, ratio(Bv, Av)))
+    elseif nonvanishing(Bv)
+        push!(out, (-one(C), :atan, Av / Bv, ratio(Av, Bv)))
+    else
+        return nothing
     end
     out
 end
@@ -4501,8 +4549,8 @@ function real_log_pieces(T::Tower, kinds, c, w)
     if !(iszero(ci) || iszero(U) || iszero(V))
         cp = continuous_arg_pieces(T, kinds, j, w)      # -Im c · arg w, continuous (step TC)
         if cp !== nothing
-            for (f, k, a, pr) in cp
-                push!(pieces, (-ci * f, k, a, pr))
+            for pc in cp                                # (factor, kind, argument[, printer])
+                push!(pieces, (-ci * pc[1], pc[2:end]...))
             end
             return pieces
         end
