@@ -396,6 +396,22 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   Tests: test_risch.jl both packages, six integrands: continuity (step 0.05) and F(b) − F(a) against
   Simpson's rule (atol 1e-8). Pitfall for test integrands: s³+s+2 = (s+1)(s²−s+2) has a real pole at
   sin x = −1; cos x/(sin³x+sin x+1) has real poles too.
+* **TC: continuous trigonometric answers** (2026-10-14, done, tests green). In Step 7's real form
+  (`real_log_pieces`) the piece −Im c·atan(V/U) (= −Im c·arg w) jumped where U = 0. When w is a
+  polynomial in the level generator with constant coefficients (C = ℚ(i) or ℚ(i)(√d)),
+  `continuous_arg_pieces` replaces it: z real (x at the base, θ at a real level): w = A(z) + iB(z),
+  arg w ≡ −Σ atan(pⱼ(z)) by `log_to_atan(A, B)`; trig level θ = e^{iu}: t = tan(u/2),
+  w = (1−it)^(−n) w̃(t), and with m = Σ_{odd deg pⱼ} sign(lc pⱼ) (the jumps at u = π mod 2π)
+    arg w ≡ ((n − m)/2)·u − Σ atan(pⱼ(t)) + m·atan(t)      (continuous; no π, no floor)
+  since −mπ⌊(u+π)/2π⌋ = −(m/2)(u − 2 atan(tan(u/2))). t = −i(θ−1)/(θ+1) is a tower element, so the
+  pieces are differentiated and checked exactly in `to_term_real` (new piece kind :lin, optional
+  printer as 4th tuple entry; `rpoly_term`, `real_field`, `re_part`/`im_part`, `real_sign`).
+  `merge_pieces` now also merges the two halves of an ExtQuadPair. `tan` added to OPS (numeric eval).
+  E.g. 1/(2+cos x) → (2/√3) atan(tan(x/2)/√3) − (2/√3) atan(tan(x/2)) + x/√3 (was a ratio-atan with
+  jumps of 1.8). Falls back to the old atan(V/U) when w has non-constant coefficients or the
+  constant field has generators (ℚ(i)(t)).
+  Tests: test_trig.jl both packages, eight integrands: continuity on [−7, 13], F(13) − F(−7) against
+  Simpson (crosses u = π several times), the textbook form for 1/(2+cos x).
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 

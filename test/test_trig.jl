@@ -100,6 +100,23 @@ function run_tests(x, evalat, name)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sin(x) + sin(x + log(2)), x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(sin(x)), x)         # algebraic
     end
+
+    # step TC: real forms with atans of polynomials in tan(u/2) plus a linear correction, so the
+    # answers are continuous for all real x and F(b) - F(a) is the definite integral (Simpson)
+    @testset "$name: continuous trigonometric antiderivatives (step TC)" begin
+        tc_simpson(g, a, b; n = 2000) = (h = (b - a) / n;
+            h / 3 * (g(a) + g(b) + sum((isodd(k) ? 4 : 2) * g(a + k * h) for k in 1:(n - 1))))
+        for f in (1/(2 + cos(x)), 1/(5 + 3sin(x)), cos(x)/(2 + sin(x)^2), 1/(1 + sin(x)^2),
+                  1/(3 + sin(2x)), 1/(2 + cos(x))^2, 1/(1 + cos(x)^2), 1/(2 + cos(x/3)))
+            F = Risch.risch_integrate(f, x)
+            @test occursin("tan", string(F))
+            @test maximum(abs.(diff([evalat(F, a) for a in -7:0.02:13]))) < 0.05
+            @test isapprox(evalat(F, 13) - evalat(F, -7), tc_simpson(t -> evalat(f, t), -7, 13); atol = 1e-8)
+        end
+        # the textbook form: (2/√3) atan(tan(x/2)/√3) plus the correction x/√3 - (2/√3) atan(tan(x/2))
+        F = Risch.risch_integrate(1/(2 + cos(x)), x)
+        @test count("atan", string(F)) == 2
+    end
 end
 
 simple_x = let; SimpleExpressions.@symbolic x; x; end

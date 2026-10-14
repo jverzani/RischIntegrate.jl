@@ -1060,7 +1060,7 @@ end
 Builder(build, lift, x) = Builder(build, lift, x, ConstGen[])
 const OPS = Dict{Symbol,Function}(:+ => +, :* => *, :/ => /, :^ => ^, :exp => exp,
                                   :log => log, :atan => atan, :sqrt => sqrt,
-                                  :sin => sin, :cos => cos,
+                                  :sin => sin, :cos => cos, :tan => tan,
                                   # SpecialFunctions (Step 8a): Ei, Si, Ci, erf, erfi
                                   :Ei => expinti, :Si => sinint, :Ci => cosint, :erf => erf, :erfi => erfi)
 mk(b::Builder, name::Symbol, args...) = b.build(OPS[name], args...)
@@ -4294,7 +4294,99 @@ function real_laurent_term(b::Builder, T::Tower, kinds, L::Dict, i::Int, wt)
     length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
 end
 
-# Re(c log w) as real pieces (coefficient, :log | :atan, argument), see the header above
+# --- continuous arguments (step TC) ----------------------------------------------
+# Re(c log w) = Re c·log|w| - Im c·arg w. The piece atan(V/U) for arg w jumps where U = 0. When
+# w = Σ c_k z^k has constant coefficients (c_k ∈ C = ℚ(i) or ℚ(i)(√d)) and z is a real variable
+# (x at the base, θ at a real exp/log level), w = A(z) + i B(z) with A, B real polynomials and
+# Rioboo's LogToAtan gives arg w ≡ -Σ atan(pⱼ(z)), continuous. At a trig level θ = e^{iu}, with
+# t = tan(u/2) (θ = (1 + it)/(1 - it)):  w(θ) = (1 - it)^(-n) w̃(t), w̃(t) = Σ c_k (1+it)^k (1-it)^(n-k),
+# so arg w = n·u/2 + arg w̃(t) on (-π, π), and arg w̃ ≡ -Σ atan(pⱼ(t)). At u = π mod 2π (t = ±∞) each
+# odd pⱼ jumps by -sign(lc pⱼ)·π, together mπ; the correction -mπ⌊(u+π)/2π⌋ is -(m/2)(u - 2 atan t):
+#   arg w ≡ ((n - m)/2)·u - Σ atan(pⱼ(t)) + m·atan(t)          (continuous for all real u)
+# t = -i(θ - 1)/(θ + 1) is a tower element, so every piece is still differentiated and checked
+# exactly in `to_term_real`. Pieces: (factor, :atan | :lin, element, printer b -> term).
+real_field(::Type{QI}) = Q
+real_field(::Type{QSB{d,QI}}) where {d} = QS{d}
+real_field(::Type) = nothing
+re_part(c::QI) = c.re
+im_part(c::QI) = c.im
+re_part(c::QSB{d,QI}) where {d} = QS{d}(c.a.re, c.b.re)
+im_part(c::QSB{d,QI}) where {d} = QS{d}(c.a.im, c.b.im)
+to_complex(::Type{QI}, r::Q) = QI(r, Q(0))
+to_complex(::Type{QSB{d,QI}}, r::QS{d}) where {d} = QSB{d,QI}(QI(r.a, Q(0)), QI(r.b, Q(0)))
+real_sign(r::Q) = sign(r)
+function real_sign(r::QS{d}) where {d}                  # sign of a + b√d, d > 0
+    a, b = r.a, r.b
+    (sign(a) == sign(b) || iszero(b)) && return sign(a) + (iszero(a) ? sign(b) : 0)
+    a^2 > d * b^2 ? sign(a) : sign(b)
+end
+
+# p(z) for p over the real field, z a term (printing)
+function rpoly_term(b::Builder, p::UPoly, zt)
+    ts = Any[]
+    for (k, c) in enumerate(p.c)
+        iszero(c) && continue
+        e = k - 1
+        zk = e == 0 ? nothing : (e == 1 ? zt : mk(b, :^, zt, b.lift(e)))
+        push!(ts, zk === nothing ? cterm(b, c) : (isone(c) ? zk : mk(b, :*, cterm(b, c), zk)))
+    end
+    isempty(ts) ? b.lift(0) : (length(ts) == 1 ? ts[1] : mk(b, :+, ts...))
+end
+
+function continuous_arg_pieces(T::Tower, kinds, j::Int, w)
+    C = ctype(T)
+    RT = real_field(C)
+    RT === nothing && return nothing
+    isone(w.den) || return nothing
+    cs = C[]
+    for c in w.num.c
+        v = j == 0 ? c : const_value(T, c)
+        v === nothing && return nothing
+        push!(cs, v)
+    end
+    n = length(cs) - 1
+    n >= 1 || return nothing
+    I = cimag(C)
+    P = UPoly{C}
+    trig = j > 0 && kinds[j] === :trig
+    if trig
+        ap, am = P(C[one(C), I]), P(C[one(C), -I])
+        wt = sum(scale(cs[k + 1], ap^k * am^(n - k)) for k in 0:n)
+        θ = frac(xpoly(T.Ts[j]))
+        zel = lconst(T, -I, j) * (θ - one(θ)) / (θ + one(θ))           # t = tan(u/2)
+        uel = liftto(T, T.levels[j].arg, j - 1) * lconst(T, -I, j - 1)  # θ = e^{iu}
+        uterm = b -> real_term(b, T, kinds, uel)
+        zterm = b -> mk(b, :tan, mk(b, :/, uterm(b), b.lift(2)))
+    else
+        wt = P(cs)
+        if j == 0
+            zel = frac(xpoly(C))
+            zterm = b -> b.x
+        else
+            lv = T.levels[j]
+            zel = frac(xpoly(T.Ts[j]))
+            zterm = b -> mk(b, lv.kind, real_term(b, T, kinds, lv.arg))
+        end
+    end
+    A = UPoly{RT}(RT[re_part(c) for c in wt.c])
+    B = UPoly{RT}(RT[im_part(c) for c in wt.c])
+    (iszero(A) || iszero(B)) && return nothing
+    peval_el(p) = foldr((c, acc) -> acc * zel + lconst(T, to_complex(C, c), j), p.c; init = zero(zel))
+    out = Any[]
+    m = 0
+    for p in log_to_atan(A, B)                          # Σ 2 atan(p) ≡ 2 atan(A/B) ≡ -2 arg w̃
+        degree(p) <= 0 && continue                      # a constant: derivative 0
+        push!(out, (-one(C), :atan, peval_el(p), b -> rpoly_term(b, p, zterm(b))))
+        trig && isodd(degree(p)) && (m += Int(real_sign(lc(p))))
+    end
+    if trig
+        n != m && push!(out, (cfromQ(C, Q(n - m) // 2), :lin, uel, uterm))
+        m != 0 && push!(out, (cfromQ(C, Q(m)), :atan, zel, zterm))
+    end
+    out
+end
+
+# Re(c log w) as real pieces (coefficient, :log | :atan | :lin, argument[, printer]), see above
 function real_log_pieces(T::Tower, kinds, c, w)
     C = ctype(T)
     j = levelof(T, w)
@@ -4304,7 +4396,7 @@ function real_log_pieces(T::Tower, kinds, c, w)
     I = cimag(C)
     cr = (c + sc) * half
     ci = (c - sc) * inv(I + I)
-    pieces = Tuple{Any,Symbol,Any}[]
+    pieces = Any[]
     if sw == w
         iszero(cr) || push!(pieces, (cr, :log, w))
         return pieces
@@ -4312,6 +4404,15 @@ function real_log_pieces(T::Tower, kinds, c, w)
     iszero(cr) || push!(pieces, (cr * half, :log, w * sw))
     U = (w + sw) * lconst(T, half, j)
     V = (w - sw) * lconst(T, inv(I + I), j)
+    if !(iszero(ci) || iszero(U) || iszero(V))
+        cp = continuous_arg_pieces(T, kinds, j, w)      # -Im c · arg w, continuous (step TC)
+        if cp !== nothing
+            for (f, k, a, pr) in cp
+                push!(pieces, (-ci * f, k, a, pr))
+            end
+            return pieces
+        end
+    end
     if !(iszero(ci) || iszero(U) || iszero(V))          # U = 0: w/σw = -1, constant
         a = V / U
         # at the base, atan(V/U) with V constant has a pole where U = 0; -atan(U/V) has the same
@@ -4327,19 +4428,20 @@ end
 
 # combine real pieces with the same argument (atan(-u) = -atan(u)); zero coefficients dropped
 function merge_pieces(pieces)
-    out = Tuple{Any,Symbol,Any}[]
-    for (c, k, a) in pieces
+    out = Any[]
+    for pc in pieces
+        c, k, a = pc[1], pc[2], pc[3]
         i = findfirst(p -> p[2] === k && p[3] == a, out)
         if i !== nothing
-            out[i] = (out[i][1] + c, k, a)
+            out[i] = (out[i][1] + c, out[i][2:end]...)
             continue
         end
         i = k === :atan ? findfirst(p -> p[2] === :atan && p[3] == -a, out) : nothing
         if i !== nothing
-            out[i] = (out[i][1] - c, k, out[i][3])
+            out[i] = (out[i][1] - c, out[i][2:end]...)
             continue
         end
-        push!(out, (c, k, a))
+        push!(out, pc)
     end
     filter(p -> !iszero(p[1]), out)
 end
@@ -4355,16 +4457,18 @@ function to_term_real(b::Builder, T::Tower, L::Int, res::ElemIntegral, f)
     iszero(vr) || push!(ts, real_term(b, T, kinds, vr, L))
     function emit!(TT, kk, pieces)              # push the terms, return Σ derivatives (in TT)
         ds = zero(TT.Ts[L + 1])
-        for (coef, kind, arg) in pieces
+        for pc in pieces
+            coef, kind, arg = pc[1], pc[2], pc[3]
             a = liftto(TT, arg, L)
-            da = kind === :log ? D(TT, L, a) / a : D(TT, L, a) / (one(a) + a * a)
+            da = kind === :log ? D(TT, L, a) / a : kind === :lin ? D(TT, L, a) : D(TT, L, a) / (one(a) + a * a)
             ds = ds + lconst(TT, coef, L) * da
-            t = mk(b, kind, real_term(b, TT, kk, arg))
+            at = length(pc) >= 4 ? pc[4](b) : real_term(b, TT, kk, arg)
+            t = kind === :lin ? at : mk(b, kind, at)
             push!(ts, isone(coef) ? t : mk(b, :*, cterm(b, coef), t))
         end
         ds
     end
-    pieces = Tuple{Any,Symbol,Any}[]
+    pieces = Any[]
     for (c, w) in res.logs
         append!(pieces, real_log_pieces(T, kinds, c, w))
     end
@@ -4382,8 +4486,8 @@ function to_term_real(b::Builder, T::Tower, L::Int, res::ElemIntegral, f)
         T2 = q.T2
         k2 = sigma_kinds(T2)
         a2, W2 = galois_d(q.a), change_constants(T2, T2, q.W, galois_d)
-        ds = emit!(T2, k2, real_log_pieces(T2, k2, q.a, q.W)) +
-             emit!(T2, k2, real_log_pieces(T2, k2, a2, W2))
+        ds = emit!(T2, k2, merge_pieces(vcat(real_log_pieces(T2, k2, q.a, q.W),
+                                             real_log_pieces(T2, k2, a2, W2))))
         tot = tot + change_constants(T2, T, ds, qs_down)
     end
     tot == liftto(T, f, L) ||
