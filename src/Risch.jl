@@ -2165,8 +2165,8 @@ function integrate_poly_t(T::Tower, m::Int, h)
         e isa RischNotImplemented && return :unknown
         rethrow()
     end
-    any(q -> q isa SpecialTerm, r.quads) && return nothing
-    (isempty(r.atans) && isempty(r.quads)) || return :unknown
+    # atan / quadratic terms: residues outside C, not of the form κ t' (see `integrate_log_poly`)
+    (isempty(r.atans) && isempty(r.quads)) || return nothing
     v = liftto(T, r.v, m)
     tgt = zero(T.Ts[m + 1])
     for (cj, wj) in r.logs
@@ -2274,7 +2274,36 @@ function rde_general(T::Tower, m::Int, f, g)
         (bP === nothing || cP === nothing) && throw(RischError("RDE: special denominator not cleared"))
     end
     # 3. degree bound for a r' + b r = c
-    da, db, dc = degree(aP), degree(bP), degree(cP)
+    n, und = rde_degree_bound(T, m, aP, bP, degree(cP))
+    und && (undecided = true)
+    # 4. SPDE, 5. solve h' + b̄ h = c̄
+    y = nothing
+    sp = spde(T, m, aP, bP, cP, n)
+    if sp !== nothing
+        b̄, c̄, M, α, β = sp
+        hsol = poly_rde_reduced(T, m, b̄, c̄, M)
+        if hsol isa Symbol                              # :unknown from a cancellation case
+            undecided = true
+        elseif hsol !== nothing
+            q = α * hsol + β
+            num_, den_ = q, h
+            nt >= 0 ? (num_ = num_ * t^nt) : (den_ = den_ * t^(-nt))
+            y = frac(num_, den_)
+        end
+    end
+    y !== nothing && D(T, m, y) + f * y == g && return y
+    undecided && cancellation_undecided()
+    nothing
+end
+
+# Degree bound n for a r' + b r = c in k[t] (Bronstein 6.3), dc = deg c (step 3 of `rde_general`,
+# shared with `prde`). Returns (n, undecided): undecided when a cancellation case could not be
+# decided, in which case n may be too small.
+function rde_degree_bound(T::Tower, m::Int, aP::UPoly, bP::UPoly, dc::Int)
+    islog = m == 0 || T.levels[m].kind === :log
+    k = coeff_type(T, m)
+    undecided = false
+    da, db = degree(aP), degree(bP)
     if islog
         if iszero(bP)                                   # a r' = c
             n = max(0, dc - da + 1)
@@ -2304,29 +2333,12 @@ function rde_general(T::Tower, m::Int, f, g)
     else
         n = max(0, dc - max(da, db))
         if db == da
-            s0 = cancellation_exponent(T, m, lc(bP) / lc(aP), D(T, m - 1, lv.arg))
+            s0 = cancellation_exponent(T, m, lc(bP) / lc(aP), D(T, m - 1, T.levels[m].arg))
             s0 === :unknown && (undecided = true)
             s0 isa Int && (n = max(n, s0))
         end
     end
-    # 4. SPDE, 5. solve h' + b̄ h = c̄
-    y = nothing
-    sp = spde(T, m, aP, bP, cP, n)
-    if sp !== nothing
-        b̄, c̄, M, α, β = sp
-        hsol = poly_rde_reduced(T, m, b̄, c̄, M)
-        if hsol isa Symbol                              # :unknown from a cancellation case
-            undecided = true
-        elseif hsol !== nothing
-            q = α * hsol + β
-            num_, den_ = q, h
-            nt >= 0 ? (num_ = num_ * t^nt) : (den_ = den_ * t^(-nt))
-            y = frac(num_, den_)
-        end
-    end
-    y !== nothing && D(T, m, y) + f * y == g && return y
-    undecided && cancellation_undecided()
-    nothing
+    n, undecided
 end
 
 # h' + b h = c in k[t], deg h ≤ M; returns h, nothing (no solution) or :unknown
@@ -2407,8 +2419,8 @@ function limited_log_multiple(T::Tower, m::Int, α)
         e isa RischNotImplemented && return :unknown
         rethrow()
     end
-    any(q -> q isa SpecialTerm, r.quads) && return nothing   # ∫α is not elementary at all
-    (isempty(r.atans) && isempty(r.quads)) || return :unknown
+    # SpecialTerm: ∫α is not elementary at all; atan / quadratic terms: residues outside C
+    (isempty(r.atans) && isempty(r.quads)) || return nothing
     K = T.Ts[m]
     tgt = zero(K)
     for (cj, wj) in r.logs
@@ -2595,6 +2607,317 @@ function refine_factors(qs)
         end
     end
     L
+end
+
+# ---------------------------------------------------------------------------
+# Step 9d: the parametric Risch DE in towers (Bronstein 7.1)
+#
+#   y' + f y = Σ cᵢ gᵢ,    y ∈ K_m,  c = (c₁, …, c_r) ∈ C^r unknown
+#
+# The solutions (y, c) form a finite-dimensional C-vector space; `prde` returns a basis
+# [(y, c)] of it, or `nothing` when a case is not handled (an undecided cancellation case, a
+# weak normaliser with a huge residue): callers must not conclude anything from `nothing`.
+# The steps are those of `rde_general`; every condition "Σ cᵢ (something) = 0" becomes a linear
+# constraint on c over C (`c_nullspace`, through the C-coordinates `cflat_c`), and the problem is
+# re-parametrised on the solution space of the constraint (c = Σ c'ⱼ Nⱼ):
+#   0. weak normalisation: y = z/q;
+#   1. normal denominator h (every solution has normal denominator dividing h, f weakly
+#      normalised); a q' + b q = Σ cᵢ Cᵢ with Cᵢ = d_n h² gᵢ;
+#   2. the normal poles left in Σ cᵢ Cᵢ must cancel (constraint);
+#   3. special denominator (exp: lowest power of t, with the cancellation exponent);
+#   4. degree bound (`rde_degree_bound`);
+#   5. parametric SPDE (`prde_spde`): q = α h + Σ c'ⱼ βⱼ with h' + b̄ h = Σ c'ⱼ C̄ⱼ;
+#   6. polynomial solutions (`prde_poly`): deg b̄ > 0 top-down (linear in the right-hand sides);
+#      b̄ ∈ k one coefficient of h at a time, top-down, each a parametric RDE in k (recursion)
+#      whose parameters are the current solution basis (log: the coupling term -(s+1) h_(s+1) t'
+#      is part of each right-hand side). This also covers b̄ = 0 (integration, where k's
+#      constants are the homogeneous solutions) and the cancellation cases (the recursive call
+#      returns the homogeneous solutions in k), so no logarithmic-derivative test is needed here.
+# Every basis element is verified exactly.
+# ---------------------------------------------------------------------------
+
+# C-coordinates of elements of K_l (aligned across the list): C-linear relations among the
+# elements are exactly those among the vectors (as `flat`, stopping at C instead of ℚ)
+function cflat_c(T::Tower{C}, l::Int, elems) where {C}
+    isempty(elems) && return Vector{C}[]
+    L = reduce(plcm, [e.den for e in elems]; init = one(typeof(first(elems).den)))
+    nums = [e.num * quo(L, e.den) for e in elems]
+    n = maximum(length(p.c) for p in nums)
+    K = l == 0 ? C : T.Ts[l]
+    parts = [begin
+                 col = K[k <= length(p.c) ? p.c[k] : zero(K) for p in nums]
+                 l == 0 ? [C[c] for c in col] : cflat_c(T, l - 1, col)
+             end for k in 1:n]
+    [reduce(vcat, (parts[k][j] for k in 1:n); init = C[]) for j in eachindex(elems)]
+end
+
+# a basis of {c ∈ S^r : Σ cⱼ vⱼ = 0} (the vⱼ of equal length)
+function nullspace_cols(vs::Vector{Vector{S}}, r::Int) where {S}
+    nrow = r == 0 ? 0 : length(vs[1])
+    M = S[vs[j][i] for i in 1:nrow, j in 1:r]
+    piv = Int[]
+    row = 1
+    for col in 1:r
+        row > nrow && break
+        p = findfirst(i -> !iszero(M[i, col]), row:nrow)
+        p === nothing && continue
+        p += row - 1
+        if p != row
+            for j in 1:r
+                M[row, j], M[p, j] = M[p, j], M[row, j]
+            end
+        end
+        pv = inv(M[row, col])
+        for j in 1:r
+            M[row, j] = M[row, j] * pv
+        end
+        for i in 1:nrow
+            (i == row || iszero(M[i, col])) && continue
+            fct = M[i, col]
+            for j in 1:r
+                M[i, j] = M[i, j] - fct * M[row, j]
+            end
+        end
+        push!(piv, col)
+        row += 1
+    end
+    basis = Vector{S}[]
+    for fc in 1:r
+        fc in piv && continue
+        v = fill(zero(S), r)
+        v[fc] = one(S)
+        for (i, pc) in enumerate(piv)
+            v[pc] = -M[i, fc]
+        end
+        push!(basis, v)
+    end
+    basis
+end
+
+# a basis of the c ∈ C^r with Σ cᵢ eᵢ = 0, eᵢ elements of K_l
+function c_nullspace(T::Tower{C}, l::Int, elems) where {C}
+    r = length(elems)
+    all(iszero, elems) && return [C[i == j ? one(C) : zero(C) for i in 1:r] for j in 1:r]
+    nullspace_cols(cflat_c(T, l, elems), r)
+end
+
+# Σ cᵢ eᵢ for constants cᵢ ∈ C: elements of K_l, and polynomials over the coefficients of level m
+function ccomb(T::Tower, l::Int, c, es)
+    s = zero(T.Ts[l + 1])
+    for (ci, e) in zip(c, es)
+        iszero(ci) || (s = s + lconst(T, ci, l) * e)
+    end
+    s
+end
+function ccomb_poly(T::Tower, m::Int, c, ps, ::Type{P}) where {P}
+    s = zero(P)
+    for (ci, p) in zip(c, ps)
+        iszero(ci) || (s = s + scale(m == 0 ? ci : lconst(T, ci, m - 1), p))
+    end
+    s
+end
+# Σ_j c'ⱼ Nⱼ ∈ C^r: the original parameters from those of a re-parametrisation
+function cback(T::Tower{C}, N, cp, r::Int) where {C}
+    v = fill(zero(C), r)
+    for (j, cj) in enumerate(cp)
+        iszero(cj) && continue
+        for i in 1:r
+            v[i] = v[i] + cj * N[j][i]
+        end
+    end
+    v
+end
+
+function prde(T::Tower, m::Int, f, G::Vector; normalized::Bool = false)
+    C = ctype(T)
+    r = length(G)
+    F = T.Ts[m + 1]
+    # 0. weak normalisation: y = z/q, z' + (f - Dq/q) z = Σ cᵢ q gᵢ
+    if !normalized
+        q0 = try
+            weak_normalizer(T, m, f)
+        catch e
+            e isa RischNotImplemented ? nothing : rethrow()
+        end
+        q0 === nothing && return nothing
+        if !isone(q0)
+            qF = frac(q0)
+            sols = prde(T, m, f - frac(polyD(T, m, q0)) / qF, Any[g * qF for g in G]; normalized = true)
+            return sols === nothing ? nothing : [(y / qF, c) for (y, c) in sols]
+        end
+    end
+    lv = m == 0 ? nothing : T.levels[m]
+    islog = m == 0 || lv.kind === :log                  # the base behaves as t = x primitive over C
+    k = coeff_type(T, m)
+    P = UPoly{k}
+    t = xpoly(k)
+    # 1. normal denominator
+    dn, _ = split_factor(T, m, f.den)
+    en = one(P)
+    for g in G
+        en = plcm(en, split_factor(T, m, g.den)[1])
+    end
+    p = gcd(dn, en)
+    h = quo(gcd(en, deriv(en)), gcd(p, deriv(p)))
+    hF, dnF = frac(h), frac(dn)
+    aP = dn * h
+    bF = dnF * hF * f - dnF * frac(polyD(T, m, h))
+    CF = Any[dnF * hF * hF * g for g in G]
+    degree(split_factor(T, m, bF.den)[1]) > 0 && return nothing   # f was not weakly normalised
+    # 2. the normal poles left in Σ cᵢ Cᵢ must cancel: Cᵢ = Xᵢ/(d S), constraint Σ cᵢ rem(Xᵢ, d) = 0
+    dN, sN = one(P), one(P)
+    for c in CF
+        nd, sd = split_factor(T, m, c.den)
+        dN, sN = plcm(dN, nd), plcm(sN, sd)
+    end
+    N1 = nothing
+    if degree(dN) > 0
+        X = [c.num * quo(dN * sN, c.den) for c in CF]
+        N1 = c_nullspace(T, m, Any[frac(rem(x, dN)) for x in X])
+        Cq = Any[frac(quo(x, dN), sN) for x in X]
+        CF = Any[ccomb(T, m, v, Cq) for v in N1]
+    end
+    # 3. special denominator
+    nt = 0
+    if islog
+        bP, CP = bF.num, P[c.num for c in CF]           # denominators are 1
+    else
+        wp = liftto(T, D(T, m - 1, lv.arg), m)
+        nb = tval(bF)
+        nc = minimum((tval(c) for c in CF); init = typemax(Int) ÷ 2)
+        lowq = nb < 0 ? nc - nb : min(nc, 0)
+        if nb == 0
+            b0 = bF.num.c[1 + degree(bF.den)]           # coefficient of t^0 (den = t^v)
+            s0 = cancellation_exponent(T, m, b0 / aP.c[1], D(T, m - 1, lv.arg))
+            s0 === :unknown && return nothing
+            s0 isa Int && (lowq = min(lowq, s0))
+        end
+        nt = min(0, lowq)
+        tn = frac(t)^nt
+        b1 = bF + lq(T, Q(nt), m) * wp * frac(aP)
+        C1 = Any[c / tn for c in CF]
+        Nt = max(0, -tval(b1), maximum((-tval(c) for c in C1); init = 0))
+        tN = frac(t^Nt)
+        aP = aP * t^Nt
+        bP = as_poly(b1 * tN)
+        CPs = [as_poly(c * tN) for c in C1]
+        (bP === nothing || any(isnothing, CPs)) && throw(RischError("parametric RDE: special denominator not cleared"))
+        CP = P[c for c in CPs]
+    end
+    # 4. degree bound
+    n, undecided = rde_degree_bound(T, m, aP, bP, maximum(degree, CP; init = -1))
+    undecided && return nothing
+    # 5. parametric SPDE, 6. polynomial solutions
+    b̄, C̄, M, α, β, N2 = prde_spde(T, m, aP, bP, CP, n)
+    hs = prde_poly(T, m, b̄, C̄, M)
+    hs === nothing && return nothing
+    out = Tuple{F,Vector{C}}[]
+    for (hh, c2) in hs
+        q = α * hh + ccomb_poly(T, m, c2, β, P)
+        c1 = cback(T, N2, c2, length(CP))
+        c = N1 === nothing ? c1 : cback(T, N1, c1, r)
+        num_, den_ = q, h
+        nt >= 0 ? (num_ = num_ * t^nt) : (den_ = den_ * t^(-nt))
+        y = frac(num_, den_)
+        D(T, m, y) + f * y == ccomb(T, m, c, G) ||
+            throw(RischError("parametric RDE solution failed its own check"))
+        push!(out, (y, c))
+    end
+    out
+end
+
+# parametric SPDE (Bronstein 7.1): a q' + b q = Σ cᵢ Cᵢ, deg q ≤ n, a, b, Cᵢ ∈ k[t].
+# Returns (b̄, C̄, M, α, β, N): for c = Σⱼ c'ⱼ Nⱼ (N a basis of the admissible c),
+# q = α h + Σⱼ c'ⱼ βⱼ where h' + b̄ h = Σⱼ c'ⱼ C̄ⱼ and deg h ≤ M (M < 0: h = 0).
+function prde_spde(T::Tower, m::Int, a::P, b::P, Cs::Vector, n::Int) where {P<:UPoly}
+    C = ctype(T)
+    r = length(Cs)
+    if n < 0                                            # q = 0: Σ cᵢ Cᵢ = 0
+        N = c_nullspace(T, m, Any[frac(c) for c in Cs])
+        return (zero(P), P[zero(P) for _ in N], -1, zero(P), P[zero(P) for _ in N], N)
+    end
+    if degree(a) == 0
+        ia = inv(a.c[1])
+        ident = [C[i == j ? one(C) : zero(C) for i in 1:r] for j in 1:r]
+        return (scale(ia, b), P[scale(ia, c) for c in Cs], n, one(P), P[zero(P) for _ in 1:r], ident)
+    end
+    g = gcd(a, b)
+    if degree(g) > 0                                    # g must divide Σ cᵢ Cᵢ
+        qr = [divrem(c, g) for c in Cs]
+        N = c_nullspace(T, m, Any[frac(x[2]) for x in qr])
+        Cs2 = P[ccomb_poly(T, m, v, [x[1] for x in qr], P) for v in N]
+        b̄, C̄, M, α, β, N2 = prde_spde(T, m, quo(a, g), quo(b, g), Cs2, n)
+        return (b̄, C̄, M, α, β, [cback(T, N, v, r) for v in N2])
+    end
+    s, tt, _ = gcdex(b, a)                              # s b + tt a = 1
+    rs, zs = P[], P[]
+    for c in Cs                                         # b rᵢ + a zᵢ = Cᵢ, deg rᵢ < deg a
+        qd, rr = divrem(s * c, a)
+        push!(rs, rr)
+        push!(zs, tt * c + qd * b)
+    end
+    b̄, C̄, M, α, β, N = prde_spde(T, m, a, b + polyD(T, m, a),
+                                 P[z - polyD(T, m, rr) for (z, rr) in zip(zs, rs)], n - degree(a))
+    # q = a h + Σ cᵢ rᵢ with c = Σⱼ c'ⱼ Nⱼ
+    βn = P[a * β[j] + ccomb_poly(T, m, N[j], rs, P) for j in eachindex(N)]
+    (b̄, C̄, M, a * α, βn, N)
+end
+
+# h' + b h = Σ cⱼ Cⱼ in k[t] with deg h ≤ M: a basis [(h, c)] of the solutions, or nothing
+function prde_poly(T::Tower, m::Int, b::P, Cs::Vector, M::Int) where {P<:UPoly}
+    C = ctype(T)
+    r = length(Cs)
+    k = coeff_type(T, m)
+    zk = zero(k)
+    M < 0 && return [(zero(P), v) for v in c_nullspace(T, m, Any[frac(c) for c in Cs])]
+    above(p) = frac(P(k[j > M + 1 ? p.c[j] : zk for j in 1:length(p.c)]))   # terms of degree > M
+    if degree(b) > 0 || (m == 0 && !iszero(b))          # no cancellation: L(tˢ) has degree s + deg b
+        db, lb = degree(b), lc(b)
+        hs = P[zero(P) for _ in 1:r]
+        res = P[c for c in Cs]
+        for s in M:-1:0, i in 1:r
+            co = s + db + 1 <= length(res[i].c) ? res[i].c[s + db + 1] : zk
+            iszero(co) && continue
+            mono = P(k[j == s + 1 ? co / lb : zk for j in 1:(s + 1)])
+            hs[i] = hs[i] + mono
+            res[i] = res[i] - polyD(T, m, mono) - b * mono
+        end
+        return [(ccomb_poly(T, m, v, hs, P), v) for v in c_nullspace(T, m, Any[frac(x) for x in res])]
+    end
+    if m == 0                                           # h' = Σ cⱼ Cⱼ in C[x], plus the constants
+        hs = P[integrate_poly(c) for c in Cs]
+        out = [(ccomb_poly(T, 0, v, hs, P), v) for v in c_nullspace(T, 0, Any[above(h) for h in hs])]
+        push!(out, (one(P), C[zero(C) for _ in 1:r]))
+        return out
+    end
+    # b ∈ k (possibly 0): the coefficients h_s top-down, each from a parametric RDE in k whose
+    # right-hand sides are those of the current basis elements
+    lv = T.levels[m]
+    islog = lv.kind === :log
+    b0 = iszero(b) ? zk : b.c[1]
+    wp = islog ? zk : D(T, m - 1, lv.arg)
+    tp = islog ? lv.dtheta.c[1] : zk
+    coef(p, s) = s + 1 <= length(p.c) ? p.c[s + 1] : zk
+    # L(h) has degree ≤ M, so the terms of Σ cⱼ Cⱼ above M must cancel
+    B = Tuple{P,Vector{C}}[(zero(P), v) for v in c_nullspace(T, m, Any[above(c) for c in Cs])]
+    for s in M:-1:0
+        rhs = Any[]
+        for (hb, cb) in B
+            e = zk
+            for (ci, Ci) in zip(cb, Cs)
+                iszero(ci) || (e = e + lconst(T, ci, m - 1) * coef(Ci, s))
+            end
+            islog && (e = e - (s + 1) * coef(hb, s + 1) * tp)
+            push!(rhs, e)
+        end
+        sols = prde(T, m - 1, islog ? b0 : b0 + s * wp, rhs)
+        sols === nothing && return nothing
+        hsB = [x[1] for x in B]
+        csB = [x[2] for x in B]
+        B = Tuple{P,Vector{C}}[(ccomb_poly(T, m, d, hsB, P) + P(k[j == s + 1 ? y : zk for j in 1:(s + 1)]),
+                                cback(T, csB, d, r)) for (y, d) in sols]
+    end
+    B
 end
 
 # ---------------------------------------------------------------------------
@@ -2817,8 +3140,11 @@ function integrate_log_poly(T::Tower, i::Int, p::UPoly)
     while degree(p) > 0
         n = degree(p)
         r = integrate_el(T, i - 1, lc(p))
-        (isempty(r.atans) && isempty(r.quads)) || throw(RischNotImplemented(
-            "an atan (or quadratic-irrational log) term would multiply a power of the logarithm"))
+        # Limited integration (step 9d): lc(p) = b' + c u'/u with b ∈ K, c ∈ C is required. An atan,
+        # quadratic-irrational or ExtQuadPair term carries residues outside C, which b' (residues 0)
+        # and c u'/u (residues in C) cannot produce; a SpecialTerm means ∫ lc(p) is not elementary.
+        (isempty(r.atans) && isempty(r.quads)) || throw(NotElementary(
+            "the integral of the coefficient of log^$n needs logarithms with residues outside the constant field"))
         tgt = zero(K)                                   # Σ cⱼ wⱼ'/wⱼ, must equal c·u'/u
         for (cj, wj) in r.logs
             tgt = tgt + lconst(T, cj, i - 1) * (D(T, i - 1, wj) / wj)
@@ -3217,11 +3543,13 @@ end
 # Step 8a: non-elementary integrals with SpecialFunctions (on by default)
 #
 # Where the algorithm proves that ∫ a θ^j (θ = exp(U)) is not elementary, try instead
-#     a = y' + jU'y + Σ_t c_t U'/(U - t) [+ k]            (parametric Risch DE over C(x))
-# since  (c e^(jt) Ei(j(U - t)))' = c θ^j U'/(U - t)  and, for jU = A x² + B x + C₀,
+#     a = y' + jU'y + Σ_t c_t U'/(U - t) + Σ_l d_l θ_l^(-j) W_l'/W_l [+ k]
+# (the parametric Risch DE in K_m, `prde`, step 9d), since (c e^(jt) Ei(j(U - t)))' = c θ^j U'/(U - t),
+# (Ei(j W_l))' = θ^j θ_l^(-j) W_l'/W_l for W_l = U - a_l (θ_l = exp(a_l) a generator below), and,
+# at the base for jU = A x² + B x + C₀,
 # ∫ k θ^j = k e^E √π/(2√|A|) erf(√|A| (x + h))  (erfi for A > 0),  h = B/(2A), E = C₀ - B²/(4A).
-# The shifts t are U(r) at the poles r ∈ C of a, and 0. Above the base level only the direct
-# case a = c U'/U (→ c Ei(jU)) is used. At a log level whose residues are not constant,
+# The shifts t are 0 and the constant values of U at the poles of a (U ≡ t modulo a normal
+# factor of the denominator of a). At a log level whose residues are not constant,
 # ∫ c' u^m u'/(log u + b) = c' e^(-kb) Ei(k (log u + b)), k = m + 1 (li(u^k) for b = 0).
 # Each term keeps its exact derivative, so the usual checks still verify the result.
 # ---------------------------------------------------------------------------
@@ -3232,58 +3560,6 @@ struct SpecialTerm
     z::Any             # the argument (Ei), or x + h (erf/erfi): a tower element
     A::Q               # erf/erfi: the coefficient of x²
     deriv::Any         # the exact derivative of the term (tower element)
-end
-
-# y' + f y + Σ c_e e = g over C(x): (y, [c_e]) or nothing. As `rde_base`, with the extras e as
-# additional unknown columns and their denominators included in the denominator bound.
-function rde_param_base(f::Frac{UPoly{C}}, g::Frac{UPoly{C}}, extras::Vector) where {C}
-    P = UPoly{C}
-    iszero(f) && return nothing
-    Fn, Df = f.num, f.den
-    a = degree(Fn) - degree(Df)
-    a == -1 && return nothing
-    Lg = reduce(plcm, P[e.den for e in extras]; init = g.den)
-    Dn = one(P)
-    fparts = squarefree(Df)
-    for (gk, k) in squarefree(Lg)
-        remaining = gk
-        for (fi, i) in fparts
-            part = gcd(remaining, fi)
-            degree(part) > 0 || continue
-            i == 1 && return nothing                     # simple pole of f: not handled here
-            Dn = Dn * part^max(0, k - i)
-            remaining = quo(remaining, part)
-        end
-        Dn = Dn * remaining^max(0, k - 1)
-    end
-    γ = maximum(degree(e.num) - degree(e.den) for e in Any[g; extras])
-    M = (a >= 0 ? γ - a : max(γ + 1, 0)) + degree(Dn)
-    dD = deriv(Dn)
-    mono(k) = P(C[i == k + 1 ? one(C) : zero(C) for i in 1:(k + 1)])
-    scale_e(e) = e.num * quo(Lg, e.den) * Df * Dn * Dn
-    cols = P[]
-    for k in 0:M
-        N = mono(k)
-        dN = k == 0 ? zero(P) : k * mono(k - 1)
-        push!(cols, Df * Lg * (Dn * dN - dD * N) + Fn * Lg * Dn * N)
-    end
-    for e in extras
-        push!(cols, scale_e(e))
-    end
-    target = scale_e(g)
-    len = maximum(length(p.c) for p in [cols; target])
-    coords(p) = C[i <= length(p.c) ? p.c[i] : zero(C) for i in 1:len]
-    sol = solve_columns([coords(p) for p in cols], coords(target))
-    sol === nothing && return nothing
-    nN = max(M + 1, 0)
-    y = frac(P(sol[1:nN]), Dn)
-    cs = sol[(nN + 1):end]
-    lhs = dx(y) + f * y
-    for (c, e) in zip(cs, extras)
-        lhs = lhs + kconst(c) * e
-    end
-    lhs == g || throw(RischError("parametric RDE solution failed its own check"))
-    y, cs
 end
 
 # U ∈ C(x) at r ∈ C, or nothing at a pole
@@ -3305,32 +3581,56 @@ function special_exp(T::Tower, i::Int, j::Int, α)
     dU = D(T, m, U)
     θj = theta(T, i)^j
     jq = cfromQ(C, Q(j))
-    if m > 0                                             # only c Ei(jU):  α = c U'/U
-        cv = dconst_value(T, α / (dU / U))
-        cv === nothing && return nothing
-        jU = lq(T, Q(j), m) * U
-        d = lconst(T, cv, i) * liftto(T, dU / U, i) * θj
-        return zero(T.Ts[i]), Any[SpecialTerm(:Ei, cv, zero(C), jU, Q(0), d)]
+    jU = lq(T, Q(j), m) * U
+    # over ℚ(i) an Ei argument must be real or i·real (then it has a real form)
+    skinds = nothing
+    if cx && m > 0
+        skinds = try
+            sigma_kinds(T)
+        catch e
+            e isa RischNotImplemented ? nothing : rethrow()
+        end
+        skinds === nothing && return nothing
     end
-    # base level: U ∈ C(x)
-    ok_arg(z) = !cx || (s = conj0(T, z); s == z || s == -z)   # real or i·real: has a real form
+    ok_arg(z) = !cx || (s = m == 0 ? conj0(T, z) : tconj(T, skinds, z, m); s == z || s == -z)
+    # shifts t ∈ C: the values of U at the poles of α (U ≡ t modulo a normal factor), and 0
     shifts = C[zero(C)]
     if !isone(α.den)
-        sq = quo(α.den, gcd(α.den, deriv(α.den)))
-        for r in constant_roots(sq)
-            t = feval(U, r)
-            (t === nothing || t in shifts) || push!(shifts, t)
+        dn, _ = split_factor(T, m, α.den)
+        sq = quo(dn, gcd(dn, deriv(dn)))
+        if m == 0
+            for r in constant_roots(sq)
+                t = feval(U, r)
+                (t === nothing || t in shifts) || push!(shifts, t)
+            end
+        elseif degree(sq) > 0                           # roots of res_θ(sq, U.num - z U.den), if constant
+            R = residue_poly(T.Ts[m], sq, U.num, U.den)
+            if degree(R) > 0
+                cs = Any[dconst_value(T, c) for c in monic(R).c]
+                if !any(isnothing, cs)
+                    Rc = UPoly{C}(C[c for c in cs])
+                    for t in constant_roots(quo(Rc, gcd(Rc, deriv(Rc))))
+                        t in shifts || push!(shifts, t)
+                    end
+                end
+            end
         end
     end
-    jU = kconst(jq) * U
     extras, kinds = Any[], Any[]
-    for t in shifts
-        Ut = U - kconst(t)
-        (iszero(Ut) || !ok_arg(kconst(jq) * Ut)) && continue
+    for t in shifts                                     # (e^(jt) Ei(j(U - t)))' = θ^j U'/(U - t)
+        Ut = U - lconst(T, t, m)
+        (iszero(Ut) || !ok_arg(lq(T, Q(j), m) * Ut)) && continue
         push!(extras, dU / Ut)
         push!(kinds, (:Ei, t))
     end
-    if isone(jU.den) && degree(jU.num) == 2
+    for (l, lvl) in enumerate(T.levels[1:m])            # (Ei(j(U - a)))' = θ^j θ_l^(-j) (U - a)'/(U - a), θ_l = exp(a)
+        lvl.kind === :exp || continue
+        W = U - liftto(T, lvl.arg, m)
+        (is_constant(T, W) || !ok_arg(lq(T, Q(j), m) * W)) && continue
+        push!(extras, liftto(T, theta(T, l), m)^(-j) * D(T, m, W) / W)
+        push!(kinds, (:Eigen, W))
+    end
+    if m == 0 && isone(jU.den) && degree(jU.num) == 2
         A = crational(jU.num.c[3])
         B, C0 = jU.num.c[2], jU.num.c[1]
         if A !== nothing && (!cx || (cconj_g(T.consts, B) == B && cconj_g(T.consts, C0) == C0))
@@ -3339,9 +3639,20 @@ function special_exp(T::Tower, i::Int, j::Int, α)
         end
     end
     isempty(extras) && return nothing
-    r = rde_param_base(lq(T, Q(j), 0) * dU, α, extras)
-    r === nothing && return nothing
-    y, cs = r
+    # y' + j U' y + Σ c_e e = α: the parametric Risch DE in K_m (step 9d). Its solution basis
+    # has (y, (c₀, c...)) with y' + jU'y = c₀ α + Σ c e; one with c₀ ≠ 0 gives the answer.
+    sols = try
+        prde(T, m, lq(T, Q(j), m) * dU, Any[α; extras])
+    catch e
+        e isa RischNotImplemented ? nothing : rethrow()
+    end
+    sols === nothing && return nothing
+    idx = findfirst(s -> !iszero(s[2][1]), sols)
+    idx === nothing && return nothing
+    y0, c0 = sols[idx]
+    s0 = inv(c0[1])
+    y = y0 * lconst(T, s0, m)
+    cs = [-(c * s0) for c in c0[2:end]]
     terms = Any[]
     X = frac(xpoly(C))
     for (c, kd, e) in zip(cs, kinds, extras)
@@ -3349,7 +3660,9 @@ function special_exp(T::Tower, i::Int, j::Int, α)
         d = lconst(T, c, i) * liftto(T, e, i) * θj         # (term)' = c e θ^j
         if kd[1] === :Ei
             t = kd[2]
-            push!(terms, SpecialTerm(:Ei, c, jq * t, jU - kconst(jq * t), Q(0), d))
+            push!(terms, SpecialTerm(:Ei, c, jq * t, jU - lconst(T, jq * t, m), Q(0), d))
+        elseif kd[1] === :Eigen
+            push!(terms, SpecialTerm(:Ei, c, zero(C), lq(T, Q(j), m) * kd[2], Q(0), d))
         else
             A = kd[2]
             Ac = cfromQ(C, A)
@@ -3728,15 +4041,34 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         end
         n = lcm(n, Int(denominator(e)))
     end
-    N, Dd = u.num, u.den                                # u = (a x + b)/(c x + d), den monic
-    (degree(N) <= 1 && degree(Dd) <= 1 && degree(N) + degree(Dd) >= 1) || throw(RischNotImplemented(
-        "radicand of degree ≥ 2 ($uterm): needs an Euler substitution (step 10b) or is not elementary in general"))
+    b0 = Builder(build === nothing ? auto_build(f, x) : build,
+                 lift === nothing ? auto_lift(f, x) : lift, x)
+    N, Dd = u.num, u.den
     co(p, i) = i <= length(p.c) ? p.c[i] : Q(0)
-    a, b, c, d = co(N, 2), co(N, 1), co(Dd, 2), co(Dd, 1)
-    iszero(a * d - b * c) && throw(RischError("radicand is constant"))
     P = UPoly{Q}
-    tn = xpoly(Q)^n
-    φ = frac(P(Q[b]) - scale(d, tn), scale(c, tn) - P(Q[a]))  # x = (b - d tⁿ)/(c tⁿ - a)
+    tt = frac(xpoly(Q))                                 # t ∈ ℚ(t)
+    kq(c) = frac(P(Q[c]))
+    if degree(N) <= 1 && degree(Dd) <= 1 && degree(N) + degree(Dd) >= 1
+        # 10a: u = (a x + b)/(c x + d), t = u^(1/n), x = (b - d tⁿ)/(c tⁿ - a), u^(p/q) = t^(pn/q)
+        a, b, c, d = co(N, 2), co(N, 1), co(Dd, 2), co(Dd, 1)
+        iszero(a * d - b * c) && throw(RischError("radicand is constant"))
+        tn = tt^n
+        φ = (kq(b) - kq(d) * tn) / (kq(c) * tn - kq(a))
+        radpow = k -> tt^k                              # u^(k/n)
+        tterm = n == 2 ? mk(b0, :sqrt, uterm) : mk(b0, :^, uterm, b0.lift(Q(1) // n))
+    elseif isone(Dd) && degree(N) == 2 && n == 2
+        # 10b: √Q, Q = A x² + B x + C, by an Euler substitution (rational parametrisation over ℚ)
+        eu = euler_substitution(co(N, 3), co(N, 2), co(N, 1), b0, uterm)
+        eu === nothing && throw(RischNotImplemented(
+            "√($uterm): no rational Euler substitution over ℚ (needs √A or √C rational, or rational " *
+            "roots); would need the constant field ℚ(√d)"))
+        φ, ψ, tterm = eu
+        radpow = k -> ψ^k                               # Q^(k/2) = ψ(t)^k
+    else
+        throw(RischNotImplemented(
+            "radicals of $uterm: supported are u^(p/q) with u = (ax+b)/(cx+d), and √ of a quadratic " *
+            "polynomial; this needs the algebraic Risch algorithm or is not elementary in general"))
+    end
     dφ = dx(φ)
     function sub(term, T)
         if !safe_iscall(term)
@@ -3749,17 +4081,50 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         (ue !== nothing && ue == u) || throw(RischNotImplemented("radicals of several different radicands"))
         k = e * n
         isone(denominator(k)) || throw(RischError("radical exponent not a multiple of 1/n"))
-        frac(xpoly(ctype(T)))^Int(numerator(k))
+        to_K0(T, radpow(Int(numerator(k))))
     end
     T, el = build_tower(f, xk; subst = sub)
     T.subst = nothing
-    g = el * liftto(T, to_K0(T, dφ), levelof(T, el))     # f(φ(t), t) φ'(t)
+    g = el * liftto(T, to_K0(T, dφ), levelof(T, el))     # f(φ(t), …) φ'(t)
     T, g = minimal(T, g)
-    b0 = Builder(build === nothing ? auto_build(f, x) : build,
-                 lift === nothing ? auto_lift(f, x) : lift, x)
-    tterm = n == 2 ? mk(b0, :sqrt, uterm) : mk(b0, :^, uterm, b0.lift(Q(1) // n))
     bd = Builder(b0.build, b0.lift, tterm, T.consts)
     integrate_built(T, g, bd, verify)
+end
+
+# Euler substitutions for R = √(A x² + B x + C) over ℚ: (φ, ψ, t-term) with x = φ(t), R = ψ(t)
+# (identities for the principal root), or nothing.
+#   √A = s ∈ ℚ₊:    R = t - s x,        t = R + s x,        x = (t² - C)/(B + 2 s t)
+#   √C = s ∈ ℚ₊:    R = x t + s,        t = (R - s)/x,      x = (2 s t - B)/(A - t²)
+#   roots r₁ ≠ r₂:  R = t (x - r₁),     t = R/(x - r₁),     x = (A r₂ - r₁ t²)/(A - t²)
+#   (r₁ chosen so that x - r₁ > 0 on the real domain: the smaller root when A < 0)
+function euler_substitution(A::Q, B::Q, C::Q, b::Builder, uterm)
+    P = UPoly{Q}
+    t = frac(xpoly(Q))
+    kq(c) = frac(P(Q[c]))
+    R = mk(b, :sqrt, uterm)
+    sA = A > 0 ? rat_sqrt(A) : nothing
+    if sA !== nothing
+        φ = (t * t - kq(C)) / (kq(B) + kq(2 * sA) * t)
+        ψ = t - kq(sA) * φ
+        tterm = mk(b, :+, R, isone(sA) ? b.x : mk(b, :*, cterm(b, sA), b.x))
+        return φ, ψ, tterm
+    end
+    sC = C > 0 ? rat_sqrt(C) : nothing
+    if sC !== nothing
+        φ = (kq(2 * sC) * t - kq(B)) / (kq(A) - t * t)
+        ψ = φ * t + kq(sC)
+        tterm = mk(b, :/, mk(b, :+, R, cterm(b, -sC)), b.x)
+        return φ, ψ, tterm
+    end
+    rts = rational_roots(P(Q[C, B, A]))
+    if length(rts) == 2
+        r1, r2 = A < 0 ? (minimum(rts), maximum(rts)) : (maximum(rts), minimum(rts))
+        φ = (kq(A * r2) - kq(r1) * t * t) / (kq(A) - t * t)
+        ψ = t * (φ - kq(r1))
+        xr = iszero(r1) ? b.x : mk(b, :+, b.x, cterm(b, -r1))
+        return φ, ψ, mk(b, :/, R, xr)
+    end
+    nothing
 end
 
 # ---------------------------------------------------------------------------

@@ -241,22 +241,92 @@ function run_tests(x, evalat, name)
                 @test antiderivative_ok(F, f, a, evalat)
             end
         end
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / sqrt(1 - x^2), x)   # Euler: step 10b
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / sqrt(2 - x^2), x)   # would need √2
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) + sqrt(x + 1), x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / sqrt(x^3 + 1), x)  # elliptic
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(log(x)), x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(1 + sqrt(x)), x)  # nested
     end
 
+    @testset "$name: square roots of quadratics: Euler substitutions (step 10b)" begin
+        # (integrand, test points inside the real domain)
+        inside = (0.2, 0.45, 0.7)
+        right = (1.3, 1.9, 2.6)
+        cases = ((1 / sqrt(1 - x^2), inside),           # -2 atan(√(1-x²)/(x+1))  (asin)
+                 (sqrt(1 - x^2), inside),
+                 (x / sqrt(1 - x^2), inside),
+                 (1 / sqrt(3 + 2x - x^2), inside),      # roots -1, 3: t = √Q/(x + 1)
+                 (1 / sqrt(1 + x - x^2), inside),       # √C = 1: t = (√Q - 1)/x
+                 (1 / sqrt(x^2 + 1), right),            # log(x + √(x²+1))  (asinh)
+                 (sqrt(x^2 + 1), right),
+                 (1 / sqrt(x^2 - 1), right),            # log(x + √(x²-1))  (acosh)
+                 (x / sqrt(x^2 + 2x + 3), right),
+                 (1 / (x * sqrt(x^2 + 4)), right),
+                 (exp(sqrt(x^2 + 1)) * x / sqrt(x^2 + 1), right))   # e^√(x²+1): an exp level over ℚ(t)
+        for (f, pts) in cases
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate((x^2 + 1)^(1//3), x)   # index 3
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt((x^2 + 1) / (x + 1)), x)
+    end
+
+    @testset "$name: parametric Risch DE in towers (step 9d)" begin
+        # exact: every basis element (y, c) of y' + f y = Σ cᵢ gᵢ is verified inside `prde`
+        Qr = Rational{BigInt}
+        hasc(sols, c) = any(s -> s[2] == Qr[c...], sols)
+        T0, _ = Risch.build_tower(x^2 + 1, string(x))
+        X0 = Risch.frac(Risch.xpoly(Qr))
+        k0(c) = Risch.kconst(Qr(c))
+        s = Risch.prde(T0, 0, k0(0), Any[k0(1) / X0, k0(1)])       # y' = c₁/x + c₂: c₁ = 0
+        @test length(s) == 2 && all(p -> iszero(p[2][1]), s)
+        s = Risch.prde(T0, 0, k0(2) / X0, Any[k0(3) * X0])         # weak normalisation; 1/x² homogeneous
+        @test length(s) == 2 && hasc(s, (1,)) && hasc(s, (0,))
+        T, t = Risch.build_tower(log(x), string(x))
+        X = Risch.liftto(T, X0, 1)
+        one1 = one(t)
+        @test hasc(Risch.prde(T, 1, one1 / X, Any[t]), (1,))       # cancellation: (x y)' = x t
+        s = Risch.prde(T, 1, zero(t), Any[one1 / X, t / X])        # ∫ (c₁ + c₂ t)/x in ℚ(x)[t]
+        @test length(s) == 3 && hasc(s, (1, 0)) && hasc(s, (0, 2))
+        T2, _ = Risch.build_tower(exp(exp(x)), string(x))
+        θ1 = Risch.theta(T2, 1)                                     # e^x
+        o2 = one(θ1)
+        s = Risch.prde(T2, 1, θ1, Any[o2 / (θ1 + o2), o2, θ1 / (θ1 + o2)])
+        @test length(s) == 1 && s[1][2] == Qr[1, -1, 1] && iszero(s[1][1])
+        @test length(Risch.prde(T2, 1, zero(θ1), Any[θ1, o2 / θ1, Risch.liftto(T2, X0, 1)])) == 4
+        # Ei answers above the base level (special_exp through the parametric RDE)
+        if ti_special_ok(x)
+            fs = (exp(exp(x)) / (exp(x) + 1),          # Ei(eˣ) - e⁻¹ Ei(eˣ + 1): shift from the pole
+                  exp(exp(x)) * exp(x) / (exp(x) + 1), # e⁻¹ Ei(eˣ + 1)
+                  x * exp(x + exp(x)),                 # x exp(eˣ) - Ei(eˣ): y = x/t
+                  exp(x) * log(x),                     # eˣ log x - Ei(x) (in either tower order)
+                  exp(2x) * log(x))                    # (e^(2x) log x - Ei(2x))/2
+            for f in fs
+                F = Risch.risch_integrate(f, x)
+                for a in (1.3, 1.9, 2.6)
+                    @test antiderivative_ok(F, f, a, evalat)
+                end
+            end
+        else
+            @test_skip "SpecialFunctions (expinti) are not defined for $(typeof(x))"
+        end
+        # no Ei form: still decided
+        @test_throws Risch.NotElementary Risch.risch_integrate(x * exp(exp(x)), x)
+        @test_throws Risch.NotElementary Risch.risch_integrate(exp(exp(x)) / x, x)
+    end
+
     @testset "$name: decided non-elementary" begin
-        # through the new path: c keeps a normal denominator after step 1, so no solution
-        @test_throws Risch.NotElementary Risch.risch_integrate(exp(exp(x)) / (exp(x) + 1), x)
         @test_throws Risch.NotElementary Risch.risch_integrate(log(x) / (x + 1), x)      # dilogarithm
         @test_throws Risch.NotElementary Risch.risch_integrate(1 / (x + log(x)), x)
         @test_throws Risch.NotElementary Risch.risch_integrate(x^x, x)
-        @test_throws Risch.NotElementary Risch.risch_integrate(x * exp(x + exp(x)), x)   # needs ∫ exp(exp(x))
         # tower is [exp(x), log(x)]: top monomial log, normal denominator, non-constant residue
         @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) / (x + log(x)), x)
+        # limited integration (step 9d): ∫ lc needs atan / irrational-residue logs, not c·log x
+        @test_throws Risch.NotElementary Risch.risch_integrate(log(x) / (x^2 + 2), x)
+        @test_throws Risch.NotElementary Risch.risch_integrate(log(x) / (x^2 + 1), x)
+        @test_throws Risch.NotElementary Risch.risch_integrate(log(x)^2 / (x^2 - 2), x)
     end
 
     @testset "$name: quadratic residues inside towers (Stage 5b)" begin
@@ -305,7 +375,6 @@ function run_tests(x, evalat, name)
 
     @testset "$name: awaiting later stages" begin
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / (x * (log(x)^4 + 1)), x)  # quartic residues
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(log(x) / (x^2 + 2), x)        # atan × log
     end
 end
 

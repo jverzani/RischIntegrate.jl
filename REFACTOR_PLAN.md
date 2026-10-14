@@ -144,8 +144,90 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
     Regression tests: ∫ exp(x + log x + eˣ)/x and ∫ exp(2x + log x + eˣ)e^(−x)/x = exp(eˣ) (were wrong
     `NotElementary`). Still `RischNotImplemented` (honest): normal denominators in tower RDEs (needs
     Bronstein 6.1–6.4: weak normalization, normal/special denominators, SPDE), simple poles of f.
-* **Next: step 9 — the full Risch DE in towers (Bronstein ch. 6, parts of ch. 7).** Outline below (§3, step 9).
-* **Then: step 10 — radicals by substitution** (√x, √(ax+b), √(ax²+bx+c)). Outline below (§3, step 10).
+* **Step 9 — the full Risch DE in towers** (outline in §3, step 9).
+  * 9a: done, tests green (2026-10-13). `rde` dispatches to `rde_general` when f or g is not
+    Laurent-shaped (normal denominators). Pieces: `split_factor`, normal denominator (h = gcd(e,∂e)/
+    gcd(p,∂p); c with a normal denominator left ⇒ no solution), special denominator for exp (lowest
+    power of t via `cancellation_exponent` when ν(b) = 0), degree bounds (primitive and exp cases;
+    cancellation sub-cases checked with `limited_log_multiple` / `logderiv_status` / 8b), `spde`,
+    `poly_rde_reduced` (deg b̄ > 0 top-down; b̄ ∈ k* decoupled (exp) or triangular (log); b̄ = 0
+    integration without logs). Weak normalisation is not implemented: f with simple normal poles
+    raises `RischNotImplemented` (f = j u' never has them). Undecidable cancellation ⇒
+    `RischNotImplemented`, never a wrong "no solution". Candidate verified exactly.
+    Tests (`test_integrate.jl`): exp(eˣ)e^{2x}/(eˣ+1)², exp(eˣ)eˣ(1/(eˣ+2) − 1/(eˣ+2)²),
+    (1/(log x + 1) − 1/(x(log x + 1)²))eˣ, exp(sin x)(cos x/(2+cos x) + sin x/(2+cos x)²);
+    decided: exp(eˣ)/(eˣ+1).
+  * 9b: done, tests green (2026-10-13). (Pieces 4–5 went into 9a; 9b solves the
+    primitive cancellation cases.) `logderiv_solve(T, km, h)` returns (:yes, z) with z'/z = h
+    (z built from the relation and verified), :no or :unknown; `logderiv_shape_ok` is a cheap
+    necessary condition (top-level polynomial part of degree ≤ 0, no θ^-v at exp levels) that turns
+    many :unknown into :no (also used in `cancellation_exponent`). Primitive cancellation
+    (`prim_cancel`): b = z'/z ⇒ (z h)' = z c, h = (∫ z c)/z with `integrate_poly_t` (only κ·log u = κ t
+    allowed as a new log); used in the Laurent log branch (before the triangular solve, which also
+    avoids `rde_base`'s simple-pole refusal) and in `poly_rde_reduced`. Degree bound, log case
+    deg b = deg a with −lc(b)/lc(a) = z'/z: β = −[t^(da−1)](a z' + b z)/(z lc(a)); β = m t' + w' ⇒
+    n = max(n, m) (`limited_log_multiple`). Tests: direct `Risch.rde` calls on t = log x with f = ±1/x.
+  * 9c: done, tests green (2026-10-13).
+    * Weak normalisation (Bronstein 6.1) at every level, including the base: `weak_normalizer`
+      (simple-pole part d1, residue resultant `residue_poly`, positive integer roots through the
+      ℚ-coordinates `positive_integer_roots`, q = Π gcd(a − n Dd1, d1)ⁿ); `rde_general` starts with
+      y = z/q, z' + (f − Dq/q) z = g q. The old refusal for simple normal poles is gone.
+    * Base level in `rde_general` (t = x primitive over C: `polyD`, `coeff_type`, base cases in
+      `logderiv_solve`, `limited_log_multiple`, `poly_rde_reduced`). `rde_base` returns `:general`
+      instead of refusing (simple poles of f, also where g is regular: its bound missed poles of y at
+      positive integer residues of f; and the simple pole at infinity); `rde` then calls
+      `rde_general(T, 0, …)`.
+    * Log level b = 0 in `poly_rde_reduced` allows κ·t (`integrate_poly_t`).
+    * Factor lists: `normal_factors!` splits the top-level simple-pole factors by residue
+      (Rothstein–Trager, `residue_split!`), base factors by rational roots (`linear_split!`), and
+      reports `exact`; `factor_candidates` unlifts elements, includes the generators'
+      log-derivatives (`gen_logderivs`) and refines (`refine_factors`). `cancellation_exponent` and
+      `logderiv_solve` answer :unknown only when not exact.
+    * Tests: base/log weak normalisation via direct `Risch.rde`; `logderiv_status` on
+      p1'/p1 + 3 p2'/p2 (:yes) and p1'/p1 + ½ p2'/p2 (:no) with irreducible quadratics.
+  * Remaining refusals: residues that are not constants in the RT split, nonlinear multiple factors,
+    limited integration with atan/quadratic terms. Next (optional): 9d, parametric RDE in towers.
+* Step 9d: done, tests green (2026-10-14). Parametric Risch DE in towers and limited integration.
+  * `prde(T, m, f, G)`: a basis [(y, c)] of all solutions of y' + f y = Σ cᵢ gᵢ (c ∈ C^r), or
+    `nothing` when not handled (undecided cancellation, weak normaliser residue > 1000). Steps of
+    `rde_general` with every "Σ cᵢ (…) = 0" turned into a linear constraint over C (`cflat_c`
+    = C-coordinates, `nullspace_cols`, `c_nullspace`) and re-parametrisation (`cback`):
+    weak normalisation, normal denominator, normal-pole constraint, special denominator,
+    `rde_degree_bound` (factored out of `rde_general`, shared), `prde_spde` (parametric SPDE),
+    `prde_poly` (deg b̄ > 0 top-down, linear in the right sides; b̄ ∈ k coefficient by coefficient,
+    each a recursive `prde` in k whose parameters are the current basis — covers integration and
+    the cancellation cases without a log-derivative test). Every basis element verified exactly.
+  * `special_exp` uses `prde` at every level (`rde_param_base` removed): Ei terms with shifts t
+    (constant roots of res_θ(normal part of den α, U.num − z U.den) above the base) and new
+    Ei(j(U − a_l)) terms for exp generators θ_l = exp(a_l) below (extra θ_l^(−j) W'/W). Over ℚ(i)
+    above the base, arguments are filtered with `tconj` (real or i·real). New answers:
+    exp(eˣ)/(eˣ+1) = Ei(eˣ) − e⁻¹Ei(eˣ+1), x·exp(x+eˣ) = x exp(eˣ) − Ei(eˣ), eˣ log x in either
+    tower order, e^(2x) log x.
+  * Limited integration decided: in `integrate_log_poly`, `integrate_poly_t`, `limited_log_multiple`
+    an atan / quadratic / ExtQuadPair / SpecialTerm in ∫ lc means residues outside C (or ∫ lc not
+    elementary), so lc ≠ b' + c t': `NotElementary` / `nothing` instead of a refusal.
+    log(x)/(x²+2), log(x)/(x²+1), log²(x)/(x²−2) are now decided `NotElementary`.
+  * Tests (`test_integrate.jl`): new testset "parametric Risch DE in towers (step 9d)" (exact
+    `prde` bases at base / log / exp levels; 5 Ei integrands; x·exp(eˣ), exp(eˣ)/x still decided).
+* **Step 10 — radicals by substitution** (outline in §3, step 10).
+  * 10a: done, tests green (2026-10-13). One linear-fractional radicand u = (ax+b)/(cx+d)
+    for all radicals (sqrt, cbrt, u^(p/q)); n = lcm of the indices; t = u^(1/n), x = φ(t) =
+    (b − d tⁿ)/(c tⁿ − a). `collect_radicals` / `radical_parts` find them, `radicand_element` parses
+    the radicand (must be in ℚ(x)); a parse hook `T.subst` (new Tower field; `build_tower(…; subst)`)
+    maps x ↦ φ(t) and u^(p/q) ↦ t^(pn/q) while the integrand is parsed straight into a tower over ℚ(t)
+    (so exp/log/trig of radicals work); the integrand f·φ'(t) is integrated and verified exactly with
+    the shared core `integrate_built`; output uses a Builder whose variable is the term sqrt(u) /
+    u^(1/n). Refused: several radicands, degree ≥ 2 radicands (→ 10b), nested radicals, radicals of
+    non-rational expressions. `risch_integrate` checks for radicals first.
+  * 10b: done, tests green (2026-10-14). One quadratic polynomial radicand Q = Ax² + Bx + C
+    with only half-integer powers: `euler_substitution` (√A rational: t = √Q + √A x; √C rational:
+    t = (√Q − √C)/x; rational roots r₁ ≠ r₂: t = √Q/(x − r₁), r₁ the smaller root when A < 0) gives
+    x = φ(t), √Q = ψ(t) rational over ℚ, exact identities for the principal root; the rest of the
+    pipeline is shared with 10a (`integrate_radical` now takes φ and a radical-power map).
+    Refused: Q needing ℚ(√d) (e.g. √(2 − x²)), other indices, quadratic denominators.
+    Tests: asin/asinh/acosh-type integrands, √C and rational-root cases, exp(√(x²+1))·x/√(x²+1).
+  * Possible next: √(2 − x²)-type radicands via a ℚ(√d) constant field; several radicands
+    (e.g. √x and √(x+1)); RootSum.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -166,8 +248,8 @@ rational in disguise would silently break the integer test for the cancellation 
 
 ## 0. Ground rules (unchanged from the previous session)
 
-* **No Julia in the assistant's sandbox** (apt has no candidate; julialang.org is blocked). The user runs the
-  tests and pastes errors back. So: small steps, every step ends with all four test files green, and every
+* Since 2026-10-14 the session runs on the user's Mac with Julia 1.13 (juliaup) and all packages installed:
+  the assistant runs the five test files itself (`julia test_X.jl`). Still: small steps, every step ends with all four test files green, and every
   integration result stays *self-verified by differentiation* in the exact field.
 * Two symbolic packages must keep working: SimpleExpressions.jl (expressions are callable `Function` subtypes,
   constants like `-1` are callable objects, constant-only calls are evaluated eagerly by Julia) and SymEngine.jl
@@ -373,7 +455,7 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > (Bronstein) that works on any symbolic term type implementing TermInterface (`iscall`, `operation`,
 > `arguments`), tested with SimpleExpressions.jl and SymEngine.jl; it also loads SpecialFunctions.jl
 > (Ei, Si, Ci, erf, erfi in answers). I attached `REFACTOR_PLAN.md`,
-> `Risch.jl` and five passing test files. Please read the plan first, then do **step 9a**
-> (full Risch DE in towers: SplitFactor, weak normalisation, normal denominator, SPDE, no-cancellation
-> solvers; see §3 step 9). You cannot run Julia; I will run the tests and paste
-> errors back. Keep every result self-verified, and do one plan step at a time.
+> `Risch.jl` and five passing test files. Please read the plan first (step 9d, parametric Risch DE in
+> towers — done 2026-10-14), and after that the possible next steps listed under Progress (step 10),
+> one at a time: radicands needing ℚ(√d) (e.g. √(2 − x²)), several radicands, RootSum, … Julia is
+> installed locally, so run the tests yourself. Keep every result self-verified, and do one plan step at a time.
