@@ -146,6 +146,18 @@ function run_tests(x, evalat, name)
             @test maximum(abs.(diff([F(a) for a in -7:0.05:13]))) < 0.1
             @test isapprox(F(13) - F(-7), ts_simpson(t -> evalat(f, t), -7, 13); atol = 1e-8)
         end
+        # step TE: constant fields with e (ℚ(i)(e) → g over ℚ(e)); signs decided numerically.
+        # cos x/(sin³x + sin x + ℯ) took > 100 s before step SP and was refused before TE
+        for (f, s, isrs) in ((cos(x)/(sin(x)^3 + sin(x) + ℯ), "sin", true), (sin(x)/(ℯ + cos(x)), "cos", false),
+                             (sin(x)/(cos(x) - ℯ), "cos", false), (cos(x)^3/(ℯ + sin(x)), "sin", false))
+            F = Risch.risch_integrate(f, x)
+            @test (F isa Risch.IntegralWithRootSums) == isrs
+            @test occursin(s, string(F)) && occursin("exp(", string(F))
+            vals = [isrs ? F(a) : evalat(F, a) for a in -7:0.05:13]
+            @test maximum(abs.(diff(vals))) < 0.1
+            Fv(t) = isrs ? F(t) : evalat(F, t)
+            @test isapprox(Fv(13) - Fv(-7), ts_simpson(t -> evalat(f, t), -7, 13); atol = 1e-8)
+        end
         # s = tan u with a RootSum: the jump at tan u = ±∞ has no closed form, so the ℚ(i) route
         F = Risch.risch_integrate(1/(sin(x)^4 + 2cos(x)^4), x)
         @test F isa Risch.IntegralWithRootSums && all(rs -> rs isa Risch.TermRootSum, F.rootsums)

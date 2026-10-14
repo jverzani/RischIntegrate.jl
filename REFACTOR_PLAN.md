@@ -459,6 +459,21 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   over ℚ(i)(e)); test_risch.jl 46 s → 36 s, other files unchanged. The integral itself would need
   Bioche over ℚ(i)(t) (s = sin x gives 1/(s³+s+ℯ) over ℚ(e), handled by RE) — a possible next step.
   Tests: test_integrate.jl "awaiting later stages": the case is refused (no hang).
+* **TE: Bioche over constant fields with e, log p** (2026-10-14, done, tests green). `bioche` is generic
+  in C = ℚ(i) or ℚ(i)(t₁, …) with real generators (kinds :exp, :log; not :expi): θ-helpers
+  (`θinv`, `θscale`, `sym_to_s`, `tan_to_s`) parameterised by C; g must lie in RC[s], RC = `real_ctype(C)`
+  (ℚ or ℚ(t₁, …)), via `to_real` (exact: real constants have real coefficients in normal form) and
+  `to_complex` back for the exact substitution check; k ∈ ℚ read through `to_real`/`crational`.
+  Sign decisions (no pole of g in the range: `real_root_count` with a sign function; sign of log
+  arguments at s = 0) use `csign`: exact over ℚ, else a 256-bit evaluation of the generators
+  (`cbig`), undecided (→ general route) within 1e-40 of 0 — only the choice of form depends on it.
+  Output Builders carry `T.consts`; RootSums over RC ≠ ℚ become TermRootSums (`base_term_rootsum`).
+  E.g. cos x/(sin³x+sin x+ℯ) → RootSum in sin x over ℚ(e) (was refused after SP, > 100 s before);
+  sin x/(ℯ+cos x) → −log(ℯ+cos x); sin x/(cos x−ℯ) → −log(ℯ−cos x); cos³x/(ℯ+sin x) →
+  ℯ sin x − sin²x/2 + (1−ℯ²) log(ℯ+sin x). cos x/(ℯ+sin²x) gives a quadratic RootSum (√ℯ ∉ ℚ(e)).
+  Not covered: tan rule with a RootSum (1/(sin²x+ℯ), refused over ℚ(i)(e)).
+  Tests: test_trig.jl (TS testset) both packages: four ℚ(e) integrands (form, continuity, Simpson);
+  test_integrate.jl "awaiting later stages" now 1/(sin²x+ℯ).
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 

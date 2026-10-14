@@ -5453,40 +5453,40 @@ end
 # lc sign σ jumps by -cσπ, corrected by J(u - atan(tan u)) = Jπ⌊(u + π/2)/π⌋, J = Σ cσ (no π).
 # Returns a term, or nothing (not of this kind: the general route is used).
 # ---------------------------------------------------------------------------
-const QIP = UPoly{QI}
-
+# polynomials over the constant field C = ℚ(i) or ℚ(i)(t₁, …) (step TE: generic in C)
 # p(c/θ)·θ^deg p  and  p(cθ)
-θinv_poly(p::QIP, c::QI) = QIP(reverse(QI[p.c[k] * field_pow(c, k - 1) for k in eachindex(p.c)]))
-θscale_poly(p::QIP, c::QI) = QIP(QI[p.c[k] * field_pow(c, k - 1) for k in eachindex(p.c)])
-function θinv(R::Frac{QIP}, c::QI)                       # R(c/θ)
-    θ = xpoly(QI)
+θinv_poly(p::UPoly{C}, c::C) where {C} = UPoly{C}(reverse(C[p.c[k] * field_pow(c, k - 1) for k in eachindex(p.c)]))
+θscale_poly(p::UPoly{C}, c::C) where {C} = UPoly{C}(C[p.c[k] * field_pow(c, k - 1) for k in eachindex(p.c)])
+function θinv(R::Frac{UPoly{C}}, c::C) where {C}       # R(c/θ)
+    θ = xpoly(C)
     frac(θinv_poly(R.num, c) * θ^degree(R.den), θinv_poly(R.den, c) * θ^degree(R.num))
 end
-θscale(R::Frac{QIP}, c::QI) = frac(θscale_poly(R.num, c), θscale_poly(R.den, c))
+θscale(R::Frac{UPoly{C}}, c::C) where {C} = frac(θscale_poly(R.num, c), θscale_poly(R.den, c))
 
 # θ^(-sh)·M = Σ aⱼ θʲ, symmetric (aⱼ = a₋ⱼ), as a polynomial in s = (θ + 1/θ)/2, or nothing
-function sym_laurent_to_s(M::QIP, sh::Int)
+function sym_laurent_to_s(M::UPoly{C}, sh::Int) where {C}
     n = degree(M) - sh
-    a(j) = 0 <= j + sh < length(M.c) ? M.c[j + sh + 1] : zero(QI)
+    a(j) = 0 <= j + sh < length(M.c) ? M.c[j + sh + 1] : zero(C)
     all(k -> iszero(M.c[k]), 1:max(0, sh - n)) || return nothing    # lowest exponent ≥ -n
     all(j -> a(j) == a(-j), 1:n) || return nothing
-    Tm, Tc = one(QIP), xpoly(QI)                         # T₀, T₁
-    out = scale(a(0), one(QIP))
+    P = UPoly{C}
+    Tm, Tc = one(P), xpoly(C)                            # T₀, T₁
+    out = scale(a(0), one(P))
     for j in 1:n
         out = out + scale(2 * a(j), Tc)
-        Tm, Tc = Tc, scale(QI(Q(2), Q(0)), xpoly(QI)) * Tc - Tm
+        Tm, Tc = Tc, scale(cfromQ(C, Q(2)), xpoly(C)) * Tc - Tm
     end
     out
 end
 # h(θ) with h(1/θ) = h(θ) as a rational function of s = (θ + 1/θ)/2
-function sym_to_s(h::Frac{QIP})
-    Dr = θinv_poly(h.den, one(QI))
+function sym_to_s(h::Frac{UPoly{C}}) where {C}
+    Dr = θinv_poly(h.den, one(C))
     P = sym_laurent_to_s(h.num * Dr, degree(h.den))
     Qd = sym_laurent_to_s(h.den * Dr, degree(h.den))
     (P === nothing || Qd === nothing) ? nothing : frac(P, Qd)
 end
 # R(θ) = R̃(θ²): g(s) = R̃((1 + is)/(1 - is))/(1 + s²)
-function tan_to_s(R::Frac{QIP})
+function tan_to_s(R::Frac{UPoly{C}}) where {C}
     N, D = R.num, R.den
     par(p) = all(k -> iszero(p.c[k]) || iseven(k - 1), eachindex(p.c)) ? 0 :
              all(k -> iszero(p.c[k]) || isodd(k - 1), eachindex(p.c)) ? 1 : nothing
@@ -5495,28 +5495,70 @@ function tan_to_s(R::Frac{QIP})
     half(p) = [p.c[k] for k in (1 + pn):2:length(p.c)]   # coefficients of ζ^0, ζ^1, … in p/θ^pn
     nc, dc = half(N), half(D)
     n = max(length(nc), length(dc)) - 1
-    I = QI(Q(0), Q(1))
-    ap, am = QIP(QI[one(QI), I]), QIP(QI[one(QI), -I])
+    I = cimag(C)
+    P = UPoly{C}
+    ap, am = P(C[one(C), I]), P(C[one(C), -I])
     hom(cs) = sum(scale(cs[k + 1], ap^k * am^(n - k)) for k in 0:(length(cs) - 1))
-    frac(hom(nc), hom(dc) * QIP(QI[one(QI), zero(QI), one(QI)]))
+    frac(hom(nc), hom(dc) * P(C[one(C), zero(C), one(C)]))
 end
 
-# number of distinct real roots of p ∈ ℚ[s] in [a, b] (a = nothing: -∞, b = nothing: +∞), Sturm
-function real_root_count(p::UPoly{Q}, a, b)
+# the real field of C: ℚ(i) -> ℚ, ℚ(i)(t₁, …) -> ℚ(t₁, …) (real generators e^a, log p)
+real_ctype(::Type{QI}) = Q
+real_ctype(::Type{Frac{UPoly{B}}}) where {B} = Frac{UPoly{real_ctype(B)}}
+# c ∈ C with real coefficients (normal form is unique, so a real constant has them) in the real
+# field, or nothing
+to_real(c::QI) = iszero(c.im) ? c.re : nothing
+function to_real(c::Frac{UPoly{B}}) where {B}
+    RB = real_ctype(B)
+    n, d = [to_real(a) for a in c.num.c], [to_real(a) for a in c.den.c]
+    (any(isnothing, n) || any(isnothing, d)) && return nothing
+    Frac{UPoly{RB}}(UPoly{RB}(RB[n...]), UPoly{RB}(RB[d...]))
+end
+to_complex(::Type{Frac{UPoly{B}}}, r::Frac) where {B} =
+    Frac{UPoly{B}}(UPoly{B}(B[to_complex(B, a) for a in r.num.c]), UPoly{B}(B[to_complex(B, a) for a in r.den.c]))
+
+# sign of a real constant: exact over ℚ; over ℚ(t₁, …) from a 256-bit evaluation of the generators
+# (e^a, log p), and nothing (undecided) if the value is within 1e-40 of 0. Only used to choose a
+# form (no pole in range, sign of a log argument), never for the answer itself.
+cdepth(::Type{Q}) = 0
+cdepth(::Type{Frac{UPoly{B}}}) where {B} = 1 + cdepth(B)
+cbig(c::Q, gens) = BigFloat(c)
+function cbig(c::Frac{UPoly{B}}, gens) where {B}
+    g = gens[cdepth(typeof(c))]
+    t = g.kind === :exp ? exp(BigFloat(g.arg)) : log(BigFloat(g.arg))
+    pe(p) = foldr((a, acc) -> acc * t + cbig(a, gens), p.c; init = BigFloat(0))
+    pe(c.num) / pe(c.den)
+end
+csign(c::Q, gens) = Int(sign(c))
+function csign(c, gens)
+    iszero(c) && return 0
+    v = setprecision(() -> cbig(c, gens), BigFloat, 256)
+    abs(v) < big(10)^-40 ? nothing : Int(sign(v))
+end
+
+# number of distinct real roots of p ∈ R[s] in [a, b] (a = nothing: -∞, b = nothing: +∞), Sturm;
+# sg is the sign function of the real field R (nothing: undecided, then the result is nothing)
+function real_root_count(p::UPoly{R}, a, b, sg = c -> Int(sign(c))) where {R}
     degree(p) <= 0 && return 0
     p = quo(p, gcd(p, deriv(p)))
-    seq = UPoly{Q}[p, deriv(p)]
+    seq = UPoly{R}[p, deriv(p)]
     while degree(seq[end]) > 0
         r = -rem(seq[end - 1], seq[end])
         iszero(r) && break
         push!(seq, r)
     end
-    sgn(q, x) = x === nothing ? sign(lc(q)) : sign(peval(q, Q(x)))
-    sgninf(q, side) = side < 0 ? sign(lc(q)) * (isodd(degree(q)) ? -1 : 1) : sign(lc(q))
-    changes(vals) = (v = filter(!iszero, vals); count(k -> v[k] != v[k + 1], 1:(length(v) - 1)))
+    at(q, x) = peval(q, cfromQ(R, Q(x)))
+    sgn(q, x) = x === nothing ? sg(lc(q)) : sg(at(q, x))
+    sgninf(q, side) = (s = sg(lc(q)); s === nothing ? nothing : side < 0 && isodd(degree(q)) ? -s : s)
+    function changes(vals)
+        any(isnothing, vals) && return nothing
+        v = filter(!iszero, vals)
+        count(k -> v[k] != v[k + 1], 1:(length(v) - 1))
+    end
     va = changes([a === nothing ? sgninf(q, -1) : sgn(q, a) for q in seq])
     vb = changes([b === nothing ? sgninf(q, 1) : sgn(q, b) for q in seq])
-    va - vb + ((a !== nothing && iszero(peval(p, Q(a)))) ? 1 : 0)     # roots in (a, b], plus a
+    (va === nothing || vb === nothing) && return nothing
+    va - vb + ((a !== nothing && iszero(at(p, a))) ? 1 : 0)     # roots in (a, b], plus a
 end
 
 # x-jump coefficient of an atan argument p(s) at s = ±∞ (Σ c σ for odd degree), as a real sign
@@ -5534,30 +5576,38 @@ function bioche(f, x; build = nothing, lift = nothing)
         e isa RischNotImplemented && return nothing
         rethrow()
     end
-    (ctype(T) === QI && length(T.levels) == 1 && T.levels[1].kind === :exp) || return nothing
+    C = ctype(T)
+    # C = ℚ(i), or ℚ(i)(t₁, …) with real generators e^a, log p (step TE)
+    (C === QI || (C <: Frac && cbase(C) === QI && all(g -> g.kind in (:exp, :log), T.consts))) || return nothing
+    (length(T.levels) == 1 && T.levels[1].kind === :exp) || return nothing
+    RC = real_ctype(C)
+    I = cimag(C)
     a = T.levels[1].arg
-    (isone(a.den) && degree(a.num) == 1 && iszero(a.num.c[1]) && iszero(a.num.c[2].re)) || return nothing
-    k = a.num.c[2].im                                    # θ = e^{iu}, u = k x
+    (isone(a.den) && degree(a.num) == 1 && iszero(a.num.c[1])) || return nothing
+    kr = to_real(a.num.c[2] * inv(I))
+    k = kr === nothing ? nothing : kr isa Q ? kr : crational(kr)
+    k === nothing && return nothing                      # θ = e^{iu}, u = k x, k ∈ ℚ
     levelof(T, el) == 1 || return nothing
-    cs(p) = (v = [const_value(T, c) for c in p.c]; any(isnothing, v) ? nothing : QIP(QI[c for c in v]))
+    cs(p) = (v = [const_value(T, c) for c in p.c]; any(isnothing, v) ? nothing : UPoly{C}(C[c for c in v]))
     N, Dn = cs(el.num), cs(el.den)
     (N === nothing || Dn === nothing) && return nothing
     R = frac(N, Dn)
-    I = QI(Q(0), Q(1))
-    θp = xpoly(QI)
+    P = UPoly{C}
+    two = cfromQ(C, Q(2))
+    θp = xpoly(C)
     K1 = T.Ts[1]
     θel = frac(xpoly(K1))
     one1 = one(θel)
     li(c) = lconst(T, c, 1)
-    if θinv(R, one(QI)) == -R                            # s = cos u
+    if θinv(R, one(C)) == -R                             # s = cos u
         kind = :cos
-        g = sym_to_s(R * frac(scale(-2 * I, θp), θp^2 - one(QIP)))
-        sel = (θel + one1 / θel) * li(QI(Q(1) // 2, Q(0)))
-    elseif θinv(R, -one(QI)) == -R                       # s = sin u
+        g = sym_to_s(R * frac(scale(-2 * I, θp), θp^2 - one(P)))
+        sel = (θel + one1 / θel) * li(inv(two))
+    elseif θinv(R, -one(C)) == -R                        # s = sin u
         kind = :sin
-        g = sym_to_s(θscale(R * frac(scale(QI(Q(2), Q(0)), θp), θp^2 + one(QIP)), I))
+        g = sym_to_s(θscale(R * frac(scale(two, θp), θp^2 + one(P)), I))
         sel = (θel - one1 / θel) * li(inv(2 * I))
-    elseif θscale(R, -one(QI)) == R                      # s = tan u
+    elseif θscale(R, -one(C)) == R                       # s = tan u
         kind = :tan
         g = tan_to_s(R)
         sel = li(-I) * (θel * θel - one1) / (θel * θel + one1)
@@ -5565,16 +5615,18 @@ function bioche(f, x; build = nothing, lift = nothing)
         return nothing
     end
     g === nothing && return nothing
-    g = g * kconst(inv(QI(k, Q(0))))                     # dx = du/k
-    all(c -> iszero(c.im), g.num.c) && all(c -> iszero(c.im), g.den.c) || return nothing
-    gq = frac(UPoly{Q}(Q[c.re for c in g.num.c]), UPoly{Q}(Q[c.re for c in g.den.c]))
+    g = g * kconst(inv(cfromQ(C, k)))                    # dx = du/k
+    rn, rd = [to_real(c) for c in g.num.c], [to_real(c) for c in g.den.c]
+    (any(isnothing, rn) || any(isnothing, rd)) && return nothing
+    gq = frac(UPoly{RC}(RC[rn...]), UPoly{RC}(RC[rd...]))
     # the substitution, exactly: g(s(θ))·ds/dx = f
-    gs(p) = foldr((c, acc) -> acc * sel + li(QI(c, Q(0))), p.c; init = zero(sel))
+    gs(p) = foldr((c, acc) -> acc * sel + li(to_complex(C, c)), p.c; init = zero(sel))
     gs(gq.num) / gs(gq.den) * D(T, 1, sel) == liftto(T, el, 1) ||
         throw(RischError("internal check failed: Bioche substitution"))
     # real poles of f (poles of g in the range of s) → the general route (real forms with |w|²)
+    sg(c) = csign(c, T.consts)
     rng = kind === :tan ? (nothing, nothing) : (-1, 1)
-    real_root_count(gq.den, rng...) == 0 || return nothing
+    real_root_count(gq.den, rng..., sg) == 0 || return nothing
     res = integrate_rational(gq)
     # residues of degree > 2 (step TR): a RootSum in s = cos u or sin u (over ℚ, real and continuous
     # since g has no pole in [-1, 1]); for s = tan u the jump at tan u = ±∞ would need ∫ g over ℝ in
@@ -5582,7 +5634,9 @@ function bioche(f, x; build = nothing, lift = nothing)
     unres = res.unresolved
     !isempty(unres) && kind === :tan && return nothing
     # each log argument has constant sign on the range: log(-w) where it is negative (at s = 0)
-    logs = Tuple{Q,UPoly{Q}}[(c, sign(peval(w, Q(0))) < 0 ? -w : w) for (c, w) in res.logs]
+    w0s = [sg(peval(w, zero(RC))) for (c, w) in res.logs]
+    any(isnothing, w0s) && return nothing
+    logs = Tuple{RC,UPoly{RC}}[(c, w0 < 0 ? -w : w) for ((c, w), w0) in zip(res.logs, w0s)]
     # log((U + √dV)/(U - √dV)) with a negative ratio: the same as log((dV + √dU)/(dV - √dU))
     quads = Any[]
     for q in res.quads
@@ -5594,9 +5648,10 @@ function bioche(f, x; build = nothing, lift = nothing)
         push!(quads, q)
     end
     res = RationalIntegral(res.rational, logs, res.atans, Any[], quads)
-    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
     ut = isone(k) ? bd.x : mk(bd, :*, cterm(bd, k), bd.x)
     st = mk(bd, kind, ut)
+    bs = Builder(bd.build, bd.lift, st, T.consts)       # prints s as sin(kx), cos(kx), tan(kx)
     if !isempty(unres)
         rss = Any[]
         for (rest, R, Dd) in unres
@@ -5604,10 +5659,11 @@ function bioche(f, x; build = nothing, lift = nothing)
         end
         derivative_of(res) + sum(rootsum_derivative(rs) for rs in rss) == gq ||
             throw(RischError("internal check failed: derivative of the result (with RootSums) differs from the integrand"))
-        return IntegralWithRootSums(to_term(Builder(bd.build, bd.lift, st), res), rss, xk)
+        rss = RC === Q ? rss : Any[base_term_rootsum(bs, rs) for rs in rss]
+        return IntegralWithRootSums(to_term(bs, res), rss, xk)
     end
     check_result(res, gq) || throw(RischError("internal check failed: derivative of the result differs from the integrand"))
-    term = to_term(Builder(bd.build, bd.lift, st), res)
+    term = to_term(bs, res)
     kind === :tan || return term
     # the jumps of G(tan u) where tan u = ±∞
     corr = Any[]

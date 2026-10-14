@@ -462,8 +462,8 @@ function run_tests(x, evalat, name)
         # RootSums over ℚ, ℚ(i), ℚ(e) (steps RT, RC, RE) are tested in test_risch.jl; over ℚ(i)(e)
         # (trigonometric input with e) they are not handled
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sin(x) + 1 / (x^3 + x + ℯ), x)
-        # took > 100 s before the residue resultant was computed by interpolation (step SP)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(cos(x) / (sin(x)^3 + sin(x) + ℯ), x)
+        # tan-rule Bioche with a RootSum over ℚ(e) (steps TR, TE): the ℚ(i)(e) route, refused
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / (sin(x)^2 + ℯ), x)
     end
 end
 
