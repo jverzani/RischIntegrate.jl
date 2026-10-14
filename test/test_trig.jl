@@ -129,8 +129,9 @@ function run_tests(x, evalat, name)
         for (f, s, natan) in ((cos(x)/(2 + sin(x)^2), "sin", 1), (sin(x)/(2 + cos(x)), "cos", 0),
                               (sin(x)^3/(1 + cos(x)^2), "cos", 1), (cos(x)^3/(2 + sin(x)), "sin", 0),
                               (sin(x)/(cos(x) - 2), "cos", 0), (sin(x)/(3 - cos(x)^2), "cos", 0),
-                              (1/(1 + sin(x)^2), "tan", 2), (1/(sin(x)^2 + 4cos(x)^2), "tan", 2),
-                              (1/(1 + 3cos(x/3)^2), "tan", 2))
+                              # tan rule: the general route's form (step TB): linear term + one atan
+                              (1/(1 + sin(x)^2), "sin(", 1), (1/(sin(x)^2 + 4cos(x)^2), "sin(", 1),
+                              (1/(1 + 3cos(x/3)^2), "sin(", 1))
             F = Risch.risch_integrate(f, x)
             str = string(F)
             @test occursin(s, str) && !occursin("tan(x / 2)", str) && !occursin("tan((1/2)*x)", str)
@@ -177,6 +178,9 @@ function run_tests(x, evalat, name)
             @test maximum(abs.(diff([F(a) for a in -7:0.05:13]))) < 0.2
             @test isapprox(F(13) - F(-7), ts_simpson(t -> evalat(f, t), -7, 13); atol = 1e-7)
         end
+        # step TB: where the general route gives a ℚ(i) RootSum, the tan-rule answer is kept
+        str = string(Risch.risch_integrate(1/(2 + sin(x)^2) + 1/(3 + cos(x)^2), x))
+        @test occursin("atan(tan(", replace(str, " " => "")) && !occursin("RootSum", str)
         # real poles (cot x): the general route, whose logs are valid on both sides of a pole
         F = Risch.risch_integrate(cos(x)/sin(x), x)
         for a in (-2.0, -0.5, 0.7, 2.5)

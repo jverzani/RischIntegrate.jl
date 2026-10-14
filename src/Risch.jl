@@ -4427,6 +4427,9 @@ function rpoly_term(b::Builder, p::UPoly, zt)
     isempty(ts) ? b.lift(0) : (length(ts) == 1 ? ts[1] : mk(b, :+, ts...))
 end
 
+# number of times the tan(u/2) form of TC was used (read by `bioche`, step TB)
+const HALF_ANGLE_FORMS = Ref(0)
+
 function continuous_arg_pieces(T::Tower, kinds, j::Int, w)
     C = ctype(T)
     RT = real_field(C)
@@ -4477,6 +4480,7 @@ function continuous_arg_pieces(T::Tower, kinds, j::Int, w)
         sh = shifted_arg_pieces(T, kinds, j, w, (n - m) ÷ 2, uel, uterm)
         sh === nothing || return sh
     end
+    trig && (HALF_ANGLE_FORMS[] += 1)                   # the tan(u/2) form is used (see `bioche`)
     if trig
         n != m && push!(out, (cfromQ(C, Q(n - m) // 2), :lin, uel, uterm))
         m != 0 && push!(out, (cfromQ(C, Q(m)), :atan, zel, zterm))
@@ -5883,6 +5887,21 @@ function bioche(f, x; build = nothing, lift = nothing)
     # residues of degree > 2 (step TR): a RootSum in s = cos u or sin u (over ℚ, real and continuous
     # since g has no pole in [-1, 1]); for s = tan u see step TT below
     unres = res.unresolved
+    # step TB: for s = tan u without RootSums, the general route (TC/TH) gives a linear term plus atans
+    # of trigonometric ratios with nonvanishing denominators (no tan, no correction terms); use it when
+    # it is elementary and needed no tan(u/2) form, else the tan form below
+    if kind === :tan && isempty(unres)
+        HALF_ANGLE_FORMS[] = 0
+        r = try
+            Tg, elg = build_tower(f, xk)
+            bdg = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, Tg.consts)
+            integrate_built(Tg, elg, bdg, true)
+        catch e
+            (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+            nothing
+        end
+        (r === nothing || r isa IntegralWithRootSums || HALF_ANGLE_FORMS[] > 0) || return r
+    end
     # each log argument has constant sign on the range: log(-w) where it is negative (at s = 0)
     w0s = [sg(peval(w, zero(RC))) for (c, w) in res.logs]
     any(isnothing, w0s) && return nothing

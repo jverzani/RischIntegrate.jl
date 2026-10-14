@@ -540,6 +540,15 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   1/(3+sin 2x) → (√2/4)x + (√2/4) atan(cos 2x/(3+2√2+sin 2x)). Not changed: Bioche tan-rule answers
   (1/(1+sin²x) keeps atan(√2 tan x) + correction).
   Tests: test_trig.jl TC testset (four integrands: one atan, no tan(…)); the TC loop checks "atan".
+* **TB: tan-rule Bioche answers in the TH form** (2026-10-14, done, tests green). In `bioche`, for
+  s = tan u without RootSums, the general route (`build_tower` + `integrate_built`, i.e. TC/TH) is
+  tried first and used when it is elementary (not an `IntegralWithRootSums`) and TC needed no tan(u/2)
+  form (counter `HALF_ANGLE_FORMS`, incremented in `continuous_arg_pieces` when TH fails at a trig
+  level); otherwise the tan-rule answer as before. E.g. 1/(1+sin²x) → (√2/2)x − (√2/2) atan(sin 2x/
+  (cos 2x − 3 − 2√2)); 1/(sin⁴x+cos⁴x) → √2 x − (√2/2) atan(sin 4x/(3+2√2+cos 4x)); 1/(3+sin x cos x) →
+  (2/√35)x + (2/√35) atan(cos 2x/(6+√35+sin 2x)). Kept: 1/(2+sin²x) + 1/(3+cos²x) (the general route
+  gives a ℚ(i) RootSum there). Cost: tan-rule integrands are integrated twice (test_trig 66 → 73 s).
+  Tests: test_trig.jl TS list (three tan-rule entries: one atan, "sin("), the kept tan form.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -771,10 +780,10 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH (all 2026-10-14).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB (all 2026-10-14).
 >
 > Next steps (open items): nested-radical real forms (1/(x⁵ + 1)), iterated integrals on an
-> `IntegralWithRootSums`; Bioche tan-rule answers could use the TH form (1/(1 + sin²x)).
+> `IntegralWithRootSums`.
 >
 > Ground rules: one plan step at a time; every result self-verified exactly by differentiation;
 > `NotElementary` only when the theory decides the case, otherwise `RischNotImplemented`; never
