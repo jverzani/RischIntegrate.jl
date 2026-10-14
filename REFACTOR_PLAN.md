@@ -557,6 +557,22 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   Step 7, valid on both sides), sec x tan x → 4 cos x/(2 + 2cos 2x). Forms are not simplified
   (sec²x → 2 sin 2x/(2 + 2cos 2x) = tan x).
   Tests: test_trig.jl, both packages, twelve integrands (derivative at points avoiding the poles).
+* **TA: atan as a primitive monomial** (2026-10-14, done, tests green; user request). New level kind
+  `:atan` (`make_atan`, parsed from `atan(u)`): θ' = u'/(1 + u²) ∈ K. Refused (RischNotImplemented)
+  when θ' is a ℚ-combination of x', exp arguments' and log/atan generators' derivatives — such
+  identities hold only up to an undetermined, possibly piecewise constant (atan(tan x) = x,
+  atan(1/x) = π/2 − atan x) — and atan of a nonzero constant (needs π). Treated as primitive (like
+  log) in `rde`, `rde_general`, `rde_degree_bound`, `prde`, `prde_poly`, `poly_rde_reduced`,
+  `integrate_poly_t`, `integrate_el`; skipped in the `make_exp`/`make_log` bases (exp(ρ atan) is
+  new; atan' is no log-derivative) and in the log-derivative candidate lists (`logderiv_solve`,
+  `cancellation_exponent`). In `integrate_log_poly` at an atan level, atan terms of ∫ lc(p) join the
+  target c θ', and logs already in the tower (`log_element`, e.g. log x = θ₁) move into the
+  polynomial part. NotElementary is downgraded to RischNotImplemented when the tower has an atan level
+  (the structure arguments are for exp/log towers). E.g. atan x → x atan x − ½ log(1+x²);
+  atan(x)/(1+x²) → atan²x/2; atan(log x)/x → log x atan(log x) − ½ log(1+log²x);
+  exp(atan x)/(1+x²) → exp(atan x). Refused: atan(x)/x, atan(x) log x, atan(eˣ) (dilogarithms).
+  Not done: asin, acos (θ' = u'/√(1−u²) is algebraic).
+  Tests: test_integrate.jl "atan (step TA)", both packages (ten integrands, three refusals).
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -788,7 +804,7 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF (all 2026-10-14).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA (all 2026-10-14).
 >
 > Next steps (open items): nested-radical real forms (1/(x⁵ + 1)), iterated integrals on an
 > `IntegralWithRootSums`.

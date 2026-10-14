@@ -1747,7 +1747,9 @@ function make_exp(T::Tower, u)
     u = liftto(T, u, top)
     K = T.Ts[end]
     basis = K[]
-    for (i, lv) in enumerate(T.levels)
+    idx = [i for (i, lv) in enumerate(T.levels) if lv.kind !== :atan]   # exp(ρ atan) is new (step TA)
+    for i in idx
+        lv = T.levels[i]
         push!(basis, lv.kind === :exp ? liftto(T, lv.arg, top) : liftto(T, theta(T, i), top))
     end
     dbasis = K[D(T, top, b) for b in basis]
@@ -1760,8 +1762,9 @@ function make_exp(T::Tower, u)
         cv = dconst_value(T, off)
         cv === nothing && throw(RischError("inconsistent exponential relation (offset not constant)"))
         res = iszero(cv) ? one(K) : lconst(T, const_exp(T, cv), top)
-        for (i, lv) in enumerate(T.levels)
-            ρ = r[i]
+        for (ri, i) in enumerate(idx)
+            lv = T.levels[i]
+            ρ = r[ri]
             iszero(ρ) && continue
             if lv.kind === :exp
                 denominator(ρ) == 1 || throw(Restart(lv.seq, Int(denominator(ρ))))
@@ -1793,7 +1796,9 @@ function make_log(T::Tower, u)
     K = T.Ts[end]
     w = D(T, top, u) / u
     basis = K[]
-    for (i, lv) in enumerate(T.levels)
+    idx = [i for (i, lv) in enumerate(T.levels) if lv.kind !== :atan]   # atan' is no log-derivative (TA)
+    for i in idx
+        lv = T.levels[i]
         push!(basis, lv.kind === :exp ? liftto(T, D(T, i - 1, lv.arg), top) :
                                         liftto(T, lv.dtheta.c[1], top))
     end
@@ -1803,8 +1808,9 @@ function make_log(T::Tower, u)
         q = reduce(lcm, denominator.(r); init = big(1))
         R = u^Int(q)
         res = zero(T.Ts[1])
-        for (i, lv) in enumerate(T.levels)
-            ρ = r[i]
+        for (ri, i) in enumerate(idx)
+            lv = T.levels[i]
+            ρ = r[ri]
             iszero(ρ) && continue
             e = Int(numerator(ρ * q))
             if lv.kind === :exp
@@ -1826,6 +1832,31 @@ function make_log(T::Tower, u)
         return res
     end
     add_level!(T, :log, u, UPoly{K}(K[w]), 0)
+    theta(T, top + 1)
+end
+
+# Step TA: atan(u), a primitive monomial: θ' = u'/(1 + u²) ∈ K. It is new unless θ' is a ℚ-linear
+# combination of x' = 1, the exp arguments' derivatives and the log/atan generators' derivatives;
+# such a relation holds only up to an unknown (possibly piecewise) constant — atan(tan x) = x,
+# atan(1/x) = π/2 - atan(x) — so it is refused rather than guessed. atan of a nonzero constant
+# (π/4, …) needs π, which no constant field here contains.
+function make_atan(T::Tower, u)
+    c = dconst_value(T, u)
+    if c !== nothing
+        iszero(c) && return zero(T.Ts[1])
+        throw(RischNotImplemented("atan of a nonzero constant (it would need π)"))
+    end
+    top = length(T.levels)
+    u = liftto(T, u, top)
+    K = T.Ts[end]
+    w = D(T, top, u) / (one(u) + u * u)
+    basis = K[liftto(T, one(T.Ts[1]), top)]
+    for (i, lv) in enumerate(T.levels)
+        push!(basis, lv.kind === :exp ? liftto(T, D(T, i - 1, lv.arg), top) : liftto(T, lv.dtheta.c[1], top))
+    end
+    solve_relation(T, w, basis) === nothing || throw(RischNotImplemented(
+        "atan($u) depends on the other generators (equal up to an undetermined constant)"))
+    add_level!(T, :atan, u, UPoly{K}(K[w]), 0)
     theta(T, top + 1)
 end
 
@@ -1991,6 +2022,9 @@ function parse_tower(t, T::Tower)
                 n === :cot && return c2 * lconst(T, ci, l) / s2i     # cot = cos/sin
                 n === :sec && return lconst(T, cfromQ(C, Q(2)), l) / c2       # sec = 1/cos
                 return lconst(T, ci + ci, l) / s2i                            # csc = 1/sin
+            end
+            if n === :atan && length(args) == 1                  # step TA
+                return make_atan(T, parse_tower(args[1], T))
             end
             n in TRIG && throw(RischNotImplemented(
                 "`$n` is not supported: only sin, cos, tan, cot, sec and csc of tower elements are"))
@@ -2275,7 +2309,7 @@ function rde(T::Tower, m::Int, f, g)
     lv = T.levels[m]
     k = T.Ts[m]
     zk = zero(k)
-    islog = lv.kind === :log
+    islog = lv.kind in (:log, :atan)                    # primitive (log or atan, step TA)
     # normal denominators (or a log-level fraction): the general solver (step 9a)
     (laurent_shape(T, m, f, islog) && laurent_shape(T, m, g, islog)) || return rde_general(T, m, f, g)
     fl = laurent_of(T, m, f, islog)
@@ -2483,6 +2517,7 @@ function logderiv_solve(T::Tower, km::Int, h)
     cands, bases = K[], K[]
     gen_is_log = Bool[]
     for (i, lv) in enumerate(T.levels[1:km])
+        lv.kind === :atan && continue                   # atan' is no logarithmic derivative (TA)
         if lv.kind === :exp
             push!(cands, lift(D(T, i - 1, lv.arg)))
             push!(bases, lift(theta(T, i)))
@@ -2542,7 +2577,7 @@ function integrate_poly_t(T::Tower, m::Int, h)
         tgt = tgt + lconst(T, cj, m) * (D(T, m, w) / w)
     end
     iszero(tgt) && return v
-    T.levels[m].kind === :log || return nothing
+    T.levels[m].kind in (:log, :atan) || return nothing
     θ = theta(T, m)
     κ = dconst_value(T, tgt / D(T, m, θ))
     κ === nothing && return nothing
@@ -2598,7 +2633,7 @@ function rde_general(T::Tower, m::Int, f, g)
         return z === nothing ? nothing : z / qF
     end
     lv = m == 0 ? nothing : T.levels[m]
-    islog = m == 0 || lv.kind === :log                  # the base behaves as t = x primitive over C
+    islog = m == 0 || lv.kind in (:log, :atan)          # the base behaves as t = x primitive over C
     k = coeff_type(T, m)
     P = UPoly{k}
     F = T.Ts[m + 1]
@@ -2668,7 +2703,7 @@ end
 # shared with `prde`). Returns (n, undecided): undecided when a cancellation case could not be
 # decided, in which case n may be too small.
 function rde_degree_bound(T::Tower, m::Int, aP::UPoly, bP::UPoly, dc::Int)
-    islog = m == 0 || T.levels[m].kind === :log
+    islog = m == 0 || T.levels[m].kind in (:log, :atan)
     k = coeff_type(T, m)
     undecided = false
     da, db = degree(aP), degree(bP)
@@ -2737,7 +2772,7 @@ function poly_rde_reduced(T::Tower, m::Int, b::UPoly, c::UPoly, M::Int)
         return h
     end
     if iszero(b)                                        # h' = c: no new logarithms (log: κ t allowed)
-        v = lv.kind === :log ? integrate_poly_t(T, m, frac(c)) : integrate_const(T, m, frac(c))
+        v = lv.kind in (:log, :atan) ? integrate_poly_t(T, m, frac(c)) : integrate_const(T, m, frac(c))
         v isa Symbol && return v
         (v === nothing || !isone(v.den) || degree(v.num) > M) && return nothing
         return v.num
@@ -2823,6 +2858,7 @@ function cancellation_exponent(T::Tower, m::Int, f0, wp)
     cands = K[]
     gen_is_log = Bool[]
     for (i, lv) in enumerate(T.levels[1:km])
+        lv.kind === :atan && continue                   # atan' is no logarithmic derivative (TA)
         push!(cands, lift(lv.kind === :exp ? D(T, i - 1, lv.arg) : lv.dtheta.c[1]))
         push!(gen_is_log, lv.kind === :log)
     end
@@ -3115,7 +3151,7 @@ function prde(T::Tower, m::Int, f, G::Vector; normalized::Bool = false)
         end
     end
     lv = m == 0 ? nothing : T.levels[m]
-    islog = m == 0 || lv.kind === :log                  # the base behaves as t = x primitive over C
+    islog = m == 0 || lv.kind in (:log, :atan)          # the base behaves as t = x primitive over C
     k = coeff_type(T, m)
     P = UPoly{k}
     t = xpoly(k)
@@ -3261,7 +3297,7 @@ function prde_poly(T::Tower, m::Int, b::P, Cs::Vector, M::Int) where {P<:UPoly}
     # b ∈ k (possibly 0): the coefficients h_s top-down, each from a parametric RDE in k whose
     # right-hand sides are those of the current basis elements
     lv = T.levels[m]
-    islog = lv.kind === :log
+    islog = lv.kind in (:log, :atan)
     b0 = iszero(b) ? zk : b.c[1]
     wp = islog ? zk : D(T, m - 1, lv.arg)
     tp = islog ? lv.dtheta.c[1] : zk
@@ -3598,12 +3634,45 @@ function residue_logs(T::Tower, i::Int, A::UPoly, D::UPoly)
     out, quads
 end
 
+# log(w) as an element of K_j (w ∈ K_j) up to a constant, when w'/w is a ℚ-combination of the log
+# generators' and exp arguments' derivatives with a constant ratio (as in `make_log`, without adding a
+# level); else nothing
+function log_element(T::Tower, j::Int, w)
+    j == 0 && return nothing
+    w = liftto(T, w, j)
+    K = T.Ts[j + 1]
+    idx = [l for l in 1:j if T.levels[l].kind in (:exp, :log)]
+    isempty(idx) && return nothing
+    basis = K[T.levels[l].kind === :exp ? liftto(T, D(T, l - 1, T.levels[l].arg), j) :
+                                          liftto(T, T.levels[l].dtheta.c[1], j) for l in idx]
+    r = solve_relation(T, D(T, j, w) / w, basis)
+    r === nothing && return nothing
+    q = reduce(lcm, denominator.(r); init = big(1))
+    R = w^Int(q)
+    res = zero(K)
+    for (ri, l) in enumerate(idx)
+        ρ = r[ri]
+        iszero(ρ) && continue
+        lv = T.levels[l]
+        e = Int(numerator(ρ * q))
+        if lv.kind === :exp
+            R = R / liftto(T, theta(T, l), j)^e
+            res = res + lq(T, ρ, j) * liftto(T, lv.arg, j)
+        else
+            R = R / liftto(T, lv.arg, j)^e
+            res = res + lq(T, ρ, j) * liftto(T, theta(T, l), j)
+        end
+    end
+    dconst_value(T, R) === nothing ? nothing : res
+end
+
 # ∫ p, p ∈ K[θ], θ = log(u): returns (q ∈ K[θ], logs (c, w ∈ K), atans, quads) with
 # Dq + Σ c w'/w (+ atan and quadratic terms, which only come from the constant term) = p
 function integrate_log_poly(T::Tower, i::Int, p::UPoly)
     K = T.Ts[i]
     P = UPoly{K}
-    Lθ = T.levels[i].dtheta.c[1]                       # u'/u
+    Lθ = T.levels[i].dtheta.c[1]                       # u'/u (atan level: u'/(1 + u²))
+    isatan = T.levels[i].kind === :atan
     q = zero(P)
     while degree(p) > 0
         n = degree(p)
@@ -3611,11 +3680,22 @@ function integrate_log_poly(T::Tower, i::Int, p::UPoly)
         # Limited integration (step 9d): lc(p) = b' + c u'/u with b ∈ K, c ∈ C is required. An atan,
         # quadratic-irrational or ExtQuadPair term carries residues outside C, which b' (residues 0)
         # and c u'/u (residues in C) cannot produce; a SpecialTerm means ∫ lc(p) is not elementary.
-        (isempty(r.atans) && isempty(r.quads)) || throw(NotElementary(
+        # At an atan level (step TA) the atan terms are what c θ' is made of, so they join the target.
+        ((isatan || isempty(r.atans)) && isempty(r.quads)) || throw(NotElementary(
             "the integral of the coefficient of log^$n needs logarithms with residues outside the constant field"))
         tgt = zero(K)                                   # Σ cⱼ wⱼ'/wⱼ, must equal c·u'/u
+        rv = r.v
         for (cj, wj) in r.logs
-            tgt = tgt + lconst(T, cj, i - 1) * (D(T, i - 1, wj) / wj)
+            le = isatan ? log_element(T, i - 1, wj) : nothing   # log w already in the tower (TA)
+            if le !== nothing
+                rv = rv + lconst(T, cj, i - 1) * le
+            else
+                tgt = tgt + lconst(T, cj, i - 1) * (D(T, i - 1, wj) / wj)
+            end
+        end
+        for (cj, uj) in r.atans                         # only at an atan level (base atans: uj ∈ K₀)
+            du = liftto(T, dx(uj) / (one(uj) + uj * uj), i - 1)
+            tgt = tgt + lconst(T, cj, i - 1) * du
         end
         # ∫ lc(p) = r.v + c·log(u) with c a constant of the field (c ∈ C, not only ℚ:
         # e.g. ∫ e·log(x)/x needs c = e). Lθ = u'/u ≠ 0, so c = tgt/Lθ, and it must be constant.
@@ -3628,7 +3708,7 @@ function integrate_log_poly(T::Tower, i::Int, p::UPoly)
         end
         coeffs = fill(zero(K), n + 2)
         coeffs[n + 2] = lconst(T, c / cfromQ(ctype(T), Q(n + 1)), i - 1)
-        coeffs[n + 1] = r.v
+        coeffs[n + 1] = rv
         qn = P(coeffs)
         q = q + qn
         p = p - Dp(T, i, qn)
@@ -3711,7 +3791,7 @@ function integrate_el(T::Tower, i::Int, f)::ElemIntegral
         append!(quads, rq)
     end
     v = g
-    if lv.kind === :log
+    if lv.kind in (:log, :atan)                         # primitive levels (atan: step TA)
         maxj = maximum(keys(laurent); init = 0)
         p = P(K[get(laurent, j, zero(K)) for j in 0:maxj])
         q, lp, ap, qp = integrate_log_poly(T, i, p)
@@ -6022,7 +6102,13 @@ function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = t
     T, el = build_tower(f, xk)
     bd = Builder(build === nothing ? auto_build(f, x) : build,
                  lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
-    integrate_built(T, el, bd, verify)
+    try
+        integrate_built(T, el, bd, verify)
+    catch e
+        # the structure-theorem arguments behind some decisions are for exp/log towers only (TA)
+        (e isa NotElementary && any(lv -> lv.kind === :atan, T.levels)) || rethrow()
+        throw(RischNotImplemented("not decided with atan in the tower: " * e.msg))
+    end
 end
 
 # integrate an element of a built tower and return the term (base variable printed as bd.x)

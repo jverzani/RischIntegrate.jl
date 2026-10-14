@@ -458,6 +458,22 @@ function run_tests(x, evalat, name)
         end
     end
 
+    # step TA: atan(u) as a primitive monomial θ' = u'/(1 + u²); non-elementary cases (dilogarithms)
+    # are refused, not decided (the structure arguments are for exp/log towers)
+    @testset "$name: atan (step TA)" begin
+        for f in (atan(x), x * atan(x), atan(x) / (1 + x^2), atan(x)^2 / (1 + x^2), atan(x) / x^2,
+                  x^2 * atan(x), atan(2x + 1), exp(atan(x)) / (1 + x^2), atan(log(x)) / x,
+                  1 / ((1 + x^2) * atan(x)))
+            F = Risch.risch_integrate(f, x)
+            for a in (0.4, 1.1, 2.3)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(atan(x) / x, x)
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(atan(x) * log(x), x)
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(atan(1 / x) + atan(x), x)
+    end
+
     @testset "$name: awaiting later stages" begin
         # RootSums over ℚ, ℚ(i), ℚ(e) (steps RT, RC, RE) are tested in test_risch.jl; over ℚ(i)(e)
         # (trigonometric input with e) they are not handled
