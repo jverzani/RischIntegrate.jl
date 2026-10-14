@@ -5407,6 +5407,186 @@ end
          sum(rs_value_continuous(rs, F.var, a) for rs in F.rootsums; init = 0.0im))
 
 # ---------------------------------------------------------------------------
+# Step TS: simpler trigonometric forms by Bioche's rules
+#
+# f rational in sin u, cos u (u = k x): in the ℚ(i) tower f = R(θ), θ = e^{iu}, R with constant
+# coefficients. If the form ω = R du is invariant under
+#   u ↦ -u      (R(1/θ) = -R(θ)):   s = cos u,  du/ds = -1/sin u = -2iθ/(θ² - 1)
+#   u ↦ π - u   (R(-1/θ) = -R(θ)):  s = sin u,  du/ds = 1/cos u = 2θ/(θ² + 1)
+#   u ↦ π + u   (R(-θ) = R(θ)):     s = tan u,  θ² = (1 + is)/(1 - is), du/ds = 1/(1 + s²)
+# then ω = g(s) ds with g ∈ ℚ(s) (a function invariant under θ ↦ 1/θ is a rational function of
+# (θ + 1/θ)/2, via θʲ + θ⁻ʲ = 2Tⱼ; for sin, θ = iη reduces to the cos case). g(s(θ))·s′ = f is
+# checked exactly in the tower and ∫ g ds exactly in ℚ(s) (`check_result`), so the answer G(s(x))
+# is verified by the chain rule. The rational integral has atans of polynomials (R3), so G(cos u),
+# G(sin u) are continuous; G(tan u) jumps where tan u = ±∞: each c·atan(p) with p of odd degree and
+# lc sign σ jumps by -cσπ, corrected by J(u - atan(tan u)) = Jπ⌊(u + π/2)/π⌋, J = Σ cσ (no π).
+# Returns a term, or nothing (not of this kind: the general route is used).
+# ---------------------------------------------------------------------------
+const QIP = UPoly{QI}
+
+# p(c/θ)·θ^deg p  and  p(cθ)
+θinv_poly(p::QIP, c::QI) = QIP(reverse(QI[p.c[k] * field_pow(c, k - 1) for k in eachindex(p.c)]))
+θscale_poly(p::QIP, c::QI) = QIP(QI[p.c[k] * field_pow(c, k - 1) for k in eachindex(p.c)])
+function θinv(R::Frac{QIP}, c::QI)                       # R(c/θ)
+    θ = xpoly(QI)
+    frac(θinv_poly(R.num, c) * θ^degree(R.den), θinv_poly(R.den, c) * θ^degree(R.num))
+end
+θscale(R::Frac{QIP}, c::QI) = frac(θscale_poly(R.num, c), θscale_poly(R.den, c))
+
+# θ^(-sh)·M = Σ aⱼ θʲ, symmetric (aⱼ = a₋ⱼ), as a polynomial in s = (θ + 1/θ)/2, or nothing
+function sym_laurent_to_s(M::QIP, sh::Int)
+    n = degree(M) - sh
+    a(j) = 0 <= j + sh < length(M.c) ? M.c[j + sh + 1] : zero(QI)
+    all(k -> iszero(M.c[k]), 1:max(0, sh - n)) || return nothing    # lowest exponent ≥ -n
+    all(j -> a(j) == a(-j), 1:n) || return nothing
+    Tm, Tc = one(QIP), xpoly(QI)                         # T₀, T₁
+    out = scale(a(0), one(QIP))
+    for j in 1:n
+        out = out + scale(2 * a(j), Tc)
+        Tm, Tc = Tc, scale(QI(Q(2), Q(0)), xpoly(QI)) * Tc - Tm
+    end
+    out
+end
+# h(θ) with h(1/θ) = h(θ) as a rational function of s = (θ + 1/θ)/2
+function sym_to_s(h::Frac{QIP})
+    Dr = θinv_poly(h.den, one(QI))
+    P = sym_laurent_to_s(h.num * Dr, degree(h.den))
+    Qd = sym_laurent_to_s(h.den * Dr, degree(h.den))
+    (P === nothing || Qd === nothing) ? nothing : frac(P, Qd)
+end
+# R(θ) = R̃(θ²): g(s) = R̃((1 + is)/(1 - is))/(1 + s²)
+function tan_to_s(R::Frac{QIP})
+    N, D = R.num, R.den
+    par(p) = all(k -> iszero(p.c[k]) || iseven(k - 1), eachindex(p.c)) ? 0 :
+             all(k -> iszero(p.c[k]) || isodd(k - 1), eachindex(p.c)) ? 1 : nothing
+    pn, pd = par(N), par(D)
+    (pn === nothing || pn != pd) && return nothing
+    half(p) = [p.c[k] for k in (1 + pn):2:length(p.c)]   # coefficients of ζ^0, ζ^1, … in p/θ^pn
+    nc, dc = half(N), half(D)
+    n = max(length(nc), length(dc)) - 1
+    I = QI(Q(0), Q(1))
+    ap, am = QIP(QI[one(QI), I]), QIP(QI[one(QI), -I])
+    hom(cs) = sum(scale(cs[k + 1], ap^k * am^(n - k)) for k in 0:(length(cs) - 1))
+    frac(hom(nc), hom(dc) * QIP(QI[one(QI), zero(QI), one(QI)]))
+end
+
+# number of distinct real roots of p ∈ ℚ[s] in [a, b] (a = nothing: -∞, b = nothing: +∞), Sturm
+function real_root_count(p::UPoly{Q}, a, b)
+    degree(p) <= 0 && return 0
+    p = quo(p, gcd(p, deriv(p)))
+    seq = UPoly{Q}[p, deriv(p)]
+    while degree(seq[end]) > 0
+        r = -rem(seq[end - 1], seq[end])
+        iszero(r) && break
+        push!(seq, r)
+    end
+    sgn(q, x) = x === nothing ? sign(lc(q)) : sign(peval(q, Q(x)))
+    sgninf(q, side) = side < 0 ? sign(lc(q)) * (isodd(degree(q)) ? -1 : 1) : sign(lc(q))
+    changes(vals) = (v = filter(!iszero, vals); count(k -> v[k] != v[k + 1], 1:(length(v) - 1)))
+    va = changes([a === nothing ? sgninf(q, -1) : sgn(q, a) for q in seq])
+    vb = changes([b === nothing ? sgninf(q, 1) : sgn(q, b) for q in seq])
+    va - vb + ((a !== nothing && iszero(peval(p, Q(a)))) ? 1 : 0)     # roots in (a, b], plus a
+end
+
+# x-jump coefficient of an atan argument p(s) at s = ±∞ (Σ c σ for odd degree), as a real sign
+function atan_infinity_sign(p::Frac)
+    d = degree(p.num) - degree(p.den)
+    (d > 0 && isodd(d)) || return 0
+    Int(real_sign(lc(p.num) / lc(p.den)))
+end
+
+function bioche(f, x; build = nothing, lift = nothing)
+    xk = string(x)
+    T, el = try
+        build_tower(f, xk)
+    catch e
+        e isa RischNotImplemented && return nothing
+        rethrow()
+    end
+    (ctype(T) === QI && length(T.levels) == 1 && T.levels[1].kind === :exp) || return nothing
+    a = T.levels[1].arg
+    (isone(a.den) && degree(a.num) == 1 && iszero(a.num.c[1]) && iszero(a.num.c[2].re)) || return nothing
+    k = a.num.c[2].im                                    # θ = e^{iu}, u = k x
+    levelof(T, el) == 1 || return nothing
+    cs(p) = (v = [const_value(T, c) for c in p.c]; any(isnothing, v) ? nothing : QIP(QI[c for c in v]))
+    N, Dn = cs(el.num), cs(el.den)
+    (N === nothing || Dn === nothing) && return nothing
+    R = frac(N, Dn)
+    I = QI(Q(0), Q(1))
+    θp = xpoly(QI)
+    K1 = T.Ts[1]
+    θel = frac(xpoly(K1))
+    one1 = one(θel)
+    li(c) = lconst(T, c, 1)
+    if θinv(R, one(QI)) == -R                            # s = cos u
+        kind = :cos
+        g = sym_to_s(R * frac(scale(-2 * I, θp), θp^2 - one(QIP)))
+        sel = (θel + one1 / θel) * li(QI(Q(1) // 2, Q(0)))
+    elseif θinv(R, -one(QI)) == -R                       # s = sin u
+        kind = :sin
+        g = sym_to_s(θscale(R * frac(scale(QI(Q(2), Q(0)), θp), θp^2 + one(QIP)), I))
+        sel = (θel - one1 / θel) * li(inv(2 * I))
+    elseif θscale(R, -one(QI)) == R                      # s = tan u
+        kind = :tan
+        g = tan_to_s(R)
+        sel = li(-I) * (θel * θel - one1) / (θel * θel + one1)
+    else
+        return nothing
+    end
+    g === nothing && return nothing
+    g = g * kconst(inv(QI(k, Q(0))))                     # dx = du/k
+    all(c -> iszero(c.im), g.num.c) && all(c -> iszero(c.im), g.den.c) || return nothing
+    gq = frac(UPoly{Q}(Q[c.re for c in g.num.c]), UPoly{Q}(Q[c.re for c in g.den.c]))
+    # the substitution, exactly: g(s(θ))·ds/dx = f
+    gs(p) = foldr((c, acc) -> acc * sel + li(QI(c, Q(0))), p.c; init = zero(sel))
+    gs(gq.num) / gs(gq.den) * D(T, 1, sel) == liftto(T, el, 1) ||
+        throw(RischError("internal check failed: Bioche substitution"))
+    # real poles of f (poles of g in the range of s) → the general route (real forms with |w|²)
+    rng = kind === :tan ? (nothing, nothing) : (-1, 1)
+    real_root_count(gq.den, rng...) == 0 || return nothing
+    res = integrate_rational(gq)
+    isempty(res.unresolved) || return nothing
+    # each log argument has constant sign on the range: log(-w) where it is negative (at s = 0)
+    logs = Tuple{Q,UPoly{Q}}[(c, sign(peval(w, Q(0))) < 0 ? -w : w) for (c, w) in res.logs]
+    # log((U + √dV)/(U - √dV)) with a negative ratio: the same as log((dV + √dU)/(dV - √dU))
+    quads = Any[]
+    for q in res.quads
+        if q isa QuadLog
+            u0, v0 = peval(q.U, Q(0)), peval(q.V, Q(0))
+            neg = real_sign(QS{q.d}(u0, v0)) * real_sign(QS{q.d}(u0, -v0)) < 0
+            q = neg ? QuadLog(q.β, q.d, q.d * q.V, q.U) : q
+        end
+        push!(quads, q)
+    end
+    res = RationalIntegral(res.rational, logs, res.atans, res.unresolved, quads)
+    check_result(res, gq) || throw(RischError("internal check failed: derivative of the result differs from the integrand"))
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    ut = isone(k) ? bd.x : mk(bd, :*, cterm(bd, k), bd.x)
+    st = mk(bd, kind, ut)
+    term = to_term(Builder(bd.build, bd.lift, st), res)
+    kind === :tan || return term
+    # the jumps of G(tan u) where tan u = ±∞
+    corr = Any[]
+    J = Q(0)
+    for (c, p) in res.atans
+        J += c * atan_infinity_sign(p)
+    end
+    iszero(J) || push!(corr, cterm(bd, J))
+    for q in res.quads
+        if q isa QuadAtan
+            σ = atan_infinity_sign(q.u)
+            σ == 0 || push!(corr, mk(bd, :*, cterm(bd, q.c * σ), mk(bd, :sqrt, bd.lift(q.e))))
+        elseif q isa RationalIntegral
+            Jd = sum((c * atan_infinity_sign(p) for (c, p) in q.atans); init = zero(typeof(q.rational.num.c[1])))
+            iszero(Jd) || push!(corr, cterm(bd, Jd))
+        end
+    end
+    isempty(corr) && return term
+    cc = length(corr) == 1 ? corr[1] : mk(bd, :+, corr...)
+    mk(bd, :+, term, mk(bd, :*, cc, mk(bd, :+, ut, mk(bd, :*, bd.lift(-1), mk(bd, :atan, mk(bd, :tan, ut))))))
+end
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = true)
@@ -5422,6 +5602,8 @@ function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = t
         catch e
             e isa RischNotImplemented || rethrow()
         end
+        r = bioche(f, x; build = build, lift = lift)    # rational in sin u, cos u (step TS)
+        r === nothing || return r
     end
     T, el = build_tower(f, xk)
     bd = Builder(build === nothing ? auto_build(f, x) : build,

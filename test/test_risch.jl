@@ -220,7 +220,7 @@ function run_tests(x, evalat, name)
         end
         # RootSums over ℚ(i) in trigonometric towers (step RC): complex coefficients R + i·I in cos/sin;
         # F(a) is the real part (an antiderivative between the branch-cut jumps of the complex logs)
-        for f in (cos(x)/(sin(x)^3 + sin(x) + 1), 1/(cos(x)^3 + 2), cos(x)/(sin(x)^4 + 1),
+        for f in (cos(x)/(sin(x)^3 + sin(x) + 1), 1/(cos(x)^3 + 2), cos(x)/(sin(x)^4 + 2),
                   sin(x) + 1/(x^3 + x + 1), 1/(sin(x)^3 + 2))
             F = Risch.risch_integrate(f, x)
             @test F isa Risch.IntegralWithRootSums
@@ -233,7 +233,7 @@ function run_tests(x, evalat, name)
         # point, so F is continuous and F(b) - F(a) is the definite integral (Simpson's rule)
         simpson(g, a, b; n = 1000) = (h = (b - a) / n;
             h / 3 * (g(a) + g(b) + sum((isodd(k) ? 4 : 2) * g(a + k * h) for k in 1:(n - 1))))
-        for (f, a, b) in ((1/(cos(x)^3 + 2), 0.0, 13.0), (cos(x)/(sin(x)^4 + 1), -3.0, 6.0),
+        for (f, a, b) in ((1/(cos(x)^3 + 2), 0.0, 13.0), (sin(x)/(cos(x)^4 + 2), -3.0, 6.0),
                           (cos(x)/(sin(x)^3 + sin(x) + 3), 0.0, 7.0), (1/(x^3 + x + 1), 0.0, 5.0),
                           (1/(x^4 + 2), -4.0, 4.0), (1/(exp(3x) + exp(x) + 1), -3.0, 3.0))
             F = Risch.risch_integrate(f, x)

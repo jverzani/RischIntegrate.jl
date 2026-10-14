@@ -117,6 +117,30 @@ function run_tests(x, evalat, name)
         F = Risch.risch_integrate(1/(2 + cos(x)), x)
         @test count("atan", string(F)) == 2
     end
+
+    # step TS: Bioche's rules (s = cos u, sin u, tan u) give the short classical forms; still
+    # continuous, with the jump correction u - atan(tan u) for s = tan u
+    @testset "$name: simpler trigonometric forms by Bioche's rules (step TS)" begin
+        ts_simpson(g, a, b; n = 2000) = (h = (b - a) / n;
+            h / 3 * (g(a) + g(b) + sum((isodd(k) ? 4 : 2) * g(a + k * h) for k in 1:(n - 1))))
+        for (f, s, natan) in ((cos(x)/(2 + sin(x)^2), "sin", 1), (sin(x)/(2 + cos(x)), "cos", 0),
+                              (sin(x)^3/(1 + cos(x)^2), "cos", 1), (cos(x)^3/(2 + sin(x)), "sin", 0),
+                              (sin(x)/(cos(x) - 2), "cos", 0), (sin(x)/(3 - cos(x)^2), "cos", 0),
+                              (1/(1 + sin(x)^2), "tan", 2), (1/(sin(x)^2 + 4cos(x)^2), "tan", 2),
+                              (1/(1 + 3cos(x/3)^2), "tan", 2))
+            F = Risch.risch_integrate(f, x)
+            str = string(F)
+            @test occursin(s, str) && !occursin("tan(x / 2)", str) && !occursin("tan((1/2)*x)", str)
+            @test count("atan", str) == natan
+            @test maximum(abs.(diff([evalat(F, a) for a in -7:0.02:13]))) < 0.05
+            @test isapprox(evalat(F, 13) - evalat(F, -7), ts_simpson(t -> evalat(f, t), -7, 13); atol = 1e-8)
+        end
+        # real poles (cot x): the general route, whose logs are valid on both sides of a pole
+        F = Risch.risch_integrate(cos(x)/sin(x), x)
+        for a in (-2.0, -0.5, 0.7, 2.5)
+            @test isapprox(fd(t -> evalat(F, t), a), evalat(cos(x)/sin(x), a); rtol = 1e-5)
+        end
+    end
 end
 
 simple_x = let; SimpleExpressions.@symbolic x; x; end

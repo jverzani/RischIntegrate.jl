@@ -412,6 +412,23 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   constant field has generators (ℚ(i)(t)).
   Tests: test_trig.jl both packages, eight integrands: continuity on [−7, 13], F(13) − F(−7) against
   Simpson (crosses u = π several times), the textbook form for 1/(2+cos x).
+* **TS: simpler trigonometric forms by Bioche's rules** (2026-10-14, done, tests green). `bioche`
+  (called in `risch_integrate` after Stage 5c, before the ℚ(i) tower): f with a one-level ℚ(i) tower
+  θ = e^{iu}, u = kx, constant coefficients, f = R(θ). Tests: R(1/θ) = −R → s = cos u; R(−1/θ) = −R →
+  s = sin u; R(−θ) = R → s = tan u (in this order). g(s) via `sym_to_s` (symmetric Laurent →
+  Chebyshev; sin through θ = iη) or `tan_to_s` (θ² = (1+is)/(1−is)); g ∈ ℚ(s) required. Exact checks:
+  g(s(θ))·s′ = f in the tower, `check_result` for ∫g. Output: `to_term` with the base variable printed
+  as sin(kx)/cos(kx)/tan(kx); for tan the jump correction J·(u − atan(tan u)), J = Σ c·σ over atans of
+  odd degree at s = ±∞ (`atan_infinity_sign`; QuadAtan c√e, R2 terms over ℚ(√d)).
+  Domain: g must have no poles in the range of s (`real_root_count`, Sturm; [−1, 1] or ℝ), else the
+  general route (cot x keeps its |w|²-logs); log arguments negative on the range are negated, a
+  QuadLog with a negative ratio becomes QuadLog(β, d, dV, U). Unresolved residues → general route.
+  E.g. cos x/(2+sin²x) → (√2/2) atan(√2 sin x/2); cos³x/(2+sin x) → 2 sin x − sin²x/2 − 3 log(2+sin x);
+  1/(1+sin²x) → (√2/2) atan(√2 tan x) + (√2/2)(x − atan(tan x)). Not covered: the half-angle cases
+  (1/(2+cos x) stays TC), RootSums in s (cos x/(sin⁴x+2) stays RC).
+  Tests: test_trig.jl both packages: nine integrands (form, atan count, continuity, Simpson), cot x.
+  test_risch.jl: cos x/(sin⁴x+1) now gets a real form (√2, via s = sin x), so the RC/RN RootSum
+  examples use cos x/(sin⁴x+2) and sin x/(cos⁴x+2) (2^(1/4): still RootSums).
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
