@@ -7,7 +7,7 @@ $(replace(read(joinpath(@__DIR__, "..", "README.md"), String), "```julia" => "``
 module RischIntegrate
 
 # Write your package code here.
-using TermInterface: iscall, operation, arguments
+using TermInterface: iscall, operation, arguments, maketerm
 using SpecialFunctions: expinti, sinint, cosint, erf, erfi
 using PolyLog: li2
 using PrecompileTools: @setup_workload, @compile_workload
@@ -51,16 +51,22 @@ include("real_log_arguments.jl")
 export integrate
 
 """
-    integrate(ex, x, ys...)
+    integrate(ex, x, ys...; build = nothing, lift = nothing)
 
 Indefinite integral of a symbolic expression over variable x. Iterative integrals are possible.
-"""
-integrate(ex, x) = risch_integrate(ex, x)
 
-function integrate(ex, a, bs...)
-    f = integrate(ex, a)
+The keywords control how the answer is rebuilt as a term: `build(op, args...)` makes the term
+for the operation `op` (a function such as `+`, `sqrt` or `log`) applied to `args`, and `lift(n)`
+turns a Julia number into a term. By default operations are called as functions (for
+SymbolicUtils terms, constants such as `sqrt(2)` are built with `TermInterface.maketerm`). See the
+README for SymbolicUtils.jl and Symbolics.jl.
+"""
+integrate(ex, x; kw...) = risch_integrate(ex, x; kw...)
+
+function integrate(ex, a, bs...; kw...)
+    f = integrate(ex, a; kw...)
     for b in bs
-        f = integrate(f, b)
+        f = integrate(f, b; kw...)
     end
     f
 end
@@ -77,10 +83,10 @@ out = integrate(sin(x), (x, 0, pi))
 out, simplify(out)
 ```
 """
-function integrate(ex, xabs::Tuple...)
+function integrate(ex, xabs::Tuple...; kw...)
     val = ex
     for (x, a, b) in xabs
-        ∫f = integrate(val, x)
+        ∫f = integrate(val, x; kw...)
         val = ∫f(x=>b) - ∫f(x=>a)
     end
     val

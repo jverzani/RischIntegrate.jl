@@ -145,8 +145,32 @@ function deferred_call(x, op, args)
     r === nothing ? op(args...) : r
 end
 function auto_build(f, x)
-    typeof(x) <: Function || return default_build
+    typeof(x) <: Function || return x isa Number ? default_build : (op, args...) -> exact_call(x, op, args)
     (op, args...) -> any(a -> a isa Function, args) ? op(args...) : deferred_call(x, op, args)
+end
+
+# Other term types (SymbolicUtils): a call of sqrt, cbrt, log or exp on numbers only is built with
+# TermInterface's `maketerm` for the type of the variable, which keeps it unevaluated (sqrt(2), not
+# 1.414…); an integer value (sqrt(1), log(1)) is returned as an integer. An operation without a
+# method for the arguments (PolyLog.li2 of a term) is built with `maketerm` too. If the type does
+# not build such a term, the operation is applied (or its MethodError raised).
+const EXACT_OPS = (sqrt, cbrt, log, exp)
+function exact_call(x, op, args)
+    T = typeof(x)
+    make() = (r = try maketerm(T, op, Any[args...], nothing) catch; nothing end; r isa T ? r : nothing)
+    if op in EXACT_OPS && all(a -> a isa Number, args)
+        v = op(args...)
+        v isa AbstractFloat && isinteger(v) && abs(v) < 2^53 && return Int(v)
+        r = make()
+        return r === nothing ? v : r
+    end
+    try
+        op(args...)
+    catch e
+        e isa MethodError || rethrow()
+        r = make()
+        r === nothing ? rethrow() : r
+    end
 end
 
 function auto_lift(f, x)

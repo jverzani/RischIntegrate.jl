@@ -829,6 +829,24 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   Tests: `test/Risch.jl` (symlink) is gone; each test file does `using RischIntegrate` and
   `import RischIntegrate as Risch` (all `Risch.x` calls unchanged); RischIntegrate is dev'd into
   test/Project.toml (`[sources]`). Apostol unchanged (155; test_apostol.jl alone: 155).
+* **SB: SymbolicUtils.jl and Symbolics.jl without an extension** (2026-10-15, done, tests green).
+  Resolves the WR open item. SymbolicUtils terms implement TermInterface, so they integrate
+  directly; Symbolics needs only `Symbolics.unwrap` on input and `Num(...)` on the answer (README
+  section "Using SymbolicUtils.jl and Symbolics.jl").
+  - `auto_build` (term_output.jl): for a variable that is neither a Function (SimpleExpressions) nor
+    a Number (SymEngine `Basic`, Symbolics `Num`: unchanged), `exact_call`: sqrt/cbrt/log/exp of
+    numbers only are built with `TermInterface.maketerm(typeof(x), op, args, nothing)`, so sqrt(2)
+    stays exact (SymbolicUtils would evaluate it); an exactly integer value (sqrt(1), log(1), which
+    the output code relies on simplifying) is returned as an Int; an operation with no method for
+    term arguments (PolyLog.li2) is built with `maketerm` too. Fallback: apply the operation.
+    Numeric powers 2^(1//3) are not kept (SymbolicUtils' maketerm evaluates `^` of numbers).
+  - `integrate(ex, x, …; kw...)` (all three methods) passes `build` / `lift` to `risch_integrate`.
+  Apostol set with SymbolicUtils `@syms` (scratch check, not a testset): 168/175 integrate, all
+  numerically correct (2 RootSums), no floats in any answer; failures are the known limitations
+  (radicals of non-rational/parametric radicands, residues over ℚ(a), x^n log(ax), 1/log^(n+1)).
+  Tests: test/test_symbolicutils.jl "SymbolicUtils terms (step SB)" (SymbolicUtils 4 added to the
+  test environment, `[compat]` "4"; included in runtests.jl): exact constants (no floats), F' = f
+  numerically, li2, iterated integral, RootSum. No Symbolics test (heavy dependency).
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -1058,13 +1076,14 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > SymEngine.jl; it also loads SpecialFunctions.jl. The package is `RischIntegrate`: the sources are
 > the files in `src/`, included in order by `src/RischIntegrate.jl` (step FS); the tests use
 > `import RischIntegrate as Risch`. Run tests from `test/` with `julia --project=. test_X.jl` for
-> the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
+> the files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`,
+> `test_symbolicutils` (and `test_apostol`, `runtests.jl` runs all); all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP, RL, EL, EC, TL, FS (2026-10-15).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP, RL, EL, EC, TL, FS, SB (2026-10-15).
 >
-> Next steps (open items): Symbolics.jl support (Num unwrap/rewrap, symbolic constants such as
-> sqrt(2): WR entry); precompile workloads in package extensions (PC entry, deferred).
+> Next steps (open items): precompile workloads in package extensions (PC entry, deferred);
+> later, move usage examples from the README into a `docs/` directory built with Documenter.jl.
 >
 > Ground rules: one plan step at a time; every result self-verified exactly by differentiation;
 > `NotElementary` only when the theory decides the case, otherwise `RischNotImplemented`; never
