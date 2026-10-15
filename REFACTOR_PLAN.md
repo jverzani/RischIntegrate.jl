@@ -847,6 +847,20 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   Tests: test/test_symbolicutils.jl "SymbolicUtils terms (step SB)" (SymbolicUtils 4 added to the
   test environment, `[compat]` "4"; included in runtests.jl): exact constants (no floats), F' = f
   numerically, li2, iterated integral, RootSum. No Symbolics test (heavy dependency).
+* **DC: documentation with Documenter** (2026-10-15, done). `docs/` (Project.toml with Documenter,
+  SymEngine, SimpleExpressions, SymbolicUtils 4, RischIntegrate via `[sources]`; make.jl with
+  `deploydocs` to gh-pages, devbranch main): pages Home (index.md), Usage (every term type, `Expr`
+  with build/lift, iterated/definite, special functions, NotElementary / RischNotImplemented,
+  RootSums; executed `@example` blocks, Symbolics as a static block), How it works (algorithm.md:
+  the steps and the source-file map), Reference (`@docs`). Docstrings added for `risch_integrate`,
+  `RischError`, `RischNotImplemented`, `NotElementary`. `checkdocs = :exports`, `warnonly =
+  [:missing_docs]` (the module docstring is the README). README: docs badge and link; the
+  SymbolicUtils/Symbolics section moved to the docs. CI.yml: a `docs` job
+  (julia-actions/julia-docdeploy, needs the DOCUMENTER_KEY secret). .gitignore: docs/build,
+  docs/Manifest. Build locally: `julia --project=docs docs/make.jl`.
+  Noticed (not changed): with SymEngine and SimpleExpressions, which have no methods for
+  `sinint` / `expinti`, ∫ sin(x)/x and ∫ 1/log(x) raise a raw MethodError (the li2 case raises
+  NotElementary); ∫ exp(x²) with SymEngine raises an ArgumentError.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -1080,10 +1094,10 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > `test_symbolicutils` (and `test_apostol`, `runtests.jl` runs all); all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP, RL, EL, EC, TL, FS, SB (2026-10-15).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP, RL, EL, EC, TL, FS, SB, DC (2026-10-15).
 >
 > Next steps (open items): precompile workloads in package extensions (PC entry, deferred);
-> later, move usage examples from the README into a `docs/` directory built with Documenter.jl.
+> special-function answers for term types without sinint/expinti methods (DC entry).
 >
 > Ground rules: one plan step at a time; every result self-verified exactly by differentiation;
 > `NotElementary` only when the theory decides the case, otherwise `RischNotImplemented`; never

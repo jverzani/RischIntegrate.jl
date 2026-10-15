@@ -1,6 +1,14 @@
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+"""
+    risch_integrate(f, x; build = nothing, lift = nothing, verify = true)
+
+The antiderivative of the term `f` in the variable `x` (the function behind [`integrate`](@ref)).
+`build` and `lift` control how the answer is built as a term; `verify = false` skips the final
+check of the answer by differentiation (every answer is checked by default). Returns a term, or an
+[`IntegralWithRootSums`](@ref); throws [`NotElementary`](@ref) or [`RischNotImplemented`](@ref).
+"""
 function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = true)
     check_leaves(f, string(x))                                         # step WR
     try

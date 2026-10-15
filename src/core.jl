@@ -51,9 +51,20 @@ cfrom(q::Q) = q                 # embedding ℚ -> C
 czero() = zero(C)
 cone() = one(C)
 
+"""
+    RischError
+
+An internal error, e.g. an answer that failed its own check by differentiation. It indicates a bug.
+"""
 struct RischError <: Exception
     msg::String
 end
+"""
+    RischNotImplemented
+
+The integrand lies outside the cases implemented: no answer, and no decision whether the integral
+is elementary.
+"""
 struct RischNotImplemented <: Exception
     msg::String
 end
@@ -62,6 +73,12 @@ Base.showerror(io::IO, e::RischNotImplemented) = print(io, "RischNotImplemented:
 
 # Raised when the algorithm *decides* that the integral has no elementary
 # antiderivative (within the cases of the Risch algorithm implemented so far).
+"""
+    NotElementary
+
+The integral was proved to have no elementary antiderivative (and no form with the special
+functions used by the package was found).
+"""
 struct NotElementary <: Exception
     msg::String
 end

@@ -1,5 +1,6 @@
 # RischIntegrate
 
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://jverzani.github.io/RischIntegrate.jl/dev/)
 [![Build Status](https://github.com/jverzani/RischIntegrate.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/jverzani/RischIntegrate.jl/actions/workflows/CI.yml?query=branch%3Amain)
 
 
@@ -23,42 +24,5 @@ integrate(exp(x) / (exp(x) + 1)^2, x) # indefinite, -1/(1 + exp(x))
 integrate(sin(x), (x, 0, pi))         # definite, 2
 ```
 
-## Using SymbolicUtils.jl and Symbolics.jl
-
-SymbolicUtils terms implement the TermInterface methods, so they can be integrated directly.
-Constants such as `sqrt(2)` are kept exact (built with `TermInterface.maketerm`, as SymbolicUtils
-would otherwise evaluate `sqrt(2)` to a floating point number):
-
-```{julia}
-using SymbolicUtils: @syms
-using RischIntegrate: RischIntegrate, integrate
-@syms x::Real
-
-integrate(1 / (x^2 + 2), x)        # (1//2)*atan((1//2)*sqrt(2)*x)*sqrt(2)
-integrate(exp(-x^2), x)            # (1//2)*SpecialFunctions.erf(x)*sqrt(π)
-integrate(log(x) / (1 + x), x)     # PolyLog.li2(1 / (1 + x)) + (1//2)*(log(1 + x)^2)
-```
-
-Symbolics.jl wraps its SymbolicUtils terms in `Num`, which does not implement the TermInterface
-methods: unwrap the integrand and the variable, and wrap the answer again:
-
-```{julia}
-using Symbolics
-using RischIntegrate: RischIntegrate, integrate
-@variables x
-
-∫(f, x) = Num(integrate(Symbolics.unwrap(f), Symbolics.unwrap(x)))
-∫(1 / (x^2 + 2), x)                # (1//2)*atan((1//2)*sqrt(2)*x)*sqrt(2)
-```
-
-An answer that contains a `RootSum` (residues of degree greater than 2, for example
-`1 / (x^3 + 2)`) is a `RischIntegrate.IntegralWithRootSums`, which is not a SymbolicUtils term (and
-can not be wrapped in `Num`):
-
-```{julia}
-F = integrate(Symbolics.unwrap(1 / (x^3 + 2)), Symbolics.unwrap(x))
-F isa RischIntegrate.IntegralWithRootSums   # true
-```
-
-The keywords `build` and `lift` of `integrate` control how answers are built for other term types;
-see the docstring.
+See the [documentation](https://jverzani.github.io/RischIntegrate.jl/dev/) for SymbolicUtils.jl,
+Symbolics.jl, SimpleExpressions.jl and `Expr`, non-elementary integrals and RootSums.
