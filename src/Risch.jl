@@ -388,6 +388,33 @@ function rat_sqrt(a::Q)
     (n^2 == numerator(a) && d^2 == denominator(a)) ? Q(n) // Q(d) : nothing
 end
 
+# the rational m-th root of a (m odd), or nothing
+function rat_root(a::Q, m::Int)
+    iroot(n::BigInt) = (r = round(BigInt, BigFloat(abs(n))^(1 / m)); for c in (r - 1, r, r + 1); c^m == abs(n) && return sign(n) * c; end; nothing)
+    n, d = iroot(numerator(a)), iroot(denominator(a))
+    (n === nothing || d === nothing) ? nothing : Q(n) // Q(d)
+end
+
+# step RP: a radicand u = c·w^m (m odd, c = r^m with r ∈ ℚ, m maximal) as (r·w, m): then
+# u^e = (r w)^(e m) for real x wherever u^e is real (an odd power keeps the sign of r w).
+# Even m is not used: (w²)^(1/2) = |w|. Otherwise (u, 1).
+function radicand_power(u::Frac{UPoly{Q}})
+    sn, sd = squarefree(u.num), squarefree(u.den)
+    ks = Int[k for (_, k) in vcat(sn, sd)]
+    isempty(ks) && return (u, 1)
+    g = foldl(gcd, ks)
+    P = UPoly{Q}
+    for m in g:-1:3
+        (isodd(m) && g % m == 0) || continue
+        r = rat_root(lc(u.num) / lc(u.den), m)
+        r === nothing && continue
+        W = prod((p^(k ÷ m) for (p, k) in sn); init = one(P))
+        Wd = prod((p^(k ÷ m) for (p, k) in sd); init = one(P))
+        return (frac(scale(r, W), Wd), m)
+    end
+    (u, 1)
+end
+
 # --- factorisation in ℚ[z] (residue polynomials) ------------------------------------
 # Big prime method: the primitive integer form f of a squarefree polynomial is factored modulo
 # a prime p > 2·|lc f|·B, B = 2ⁿ‖f‖₂ (Mignotte: a bound on the coefficients of any factor), by
@@ -5063,6 +5090,9 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
     xk = string(x)
     groups = Any[]                                      # [radicand element, term, lcm of indices]
     cvs = Q[]                                           # radicands of constant radicals (10e)
+    b0 = Builder(build === nothing ? auto_build(f, x) : build,
+                 lift === nothing ? auto_lift(f, x) : lift, x)
+    pmap = Dict{Frac{UPoly{Q}},Tuple{Frac{UPoly{Q}},Int}}()   # radicand u ↦ (w, m), u^e = w^(e m) (RP)
     for (e, ut) in rads
         ue = radicand_element(ut, xk)
         ue === nothing && throw(RischNotImplemented(
@@ -5073,19 +5103,19 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
             push!(cvs, const_radicand(ue))
             continue
         end
-        i = findfirst(g -> g[1] == ue, groups)
-        i === nothing && (push!(groups, Any[ue, ut, 1]); i = length(groups))
-        groups[i][3] = lcm(groups[i][3], Int(denominator(e)))
+        w, m = radicand_power(ue)
+        m > 1 && (pmap[ue] = (w, m))
+        i = findfirst(g -> g[1] == w, groups)
+        i === nothing && (push!(groups, Any[w, m > 1 ? frac_term(b0, w) : ut, 1]); i = length(groups))
+        groups[i][3] = lcm(groups[i][3], Int(denominator(e * m)))
     end
-    b0 = Builder(build === nothing ? auto_build(f, x) : build,
-                 lift === nothing ? auto_lift(f, x) : lift, x)
     cfix = const_radical_field(cvs)
     if isempty(groups)                                  # only constant radicals: x = t
         tt = frac(xpoly(Q))
         return try_substitutions(f, xk, Any[(Q, tt, (ue, e) -> throw(RischError("unexpected radicand")), x)],
                                  b0, verify, cfix)
     end
-    length(groups) == 2 && return integrate_two_radicals(f, xk, groups, b0, verify, cfix)
+    length(groups) == 2 && return integrate_two_radicals(f, xk, groups, b0, verify, cfix, pmap)
     length(groups) > 2 && throw(RischNotImplemented(
         "radicals of more than two different radicands (a curve of genus ≥ 1 in general)"))
     u, uterm, n = groups[1]
@@ -5094,7 +5124,9 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
     P = UPoly{Q}
     tt = frac(xpoly(Q))                                 # t ∈ ℚ(t)
     kq(c) = frac(P(Q[c]))
-    if degree(N) <= 1 && degree(Dd) <= 1 && degree(N) + degree(Dd) >= 1
+    if n == 1                                           # every radical is a power of w (RP): x = t
+        cands = Any[(Q, tt, k -> u^k, b0.x)]
+    elseif degree(N) <= 1 && degree(Dd) <= 1 && degree(N) + degree(Dd) >= 1
         # 10a: u = (a x + b)/(c x + d), t = u^(1/n), x = (b - d tⁿ)/(c tⁿ - a), u^(p/q) = t^(pn/q)
         a, b, c, d = co(N, 2), co(N, 1), co(Dd, 2), co(Dd, 1)
         iszero(a * d - b * c) && throw(RischError("radicand is constant"))
@@ -5119,16 +5151,20 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         isone(denominator(k)) || throw(RischError("radical exponent not a multiple of 1/n"))
         radpow(Int(numerator(k)))
     end
-    try_substitutions(f, xk, Any[(S, φ, radval(radpow), tterm) for (S, φ, radpow, tterm) in cands], b0, verify, cfix)
+    try_substitutions(f, xk, Any[(S, φ, radval(radpow), tterm) for (S, φ, radpow, tterm) in cands], b0, verify, cfix,
+                      pmap)
 end
 
 # Several substitutions (different constant fields, 10c/10d): the first one that is handled
 # decides; a NotElementary from any of them is a proof (each is a rational parametrisation).
 # With constant radicals (10e, `cfix` = (field, value function)) the tower is built over
 # cfix.C; a substitution over another field ℚ(i)(√d') is not combinable (skipped).
-function try_substitutions(f, xk::String, cands, b0::Builder, verify::Bool, cfix = nothing)
+function try_substitutions(f, xk::String, cands, b0::Builder, verify::Bool, cfix = nothing, pmap = nothing)
     err = RischNotImplemented("the radicals of x need a constant field other than the one fixed by the constant radicals ($(cfix === nothing ? Q : cfix.C))")
-    for (S, φ, radval, tterm) in cands
+    for (S, φ, radval0, tterm) in cands
+        # u^e = w^(e m) for a radicand that is a power (step RP)
+        radval = (pmap === nothing || isempty(pmap)) ? radval0 :
+                 (ue, e) -> (wm = get(pmap, ue, nothing); wm === nothing ? radval0(ue, e) : radval0(wm[1], e * wm[2]))
         C = cfix === nothing || cfix.C === Q ? (S === Q ? nothing : S) :
             (S === Q || S === cfix.C) ? cfix.C : continue
         try
@@ -5213,7 +5249,7 @@ end
 # is a conic). Both orders of the radicands are tried. Radicands of higher degree, other
 # indices, or three or more radicands give curves of genus ≥ 1 in general: refused.
 # ---------------------------------------------------------------------------
-function integrate_two_radicals(f, xk::String, groups, b0::Builder, verify::Bool, cfix = nothing)
+function integrate_two_radicals(f, xk::String, groups, b0::Builder, verify::Bool, cfix = nothing, pmap = nothing)
     linear(u) = isone(u.den) && degree(u.num) == 1
     all(g -> g[3] == 2 && linear(g[1]), groups) || throw(RischNotImplemented(
         "radicals of two different radicands: only square roots of two linear polynomials are supported"))
@@ -5244,7 +5280,7 @@ function integrate_two_radicals(f, xk::String, groups, b0::Builder, verify::Bool
     end
     isempty(cands) && throw(RischNotImplemented(
         "√($(groups[1][2])) and √($(groups[2][2])) are never real at the same point"))
-    try_substitutions(f, xk, cands, b0, verify, cfix)
+    try_substitutions(f, xk, cands, b0, verify, cfix, pmap)
 end
 
 # Euler substitutions for R = √(A x² + B x + C): (S, φ, ψ, t-term) with x = φ(t), R = ψ(t),

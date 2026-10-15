@@ -247,6 +247,20 @@ function run_tests(x, evalat, name)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x + sqrt(x + 1)), x)  # nested
     end
 
+    @testset "$name: radicands that are odd powers (step RP)" begin
+        # u = c·w^m, m odd, c = r^m: u^e = (r w)^(e m), then 10a / 10b / 10d with the base r w
+        fs = (1 / sqrt(x^3), sqrt(x^3), x * sqrt((x + 1)^3), 1 / sqrt((x^2 + 1)^3), sqrt((x^2 + 1)^3),
+              x^2 * (8x^3)^(1 // 3), 1 / sqrt(((x + 2) / (x + 1))^3), sqrt(x^3) + sqrt(x + 1),
+              sin(x) / sqrt(cos(x)^3))                      # after the substitution u = cos x (US)
+        for f in fs
+            F = Risch.risch_integrate(f, x)
+            for a in (0.5, 0.9, 1.3)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x^6 + 1), x)
+    end
+
     @testset "$name: square roots of quadratics: Euler substitutions (step 10b)" begin
         # (integrand, test points inside the real domain)
         inside = (0.2, 0.45, 0.7)

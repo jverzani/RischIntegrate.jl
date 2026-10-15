@@ -748,6 +748,20 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   unwrap/rewrap, i.e. a package extension.
   Tests: test_risch.jl "Hermite reduction: repeated factor of degree ≥ 2 with other factors",
   "opaque leaves and rational leaves (step WR)".
+* **RP: radicands that are odd powers** (2026-10-15, done, tests green). `radicand_power(u)`: u = c·w^m
+  with m the largest odd divisor of the gcd of the multiplicities (squarefree factorisation of
+  numerator and denominator) for which c = r^m, r ∈ ℚ (`rat_root`): (r w, m), and u^e = (r w)^(e m)
+  for real x wherever u^e is real (an odd power keeps the sign). Even m is never used ((w²)^(1/2) =
+  |w|). `integrate_radical` groups radicals by the base r w (index lcm of the denominators of e m,
+  printed as the base term), and `try_substitutions` maps a radicand to its base for the
+  substitution's radical values (`pmap`; also for two radicands, 10d). If every e m is an integer
+  no radical is left (x = t). E.g. √(x³), 1/√(x³), x√((x+1)³), (x²+1)^(±3/2) (Euler), (8x³)^(1/3)x²,
+  1/√(((x+2)/(x+1))³), √(x³) + √(x+1), and through US sin x/√(cos³x) = 2/√(cos x).
+  Apostol set 154 → 155 (#11). Not handled: c not an m-th power (1/√(2x³); SymEngine itself rewrites
+  it as √2·x^(3/2), which works). Noticed (not changed): 10a answers may contain log(s - 1) with
+  s = √((x+1)/(x+2)) < 1, real only up to a constant iπ (the log arguments' signs are not chosen as
+  in TE).
+  Tests: test_integrate.jl "radicands that are odd powers (step RP)".
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -979,11 +993,11 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR (2026-10-15).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP (2026-10-15).
 >
 > Next steps (open items): Symbolics.jl support (Num unwrap/rewrap, symbolic constants such as
-> sqrt(2): WR entry); precompile workloads in package extensions (PC entry, deferred); radicands
-> like U³ after a substitution (US entry).
+> sqrt(2): WR entry); precompile workloads in package extensions (PC entry, deferred); real log
+> arguments in 10a answers (RP entry).
 >
 > Ground rules: one plan step at a time; every result self-verified exactly by differentiation;
 > `NotElementary` only when the theory decides the case, otherwise `RischNotImplemented`; never
