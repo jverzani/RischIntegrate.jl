@@ -42,14 +42,7 @@ end
 function dilog_term(b::Builder, q::DilogTerm)
     st = poly_term(b, UPoly{Q}(Q[-q.c, 1]))            # s = x - c
     K = q.a * q.c + q.b
-    li(z) = try
-        mk(b, :li2, z)
-    catch e
-        e isa MethodError || rethrow()
-        # not elementary (decided); its dilogarithm form cannot be built in this package
-        throw(NotElementary("the integral is a dilogarithm, and the symbolic package has no method for " *
-                            "PolyLog.li2 to express it"))
-    end
+    li(z) = mk(b, :li2, z)          # a MethodError if the symbolic package has no method for li2
     if K > 0
         L = li(mk(b, :*, cterm(b, -q.a / K), st))
         core = isone(K) ? mk(b, :*, b.lift(-1), L) :           # log K · ½ log(s²) - Li₂(-a s/K)

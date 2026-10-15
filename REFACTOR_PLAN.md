@@ -858,9 +858,17 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   SymbolicUtils/Symbolics section moved to the docs. CI.yml: a `docs` job
   (julia-actions/julia-docdeploy, needs the DOCUMENTER_KEY secret). .gitignore: docs/build,
   docs/Manifest. Build locally: `julia --project=docs docs/make.jl`.
-  Noticed (not changed): with SymEngine and SimpleExpressions, which have no methods for
-  `sinint` / `expinti`, ∫ sin(x)/x and ∫ 1/log(x) raise a raw MethodError (the li2 case raises
-  NotElementary); ∫ exp(x²) with SymEngine raises an ArgumentError.
+  Noticed: with SymEngine and SimpleExpressions 1.3.1, which have no methods for `sinint` /
+  `expinti`, ∫ sin(x)/x and ∫ 1/log(x) raise the MethodError of that call (intended, see LM);
+  ∫ exp(x²) with SymEngine raises an ArgumentError (not investigated).
+* **LM: a missing special-function method is a MethodError** (2026-10-15, done, tests green).
+  Policy (user): when the term type has no method for a special function (`sinint(x)`,
+  `li2(x)`, … with x symbolic), the MethodError of that call propagates; the package does not
+  special-case it (packages provide the methods, e.g. SimpleExpressions' SpecialFunctions and
+  PolyLog extensions). Removed the li2 special case of DL (`dilog_term` turned the MethodError
+  into NotElementary). `exact_call` (SB) is consistent: it builds the call with `maketerm` when
+  the type can, else rethrows the MethodError. Tests: test_integrate.jl "decided non-elementary":
+  ∫ log(x)/(x+1) before the li2 stand-ins → `@test_throws MethodError`. Docs (usage.md) say so.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -1094,10 +1102,10 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > `test_symbolicutils` (and `test_apostol`, `runtests.jl` runs all); all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP, RL, EL, EC, TL, FS, SB, DC (2026-10-15).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP, RL, EL, EC, TL, FS, SB, DC, LM (2026-10-15).
 >
-> Next steps (open items): precompile workloads in package extensions (PC entry, deferred);
-> special-function answers for term types without sinint/expinti methods (DC entry).
+> Next steps (open items): precompile workloads in package extensions (PC entry, deferred).
+> A missing special-function method of a term type is a MethodError, not special-cased (LM).
 >
 > Ground rules: one plan step at a time; every result self-verified exactly by differentiation;
 > `NotElementary` only when the theory decides the case, otherwise `RischNotImplemented`; never

@@ -110,7 +110,9 @@ integrate(sin(x) / x, x)
 integrate(log(x) / (1 + x), x)
 ```
 
-Otherwise [`NotElementary`](@ref RischIntegrate.NotElementary) is thrown when the integral is proved to be non-elementary:
+If the term type has no method for the special function (e.g. `sinint(x)` for a symbolic `x`),
+the call raises its `MethodError`. [`NotElementary`](@ref RischIntegrate.NotElementary) is thrown
+when the integral is proved to be non-elementary and has no such form:
 
 ```@example symbolicutils
 try
