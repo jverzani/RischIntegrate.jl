@@ -762,6 +762,18 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   s = √((x+1)/(x+2)) < 1, real only up to a constant iπ (the log arguments' signs are not chosen as
   in TE).
   Tests: test_integrate.jl "radicands that are odd powers (step RP)".
+* **RL: real log arguments in 10a answers** (2026-10-15, done, tests green). In 10a, t = u^(1/n) > 0
+  (principal root) wherever the answer is real, so `integrate_built(...; tpos = true)` (passed from
+  the 10a branch through `try_substitutions`, `integrate_subst`) rewrites the logs of the level-0
+  rational integral (`real_logs_tpos`): w without a root in (0, ∞) (`real_root_count`) has one sign
+  there, log(-w) if negative; w with a root there (e.g. t - 1 for u = (x+1)/(x+2): t < 1 for x > -1,
+  t > 1 for x < -2) gets c log w = (c/2) log(w²) = c log|w|, real on both sides (no abs, so answers
+  still parse). QuadLog with U² - dV² of one negative sign on (0, ∞): the swapped form (as TE). The
+  result is verified again after the rewrite. `to_term` prints a monic perfect-square log argument
+  as v^2 (`log_arg_term`). E.g. 1/√((x+1)/(x+2)), √x/(x-1) = 2√x - log(1 + √x) + log((√x - 1)²)/2,
+  1/(x√(x+1)), 1/(x - x^(1/3)): real at points on both sides. Not done: logs at tower levels over
+  ℚ(t) (e.g. with exp(√x)), and the Euler substitutions (10b/10c), whose t ranges differ.
+  Tests: test_integrate.jl "real log arguments in 10a answers (step RL)".
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -993,11 +1005,11 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP (2026-10-15).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP, RL (2026-10-15).
 >
 > Next steps (open items): Symbolics.jl support (Num unwrap/rewrap, symbolic constants such as
 > sqrt(2): WR entry); precompile workloads in package extensions (PC entry, deferred); real log
-> arguments in 10a answers (RP entry).
+> arguments for Euler substitutions and tower levels over ℚ(t) (RL entry).
 >
 > Ground rules: one plan step at a time; every result self-verified exactly by differentiation;
 > `NotElementary` only when the theory decides the case, otherwise `RischNotImplemented`; never

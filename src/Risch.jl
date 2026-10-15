@@ -1422,11 +1422,24 @@ end
 frac_term(b::Builder, f::Frac{<:UPoly}) =
     isone(f.den) ? poly_term(b, f.num) : mk(b, :/, poly_term(b, f.num), poly_term(b, f.den))
 
+# a log argument as a term; a monic perfect square v² (the real form log|v| = log(v²)/2, step RL)
+# is printed as v^2
+function log_arg_term(b::Builder, w::UPoly)
+    if degree(w) >= 2 && isone(lc(w))
+        sf = squarefree(w)
+        if !isempty(sf) && all(iseven(k) for (_, k) in sf)
+            v = prod(p^(k ÷ 2) for (p, k) in sf)
+            return mk(b, :^, poly_term(b, v), b.lift(2))
+        end
+    end
+    poly_term(b, w)
+end
+
 function to_term(b::Builder, res::RationalIntegral)
     ts = Any[]
     iszero(res.rational) || push!(ts, frac_term(b, res.rational))
     for (c, w) in res.logs
-        l = mk(b, :log, poly_term(b, w))
+        l = mk(b, :log, log_arg_term(b, w))
         push!(ts, isone(c) ? l : mk(b, :*, cterm(b, c), l))
     end
     for (c, u) in res.atans
@@ -5124,6 +5137,7 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
     P = UPoly{Q}
     tt = frac(xpoly(Q))                                 # t ∈ ℚ(t)
     kq(c) = frac(P(Q[c]))
+    tpos = false
     if n == 1                                           # every radical is a power of w (RP): x = t
         cands = Any[(Q, tt, k -> u^k, b0.x)]
     elseif degree(N) <= 1 && degree(Dd) <= 1 && degree(N) + degree(Dd) >= 1
@@ -5134,6 +5148,7 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         φ = (kq(b) - kq(d) * tn) / (kq(c) * tn - kq(a))
         tterm = n == 2 ? mk(b0, :sqrt, uterm) : mk(b0, :^, uterm, b0.lift(Q(1) // n))
         cands = Any[(Q, φ, k -> tt^k, tterm)]          # u^(k/n) = t^k
+        tpos = true                                     # t = u^(1/n) > 0 (principal root, step RL)
     elseif isone(Dd) && degree(N) == 2 && n == 2
         # 10b/10c: √Q, Q = A x² + B x + C, by an Euler substitution (rational parametrisation
         # over ℚ, or over ℚ(i)(√d) when the conic R² = Q has no small rational point);
@@ -5152,14 +5167,15 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         radpow(Int(numerator(k)))
     end
     try_substitutions(f, xk, Any[(S, φ, radval(radpow), tterm) for (S, φ, radpow, tterm) in cands], b0, verify, cfix,
-                      pmap)
+                      pmap; tpos = tpos)
 end
 
 # Several substitutions (different constant fields, 10c/10d): the first one that is handled
 # decides; a NotElementary from any of them is a proof (each is a rational parametrisation).
 # With constant radicals (10e, `cfix` = (field, value function)) the tower is built over
 # cfix.C; a substitution over another field ℚ(i)(√d') is not combinable (skipped).
-function try_substitutions(f, xk::String, cands, b0::Builder, verify::Bool, cfix = nothing, pmap = nothing)
+function try_substitutions(f, xk::String, cands, b0::Builder, verify::Bool, cfix = nothing, pmap = nothing;
+                           tpos::Bool = false)
     err = RischNotImplemented("the radicals of x need a constant field other than the one fixed by the constant radicals ($(cfix === nothing ? Q : cfix.C))")
     for (S, φ, radval0, tterm) in cands
         # u^e = w^(e m) for a radicand that is a power (step RP)
@@ -5168,7 +5184,8 @@ function try_substitutions(f, xk::String, cands, b0::Builder, verify::Bool, cfix
         C = cfix === nothing || cfix.C === Q ? (S === Q ? nothing : S) :
             (S === Q || S === cfix.C) ? cfix.C : continue
         try
-            return integrate_subst(f, xk, S, φ, radval, Builder(b0.build, b0.lift, tterm), verify, C, cfix)
+            return integrate_subst(f, xk, S, φ, radval, Builder(b0.build, b0.lift, tterm), verify, C, cfix;
+                                   tpos = tpos)
         catch e
             e isa RischNotImplemented || rethrow()
             err = e
@@ -5180,7 +5197,7 @@ end
 # ∫ f dx with x = φ(t) and u^e = radval(u, e) ∈ S(t) for the radicands u ∈ ℚ(x);
 # the answer is printed with t as bt.x
 function integrate_subst(f, xk::String, ::Type{S}, φ, radval, bt::Builder, verify::Bool,
-                         constants = S === Q ? nothing : S, cfix = nothing) where {S}
+                         constants = S === Q ? nothing : S, cfix = nothing; tpos::Bool = false) where {S}
     dφ = dx(φ)
     function sub(term, T)
         if !safe_iscall(term)
@@ -5203,7 +5220,7 @@ function integrate_subst(f, xk::String, ::Type{S}, φ, radval, bt::Builder, veri
     g = el * liftto(T, to_K0(T, dφ), levelof(T, el))     # f(φ(t), …) φ'(t)
     T, g = minimal(T, g)
     bd = Builder(bt.build, bt.lift, bt.x, T.consts)
-    integrate_built(T, g, bd, verify)
+    integrate_built(T, g, bd, verify; tpos = tpos)
 end
 
 # ---------------------------------------------------------------------------
@@ -7019,7 +7036,7 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
 end
 
 # integrate an element of a built tower and return the term (base variable printed as bd.x)
-function integrate_built(T::Tower, el, bd::Builder, verify::Bool)
+function integrate_built(T::Tower, el, bd::Builder, verify::Bool; tpos::Bool = false)
     L = length(T.levels)
     if is_complex_field(ctype(T))      # Step 7: integrate over ℚ(i), then take the real part
         res = integrate_el(T, L, el)
@@ -7067,7 +7084,39 @@ function integrate_built(T::Tower, el, bd::Builder, verify::Bool)
     end
     verify && !check_result(res, F) &&
         throw(RischError("internal check failed: derivative of the result differs from the integrand"))
+    if tpos && ctype(T) === Q                    # step RL: log arguments real for t > 0
+        res = real_logs_tpos(res)
+        verify && !check_result(res, F) &&
+            throw(RischError("internal check failed: derivative of the result (real log form) differs from the integrand"))
+    end
     to_term(bd, res)
+end
+
+# step RL: the logs of a rational integral in t, for t > 0 (10a: t = u^(1/n), principal root). A log
+# argument w without a root in (0, ∞) has one sign there: log(-w) where it is negative (log(-w) =
+# log w + const). With a root there, no sign is right on both sides: c log w = (c/2) log(w²) =
+# c log|w|. A QuadLog log((U + √d V)/(U - √d V)) whose U² - dV² has one sign on (0, ∞) and is
+# negative: the ratio is negative, use log((dV + √d U)/(dV - √d U)) (as in TE).
+function real_logs_tpos(res::RationalIntegral{Q})
+    one_sign(w) = real_root_count(w, Q(0), nothing) == 0
+    sgn1(w) = sign(peval(w, Q(1)))                     # no root in (0, ∞): the sign there
+    logs = Tuple{Q,UPoly{Q}}[]
+    for (c, w) in res.logs
+        if one_sign(w)
+            push!(logs, (c, sgn1(w) < 0 ? -w : w))
+        else
+            push!(logs, (c / 2, w * w))
+        end
+    end
+    quads = Any[]
+    for q in res.quads
+        if q isa QuadLog
+            N = q.U * q.U - scale(Q(q.d), q.V * q.V)
+            (one_sign(N) && sgn1(N) < 0) && (q = QuadLog(q.β, q.d, scale(Q(q.d), q.V), q.U))
+        end
+        push!(quads, q)
+    end
+    RationalIntegral(res.rational, logs, res.atans, res.unresolved, quads)
 end
 
 

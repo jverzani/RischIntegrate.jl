@@ -261,6 +261,23 @@ function run_tests(x, evalat, name)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x^6 + 1), x)
     end
 
+    @testset "$name: real log arguments in 10a answers (step RL)" begin
+        # t = u^(1/n) > 0: log(-w) where w < 0 on (0, ∞), log(w²)/2 where w changes sign there;
+        # SimpleExpressions evaluates in real arithmetic, so a negative log argument would throw
+        for (f, pts) in ((1 / sqrt((x + 1) / (x + 2)), (0.5, 2.0, -3.0, -5.0)),
+                         (1 / sqrt(((x + 1) / (x + 2))^3), (0.5, 2.0, -3.0)),
+                         (sqrt(x) / (x - 1), (0.3, 0.6, 2.0, 5.0)),
+                         (1 / (x * sqrt(x + 1)), (0.5, 2.0, -0.5)),
+                         (sqrt((x + 2) / (x + 1)), (0.5, 2.0, -3.0)),
+                         (1 / (x - x^(1 // 3)), (0.5, 2.0)),
+                         (sqrt(x) / (x^2 - 1), (0.4, 3.0)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+    end
+
     @testset "$name: square roots of quadratics: Euler substitutions (step 10b)" begin
         # (integrand, test points inside the real domain)
         inside = (0.2, 0.45, 0.7)
