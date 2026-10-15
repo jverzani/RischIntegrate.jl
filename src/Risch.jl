@@ -5994,6 +5994,78 @@ end
 (F::IntegralWithRootSums)(a::Real) =
     real(term_value(F.elementary, F.var, a) +
          sum(rs_value_continuous(rs, F.var, a) for rs in F.rootsums; init = 0.0im))
+# substitution syntax `F(x => value)` with a numeric value (definite integrals `F(x => b) - F(x => a)`)
+function (F::IntegralWithRootSums)(p::Pair)
+    (string(p.first) == F.var && p.second isa Real) || throw(RischNotImplemented(
+        "an IntegralWithRootSums can only be evaluated at a numeric value of $(F.var)"))
+    F(p.second)
+end
+
+# --- iterated integrals (step IT) ----------------------------------------------------
+# a leaf that is a symbol (not a number, e or π)
+has_symbol(t) = safe_iscall(t) && !isempty(arguments(t)) ? any(has_symbol, arguments(t)) :
+                (leaf_rational(t) === nothing && !is_e_const(t) && !(string(t) in ("pi", "π")))
+# f = c·g with c ≠ 1 the product of the factors of f (numerator and denominator of a top-level
+# product or quotient) that are free of x but contain a symbol: (c, g, builder), or nothing
+function split_free_factor(f, x, xk::String, build, lift)
+    (safe_iscall(f) && !isempty(arguments(f))) || return nothing
+    n = opname(operation(f))
+    n in (:*, :/) || return nothing
+    factors(t) = (safe_iscall(t) && !isempty(arguments(t)) && opname(operation(t)) === :*) ? arguments(t) : Any[t]
+    nums, dens = n === :* ? (Any[arguments(f)...], Any[]) :
+                 length(arguments(f)) == 2 ? (Any[factors(arguments(f)[1])...], Any[factors(arguments(f)[2])...]) :
+                 return nothing
+    isfree(t) = !has_leaf(t, xk) && has_symbol(t)
+    cn, cd = filter(isfree, nums), filter(isfree, dens)
+    (isempty(cn) && isempty(cd)) && return nothing
+    gn, gd = filter(!isfree, nums), filter(!isfree, dens)
+    (isempty(gn) && isempty(gd)) && return nothing           # f free of x altogether: as before
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    prod_(ts) = isempty(ts) ? bd.lift(1) : length(ts) == 1 ? ts[1] : mk(bd, :*, ts...)
+    c = isempty(cd) ? prod_(cn) : mk(bd, :/, prod_(cn), prod_(cd))
+    g = isempty(gd) ? prod_(gn) : mk(bd, :/, prod_(gn), prod_(gd))
+    (c, g, bd)
+end
+
+# ∫ (E + Σ RootSums) dy for an `IntegralWithRootSums` (e.g. the second integral of
+# `integrate(f, x, y)`): E by `risch_integrate` (x is then a parameter, step SY), and a RootSum that
+# does not involve y integrates to y·RootSum exactly (`ScaledRootSum`). A RootSum depending on y
+# (its roots or W involve y) is refused.
+struct ScaledRootSum
+    factor::Any                         # a term of the user's package
+    rs::Any                             # RootSum, TermRootSum or ScaledRootSum
+end
+Base.show(io::IO, s::ScaledRootSum) = print(io, "(", s.factor, ")*", s.rs)
+rs_value(s::ScaledRootSum, xk::String, a) = term_value(s.factor, xk, a) * rs_value(s.rs, xk, a)
+rs_value_continuous(s::ScaledRootSum, xk::String, a::Real) = term_value(s.factor, xk, a) * rs_value_continuous(s.rs, xk, a)
+
+has_leaf(t, yk::String) = safe_iscall(t) && !isempty(arguments(t)) ? any(a -> has_leaf(a, yk), arguments(t)) :
+                          string(t) == yk
+depends_on(rs::RootSum, yk::String) = rs.var == yk || (rs.arg !== nothing && has_leaf(rs.arg, yk))
+depends_on(rs::TermRootSum, yk::String) =
+    rs.var == yk || any(c -> c !== nothing && (c isa Tuple ? any(t -> t !== nothing && has_leaf(t, yk), c) : has_leaf(c, yk)),
+                        rs.coeffs) || (rs.pterms !== nothing && any(t -> has_leaf(t, yk), rs.pterms))
+depends_on(s::ScaledRootSum, yk::String) = has_leaf(s.factor, yk) || depends_on(s.rs, yk)
+
+function risch_integrate(F::IntegralWithRootSums, y; build = nothing, lift = nothing, verify::Bool = true)
+    yk = string(y)
+    scaled = Any[]
+    for rs in F.rootsums
+        if !depends_on(rs, yk)
+            push!(scaled, ScaledRootSum(y, rs))                # ∂/∂y (y·RS) = RS
+        elseif rs isa ScaledRootSum && !depends_on(rs.rs, yk)   # c(y)·RS: (∫ c dy)·RS
+            nf = risch_integrate(rs.factor, y; build = build, lift = lift, verify = verify)
+            nf isa IntegralWithRootSums && throw(RischNotImplemented(
+                "integrating a RootSum times a factor whose integral is a RootSum"))
+            push!(scaled, ScaledRootSum(nf, rs.rs))
+        else
+            throw(RischNotImplemented("integrating a RootSum whose roots or logarithms depend on $yk"))
+        end
+    end
+    E = risch_integrate(F.elementary, y; build = build, lift = lift, verify = verify)
+    E isa IntegralWithRootSums ? IntegralWithRootSums(E.elementary, vcat(E.rootsums, scaled), yk) :
+                                 IntegralWithRootSums(E, scaled, yk)
+end
 
 # ---------------------------------------------------------------------------
 # Step TS: simpler trigonometric forms by Bioche's rules
@@ -6570,6 +6642,16 @@ end
 # ---------------------------------------------------------------------------
 function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = true)
     xk = string(x)
+    # step IT: a factor free of x containing other symbols comes out, ∫ c g dx = c ∫ g dx (keeps the
+    # parameter out of the constant field, and lets an iterated integral see c(y)·RootSum(x))
+    cg = split_free_factor(f, x, xk, build, lift)
+    if cg !== nothing
+        c, g, bd = cg
+        G = risch_integrate(g, x; build = build, lift = lift, verify = verify)
+        G isa IntegralWithRootSums && return IntegralWithRootSums(mk(bd, :*, c, G.elementary),
+                                                                 Any[ScaledRootSum(c, rs) for rs in G.rootsums], G.var)
+        return mk(bd, :*, c, G)
+    end
     has_op(f, :acot) && return risch_integrate(rewrite_acot(f, x, build, lift), x; build = build, lift = lift,
                                                verify = verify)     # acot(u) = atan(1/u) (step AC)
     arcs = collect_arcs(f, xk)                  # asin / acos: substitution u = sin t / cos t (step AS)

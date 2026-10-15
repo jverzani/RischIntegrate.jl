@@ -536,7 +536,10 @@ function sy_tests(x, p, q, r, ev, name)
             end
         end
         @test occursin("atan", string(Risch.risch_integrate(1 / (x^2 + p^2), x)))   # not a RootSum
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(exp(p) * x, x)  # exp of a parameter
+        # exp(p) cannot be a constant generator, but as a factor free of x it comes out (step IT)
+        let F = Risch.risch_integrate(exp(p) * x, x)
+            @test isapprox(sy_fd(F, 0.5), ev(exp(p) * x, 0.5); rtol = 1e-6)
+        end
         # at most MAX_PARAMS = 2 parameters (the nested constant field gets too slow beyond)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / (p * x^2 + q * x + r), x)
     end
@@ -578,3 +581,29 @@ function dl_tests(x, name)
 end
 dl_tests(simple_x, "SimpleExpressions")
 dl_tests(sym_x, "SymEngine")
+
+# step IT: iterated integrals ∫∫ … dx dy with RootSums (y·RootSum, c(y)·RootSum), definite F(x => b)
+let
+    SymEngine.@vars x y
+    it(f) = Risch.risch_integrate(Risch.risch_integrate(f, x), y)
+    @testset "SymEngine: iterated integrals (step IT)" begin
+        for (f, fac) in ((1 / (x^3 + x + 1), "y"), (y / (x^3 + x + 1), "y^2"), (exp(y) / (x^3 + x + 1), "exp(y)"),
+                         (1 / (x^3 + x + 1) + y^2, "y"))
+            F = it(f)
+            @test F isa Risch.IntegralWithRootSums && occursin(fac, string(F))
+            # ∂²F/∂x∂y = f numerically (central differences)
+            val(a, b) = Risch.IntegralWithRootSums(SymEngine.subs(F.elementary, y => b),
+                Any[Risch.ScaledRootSum(SymEngine.subs(r.factor, y => b), r.rs) for r in F.rootsums], "x")(a)
+            h = 1e-4
+            for (a, b) in ((0.5, 0.7), (1.3, 2.0))
+                mixed = (val(a + h, b + h) - val(a + h, b - h) - val(a - h, b + h) + val(a - h, b - h)) / (4h^2)
+                fv = real(ComplexF64(SymEngine.N(SymEngine.subs(f, x => a, y => b))))
+                @test isapprox(mixed, fv; rtol = 1e-5)
+            end
+        end
+        @test_throws Risch.RischNotImplemented it(1 / (x^3 + y))                     # roots depend on y
+        G = Risch.risch_integrate(1 / (x^3 + x + 1), x)                               # definite: F(b) - F(a)
+        simp(g, a, b; n = 2000) = (hh = (b - a) / n; hh / 3 * (g(a) + g(b) + sum((isodd(k) ? 4 : 2) * g(a + k * hh) for k in 1:(n - 1))))
+        @test isapprox(G(x => 2.0) - G(x => 0.0), simp(t -> 1 / (t^3 + t + 1), 0.0, 2.0); atol = 1e-10)
+    end
+end
