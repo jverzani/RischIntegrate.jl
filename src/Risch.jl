@@ -6005,9 +6005,7 @@ to_complex(::Type{Frac{UPoly{B}}}, r::Frac) where {B} =
 
 # sign of a real constant: exact over ℚ; over ℚ(t₁, …) from a 256-bit evaluation of the generators
 # (e^a, log p), and nothing (undecided) if the value is within 1e-40 of 0. Only used to choose a
-# form (no pole in range, sign of a log argument), never for the answer itself.
-cdepth(::Type{Q}) = 0
-cdepth(::Type{Frac{UPoly{B}}}) where {B} = 1 + cdepth(B)
+# form (no pole in range, sign of a log argument), never for the answer itself. (`cdepth`: Step 6.)
 cbig(c::Q, gens) = BigFloat(c)
 function cbig(c::Frac{UPoly{B}}, gens) where {B}
     g = gens[cdepth(typeof(c))]
