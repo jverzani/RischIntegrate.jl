@@ -43,5 +43,5 @@ SymbolicIntegration.jl), counting an integral as solved when `integrate` returns
 SymEngine terms have no methods for `expinti`, `sinint`, `cosint` or `li2`, so the integrals
 whose answers need these functions fail with a `MethodError`. Giac terms also write `log` as
 `ln`, which is not recognized. Most of the remaining integrals that RischIntegrate does not
-solve have a symbolic parameter (such as `n` in ``x^n \log(a x)``) whose answer depends on
+solve have a symbolic parameter (such as `n` in $x^n \log(a x)$) whose answer depends on
 cases; Giac assumes generic values for the parameters.
