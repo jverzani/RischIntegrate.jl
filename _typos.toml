@@ -1,9 +1,9 @@
 [default.extend-words]
 abd = "abd"
 mis = "mis"
-nd = "nd".
-Thm = "Thm".
-tpos = "tpos".
-pn = "pn".
-hom = "hom".
+nd = "nd"
+Thm = "Thm"
+tpos = "tpos"
+pn = "pn"
+hom = "hom"
 ue = "ue"
