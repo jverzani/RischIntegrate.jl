@@ -869,6 +869,12 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   into NotElementary). `exact_call` (SB) is consistent: it builds the call with `maketerm` when
   the type can, else rethrows the MethodError. Tests: test_integrate.jl "decided non-elementary":
   ∫ log(x)/(x+1) before the li2 stand-ins → `@test_throws MethodError`. Docs (usage.md) say so.
+* **SE: SimpleExpressions 1.3.2 in the tests** (2026-10-15, done, tests green). 1.3.2 has a PolyLog
+  extension (li2, …) and sinint / cosint / expinti in its SpecialFunctions extension.
+  test/Project.toml `[compat]` SimpleExpressions = "1.3.2", test/Manifest.toml updated. The
+  "decided non-elementary" check of ∫ log(x)/(x+1): MethodError for SymEngine only, the li2 answer
+  for SimpleExpressions; the SimpleExpressions li2 stand-in of the DL tests is gone (the SymEngine
+  one stays). Apostol (SimpleExpressions): 155 → 168/175 (Ei, Si, Ci, li2 answers).
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -1102,7 +1108,7 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > `test_symbolicutils` (and `test_apostol`, `runtests.jl` runs all); all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP, RL, EL, EC, TL, FS, SB, DC, LM (2026-10-15).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP, RL, EL, EC, TL, FS, SB, DC, LM, SE (2026-10-15).
 >
 > Next steps (open items): precompile workloads in package extensions (PC entry, deferred).
 > A missing special-function method of a term type is a MethodError, not special-cased (LM).

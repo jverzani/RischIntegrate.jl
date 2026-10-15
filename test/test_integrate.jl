@@ -480,7 +480,11 @@ function run_tests(x, evalat, name)
     end
 
     @testset "$name: decided non-elementary" begin
-        @test_throws MethodError Risch.risch_integrate(log(x) / (x + 1), x)      # dilogarithm, no li2 method yet
+        if name == "SymEngine"      # dilogarithm: SymEngine has no li2 method yet (stand-in below)
+            @test_throws MethodError Risch.risch_integrate(log(x) / (x + 1), x)
+        else                        # SimpleExpressions ≥ 1.3.2: li2 from its PolyLog extension
+            @test occursin("li2", string(Risch.risch_integrate(log(x) / (x + 1), x)))
+        end
         @test_throws Risch.NotElementary Risch.risch_integrate(1 / (x + log(x)), x)
         @test_throws Risch.NotElementary Risch.risch_integrate(x^x, x)
         # tower is [exp(x), log(x)]: top monomial log, normal denominator, non-constant residue
@@ -659,11 +663,10 @@ let
     sy_tests(x, p, q, r, s1, s2, (e, a) -> real(ComplexF64(SymEngine.N(SymEngine.subs(e, x => a, p => 0.2)))), "SymEngine")
 end
 
-# step DL: dilogarithms (PolyLog.li2). The symbolic packages need a method for li2; these stand-ins are
-# what a package extension would provide (defined here, after the tests above that expect the
-# MethodError of li2(term) when li2 is unavailable).
+# step DL: dilogarithms (PolyLog.li2). The symbolic packages need a method for li2: SimpleExpressions
+# (≥ 1.3.2) has it in its PolyLog extension; for SymEngine this stand-in is what a package extension
+# would provide (defined here, after the tests above that expect the MethodError of li2(term)).
 import PolyLog
-PolyLog.li2(z::SimpleExpressions.AbstractSymbolic) = SimpleExpressions.SymbolicExpression(PolyLog.li2, (z,))
 const DL_SYMLI2 = SymEngine.SymFunction(:li2)
 PolyLog.li2(z::SymEngine.Basic) = DL_SYMLI2(z)
 function dl_tests(x, name)

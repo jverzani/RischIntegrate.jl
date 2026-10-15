@@ -13,4 +13,5 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 RischIntegrate = {path = ".."}
 
 [compat]
+SimpleExpressions = "1.3.2"
 SymbolicUtils = "4"
