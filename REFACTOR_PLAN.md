@@ -774,6 +774,20 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   1/(x√(x+1)), 1/(x - x^(1/3)): real at points on both sides. Not done: logs at tower levels over
   ℚ(t) (e.g. with exp(√x)), and the Euler substitutions (10b/10c), whose t ranges differ.
   Tests: test_integrate.jl "real log arguments in 10a answers (step RL)".
+* **EL: real log arguments in Euler substitutions** (2026-10-15, done, tests green). Generalises RL:
+  each radical substitution candidate carries `pos`, the functions of t that are positive exactly at
+  the real points (x, √…) it parametrises: 10a [t]; 10b over ℚ [ψ] (√Q = ψ(t), principal root);
+  10d over ℚ [φ₂, ψ₂] (both roots). `real_logs_on(res, pos)` (replaces `real_logs_tpos`; the
+  `tpos` flag became `pos`, through `try_substitutions`, `integrate_subst`, `integrate_built`)
+  decides per log argument w with `signs_on(pos, w)`: the signs w takes where all of pos are
+  positive, exactly, from one rational point per open interval between consecutive real roots of
+  w and the numerators/denominators of pos (`cell_points`: Cauchy bound, Sturm counts
+  `real_root_count`, bisection). Only + : keep; only − : log(-w); both (a root inside, or opposite
+  signs on two components of the domain): (c/2) log(w²). QuadLog with U² - dV² < 0 there: swapped.
+  E.g. 1/(x√(x²+1)) at x < 0, √(x²+4x+3)/(x+1) at x = -4, 1/(x√(x²+x+1)) at x = -1,
+  x/√(x²-3x+2) on both components: these were complex (DomainError in real arithmetic) before.
+  Not done: 10c (constant field ℚ(i)(√d), real form via Step 7) and logs at tower levels over ℚ(t).
+  Tests: test_integrate.jl "real log arguments in Euler substitutions (step EL)".
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -1005,11 +1019,11 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP, RL (2026-10-15).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP, RL, EL (2026-10-15).
 >
 > Next steps (open items): Symbolics.jl support (Num unwrap/rewrap, symbolic constants such as
 > sqrt(2): WR entry); precompile workloads in package extensions (PC entry, deferred); real log
-> arguments for Euler substitutions and tower levels over ℚ(t) (RL entry).
+> arguments for 10c and tower levels over ℚ(t) (EL entry).
 >
 > Ground rules: one plan step at a time; every result self-verified exactly by differentiation;
 > `NotElementary` only when the theory decides the case, otherwise `RischNotImplemented`; never

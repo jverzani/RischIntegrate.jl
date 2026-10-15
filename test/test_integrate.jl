@@ -278,6 +278,22 @@ function run_tests(x, evalat, name)
         end
     end
 
+    @testset "$name: real log arguments in Euler substitutions (step EL)" begin
+        # real points: ψ(t) = √Q > 0 (10b) or both roots positive (10d); points on every component
+        # of the domain, evaluated in real arithmetic by SimpleExpressions
+        for (f, pts) in ((1 / (x * sqrt(x^2 + 1)), (0.5, 2.0, -0.5, -2.0)),
+                         (sqrt(x^2 + 4x + 3) / (x + 1), (1.0, -4.0)),
+                         (1 / (x * sqrt(x^2 + x + 1)), (1.0, -1.0)),
+                         (x / sqrt(x^2 - 3x + 2), (3.0, 0.5, -1.0)),
+                         (1 / (x * sqrt(x^2 - 1)), (2.0, -2.0)),
+                         (1 / (x * sqrt(x + 1) * sqrt(x + 2)), (1.0, 0.5)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+    end
+
     @testset "$name: square roots of quadratics: Euler substitutions (step 10b)" begin
         # (integrand, test points inside the real domain)
         inside = (0.2, 0.45, 0.7)

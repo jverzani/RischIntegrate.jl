@@ -5137,7 +5137,6 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
     P = UPoly{Q}
     tt = frac(xpoly(Q))                                 # t ∈ ℚ(t)
     kq(c) = frac(P(Q[c]))
-    tpos = false
     if n == 1                                           # every radical is a power of w (RP): x = t
         cands = Any[(Q, tt, k -> u^k, b0.x)]
     elseif degree(N) <= 1 && degree(Dd) <= 1 && degree(N) + degree(Dd) >= 1
@@ -5147,13 +5146,13 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         tn = tt^n
         φ = (kq(b) - kq(d) * tn) / (kq(c) * tn - kq(a))
         tterm = n == 2 ? mk(b0, :sqrt, uterm) : mk(b0, :^, uterm, b0.lift(Q(1) // n))
-        cands = Any[(Q, φ, k -> tt^k, tterm)]          # u^(k/n) = t^k
-        tpos = true                                     # t = u^(1/n) > 0 (principal root, step RL)
+        cands = Any[(Q, φ, k -> tt^k, tterm, Any[tt])] # u^(k/n) = t^k; real points: t > 0 (RL)
     elseif isone(Dd) && degree(N) == 2 && n == 2
         # 10b/10c: √Q, Q = A x² + B x + C, by an Euler substitution (rational parametrisation
         # over ℚ, or over ℚ(i)(√d) when the conic R² = Q has no small rational point);
         # Q^(k/2) = ψ(t)^k
-        cands = Any[(S, φ, k -> ψ^k, tterm)
+        # real points: ψ(t) = √Q > 0 (step EL)
+        cands = Any[(S, φ, k -> ψ^k, tterm, S === Q ? Any[ψ] : nothing)
                     for (S, φ, ψ, tterm) in euler_substitution(co(N, 3), co(N, 2), co(N, 1), b0, uterm; pref = cfix_d(cfix))]
     else
         throw(RischNotImplemented(
@@ -5166,18 +5165,19 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         isone(denominator(k)) || throw(RischError("radical exponent not a multiple of 1/n"))
         radpow(Int(numerator(k)))
     end
-    try_substitutions(f, xk, Any[(S, φ, radval(radpow), tterm) for (S, φ, radpow, tterm) in cands], b0, verify, cfix,
-                      pmap; tpos = tpos)
+    try_substitutions(f, xk, Any[(c[1], c[2], radval(c[3]), c[4], length(c) >= 5 ? c[5] : nothing) for c in cands],
+                      b0, verify, cfix, pmap)
 end
 
 # Several substitutions (different constant fields, 10c/10d): the first one that is handled
 # decides; a NotElementary from any of them is a proof (each is a rational parametrisation).
 # With constant radicals (10e, `cfix` = (field, value function)) the tower is built over
 # cfix.C; a substitution over another field ℚ(i)(√d') is not combinable (skipped).
-function try_substitutions(f, xk::String, cands, b0::Builder, verify::Bool, cfix = nothing, pmap = nothing;
-                           tpos::Bool = false)
+function try_substitutions(f, xk::String, cands, b0::Builder, verify::Bool, cfix = nothing, pmap = nothing)
     err = RischNotImplemented("the radicals of x need a constant field other than the one fixed by the constant radicals ($(cfix === nothing ? Q : cfix.C))")
-    for (S, φ, radval0, tterm) in cands
+    for c in cands
+        S, φ, radval0, tterm = c[1], c[2], c[3], c[4]
+        pos = length(c) >= 5 ? c[5] : nothing           # real points of the substitution (RL, EL)
         # u^e = w^(e m) for a radicand that is a power (step RP)
         radval = (pmap === nothing || isempty(pmap)) ? radval0 :
                  (ue, e) -> (wm = get(pmap, ue, nothing); wm === nothing ? radval0(ue, e) : radval0(wm[1], e * wm[2]))
@@ -5185,7 +5185,7 @@ function try_substitutions(f, xk::String, cands, b0::Builder, verify::Bool, cfix
             (S === Q || S === cfix.C) ? cfix.C : continue
         try
             return integrate_subst(f, xk, S, φ, radval, Builder(b0.build, b0.lift, tterm), verify, C, cfix;
-                                   tpos = tpos)
+                                   pos = pos)
         catch e
             e isa RischNotImplemented || rethrow()
             err = e
@@ -5197,7 +5197,7 @@ end
 # ∫ f dx with x = φ(t) and u^e = radval(u, e) ∈ S(t) for the radicands u ∈ ℚ(x);
 # the answer is printed with t as bt.x
 function integrate_subst(f, xk::String, ::Type{S}, φ, radval, bt::Builder, verify::Bool,
-                         constants = S === Q ? nothing : S, cfix = nothing; tpos::Bool = false) where {S}
+                         constants = S === Q ? nothing : S, cfix = nothing; pos = nothing) where {S}
     dφ = dx(φ)
     function sub(term, T)
         if !safe_iscall(term)
@@ -5220,7 +5220,7 @@ function integrate_subst(f, xk::String, ::Type{S}, φ, radval, bt::Builder, veri
     g = el * liftto(T, to_K0(T, dφ), levelof(T, el))     # f(φ(t), …) φ'(t)
     T, g = minimal(T, g)
     bd = Builder(bt.build, bt.lift, bt.x, T.consts)
-    integrate_built(T, g, bd, verify; tpos = tpos)
+    integrate_built(T, g, bd, verify; pos = pos)
 end
 
 # ---------------------------------------------------------------------------
@@ -5292,7 +5292,7 @@ function integrate_two_radicals(f, xk::String, groups, b0::Builder, verify::Bool
                 ue == u1 ? φ2^Int(numerator(k)) :
                 ue == u2 ? ψ2^Int(numerator(k)) : throw(RischError("unexpected radicand"))
             end
-            push!(cands, (S, φ, radval, tterm))
+            push!(cands, (S, φ, radval, tterm, S === Q ? Any[φ2, ψ2] : nothing))   # √u₁, √u₂ > 0 (EL)
         end
     end
     isempty(cands) && throw(RischNotImplemented(
@@ -7036,7 +7036,7 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
 end
 
 # integrate an element of a built tower and return the term (base variable printed as bd.x)
-function integrate_built(T::Tower, el, bd::Builder, verify::Bool; tpos::Bool = false)
+function integrate_built(T::Tower, el, bd::Builder, verify::Bool; pos = nothing)
     L = length(T.levels)
     if is_complex_field(ctype(T))      # Step 7: integrate over ℚ(i), then take the real part
         res = integrate_el(T, L, el)
@@ -7084,39 +7084,83 @@ function integrate_built(T::Tower, el, bd::Builder, verify::Bool; tpos::Bool = f
     end
     verify && !check_result(res, F) &&
         throw(RischError("internal check failed: derivative of the result differs from the integrand"))
-    if tpos && ctype(T) === Q                    # step RL: log arguments real for t > 0
-        res = real_logs_tpos(res)
+    if pos !== nothing && ctype(T) === Q         # steps RL, EL: log arguments real at the real points
+        res = real_logs_on(res, pos)
         verify && !check_result(res, F) &&
             throw(RischError("internal check failed: derivative of the result (real log form) differs from the integrand"))
     end
     to_term(bd, res)
 end
 
-# step RL: the logs of a rational integral in t, for t > 0 (10a: t = u^(1/n), principal root). A log
-# argument w without a root in (0, ∞) has one sign there: log(-w) where it is negative (log(-w) =
-# log w + const). With a root there, no sign is right on both sides: c log w = (c/2) log(w²) =
-# c log|w|. A QuadLog log((U + √d V)/(U - √d V)) whose U² - dV² has one sign on (0, ∞) and is
-# negative: the ratio is negative, use log((dV + √d U)/(dV - √d U)) (as in TE).
-function real_logs_tpos(res::RationalIntegral{Q})
-    one_sign(w) = real_root_count(w, Q(0), nothing) == 0
-    sgn1(w) = sign(peval(w, Q(1)))                     # no root in (0, ∞): the sign there
+# steps RL, EL: the logs of a rational integral in t, real at the real points of a substitution:
+# the t with every φ ∈ pos positive (10a: t = u^(1/n) > 0; Euler: ψ(t) = √Q > 0; 10d: both roots).
+# A log argument w of one sign there: log(-w) if negative (log(-w) = log w + const). Of both signs
+# (a root inside, or different signs on different components of the domain): c log w =
+# (c/2) log(w²) = c log|w|. A QuadLog log((U + √d V)/(U - √d V)) with U² - dV² < 0 there: the
+# ratio is negative, use log((dV + √d U)/(dV - √d U)) (as in TE).
+function real_logs_on(res::RationalIntegral{Q}, pos)
     logs = Tuple{Q,UPoly{Q}}[]
     for (c, w) in res.logs
-        if one_sign(w)
-            push!(logs, (c, sgn1(w) < 0 ? -w : w))
-        else
-            push!(logs, (c / 2, w * w))
-        end
+        S = signs_on(pos, w)
+        push!(logs, S ⊆ Set([1]) ? (c, w) : S == Set([-1]) ? (c, -w) : (c / 2, w * w))
     end
     quads = Any[]
     for q in res.quads
-        if q isa QuadLog
-            N = q.U * q.U - scale(Q(q.d), q.V * q.V)
-            (one_sign(N) && sgn1(N) < 0) && (q = QuadLog(q.β, q.d, scale(Q(q.d), q.V), q.U))
+        if q isa QuadLog && signs_on(pos, q.U * q.U - scale(Q(q.d), q.V * q.V)) == Set([-1])
+            q = QuadLog(q.β, q.d, scale(Q(q.d), q.V), q.U)
         end
         push!(quads, q)
     end
     RationalIntegral(res.rational, logs, res.atans, res.unresolved, quads)
+end
+
+# the signs w takes on {t ∈ ℝ : φ(t) > 0 for all φ ∈ pos}, exactly: one rational point in each
+# open interval between consecutive real roots of w and of the numerators and denominators
+function signs_on(pos, w::UPoly{Q})
+    Ps = UPoly{Q}[φ.num * φ.den for φ in pos]          # the sign of φ where it is defined
+    S = Set{Int}()
+    for s in cell_points(prod(Ps; init = one(UPoly{Q})) * w)
+        all(P -> sign(peval(P, s)) > 0, Ps) && push!(S, Int(sign(peval(w, s))))
+    end
+    S
+end
+
+# rational points, one in each open interval between consecutive real roots of p (and one on each
+# side of them): roots isolated by Sturm counts (`real_root_count`) and bisection
+function cell_points(p::UPoly{Q})
+    degree(p) <= 0 && return Q[0]
+    p = quo(p, gcd(p, deriv(p)))
+    B = 1 + maximum(abs(c / lc(p)) for c in p.c)       # Cauchy: every real root is in (-B, B)
+    cnt(a, b) = real_root_count(p, a, b) - (iszero(peval(p, a)) ? 1 : 0)   # roots in (a, b]
+    ivs = Tuple{Q,Q}[]
+    stack = [(-B, B)]
+    while !isempty(stack)
+        a, b = pop!(stack)
+        k = cnt(a, b)
+        k == 0 && continue
+        k == 1 && (push!(ivs, (a, b)); continue)
+        m = (a + b) / 2
+        push!(stack, (a, m), (m, b))
+    end
+    sort!(ivs)
+    pts = Q[-B - 1]
+    for k in 1:(length(ivs) - 1)
+        (_, b1), (a2, b2) = ivs[k], ivs[k + 1]
+        if !iszero(peval(p, b1))
+            push!(pts, b1)                              # root k < b1 ≤ a2 < root k+1
+        elseif b1 < a2
+            push!(pts, (b1 + a2) / 2)                   # (b1, a2] has no root
+        else                                            # root k = b1 = a2: move right of it
+            lo, hi = a2, b2
+            while true
+                m = (lo + hi) / 2
+                cnt(lo, m) == 0 && (push!(pts, m); break)
+                hi = m
+            end
+        end
+    end
+    push!(pts, B + 1)
+    pts
 end
 
 
