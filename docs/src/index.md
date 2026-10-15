@@ -7,9 +7,7 @@ for any symbolic term type that implements the
 `operation` and `arguments`: [SymEngine.jl](https://github.com/symengine/SymEngine.jl),
 [SimpleExpressions.jl](https://github.com/jverzani/SimpleExpressions.jl),
 [SymbolicUtils.jl](https://github.com/JuliaSymbolics/SymbolicUtils.jl),
-[Symbolics.jl](https://github.com/JuliaSymbolics/Symbolics.jl) (see [Usage](@ref)) and Julia's
-`Expr`. All algebra is done with the package's own exact polynomial and rational-function types,
-and answers are rebuilt in the user's term type by calling operations as functions.
+[Symbolics.jl](https://github.com/JuliaSymbolics/Symbolics.jl) (see [Usage](@ref)), [Giac.jl](https://github.com/JuliaGiac/Giac.jl), and Julia's `Expr`. All algebra is done with the package's own exact polynomial and rational-function types, and answers are rebuilt in the user's term type by calling operations as functions.
 
 Every answer is checked by differentiation, exactly, before it is returned. When there is no
 answer, the package says why: [`NotElementary`](@ref RischIntegrate.NotElementary) when the integral is proved to have no

@@ -884,6 +884,10 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
 * **MD: MaterialDocs theme for the docs** (2026-10-15, done). docs/make.jl uses
   `Material3(theme = :default, dark_mode = :toggle, …)` from MaterialDocs.jl instead of
   `Documenter.HTML`; MaterialDocs added to docs/Project.toml.
+* **LX: LaTeX answers in the docs** (2026-10-15, done). A hidden `@setup` block in usage.md gives
+  SymEngine, SimpleExpressions and SymbolicUtils terms a text/latex `show` (Latexify of the string,
+  module prefixes stripped, no cdots); Latexify added to docs/Project.toml. The Apostol comparison
+  table moved from usage.md to the README; index.md mentions Giac.jl.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -1117,7 +1121,7 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > `test_symbolicutils` (and `test_apostol`, `runtests.jl` runs all); all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP, RL, EL, EC, TL, FS, SB, DC, LM, SE, AP, MD (2026-10-15).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP, RL, EL, EC, TL, FS, SB, DC, LM, SE, AP, MD, LX (2026-10-15).
 >
 > Next steps (open items): precompile workloads in package extensions (PC entry, deferred).
 > A missing special-function method of a term type is a MethodError, not special-cased (LM).
