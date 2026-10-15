@@ -689,9 +689,23 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   test_tower 31 → 16 s, test_risch 61 → 43 s, test_trig 73 → 58 s; test_apostol.jl 98 → 50 s and
   149/175 with `MAX_PARAMS` raised from 2 to 4 (the four-parameter (c sin x + d cos x)/(a sin x +
   b cos x), which did not finish in minutes, now takes ~4–8 s).
-  Remaining ideas (not done): build the tower once and reuse it across `bioche`, TB and the general
-  route; skip the rational integrator before TB's check; a fraction-free representation.
+  Remaining ideas (not done): a fraction-free representation. (Reusing the tower across `bioche`, TB
+  and the general route was tried and reverted, see PC.)
   Tests: test_integrate.jl SY tests: three parameters integrate, five are refused.
+* **PC: precompile workload** (2026-10-15, done, tests green). Tried first: building the tower once and
+  sharing it (and the general-route integral) between `bioche`, its TB check and `risch_integrate`.
+  No measurable gain (Apostol set 50 → 49 s, trig cases unchanged), reverted: once compiled,
+  1/(a² sin²x + b² cos²x) takes 0.18 s (tower 0.003 s, integral 0.17 s); the rest of its ~5 s is
+  compiling the algebra for the nested field types. (For the same reason skipping the rational
+  integrator before TB's check would gain little.) So: a PrecompileTools workload at the end of
+  `module Risch` (new dependency PrecompileTools, also in test/Project.toml), 20 integrals on `Expr`
+  terms with an `Expr` builder (exp/log/rational with RootSum, trig incl. half-angle, parameters,
+  radicals, asin, atan, erf, Si, Ei). It runs only during precompilation, so the tests (which
+  `include` Risch.jl) are unaffected. Effect, fresh session with SimpleExpressions, first call:
+  x eˣ 6.8 → 2.3 s, 1/(x³+1) 5.3 → 1.9 s, 1/(1+cos²x) 7.9 → 2.4 s, eˣ sin x 3.8 → 1.1 s,
+  1/(a² sin²x + b² cos²x) 9.1 → 3.1 s; load 0.1 → 0.4 s; package precompilation 1 → 27 s. The
+  remaining ~2 s is code specialized on the term type (parsing, building), which a workload in a
+  package extension per term package (weak dependency) could cover.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -923,10 +937,10 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC (2026-10-15).
 >
-> Next steps (open items): see the "Remaining ideas" of the PF entry (reuse the tower across routes,
-> fraction-free arithmetic).
+> Next steps (open items): fraction-free arithmetic (PF entry); precompile workloads in package
+> extensions for SimpleExpressions / SymEngine (PC entry).
 >
 > Ground rules: one plan step at a time; every result self-verified exactly by differentiation;
 > `NotElementary` only when the theory decides the case, otherwise `RischNotImplemented`; never
