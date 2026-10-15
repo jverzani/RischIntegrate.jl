@@ -72,8 +72,7 @@ function term_value(t, xk::String, a)
         args = arguments(t)
         if !isempty(args)
             vs = [term_value(s, xk, a) for s in args]
-            n = opname(operation(t))
-            f = haskey(OPS, n) ? OPS[n] : (n === :- ? (-) : operation(t))
+            f = op_function(t)
             return ComplexF64(f(vs...))
         end
     end

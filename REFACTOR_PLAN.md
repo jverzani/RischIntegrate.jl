@@ -888,6 +888,17 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   SymEngine, SimpleExpressions and SymbolicUtils terms a text/latex `show` (Latexify of the string,
   module prefixes stripped, no cdots); Latexify added to docs/Project.toml. The Apostol comparison
   table moved from usage.md to the README; index.md mentions Giac.jl.
+* **GI: Giac.jl terms** (2026-10-15, done, tests green). term_input.jl: operation names go through
+  `OP_ALIASES` (`:ln => :log`, Giac writes log as ln). term_output.jl `exact_call`: when
+  `maketerm` does not build sqrt/cbrt/log/exp of numbers (Giac's evaluates sqrt(2) to a float and
+  fails), the operation is applied to the numbers made terms (`a * one(x)`), which Giac keeps exact.
+  Test "Expr: ln is log" in test_integrate.jl. Apostol with Giac terms: 140 → 148/175, no floats;
+  still missing: Ei/Si/Ci/li2 methods for GiacExpr, and Giac's asec(x) → acos(1/x),
+  acsc(x) → asin(1/x) (#83, #84). README table and a Giac.jl section in usage.md.
+  Expr terms: `OP_ALIASES` also `:// => :/`; `leaf_rational` reads `1 // 3` (spaces, as an Expr
+  prints); `op_function(t)` (term_output.jl) gives the function of a term's operation, also for a
+  Symbol operation (an Expr answer of an inner integration has :expinti): used by `term_rebuild`
+  and `term_value`. Apostol as quoted Exprs: 163/175 (README row). Test "Expr terms".
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -1121,7 +1132,7 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > `test_symbolicutils` (and `test_apostol`, `runtests.jl` runs all); all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP, RL, EL, EC, TL, FS, SB, DC, LM, SE, AP, MD, LX (2026-10-15).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP, RL, EL, EC, TL, FS, SB, DC, LM, SE, AP, MD, LX, GI (2026-10-15).
 >
 > Next steps (open items): precompile workloads in package extensions (PC entry, deferred).
 > A missing special-function method of a term type is a MethodError, not special-cased (LM).

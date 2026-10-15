@@ -715,3 +715,17 @@ let
         @test isapprox(G(x => 2.0) - G(x => 0.0), simp(t -> 1 / (t^3 + t + 1), 0.0, 2.0); atol = 1e-10)
     end
 end
+
+# Expr terms. Giac.jl writes log as `ln`: the operation name ln is read as log (shown here with
+# Expr terms); an Expr has the call 1 // 3 for a rational number; an Expr answer of an inner
+# integration (u-substitution) has Symbol operations such as :expinti
+@testset "Expr terms" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ∫(f, x) = Risch.risch_integrate(f, x; build = build, lift = identity)
+    @test ∫(:(x ^ (1 // 3)), :x) isa Expr
+    @test ∫(:(1 / (1 + x ^ 2) ^ (3 // 2)), :x) isa Expr
+    @test occursin("expinti", string(∫(:((t * exp(t ^ 2)) / (1 + t ^ 2)), :t)))
+    for (f, g) in ((:(ln(x)^2), :(log(x)^2)), (:(1 / (x * ln(x))), :(1 / (x * log(x)))), (:(x * ln(x)), :(x * log(x))))
+        @test ∫(f, :x) == ∫(g, :x)
+    end
+end

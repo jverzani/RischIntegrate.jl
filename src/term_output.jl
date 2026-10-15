@@ -37,6 +37,19 @@ const OPS = Dict{Symbol,Function}(:+ => +, :* => *, :/ => /, :^ => ^, :exp => ex
                                   # PolyLog (step DL): the dilogarithm Li₂
                                   :li2 => li2)
 mk(b::Builder, name::Symbol, args...) = b.build(OPS[name], args...)
+# the function of a term's operation; the operation of an Expr is a Symbol: the function of OPS or
+# of Base with that name (expinti, sinh, …), else the Symbol itself
+function op_function(t)
+    op = operation(t)
+    n = opname(op)
+    haskey(OPS, n) && return OPS[n]
+    n === :- && return (-)
+    op isa Symbol || return op
+    for f in values(OPS)
+        nameof(f) === n && return f
+    end
+    isdefined(Base, n) && (f = getfield(Base, n)) isa Function ? f : op
+end
 
 # a constant of the differential field as a term (part of the constant-field interface;
 # only C = ℚ is implemented: rationals are lifted into the package's number type)
@@ -153,15 +166,18 @@ end
 # TermInterface's `maketerm` for the type of the variable, which keeps it unevaluated (sqrt(2), not
 # 1.414…); an integer value (sqrt(1), log(1)) is returned as an integer. An operation without a
 # method for the arguments (PolyLog.li2 of a term) is built with `maketerm` too. If the type does
-# not build such a term, the operation is applied (or its MethodError raised).
+# not build such a term, the operation is applied to the numbers as terms, a * one(x) (Giac.jl,
+# whose `maketerm` evaluates sqrt(2) to a float), else to the numbers (or its MethodError raised).
 const EXACT_OPS = (sqrt, cbrt, log, exp)
 function exact_call(x, op, args)
     T = typeof(x)
     make() = (r = try maketerm(T, op, Any[args...], nothing) catch; nothing end; r isa T ? r : nothing)
+    lifted() = (r = try op((a * one(x) for a in args)...) catch; nothing end; r isa T ? r : nothing)
     if op in EXACT_OPS && all(a -> a isa Number, args)
         v = op(args...)
         v isa AbstractFloat && isinteger(v) && abs(v) < 2^53 && return Int(v)
         r = make()
+        r === nothing && (r = lifted())
         return r === nothing ? v : r
     end
     try

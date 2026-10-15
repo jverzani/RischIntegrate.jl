@@ -22,7 +22,7 @@ function leaf_rational(t)
     end
     s = string(t)
     (startswith(s, "(") && endswith(s, ")")) && (s = s[nextind(s, 1):prevind(s, lastindex(s))])
-    m = match(r"^(-?\d+)(?:/{1,2}(\d+))?$", s)          # 3, -1/2, and Symbolics' (1//3)
+    m = match(r"^(-?\d+)(?:\s*/{1,2}\s*(\d+))?$", s)    # 3, -1/2, Symbolics' (1//3), Expr's 1 // 3
     if m !== nothing
         n = parse(BigInt, m.captures[1])
         d = m.captures[2] === nothing ? big(1) : parse(BigInt, m.captures[2])
@@ -32,7 +32,11 @@ function leaf_rational(t)
         rationalize(BigInt, parse(Float64, s)) : nothing
 end
 
-opname(op) = op isa Symbol ? op : (op isa Function ? nameof(op) : opname_other(op))
+const OP_ALIASES = Dict(:ln => :log, :// => :/)          # Giac.jl writes log as ln; Expr has 1//3 calls
+function opname(op)
+    n = op isa Symbol ? op : (op isa Function ? nameof(op) : opname_other(op))
+    get(OP_ALIASES, n, n)
+end
 # other callable operations (e.g. SymEngine's SymFunction("li2")): their name when they have one
 function opname_other(op)
     n = try

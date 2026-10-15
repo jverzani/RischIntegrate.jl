@@ -87,6 +87,20 @@ using RischIntegrate: integrate
 ∫(1 / (x^2 + 2), x)       # (1//2)*atan((1//2)*sqrt(2)*x)*sqrt(2)
 ```
 
+## Giac.jl
+
+Giac terms implement the TermInterface methods (through Giac's TermInterface extension) and are
+integrated directly; Giac's `ln` is read as `log`:
+
+```julia
+using Giac
+using RischIntegrate: integrate
+@giac_var x
+
+integrate(log(x)^2, x)      # 2*x-2*x*ln(x)+x*ln(x)^2
+integrate(1 / (x^2 + 2), x) # 1/2*sqrt(2)*atan(sqrt(2)/2*x)
+```
+
 ## Expr and other term types
 
 The keywords `build` and `lift` say how the answer is built: `build(op, args...)` makes the term

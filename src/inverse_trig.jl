@@ -61,9 +61,7 @@ end
 
 # rebuild a term with its arguments mapped (operations called as functions, as in `term_value`)
 function term_rebuild(b::Builder, t, args)
-    n = opname(operation(t))
-    fn = haskey(OPS, n) ? OPS[n] : (n === :- ? (-) : operation(t))
-    b.build(fn, args...)
+    b.build(op_function(t), args...)
 end
 
 function integrate_arcsin(f, x, arcs; sK::Q = Q(1), radicand = nothing, build = nothing, lift = nothing,

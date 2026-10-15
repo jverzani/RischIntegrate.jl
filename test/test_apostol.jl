@@ -1,7 +1,4 @@
 using Test
-#using Giac
-#@giac_var 𝑥 𝑡 𝑎 𝑏 𝑐 𝑑 𝑧 𝑛
-#Base.://(a::GiacExpr, b::Int64) = a/b
 
 using SimpleExpressions
 SimpleExpressions.@symbolic_variables x t a  b c d z n

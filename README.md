@@ -30,18 +30,19 @@ Symbolics.jl, SimpleExpressions.jl and `Expr`, non-elementary integrals and Root
 ## Comparison
 
 The 175 integrals of `test/test_apostol.jl` (from Apostol's *Calculus*, as collected by
-SymbolicIntegration.jl), counting an integral as solved when `integrate` returns an answer:
+SymbolicIntegration.jl), counting an integral as solved when `integrate` returns an answer
 
 | Term type                                 | Solved |
 |:------------------------------------------|-------:|
 | SimpleExpressions.jl 1.3.2                |    163 |
 | SymbolicUtils.jl 4                        |    163 |
 | SymEngine.jl 0.13                         |    150 |
-| Giac.jl 0.14 terms                        |    140 |
+| Giac.jl 0.14 terms                        |    148 |
+| Julia `Expr`                              |    163 |
 | Giac's own `integrate` (for reference)    |    172 |
 
-SymEngine terms have no methods for `expinti`, `sinint`, `cosint` or `li2`, so the integrals
-whose answers need these functions fail with a `MethodError`. Giac terms also write `log` as
-`ln`, which is not recognized. Most of the remaining integrals that RischIntegrate does not
+SymEngine and Giac terms have no methods for `expinti`, `sinint`, `cosint` or `li2`, so the
+integrals whose answers need these functions fail with a `MethodError`. Giac also rewrites
+`asec(x)` and `acsc(x)` as `acos(1/x)` and `asin(1/x)`, which are not supported. Most of the remaining integrals that RischIntegrate does not
 solve have a symbolic parameter (such as `n` in $x^n \log(a x)$) whose answer depends on
-cases; Giac assumes generic values for the parameters.
+cases; Giac assumes generic values for the parameters. For `Expr`, the problems as quoted expressions, with `build = (op, args...) -> Expr(:call, nameof(op), args...)` and `lift = identity`.
