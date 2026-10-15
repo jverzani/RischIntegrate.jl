@@ -550,3 +550,31 @@ let
     SymEngine.@vars x p q r
     sy_tests(x, p, q, r, (e, a) -> real(ComplexF64(SymEngine.N(SymEngine.subs(e, x => a, p => 0.2)))), "SymEngine")
 end
+
+# step DL: dilogarithms (PolyLog.li2). The symbolic packages need a method for li2; these stand-ins are
+# what a package extension would provide (defined here, after the tests above that expect
+# NotElementary when li2 is unavailable).
+import PolyLog
+PolyLog.li2(z::SimpleExpressions.AbstractSymbolic) = SimpleExpressions.SymbolicExpression(PolyLog.li2, (z,))
+const DL_SYMLI2 = SymEngine.SymFunction(:li2)
+PolyLog.li2(z::SymEngine.Basic) = DL_SYMLI2(z)
+function dl_tests(x, name)
+    @testset "$name: dilogarithms (step DL)" begin
+        ev(e, a) = real(Risch.term_value(e, "x", a))       # li2 evaluated by PolyLog
+        dl_fd(F, a) = (ev(F, a + 1e-6) - ev(F, a - 1e-6)) / 2e-6
+        for (f, pts) in ((log(1 + x) / x, (0.3, 1.2, 2.5)), (log(x) / (1 - x), (0.3, 0.7, 2.5)),
+                         (log(x) / (1 + x), (0.3, 1.5)), (log(2x + 3) / x, (0.3, 1.5)), (log(x - 2) / x, (2.5, 3.5)),
+                         (log(1 + x) / x + x, (0.5, 1.5)), (log(1 + x) / (x * (x - 3)), (0.5, 1.5)))
+            F = Risch.risch_integrate(f, x)
+            @test occursin("li2", string(F))
+            for a in pts
+                @test isapprox(dl_fd(F, a), ev(f, a); rtol = 1e-6)
+            end
+        end
+        @test string(Risch.risch_integrate(log(1 + x) / x, x)) in ("-1 * li2(-1 * x)", "-li2(-x)")
+        # irrational poles: still decided non-elementary
+        @test_throws Risch.NotElementary Risch.risch_integrate(log(1 + x) / (1 + x^2), x)
+    end
+end
+dl_tests(simple_x, "SimpleExpressions")
+dl_tests(sym_x, "SymEngine")

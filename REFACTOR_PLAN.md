@@ -626,6 +626,23 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   asin of a·x with symbolic a (AS needs rational coefficients), sign/branch-dependent forms.
   Tests: test_integrate.jl `sy_tests`, both packages (14 integrands, the atan form, exp(p) refused);
   test_risch.jl SD test: only the quartic is left unresolved; test_trig.jl TS list expectation.
+* **DL: dilogarithms with PolyLog.jl** (2026-10-14, done, tests green; user request). New dependency
+  PolyLog (Project.toml, test/Project.toml + Manifest). When `integrate_log_poly` decides NotElementary
+  at θ = log(a x + b) (one log level over ℚ(x), a, b ∈ ℚ, degree 1 in θ), `dilog_split` takes the simple
+  poles c ∈ ℚ of the θ-coefficient r (residue ρ, K = a c + b ≠ 0) out as `DilogTerm`s and the rest goes
+  through the normal algorithm again (if that still fails: the original NotElementary):
+    K > 0: ρ(log K · ½ log(s²) − Li₂(−a s/K)),   K < 0: ρ(½ log²(a s) + Li₂(−K/(a s))),   s = x − c,
+  each with derivative ρ θ/(x − c) on a x + b > 0 (stored for the exact check, as SpecialTerm).
+  Printed with `PolyLog.li2` (`OPS[:li2]` also for numeric evaluation); a symbolic package without a
+  method for li2 gets NotElementary (the integral is not elementary; the dilog form cannot be built).
+  `opname` now uses `nameof` for callable non-Function operations (SymEngine's SymFunction("li2")).
+  E.g. log(1+x)/x → −li2(−x); log(x)/(1−x) → li2(1−x); log(x)/(1+x) → ½ log²(1+x) + li2(1/(1+x)).
+  Needs, in the packages: SimpleExpressions an extension like its SpecialFunctions one
+  (`PolyLog.li2(z::AbstractSymbolic) = SymbolicExpression(PolyLog.li2, (z,))`), SymEngine e.g.
+  `PolyLog.li2(z::Basic) = SymFunction(:li2)(z)`; the tests define these stand-ins (end of
+  test_integrate.jl, after the tests that expect NotElementary without them).
+  Not covered: irrational poles (log(1+x)/(1+x²): NotElementary), several logs, Li₃ and higher.
+  Tests: test_integrate.jl `dl_tests`, both packages (seven integrands, the −li2(−x) form, a refusal).
 * **Later: faster arithmetic in constant fields with several generators** (user's choice, 2026-10-14).
   Constants of ℚ(i)(a, b, …) are nested `Frac`s normalised by gcds at every level, which is what makes
   parameter integrals slow (23 s for 1/(a² sin²x + b² cos²x)) and forces the MAX_PARAMS cap. Ideas: a
@@ -863,7 +880,7 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY (all 2026-10-14).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL (all 2026-10-14).
 >
 > Next steps (open items): nested-radical real forms (1/(x⁵ + 1)), iterated integrals on an
 > `IntegralWithRootSums`; later: faster arithmetic for constant fields with several parameters (see the

@@ -44,6 +44,7 @@ module Risch
 
 using TermInterface: iscall, operation, arguments
 using SpecialFunctions: expinti, sinint, cosint, erf, erfi
+using PolyLog: li2
 
 export risch_integrate, integrate_rational, tower_derivative, RischError, RischNotImplemented,
        NotElementary, RootSum, TermRootSum, IntegralWithRootSums
@@ -1051,7 +1052,16 @@ function leaf_rational(t)
         rationalize(BigInt, parse(Float64, s)) : nothing
 end
 
-opname(op) = op isa Symbol ? op : (op isa Function ? nameof(op) : Symbol(string(op)))
+opname(op) = op isa Symbol ? op : (op isa Function ? nameof(op) : opname_other(op))
+# other callable operations (e.g. SymEngine's SymFunction("li2")): their name when they have one
+function opname_other(op)
+    n = try
+        nameof(op)
+    catch
+        nothing
+    end
+    n isa Symbol ? n : Symbol(string(op))
+end
 
 # the integer value of a constant rational function, or nothing
 function const_int(f::CXF)
@@ -1133,7 +1143,9 @@ const OPS = Dict{Symbol,Function}(:+ => +, :* => *, :/ => /, :^ => ^, :exp => ex
                                   :sin => sin, :cos => cos, :tan => tan, :cot => cot, :sec => sec, :csc => csc,
                                   :asin => asin, :acos => acos, :acot => acot, :acsc => acsc, :asec => asec,
                                   # SpecialFunctions (Step 8a): Ei, Si, Ci, erf, erfi
-                                  :Ei => expinti, :Si => sinint, :Ci => cosint, :erf => erf, :erfi => erfi)
+                                  :Ei => expinti, :Si => sinint, :Ci => cosint, :erf => erf, :erfi => erfi,
+                                  # PolyLog (step DL): the dilogarithm Li₂
+                                  :li2 => li2)
 mk(b::Builder, name::Symbol, args...) = b.build(OPS[name], args...)
 
 # a constant of the differential field as a term (part of the constant-field interface;
@@ -3720,6 +3732,71 @@ function log_element(T::Tower, j::Int, w)
     dconst_value(T, R) === nothing ? nothing : res
 end
 
+# Step DL: dilogarithms. ∫ θ·r(x) with θ = log(a x + b) (a level over ℚ(x) only, a, b ∈ ℚ) and r ∈ ℚ(x):
+# each simple pole c ∈ ℚ of r with residue ρ and K = a c + b ≠ 0 gives (s = x - c, a s + K = a x + b)
+#   K > 0:  ρ (log K · log|s| - Li₂(-a s/K))          (log(K + a s) = log K + log(1 + a s/K))
+#   K < 0:  ρ (½ log²(a s) + Li₂(-K/(a s)))            (log(K + a s) = log(a s) + log(1 - |K|/(a s)))
+# both with derivative ρ θ/(x - c) on the domain a x + b > 0 (Li₂(z)' = -log(1 - z)/z). The term
+# keeps that derivative for the exact check (as SpecialTerm); the rest of the integrand goes through
+# the normal algorithm. Printed with `PolyLog.li2`, which the symbolic package must support.
+struct DilogTerm
+    ρ::Q
+    a::Q
+    b::Q
+    c::Q
+    deriv::Any
+end
+function dilog_split(T::Tower, i::Int, p::UPoly)
+    (ctype(T) === Q && i == 1 && T.levels[1].kind === :log && degree(p) == 1) || return nothing
+    u = T.levels[1].arg
+    (isone(u.den) && degree(u.num) == 1) || return nothing
+    b, a = u.num.c
+    r = p.c[2]                                          # coefficient of θ, ∈ ℚ(x)
+    D1 = r.den
+    terms = Any[]
+    simple = zero(r)
+    xp = xpoly(Q)
+    θ = frac(xpoly(T.Ts[1]))
+    for c in rational_roots(D1)
+        lin = UPoly{Q}(Q[-c, 1])
+        iszero(rem(D1, lin * lin)) && continue           # not a simple pole
+        K = a * c + b
+        iszero(K) && continue                            # log(a s)/s: elementary
+        ρ = peval(r.num, c) / peval(deriv(D1), c)
+        iszero(ρ) && continue
+        rs = frac(UPoly{Q}(Q[ρ]), lin)
+        simple = simple + rs
+        push!(terms, DilogTerm(ρ, a, b, c, liftto(T, rs, 1) * θ))
+    end
+    isempty(terms) && return nothing
+    P = typeof(p)
+    (P(eltype(p.c)[p.c[1], r - simple]), terms)
+end
+
+function dilog_term(b::Builder, q::DilogTerm)
+    st = poly_term(b, UPoly{Q}(Q[-q.c, 1]))            # s = x - c
+    K = q.a * q.c + q.b
+    li(z) = try
+        mk(b, :li2, z)
+    catch e
+        e isa MethodError || rethrow()
+        # not elementary (decided); its dilogarithm form cannot be built in this package
+        throw(NotElementary("the integral is a dilogarithm, and the symbolic package has no method for " *
+                            "PolyLog.li2 to express it"))
+    end
+    if K > 0
+        L = li(mk(b, :*, cterm(b, -q.a / K), st))
+        core = isone(K) ? mk(b, :*, b.lift(-1), L) :           # log K · ½ log(s²) - Li₂(-a s/K)
+               mk(b, :+, mk(b, :*, cterm(b, Q(1) // 2), mk(b, :log, cterm(b, K)), mk(b, :log, mk(b, :^, st, b.lift(2)))),
+                  mk(b, :*, b.lift(-1), L))
+    else
+        as = isone(q.a) ? st : mk(b, :*, cterm(b, q.a), st)
+        core = mk(b, :+, mk(b, :*, cterm(b, Q(1) // 2), mk(b, :^, mk(b, :log, as), b.lift(2))),
+                  li(mk(b, :/, cterm(b, -K), as)))
+    end
+    isone(q.ρ) ? core : mk(b, :*, cterm(b, q.ρ), core)
+end
+
 # ∫ p, p ∈ K[θ], θ = log(u): returns (q ∈ K[θ], logs (c, w ∈ K), atans, quads) with
 # Dq + Σ c w'/w (+ atan and quadratic terms, which only come from the constant term) = p
 function integrate_log_poly(T::Tower, i::Int, p::UPoly)
@@ -3848,7 +3925,21 @@ function integrate_el(T::Tower, i::Int, f)::ElemIntegral
     if lv.kind in (:log, :atan)                         # primitive levels (atan: step TA)
         maxj = maximum(keys(laurent); init = 0)
         p = P(K[get(laurent, j, zero(K)) for j in 0:maxj])
-        q, lp, ap, qp = integrate_log_poly(T, i, p)
+        q, lp, ap, qp = try
+            integrate_log_poly(T, i, p)
+        catch e
+            # step DL: θ log(a x + b) · (simple rational poles) is a dilogarithm
+            e isa NotElementary || rethrow()
+            dl = dilog_split(T, i, p)
+            dl === nothing && rethrow()
+            p, dterms = dl
+            r = try
+                integrate_log_poly(T, i, p)
+            catch e2
+                e2 isa NotElementary ? rethrow(e) : rethrow()
+            end
+            (r[1], r[2], r[3], vcat(r[4], dterms))
+        end
         v = v + frac(q)
         for (c, w) in lp
             push!(logs, (c, frac(P(K[w]))))
@@ -3912,7 +4003,7 @@ function check_tower(T::Tower, L::Int, res::ElemIntegral, f)
             den = q.inverted ? e + u * u : one(u) + e * u * u
             tot = tot + lq(T, q.c * q.e, L) * D(T, L, u) / den
         elseif q isa SpecialTerm || q isa BaseTerms || q isa TowerRootSum || q isa BaseRootSum ||
-               q isa TowerRealForm
+               q isa TowerRealForm || q isa DilogTerm
             # stored exact derivatives (8a, T1, RT, RF)
             tot = tot + liftto(T, q.deriv, L)
         elseif q isa ExtQuadPair    # a W'/W + σ_d(a W'/W), computed over ℚ(i)(√d), read back in T
@@ -3951,6 +4042,8 @@ function to_term(b::Builder, T::Tower, res::ElemIntegral)
             push!(ts, special_out(b, q, cterm(b, q.c), z -> tower_to_term(b, T, z)))
         elseif q isa BaseTerms
             push!(ts, to_term(b, q.q))
+        elseif q isa DilogTerm
+            push!(ts, dilog_term(b, q))
         elseif q isa TowerRealForm
             for (c, w) in q.logs
                 l = mk(b, :log, tower_to_term(b, q.T2, w))
