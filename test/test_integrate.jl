@@ -525,7 +525,7 @@ run_tests(sym_x, (e, a) -> (z = SymEngine.N(SymEngine.subs(e, sym_x => a));
 
 # step SY: symbolic parameters as indeterminates of the constant field (answers for generic values).
 # Each package makes its own parameter; derivatives are checked at p = 0.2, x > p.
-function sy_tests(x, p, q, r, ev, name)
+function sy_tests(x, p, q, r, s1, s2, ev, name)
     @testset "$name: symbolic parameters (step SY)" begin
         sy_fd(F, a) = (ev(F, a + 1e-6) - ev(F, a - 1e-6)) / 2e-6
         for f in (p * x, exp(p * x), x * exp(p * x), 1 / (x + p), 1 / (x^2 - p^2), 1 / (x^2 + p^2), p / (1 + x^2),
@@ -540,18 +540,22 @@ function sy_tests(x, p, q, r, ev, name)
         let F = Risch.risch_integrate(exp(p) * x, x)
             @test isapprox(sy_fd(F, 0.5), ev(exp(p) * x, 0.5); rtol = 1e-6)
         end
-        # at most MAX_PARAMS = 2 parameters (the nested constant field gets too slow beyond)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / (p * x^2 + q * x + r), x)
+        # three parameters (step PF: Henrici's fraction arithmetic made them practical)
+        let f = 1 / (p * x^2 + q * x + r), F = Risch.risch_integrate(f, x)
+            @test F isa Risch.IntegralWithRootSums || !isnothing(F)
+        end
+        # at most MAX_PARAMS = 4 parameters
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / (p * x^4 + q * x^3 + r * x^2 + s1 * x + s2), x)
     end
 end
 let
     SimpleExpressions.@symbolic x p
-    q, r = let; SimpleExpressions.@symbolic_variables q r; (q, r); end   # only for the cap test
-    sy_tests(x, p, q, r, (e, a) -> e isa Function ? e(a, 0.2) : e, "SimpleExpressions")
+    q, r, s1, s2 = let; SimpleExpressions.@symbolic_variables q r s1 s2; (q, r, s1, s2); end   # cap tests
+    sy_tests(x, p, q, r, s1, s2, (e, a) -> e isa Function ? e(a, 0.2) : e, "SimpleExpressions")
 end
 let
-    SymEngine.@vars x p q r
-    sy_tests(x, p, q, r, (e, a) -> real(ComplexF64(SymEngine.N(SymEngine.subs(e, x => a, p => 0.2)))), "SymEngine")
+    SymEngine.@vars x p q r s1 s2
+    sy_tests(x, p, q, r, s1, s2, (e, a) -> real(ComplexF64(SymEngine.N(SymEngine.subs(e, x => a, p => 0.2)))), "SymEngine")
 end
 
 # step DL: dilogarithms (PolyLog.li2). The symbolic packages need a method for li2; these stand-ins are

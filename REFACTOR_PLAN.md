@@ -615,7 +615,7 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   jump correction takes the field's sign function (`tan_jump_terms(…, sg)`; undecided → general route).
   Works in both packages (SimpleExpressions `@symbolic x p`, SymEngine symbols). E.g. x·exp(a x) →
   exp(a x)(x/a − 1/a²); x^a → x exp(a log x)/(1 + a); atan(a x) → x atan(a x) − log(1/a² + x²)/(2a).
-  Cap: at most `MAX_PARAMS = 2` parameters (RischNotImplemented beyond). Each parameter nests the
+  Cap: at most `MAX_PARAMS` parameters (2 in SY, 4 since PF; RischNotImplemented beyond). Each parameter nests the
   constant field one level deeper and the normalising gcds grow steeply: in test_apostol.jl,
   (c sin x + d cos x)/(a sin x + b cos x) (four parameters) did not finish in minutes, and three-parameter
   integrals took ~1 min. With the cap test_apostol.jl completes: 148/175 (HEAD before SY: 139), 98 s
@@ -679,12 +679,19 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   and read back into T. `TowerRealForm` has a new field `natans` (c, w, p) printed c √w atan(√w p).
   E.g. 1/(x(log⁵x+1)), eˣ/(e⁵ˣ+1), log x/(x(log⁵x+1)), 1/(x log x (log⁵(log x)+1)): no RootSum.
   Tests: test_risch.jl both packages (three integrands: no RootSum, sqrt present, continuity, Simpson).
-* **Later: faster arithmetic in constant fields with several generators** (user's choice, 2026-10-14).
-  Constants of ℚ(i)(a, b, …) are nested `Frac`s normalised by gcds at every level, which is what makes
-  parameter integrals slow (23 s for 1/(a² sin²x + b² cos²x)) and forces the MAX_PARAMS cap. Ideas: a
-  fraction-free / delayed-normalisation representation of multivariate rational functions, building
-  the tower once and reusing it across `bioche`, TB and the general route (each parses it again), and
-  not running the rational integrator before TB's check. Then raise MAX_PARAMS.
+* **PF: faster fraction arithmetic (Henrici)** (2026-10-14, done, tests green; was the "Later" item).
+  `Frac` `+` and `*` use Henrici's algorithms: a/b + c/d with G = gcd(b, d), t = a(d/G) + c(b/G),
+  h = gcd(t, G) → (t/h)/((b/G)(d/h)) (no gcd at all for coprime or trivial denominators, `frac(a + c, b)`
+  for equal ones); (a/b)(c/d) = ((a/g₁)(c/g₂))/((b/g₂)(d/g₁)) with g₁ = gcd(a, d), g₂ = gcd(c, b);
+  `inv` and integer multiples without gcd. Same normal form as before (coprime, monic denominator), so
+  equality and every exact check are unchanged. Effect (all levels of nesting, not only parameters):
+  1/(a² sin²x + b² cos²x) 23 → 5.6 s, xⁿ⁻¹ sin(xⁿ) 10.6 → 4.2 s, e^(ax) cos bx 6.7 → 1.6 s;
+  test_tower 31 → 16 s, test_risch 61 → 43 s, test_trig 73 → 58 s; test_apostol.jl 98 → 50 s and
+  149/175 with `MAX_PARAMS` raised from 2 to 4 (the four-parameter (c sin x + d cos x)/(a sin x +
+  b cos x), which did not finish in minutes, now takes ~4–8 s).
+  Remaining ideas (not done): build the tower once and reuse it across `bioche`, TB and the general
+  route; skip the rational integrator before TB's check; a fraction-free representation.
+  Tests: test_integrate.jl SY tests: three parameters integrate, five are refused.
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -916,10 +923,10 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT (all 2026-10-14).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14).
 >
-> Next steps (open items): faster arithmetic for constant fields with several parameters (see the
-> "Later" entry), then raise MAX_PARAMS.
+> Next steps (open items): see the "Remaining ideas" of the PF entry (reuse the tower across routes,
+> fraction-free arithmetic).
 >
 > Ground rules: one plan step at a time; every result self-verified exactly by differentiation;
 > `NotElementary` only when the theory decides the case, otherwise `RischNotImplemented`; never
