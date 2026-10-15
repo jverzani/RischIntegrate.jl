@@ -671,7 +671,9 @@ struct QuadLog                  # β√d · log((U + √d V)/(U - √d V)),  d >
     d::Int
     U::CX
     V::CX
+    sq::Bool                    # printed as (β√d/2) log(ratio²) = β√d log|ratio| (step EC)
 end
+QuadLog(β, d, U, V) = QuadLog(β, d, U, V, false)
 struct QuadAtan                 # c√e · atan(√e u)  (inverted = false)  or  c√e · atan(u/√e)  (true)
     c::Q
     e::Int
@@ -1453,8 +1455,10 @@ function to_term(b::Builder, res::RationalIntegral)
             r = mk(b, :sqrt, b.lift(q.d))
             top = mk(b, :+, poly_term(b, q.U), mk(b, :*, r, poly_term(b, q.V)))
             bot = mk(b, :+, poly_term(b, q.U), mk(b, :*, b.lift(-1), r, poly_term(b, q.V)))
-            l = mk(b, :log, mk(b, :/, top, bot))
-            push!(ts, isone(q.β) ? mk(b, :*, r, l) : mk(b, :*, b.lift(num(q.β)), r, l))
+            ratio = mk(b, :/, top, bot)
+            l = mk(b, :log, q.sq ? mk(b, :^, ratio, b.lift(2)) : ratio)
+            β = q.sq ? q.β / 2 : q.β
+            push!(ts, isone(β) ? mk(b, :*, r, l) : mk(b, :*, cterm(b, β), r, l))
         else
             r = mk(b, :sqrt, b.lift(q.e))
             arg = q.inverted ? mk(b, :/, frac_term(b, q.u), r) : mk(b, :*, r, frac_term(b, q.u))
@@ -4993,7 +4997,7 @@ function merge_pieces(pieces)
 end
 
 # the real form of an integral over ℚ(i) as a term, verified: D(real form) == f in T
-function to_term_real(b::Builder, T::Tower, L::Int, res::ElemIntegral, f)
+function to_term_real(b::Builder, T::Tower, L::Int, res::ElemIntegral, f; pos = nothing)
     kinds = sigma_kinds(T)
     C = ctype(T)
     v = liftto(T, res.v, L)
@@ -5018,7 +5022,9 @@ function to_term_real(b::Builder, T::Tower, L::Int, res::ElemIntegral, f)
     for (c, w) in res.logs
         append!(pieces, real_log_pieces(T, kinds, c, w))
     end
-    tot = tot + emit!(T, kinds, merge_pieces(pieces))
+    pieces = merge_pieces(pieces)
+    pos === nothing || (pieces = real_log_signs(T, pieces, pos))   # step EC: real log arguments
+    tot = tot + emit!(T, kinds, pieces)
     isempty(res.atans) || throw(RischError("unexpected atan terms over ℚ(i)"))
     for q in res.quads
         q isa SpecialTerm || continue
@@ -5152,7 +5158,7 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         # over ℚ, or over ℚ(i)(√d) when the conic R² = Q has no small rational point);
         # Q^(k/2) = ψ(t)^k
         # real points: ψ(t) = √Q > 0 (step EL)
-        cands = Any[(S, φ, k -> ψ^k, tterm, S === Q ? Any[ψ] : nothing)
+        cands = Any[(S, φ, k -> ψ^k, tterm, real_pos(Any[ψ]))
                     for (S, φ, ψ, tterm) in euler_substitution(co(N, 3), co(N, 2), co(N, 1), b0, uterm; pref = cfix_d(cfix))]
     else
         throw(RischNotImplemented(
@@ -5292,7 +5298,7 @@ function integrate_two_radicals(f, xk::String, groups, b0::Builder, verify::Bool
                 ue == u1 ? φ2^Int(numerator(k)) :
                 ue == u2 ? ψ2^Int(numerator(k)) : throw(RischError("unexpected radicand"))
             end
-            push!(cands, (S, φ, radval, tterm, S === Q ? Any[φ2, ψ2] : nothing))   # √u₁, √u₂ > 0 (EL)
+            push!(cands, (S, φ, radval, tterm, real_pos(Any[φ2, ψ2])))   # √u₁, √u₂ > 0 (EL)
         end
     end
     isempty(cands) && throw(RischNotImplemented(
@@ -7043,7 +7049,7 @@ function integrate_built(T::Tower, el, bd::Builder, verify::Bool; pos = nothing)
         verify && !check_tower(T, L, res, el) &&
             throw(RischError("internal check failed: derivative of the result differs from the integrand"))
         isrsc(q) = q isa TowerRootSum || q isa BaseRootSum
-        any(isrsc, res.quads) || return to_term_real(bd, T, L, res, el)
+        any(isrsc, res.quads) || return to_term_real(bd, T, L, res, el; pos = L == 0 ? pos : nothing)
         # step RC: RootSums over ℚ(i) stay complex (F(a) takes the real part); the elementary part
         # is put in real form and checked against f - Re(Σ RootSum′), Re = (d + σd)/2
         kinds = sigma_kinds(T)
@@ -7084,7 +7090,7 @@ function integrate_built(T::Tower, el, bd::Builder, verify::Bool; pos = nothing)
     end
     verify && !check_result(res, F) &&
         throw(RischError("internal check failed: derivative of the result differs from the integrand"))
-    if pos !== nothing && ctype(T) === Q         # steps RL, EL: log arguments real at the real points
+    if pos !== nothing && ctype(T) === Q && all(φ -> φ isa Frac{UPoly{Q}}, pos)   # RL, EL: real log arguments
         res = real_logs_on(res, pos)
         verify && !check_result(res, F) &&
             throw(RischError("internal check failed: derivative of the result (real log form) differs from the integrand"))
@@ -7106,8 +7112,10 @@ function real_logs_on(res::RationalIntegral{Q}, pos)
     end
     quads = Any[]
     for q in res.quads
-        if q isa QuadLog && signs_on(pos, q.U * q.U - scale(Q(q.d), q.V * q.V)) == Set([-1])
-            q = QuadLog(q.β, q.d, scale(Q(q.d), q.V), q.U)
+        if q isa QuadLog
+            S = signs_on(pos, q.U * q.U - scale(Q(q.d), q.V * q.V))   # the sign of the ratio
+            q = S == Set([-1]) ? QuadLog(q.β, q.d, scale(Q(q.d), q.V), q.U) :
+                length(S) > 1 ? QuadLog(q.β, q.d, q.U, q.V, true) : q
         end
         push!(quads, q)
     end
@@ -7115,23 +7123,32 @@ function real_logs_on(res::RationalIntegral{Q}, pos)
 end
 
 # the signs w takes on {t ∈ ℝ : φ(t) > 0 for all φ ∈ pos}, exactly: one rational point in each
-# open interval between consecutive real roots of w and of the numerators and denominators
-function signs_on(pos, w::UPoly{Q})
-    Ps = UPoly{Q}[φ.num * φ.den for φ in pos]          # the sign of φ where it is defined
+# open interval between consecutive real roots of w and of the numerators and denominators.
+# R = ℚ or ℚ(√d) (real coefficients, step EC)
+function signs_on(pos, w::UPoly{R}) where {R}
+    Ps = UPoly{R}[φ.num * φ.den for φ in pos]          # the sign of φ where it is defined
+    sg(c) = Int(real_sign(c))
+    at(p, s) = peval(p, cfromQ(R, s))
     S = Set{Int}()
-    for s in cell_points(prod(Ps; init = one(UPoly{Q})) * w)
-        all(P -> sign(peval(P, s)) > 0, Ps) && push!(S, Int(sign(peval(w, s))))
+    for s in cell_points(prod(Ps; init = one(UPoly{R})) * w)
+        all(P -> sg(at(P, s)) > 0, Ps) && push!(S, sg(at(w, s)))
     end
     S
 end
 
+# a rational bound for |c|
+abs_bound(c::Q) = abs(c)
+abs_bound(c::QS{d}) where {d} = abs(c.a) + abs(c.b) * (isqrt(d) + 1)
+
 # rational points, one in each open interval between consecutive real roots of p (and one on each
 # side of them): roots isolated by Sturm counts (`real_root_count`) and bisection
-function cell_points(p::UPoly{Q})
+function cell_points(p::UPoly{R}) where {R}
     degree(p) <= 0 && return Q[0]
     p = quo(p, gcd(p, deriv(p)))
-    B = 1 + maximum(abs(c / lc(p)) for c in p.c)       # Cauchy: every real root is in (-B, B)
-    cnt(a, b) = real_root_count(p, a, b) - (iszero(peval(p, a)) ? 1 : 0)   # roots in (a, b]
+    sg(c) = Int(real_sign(c))
+    at(s) = peval(p, cfromQ(R, s))
+    B = 1 + maximum(abs_bound(c) for c in p.c) / abs_bound_low(lc(p))   # Cauchy: real roots in (-B, B)
+    cnt(a, b) = real_root_count(p, a, b, sg) - (iszero(at(a)) ? 1 : 0)   # roots in (a, b]
     ivs = Tuple{Q,Q}[]
     stack = [(-B, B)]
     while !isempty(stack)
@@ -7146,7 +7163,7 @@ function cell_points(p::UPoly{Q})
     pts = Q[-B - 1]
     for k in 1:(length(ivs) - 1)
         (_, b1), (a2, b2) = ivs[k], ivs[k + 1]
-        if !iszero(peval(p, b1))
+        if !iszero(at(b1))
             push!(pts, b1)                              # root k < b1 ≤ a2 < root k+1
         elseif b1 < a2
             push!(pts, (b1 + a2) / 2)                   # (b1, a2] has no root
@@ -7161,6 +7178,80 @@ function cell_points(p::UPoly{Q})
     end
     push!(pts, B + 1)
     pts
+end
+
+# a positive rational lower bound for |c|, c ≠ 0 (exact for ℚ; a + b√d by refining √d)
+abs_bound_low(c::Q) = abs(c)
+function abs_bound_low(c::QS{d}) where {d}
+    iszero(c.b) && return abs(c.a)
+    iszero(c.a) && return abs(c.b) * isqrt(d)
+    lo, hi = Q(isqrt(d)), Q(isqrt(d) + 1)               # lo ≤ √d ≤ hi, refined until |a + b r| > 0 on [lo, hi]
+    while true
+        v1, v2 = c.a + c.b * lo, c.a + c.b * hi
+        sign(v1) == sign(v2) && !iszero(v1) && return min(abs(v1), abs(v2))
+        m = (lo + hi) / 2
+        m * m <= d ? (lo = m) : (hi = m)
+    end
+end
+
+# step EC: the positivity constraints of a substitution as real elements (ℚ(i)(√d) ↦ ℚ(√d)), or
+# nothing when a coefficient is not real
+function real_pos(pos)
+    out = Any[]
+    for φ in pos
+        r = real_frac(φ)
+        r === nothing && return nothing
+        push!(out, r)
+    end
+    out
+end
+real_coeff(c::Q) = c
+real_coeff(c::QI) = iszero(c.im) ? c.re : nothing
+function real_coeff(c::QSB{d,QI}) where {d}
+    (iszero(c.a.im) && iszero(c.b.im)) || return nothing
+    QS{d}(c.a.re, c.b.re)
+end
+real_coeff(c) = nothing
+function real_poly(p::UPoly)
+    cs = Any[real_coeff(c) for c in p.c]
+    any(isnothing, cs) && return nothing
+    isempty(cs) && return nothing
+    R = typeof(cs[1])
+    all(c -> c isa R, cs) || return nothing
+    UPoly{R}(R[cs...])
+end
+real_frac(φ::Frac) = (n = real_poly(φ.num); d = real_poly(φ.den);
+    (n === nothing || d === nothing || typeof(n) != typeof(d)) ? nothing : frac(n, d))
+# R-polynomial as one over R2 (ℚ ⊂ ℚ(√d))
+lift_poly(p::UPoly{Q}, ::Type{QS{d}}) where {d} = UPoly{QS{d}}(QS{d}[QS{d}(c, Q(0)) for c in p.c])
+lift_poly(p::UPoly{R}, ::Type{R}) where {R} = p
+
+# step EC: log pieces (c, :log, a) at the base of a real form (Step 7): a real argument a with one
+# sign where all of pos are positive: log(-a) if negative; both signs: (c/2) log(a²)
+function real_log_signs(T::Tower, pieces, pos)
+    R = typeof(pos[1].num).parameters[1]
+    C = ctype(T)
+    out = Any[]
+    for pc in pieces
+        if pc[2] === :log && length(pc) == 3 && levelof(T, pc[3]) == 0
+            a = pc[3]
+            w = real_poly(a.num * a.den)
+            w === nothing && (push!(out, pc); continue)
+            w isa UPoly{R} || (w = try lift_poly(w, R) catch; nothing end)
+            w === nothing && (push!(out, pc); continue)
+            S = signs_on(pos, w)
+            if S == Set([-1])
+                push!(out, (pc[1], :log, -a))
+            elseif length(S) > 1
+                push!(out, (pc[1] * inv(cfromQ(C, Q(2))), :log, a * a))
+            else
+                push!(out, pc)
+            end
+        else
+            push!(out, pc)
+        end
+    end
+    out
 end
 
 

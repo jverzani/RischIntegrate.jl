@@ -294,6 +294,20 @@ function run_tests(x, evalat, name)
         end
     end
 
+    @testset "$name: real log arguments over ℚ(√d) (step EC)" begin
+        # 10c (constant field ℚ(i)(√d), real form by Step 7) and 10b QuadLogs whose ratio changes
+        # sign between the components of the domain; points on both sides, real arithmetic
+        for (f, pts) in ((1 / (x * sqrt(2x^2 + 3)), (0.5, 2.0, -0.5, -2.0)),
+                         (sqrt(2x^2 + 3) / x, (0.5, -0.5)),
+                         (1 / (x * sqrt(3 - 2x^2)), (0.5, -0.5)),
+                         (1 / (x * sqrt(3x^2 + x + 2)), (0.4, -1.5, -3.0)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+    end
+
     @testset "$name: square roots of quadratics: Euler substitutions (step 10b)" begin
         # (integrand, test points inside the real domain)
         inside = (0.2, 0.45, 0.7)
