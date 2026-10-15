@@ -1436,6 +1436,8 @@ function log_arg_term(b::Builder, w::UPoly)
     end
     poly_term(b, w)
 end
+log_arg_term(b::Builder, f::Frac) =
+    isone(f.den) ? log_arg_term(b, f.num) : mk(b, :/, log_arg_term(b, f.num), log_arg_term(b, f.den))
 
 function to_term(b::Builder, res::RationalIntegral)
     ts = Any[]
@@ -3593,7 +3595,9 @@ struct TowerQuadLog             # β√d · log((U + √d V)/(U - √d V)),  d >
     d::Int
     U::Any
     V::Any
+    sq::Bool                    # printed as (β√d/2) log(ratio²) (steps EC, TL)
 end
+TowerQuadLog(β, d, U, V) = TowerQuadLog(β, d, U, V, false)
 struct TowerQuadAtan            # c√e · atan(√e u)  (inverted = false)  or  c√e · atan(u/√e)  (true)
     c::Q
     e::Int
@@ -3654,7 +3658,7 @@ function ext_quad_terms(T::Tower, i::Int, A::UPoly, D::UPoly, dD::UPoly, rest::U
 end
 
 # the Stage 5a terms of a rational integral, as tower terms (U, V, u ∈ K₀ = ℚ(x))
-tower_quad(q::QuadLog) = TowerQuadLog(q.β, q.d, frac(q.U), frac(q.V))
+tower_quad(q::QuadLog) = TowerQuadLog(q.β, q.d, frac(q.U), frac(q.V), q.sq)
 tower_quad(q::QuadAtan) = TowerQuadAtan(q.c, q.e, q.u, q.inverted)
 
 # Step T1: the real form of a quartic RootSum (R2), a RationalIntegral over ℚ(√d) in x only, as a
@@ -4192,7 +4196,7 @@ function to_term(b::Builder, T::Tower, res::ElemIntegral)
     ts = Any[]
     iszero(res.v) || push!(ts, tower_to_term(b, T, res.v))
     for (c, w) in res.logs
-        l = mk(b, :log, tower_to_term(b, T, w))
+        l = mk(b, :log, levelof(T, w) == 0 ? log_arg_term(b, w) : tower_to_term(b, T, w))
         push!(ts, isone(c) ? l : mk(b, :*, cterm(b, c), l))
     end
     for (c, u) in res.atans
@@ -4205,8 +4209,10 @@ function to_term(b::Builder, T::Tower, res::ElemIntegral)
             Ut, Vt = tower_to_term(b, T, q.U), tower_to_term(b, T, q.V)
             top = mk(b, :+, Ut, mk(b, :*, r, Vt))
             bot = mk(b, :+, Ut, mk(b, :*, b.lift(-1), r, Vt))
-            l = mk(b, :log, mk(b, :/, top, bot))
-            push!(ts, isone(q.β) ? mk(b, :*, r, l) : mk(b, :*, cterm(b, q.β), r, l))
+            ratio = mk(b, :/, top, bot)
+            l = mk(b, :log, q.sq ? mk(b, :^, ratio, b.lift(2)) : ratio)
+            β = q.sq ? q.β / 2 : q.β
+            push!(ts, isone(β) ? mk(b, :*, r, l) : mk(b, :*, cterm(b, β), r, l))
         elseif q isa SpecialTerm
             push!(ts, special_out(b, q, cterm(b, q.c), z -> tower_to_term(b, T, z)))
         elseif q isa BaseTerms
@@ -7049,7 +7055,7 @@ function integrate_built(T::Tower, el, bd::Builder, verify::Bool; pos = nothing)
         verify && !check_tower(T, L, res, el) &&
             throw(RischError("internal check failed: derivative of the result differs from the integrand"))
         isrsc(q) = q isa TowerRootSum || q isa BaseRootSum
-        any(isrsc, res.quads) || return to_term_real(bd, T, L, res, el; pos = L == 0 ? pos : nothing)
+        any(isrsc, res.quads) || return to_term_real(bd, T, L, res, el; pos = pos)
         # step RC: RootSums over ℚ(i) stay complex (F(a) takes the real part); the elementary part
         # is put in real form and checked against f - Re(Σ RootSum′), Re = (d + σd)/2
         kinds = sigma_kinds(T)
@@ -7063,6 +7069,11 @@ function integrate_built(T::Tower, el, bd::Builder, verify::Bool; pos = nothing)
         res = integrate_el(T, L, el)
         verify && !check_tower(T, L, res, el) &&
             throw(RischError("internal check failed: derivative of the result differs from the integrand"))
+        if pos !== nothing && ctype(T) === Q && all(φ -> φ isa Frac{UPoly{Q}}, pos)   # step TL
+            res = real_logs_tower(T, res, pos)
+            verify && !check_tower(T, L, res, el) &&
+                throw(RischError("internal check failed: derivative of the result (real log form) differs from the integrand"))
+        end
         isrs(q) = q isa TowerRootSum || q isa BaseRootSum
         any(isrs, res.quads) || return to_term(bd, T, res)
         rss = Any[q isa BaseRootSum ?
@@ -7120,6 +7131,44 @@ function real_logs_on(res::RationalIntegral{Q}, pos)
         push!(quads, q)
     end
     RationalIntegral(res.rational, logs, res.atans, res.unresolved, quads)
+end
+
+# f free of θᵢ (degree 0 over Kᵢ₋₁), repeatedly, as an element of the lowest level
+function level_down(T::Tower, f)
+    while levelof(T, f) > 0 && degree(f.num) == 0 && degree(f.den) == 0
+        f = f.num.c[1] / f.den.c[1]
+    end
+    f
+end
+
+# step TL: the same for a tower integral over ℚ(t): the logs with a level-0 argument w ∈ ℚ(t)
+# (sign of w = sign of num·den), and TowerQuadLogs with U, V ∈ ℚ(t) (as QuadLog). Arguments in θ
+# (log(exp(t) - 2)) are kept.
+function real_logs_tower(T::Tower, res::ElemIntegral{Q}, pos)
+    logs = Tuple{Q,Any}[]
+    for (c, w) in res.logs
+        w = level_down(T, w)
+        if levelof(T, w) == 0
+            S = signs_on(pos, w.num * w.den)
+            push!(logs, S ⊆ Set([1]) ? (c, w) : S == Set([-1]) ? (c, -w) : (c / 2, w * w))
+        else
+            push!(logs, (c, w))
+        end
+    end
+    quads = Any[]
+    for q in res.quads
+        if q isa TowerQuadLog
+            U, V = level_down(T, q.U), level_down(T, q.V)
+            if levelof(T, U) == 0 && levelof(T, V) == 0
+                w = U * U - frac(UPoly{Q}(Q[q.d])) * V * V      # the sign of the ratio
+                S = signs_on(pos, w.num * w.den)
+                q = S == Set([-1]) ? TowerQuadLog(q.β, q.d, frac(UPoly{Q}(Q[q.d])) * V, U) :
+                    length(S) > 1 ? TowerQuadLog(q.β, q.d, U, V, true) : TowerQuadLog(q.β, q.d, U, V)
+            end
+        end
+        push!(quads, q)
+    end
+    ElemIntegral(res.v, logs, res.atans, quads)
 end
 
 # the signs w takes on {t ∈ ℝ : φ(t) > 0 for all φ ∈ pos}, exactly: one rational point in each
@@ -7233,8 +7282,8 @@ function real_log_signs(T::Tower, pieces, pos)
     C = ctype(T)
     out = Any[]
     for pc in pieces
-        if pc[2] === :log && length(pc) == 3 && levelof(T, pc[3]) == 0
-            a = pc[3]
+        if pc[2] === :log && length(pc) == 3 && levelof(T, level_down(T, pc[3])) == 0
+            a = level_down(T, pc[3])
             w = real_poly(a.num * a.den)
             w === nothing && (push!(out, pc); continue)
             w isa UPoly{R} || (w = try lift_poly(w, R) catch; nothing end)

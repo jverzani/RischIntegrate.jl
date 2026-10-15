@@ -308,6 +308,22 @@ function run_tests(x, evalat, name)
         end
     end
 
+    @testset "$name: real log arguments at tower levels (step TL)" begin
+        # substitutions with a tower over ℚ(t) (exp(√x), exp(x)): the log arguments in ℚ(t) and
+        # the QuadLogs with U, V ∈ ℚ(t) get the signs of EL; points on both sides, real arithmetic
+        for (f, pts) in ((exp(sqrt(x)) + sqrt(x) / (x - 1), (0.5, 2.0)),
+                         (exp(sqrt(x)) / sqrt(x) + 1 / (x - sqrt(x)), (0.5, 2.0)),
+                         (1 / (x * sqrt(x + 1)) + exp(sqrt(x + 1)), (0.5, -0.5)),
+                         (1 / (x * sqrt(x^2 + 1)) + exp(x), (0.5, -0.5)),
+                         (1 / (x * sqrt(2x^2 + 3)) + exp(x), (0.5, -0.5)),
+                         (1 / (x * sqrt(3 - 2x^2)) + exp(x), (0.5, -0.5)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+    end
+
     @testset "$name: square roots of quadratics: Euler substitutions (step 10b)" begin
         # (integrand, test points inside the real domain)
         inside = (0.2, 0.45, 0.7)
