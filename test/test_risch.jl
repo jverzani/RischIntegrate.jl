@@ -118,7 +118,15 @@ end
     end
     # roots not in ℚ(i, √d): stays a RootSum
     @test !isempty(Risch.integrate_rational(rf(poly(1), poly(2, 0, 0, 0, 1))).unresolved)
-    @test !isempty(Risch.integrate_rational(rf(poly(1), poly(1, 0, 0, 0, 0, 1))).unresolved)   # 1/(x⁵+1)
+    @test !isempty(Risch.integrate_rational(rf(poly(1), poly(3, 0, 1, 0, 1))).unresolved)   # 1/(x⁴+x²+3)
+    # step NR: nested radicals √w, w ∈ ℚ(√d) (Im ζ₁₀ = √(10 − 2√5)/4): 1/(x⁵+1) etc. in real form
+    for N in (poly(1), poly(0, 1), poly(0, 0, 0, 1))
+        f = rf(N, poly(1, 0, 0, 0, 0, 1))
+        res = Risch.integrate_rational(f)
+        @test isempty(res.unresolved)
+        @test any(q -> q isa Risch.QuarticNested, res.quads)
+        @test Risch.check_result(res, f)
+    end
 end
 
 @testset "Rioboo's LogToAtan: atans of polynomials" begin
@@ -243,6 +251,15 @@ function run_tests(x, evalat, name)
             for a in r[[11, end - 10]]
                 @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5)
             end
+        end
+        # nested-radical real forms (step NR): no RootSum, continuous, F(b) - F(a) by Simpson
+        nr_simpson(g, a, b; n = 1000) = (h = (b - a) / n;
+            h / 3 * (g(a) + g(b) + sum((isodd(k) ? 4 : 2) * g(a + k * h) for k in 1:(n - 1))))
+        for f in (1/(x^5 + 1), x/(x^5 + 1), x^3/(x^5 + 1))
+            F = Risch.risch_integrate(f, x)
+            @test !(F isa Risch.IntegralWithRootSums) && occursin("sqrt(", string(F))
+            @test maximum(abs.(diff([evalat(F, a) for a in 0:0.05:4]))) < 0.1
+            @test isapprox(evalat(F, 4.0) - evalat(F, 0.0), nr_simpson(t -> evalat(f, t), 0.0, 4.0); atol = 1e-8)
         end
         # RootSums over ℚ(i) in trigonometric towers (step RC): complex coefficients R + i·I in cos/sin;
         # F(a) is the real part (an antiderivative between the branch-cut jumps of the complex logs)

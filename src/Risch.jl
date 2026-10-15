@@ -847,11 +847,20 @@ function quartic_real!(quads, A::CX, D::CX, dD::CX, q::CX)
         B2 = QSB{d,QI}
         qS = toQS(S, monic(q))
         pairs = Tuple{S,S}[]
+        nested = Tuple{S,S}[]                                   # (u, w = v²) with v ∉ ℚ(√d) (step NR)
         for qk in (q1, quo(qS, q1))
             u = -qk.c[2] / cfromQ(S, Q(2))
-            v = qs_sqrt(qk.c[1] - u * u)                        # a square in ℚ(√d), d > 0: v² > 0
-            (v === nothing || iszero(v)) && break
-            push!(pairs, (u, v))
+            w = qk.c[1] - u * u
+            v = qs_sqrt(w)                                      # a square in ℚ(√d), d > 0: v² > 0
+            if v === nothing
+                real_sign(w) > 0 && push!(nested, (u, w))       # complex roots u ± i√w, √w nested
+                continue
+            end
+            iszero(v) || push!(pairs, (u, v))
+        end
+        if length(nested) == 2
+            push!(quads, quartic_nested(A, D, dD, S, nested))
+            return true
         end
         length(pairs) == 2 || continue
         toB2(p::CX) = UPoly{B2}(B2[B2(QI(a, Q(0)), zero(QI)) for a in p.c])
@@ -873,6 +882,68 @@ function quartic_real!(quads, A::CX, D::CX, dD::CX, q::CX)
         return true
     end
     false
+end
+
+# Step NR: nested radicals. A conjugate pair u ± iv with u, w = v² ∈ ℚ(√d) but v = √w ∉ ℚ(√d)
+# (e.g. the residues of 1/(x⁵+1): Im ζ₁₀ = √(10 − 2√5)/4). W = gcd(D, A − (u + y) D') with y² = −w is
+# computed by `d5_gcd` over ℚ(√d) with modulus z² + w (irreducible: −w < 0), W = U + y V′, so with
+# y = i√w: W = U + iV, V = √w V′, and the pair gives u log(U² + w V′²) + √w·LogToAtan(U, √w V′) =
+# u log(U² + w V′²) + Σ 2√w atan(√w uⱼ) (`log_to_atan_sqrt`, uⱼ over ℚ(√d)). Stored as
+# `QuarticNested`: logs (c, w) and nested atans (c, w, u) = c √w atan(√w u), whose derivative
+# c w u'/(1 + w u²) lies in ℚ(√d)(x); both pairs together come down to ℚ(x) (`qs_down`).
+struct QuarticNested{S}
+    logs::Vector{Tuple{S,UPoly{S}}}
+    natans::Vector{Tuple{S,S,UPoly{S}}}
+end
+function quartic_nested(A::CX, D::CX, dD::CX, ::Type{S}, nested) where {S}
+    P = UPoly{S}
+    toS(p) = P(S[cfromQ(S, c) for c in p.c])
+    As, Ds, dDs = toS(A), toS(D), toS(dD)
+    n = max(length(As.c), length(dDs.c))
+    co(p, k) = k <= length(p.c) ? p.c[k] : zero(S)
+    logs = Tuple{S,P}[]
+    natans = Tuple{S,S,P}[]
+    for (u, w) in nested
+        m = P(S[w, zero(S), one(S)])                            # z² + w, z = y
+        a = P[P(S[c]) for c in Ds.c]
+        b = P[P(S[co(As, k) - u * co(dDs, k), -co(dDs, k)]) for k in 1:n]   # A − (u + z) D'
+        outs = d5_gcd(m, a, b)
+        length(outs) == 1 || throw(RischNotImplemented("nested real form: the modulus z² + w split"))
+        Wv = outs[1][2]
+        U = P(S[co(c, 1) for c in Wv])
+        V = P(S[co(c, 2) for c in Wv])
+        iszero(u) || push!(logs, (u, U * U + scale(w, V * V)))
+        if !iszero(U) && !iszero(V)
+            for p in log_to_atan_sqrt(U, V, w)
+                push!(natans, (cfromQ(S, Q(2)), w, p))
+            end
+        end
+    end
+    QuarticNested{S}(logs, natans)
+end
+function derivative_of(q::QuarticNested{S}) where {S}
+    F = Frac{UPoly{S}}
+    tot = zero(F)
+    for (c, w) in q.logs
+        tot = tot + kconst(c) * frac(deriv(w), w)
+    end
+    for (c, w, u) in q.natans                                   # (c √w atan(√w u))' = c w u'/(1 + w u²)
+        tot = tot + kconst(c * w) * frac(deriv(u), one(UPoly{S}) + scale(w, u * u))
+    end
+    tot
+end
+function to_term(b, q::QuarticNested)              # b: a Builder (defined below)
+    ts = Any[]
+    for (c, w) in q.logs
+        l = mk(b, :log, poly_term(b, w))
+        push!(ts, isone(c) ? l : mk(b, :*, cterm(b, c), l))
+    end
+    for (c, w, u) in q.natans
+        r = mk(b, :sqrt, cterm(b, w))
+        l = mk(b, :atan, mk(b, :*, r, poly_term(b, u)))
+        push!(ts, isone(c) ? mk(b, :*, r, l) : mk(b, :*, cterm(b, c), r, l))
+    end
+    isempty(ts) ? b.lift(0) : length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
 end
 
 # an element of ℚ(√d)(x) that lies in ℚ(x) (normal form: then every coefficient is rational)
@@ -1004,7 +1075,7 @@ function derivative_of(res::RationalIntegral{C}) where {C}
         tot = tot + kconst(c) * dx(u) / (one(F) + u * u)
     end
     for q in res.quads
-        if q isa RationalIntegral                    # real form of a quartic RootSum, over ℚ(√d)
+        if q isa RationalIntegral || q isa QuarticNested   # real form of a quartic RootSum (R2, NR)
             tot = tot + qs_down(derivative_of(q))
         elseif q isa QuadLog  # d/dx [β√d log(W/W̄)] = 2βd (V'U - U'V)/(U² - dV²)
             U, V = q.U, q.V
@@ -1303,7 +1374,7 @@ function to_term(b::Builder, res::RationalIntegral)
         push!(ts, isone(c) ? l : mk(b, :*, cterm(b, c), l))
     end
     for q in res.quads
-        if q isa RationalIntegral
+        if q isa RationalIntegral || q isa QuarticNested
             push!(ts, to_term(b, q))
         elseif q isa QuadLog
             r = mk(b, :sqrt, b.lift(q.d))
@@ -3493,10 +3564,11 @@ tower_quad(q::QuadAtan) = TowerQuadAtan(q.c, q.e, q.u, q.inverted)
 # tower term: its derivative is in K₀ = ℚ(x) (stored, for `check_tower`), output by `to_term`.
 # It has no θ, so it adds nothing to the exp correction Σ c·deg W.
 struct BaseTerms
-    q::RationalIntegral
+    q::Any                   # RationalIntegral over ℚ(√d) (R2) or QuarticNested (NR)
     deriv::Any
 end
 tower_quad(q::RationalIntegral) = BaseTerms(q, qs_down(derivative_of(q)))
+tower_quad(q::QuarticNested) = BaseTerms(q, qs_down(derivative_of(q)))
 
 # The conjugate pair of roots of the irreducible quadratic `rest` ∈ ℚ[z] as log/atan terms
 # (see above), or nothing if this case is not handled. A, D, dD = δD ∈ Kᵢ₋₁[θᵢ].
@@ -6226,6 +6298,11 @@ function tan_jump_terms(bd::Builder, bs::Builder, res::RationalIntegral, sg = c 
         elseif q isa RationalIntegral
             Jd = sum((c * atan_infinity_sign(p) for (c, p) in q.atans); init = zero(typeof(q.rational.num.c[1])))
             iszero(Jd) || push!(corr, cterm(bd, Jd))
+        elseif q isa QuarticNested                      # c √w atan(√w u): jump c σ √w (√w > 0)
+            for (c, w, u) in q.natans
+                σ = atan_infinity_sign(frac(u))
+                σ == 0 || push!(corr, mk(bd, :*, cterm(bd, c * σ), mk(bd, :sqrt, cterm(bd, w))))
+            end
         end
     end
     corr

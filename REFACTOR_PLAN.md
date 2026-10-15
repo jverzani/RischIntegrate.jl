@@ -643,6 +643,20 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   test_integrate.jl, after the tests that expect NotElementary without them).
   Not covered: irrational poles (log(1+x)/(1+x²): NotElementary), several logs, Li₃ and higher.
   Tests: test_integrate.jl `dl_tests`, both packages (seven integrands, the −li2(−x) form, a refusal).
+* **NR: nested-radical real forms** (2026-10-14, done, tests green). In `quartic_real!` (R2), a conjugate
+  pair u ± iv with u, w = v² ∈ ℚ(√d), w > 0 (`real_sign`) but v ∉ ℚ(√d) (`qs_sqrt` fails), e.g. the
+  residues of 1/(x⁵+1) (Im ζ₁₀ = √(10 − 2√5)/4): `quartic_nested` computes W = gcd(D, A − (u + y)D′),
+  y² = −w, by `d5_gcd` over ℚ(√d) with modulus z² + w (irreducible since −w < 0); W = U + yV′,
+  so V = √w V′ and the pair is u log(U² + w V′²) + Σ 2√w atan(√w uⱼ) (`log_to_atan_sqrt(U, V′, w)`,
+  uⱼ over ℚ(√d)). New `QuarticNested{S}` (logs, nested atans (c, w, u) = c √w atan(√w u)) with
+  `derivative_of` (c w u′/(1 + w u²) ∈ ℚ(√d)(x)) and `to_term` (√w printed as sqrt(a + b√d)); exact
+  check via `qs_down` as for R2; in towers through `BaseTerms`; Bioche's tan jump correction counts
+  its atans (c σ √w). E.g. 1/(x⁵+1) → log(1+x)/5 + ((√5−1)/20) log(x² + ((√5−1)/2) x + 1) − … +
+  2√(1/40 + √5/200) atan(√(1/40 + √5/200)(…)) + …; also x/(x⁵+1), x³/(x⁵+1).
+  Not covered: the same at tower levels (`tower_quartic_real`: 1/(x(log⁵x+1)) keeps a RootSum),
+  roots needing 2^(1/4) or deeper nesting (1/(x⁴+2), 1/(x⁴+x²+3) stay RootSums), degree ≥ 6.
+  Tests: test_risch.jl (exact: three quintic integrands, QuarticNested present; both packages: no
+  RootSum, sqrt present, continuity, Simpson); the R2 "stays RootSum" example is now 1/(x⁴+x²+3).
 * **Later: faster arithmetic in constant fields with several generators** (user's choice, 2026-10-14).
   Constants of ℚ(i)(a, b, …) are nested `Frac`s normalised by gcds at every level, which is what makes
   parameter integrals slow (23 s for 1/(a² sin²x + b² cos²x)) and forces the MAX_PARAMS cap. Ideas: a
@@ -880,10 +894,10 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL (all 2026-10-14).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR (all 2026-10-14).
 >
-> Next steps (open items): nested-radical real forms (1/(x⁵ + 1)), iterated integrals on an
-> `IntegralWithRootSums`; later: faster arithmetic for constant fields with several parameters (see the
+> Next steps (open items): iterated integrals on an `IntegralWithRootSums`; nested-radical real forms
+> at tower levels (see NR); later: faster arithmetic for constant fields with several parameters (see the
 > "Later" entry), then raise MAX_PARAMS.
 >
 > Ground rules: one plan step at a time; every result self-verified exactly by differentiation;
