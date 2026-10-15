@@ -1,4 +1,4 @@
-using Documenter
+using Documenter, MaterialDocs
 using RischIntegrate
 
 makedocs(
@@ -6,7 +6,7 @@ makedocs(
     modules = [RischIntegrate],
     checkdocs = :exports,
     warnonly = [:missing_docs],          # the module docstring is the README
-    format = Documenter.HTML(prettyurls = get(ENV, "CI", nothing) == "true", edit_link = "main"),
+    format = Material3(theme = :default, dark_mode = :toggle, prettyurls = get(ENV, "CI", nothing) == "true", edit_link = "main"),
     pages = [
         "Home" => "index.md",
         "Usage" => "usage.md",

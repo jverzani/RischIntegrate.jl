@@ -1,5 +1,6 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+MaterialDocs = "10bdffc8-969c-4dd4-83f3-742518eccd6b"
 RischIntegrate = "c180fd1b-065d-41df-ac4d-d8d9562c1957"
 SimpleExpressions = "deba94f7-f32a-40ad-b45e-be020a5ded2f"
 SymEngine = "123dc426-2d89-5057-bbad-38513e3affd8"
