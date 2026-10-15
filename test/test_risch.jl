@@ -1,8 +1,8 @@
 using Test
 import SimpleExpressions
 import SymEngine
-include("Risch.jl")
-using .Risch
+using RischIntegrate
+import RischIntegrate as Risch
 
 # --- exact, package-independent checks of the algebra (no symbolic package needed)
 const Q = Rational{BigInt}

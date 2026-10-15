@@ -1,0 +1,64 @@
+# Step DL: dilogarithms. ∫ θ·r(x) with θ = log(a x + b) (a level over ℚ(x) only, a, b ∈ ℚ) and r ∈ ℚ(x):
+# each simple pole c ∈ ℚ of r with residue ρ and K = a c + b ≠ 0 gives (s = x - c, a s + K = a x + b)
+#   K > 0:  ρ (log K · log|s| - Li₂(-a s/K))          (log(K + a s) = log K + log(1 + a s/K))
+#   K < 0:  ρ (½ log²(a s) + Li₂(-K/(a s)))            (log(K + a s) = log(a s) + log(1 - |K|/(a s)))
+# both with derivative ρ θ/(x - c) on the domain a x + b > 0 (Li₂(z)' = -log(1 - z)/z). The term
+# keeps that derivative for the exact check (as SpecialTerm); the rest of the integrand goes through
+# the normal algorithm. Printed with `PolyLog.li2`, which the symbolic package must support.
+struct DilogTerm
+    ρ::Q
+    a::Q
+    b::Q
+    c::Q
+    deriv::Any
+end
+function dilog_split(T::Tower, i::Int, p::UPoly)
+    (ctype(T) === Q && i == 1 && T.levels[1].kind === :log && degree(p) == 1) || return nothing
+    u = T.levels[1].arg
+    (isone(u.den) && degree(u.num) == 1) || return nothing
+    b, a = u.num.c
+    r = p.c[2]                                          # coefficient of θ, ∈ ℚ(x)
+    D1 = r.den
+    terms = Any[]
+    simple = zero(r)
+    xp = xpoly(Q)
+    θ = frac(xpoly(T.Ts[1]))
+    for c in rational_roots(D1)
+        lin = UPoly{Q}(Q[-c, 1])
+        iszero(rem(D1, lin * lin)) && continue           # not a simple pole
+        K = a * c + b
+        iszero(K) && continue                            # log(a s)/s: elementary
+        ρ = peval(r.num, c) / peval(deriv(D1), c)
+        iszero(ρ) && continue
+        rs = frac(UPoly{Q}(Q[ρ]), lin)
+        simple = simple + rs
+        push!(terms, DilogTerm(ρ, a, b, c, liftto(T, rs, 1) * θ))
+    end
+    isempty(terms) && return nothing
+    P = typeof(p)
+    (P(eltype(p.c)[p.c[1], r - simple]), terms)
+end
+
+function dilog_term(b::Builder, q::DilogTerm)
+    st = poly_term(b, UPoly{Q}(Q[-q.c, 1]))            # s = x - c
+    K = q.a * q.c + q.b
+    li(z) = try
+        mk(b, :li2, z)
+    catch e
+        e isa MethodError || rethrow()
+        # not elementary (decided); its dilogarithm form cannot be built in this package
+        throw(NotElementary("the integral is a dilogarithm, and the symbolic package has no method for " *
+                            "PolyLog.li2 to express it"))
+    end
+    if K > 0
+        L = li(mk(b, :*, cterm(b, -q.a / K), st))
+        core = isone(K) ? mk(b, :*, b.lift(-1), L) :           # log K · ½ log(s²) - Li₂(-a s/K)
+               mk(b, :+, mk(b, :*, cterm(b, Q(1) // 2), mk(b, :log, cterm(b, K)), mk(b, :log, mk(b, :^, st, b.lift(2)))),
+                  mk(b, :*, b.lift(-1), L))
+    else
+        as = isone(q.a) ? st : mk(b, :*, cterm(b, q.a), st)
+        core = mk(b, :+, mk(b, :*, cterm(b, Q(1) // 2), mk(b, :^, mk(b, :log, as), b.lift(2))),
+                  li(mk(b, :/, cterm(b, -K), as)))
+    end
+    isone(q.ρ) ? core : mk(b, :*, cterm(b, q.ρ), core)
+end

@@ -1,8 +1,8 @@
 using Test
 import SimpleExpressions
 import SymEngine
-include("Risch.jl")
-using .Risch
+using RischIntegrate
+import RischIntegrate as Risch
 
 # Step 5, first half: ℚ(√d) as a constant field, and change of constant field in towers.
 # None of this is used by `risch_integrate` yet; these tests exercise it directly.

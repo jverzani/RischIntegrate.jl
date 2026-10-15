@@ -2,8 +2,8 @@ using Test
 import SimpleExpressions
 import SymEngine
 import SpecialFunctions
-include("Risch.jl")
-using .Risch
+using RischIntegrate
+import RischIntegrate as Risch
 
 fd(f, a; h = 1e-6) = (f(a + h) - f(a - h)) / (2h)
 

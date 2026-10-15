@@ -1,7 +1,7 @@
 # Refactor plan: a general constant field under the Risch tower
 
-Read this file, then `Risch.jl` (≈3167 lines; its module docstring has the stage roadmap).
-Attach to the new session: `Risch.jl`, this file, and the five test files `test_risch.jl`,
+Read this file, then the sources in `src/` (`RischIntegrate.jl` includes them in order; `core.jl`
+starts with the stage roadmap). Attach to the new session: this file, the five test files `test_risch.jl`,
 `test_tower.jl`, `test_integrate.jl`, `test_trig.jl`, `test_constants.jl`. (`RISCH_STATUS.md` was lost; its essentials —
 ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a finished, separate project.)
 
@@ -814,6 +814,21 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   Not done (also outside substitutions): arguments in θ, e.g. log(exp(√x) - 2), log(log x) for
   1/(x log x); their signs depend on the transcendental, not decided. Apostol unchanged (155).
   Tests: test_integrate.jl "real log arguments at tower levels (step TL)".
+* **FS: the source split into files** (2026-10-15, done, tests green). `src/Risch.jl` (module
+  `Risch`, 7327 lines) is gone: its code was moved, unchanged, into 36 files in `src/` that
+  `src/RischIntegrate.jl` includes in dependency order (types and constants before their uses):
+  core, polynomials, fractions, factoring, number_fields, hermite_reduction, rothstein_trager,
+  log_to_atan, quartic_residues, term_input, term_output, tower, constant_fields,
+  structure_theorems, tower_terms, rde_base, risch_de, parametric_rde, monomial_integration,
+  dilogarithms, exp_trig_polynomials, special_functions, real_form, radicals, euler_substitutions,
+  rootsum, tower_real_forms, tower_rootsums, rootsum_numerics, bioche, sturm, inverse_trig,
+  u_substitution, risch_integrate, real_log_arguments; precompile.jl last. The module docstring
+  (stage roadmap) is a comment at the top of core.jl; the `using` lines are in RischIntegrate.jl;
+  `RischIntegrate` exports only `integrate` (the old `Risch` exports are reached qualified).
+  Checked: the sorted non-blank lines of the new files equal those of the old module body.
+  Tests: `test/Risch.jl` (symlink) is gone; each test file does `using RischIntegrate` and
+  `import RischIntegrate as Risch` (all `Risch.x` calls unchanged); RischIntegrate is dev'd into
+  test/Project.toml (`[sources]`). Apostol unchanged (155; test_apostol.jl alone: 155).
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -1040,12 +1055,13 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > I'm continuing a Julia project at `/Users/jverzani/julia/RischIntegrate`, branch `claude`: an
 > implementation of the Risch integration algorithm (Bronstein) that works on any symbolic term type
 > implementing TermInterface (`iscall`, `operation`, `arguments`), tested with SimpleExpressions.jl and
-> SymEngine.jl; it also loads SpecialFunctions.jl. The single source is `src/Risch.jl`
-> (`test/Risch.jl` is a symlink to it). Run tests from `test/` with `julia --project=. test_X.jl` for
+> SymEngine.jl; it also loads SpecialFunctions.jl. The package is `RischIntegrate`: the sources are
+> the files in `src/`, included in order by `src/RischIntegrate.jl` (step FS); the tests use
+> `import RischIntegrate as Risch`. Run tests from `test/` with `julia --project=. test_X.jl` for
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP, RL, EL, EC, TL (2026-10-15).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR, RP, RL, EL, EC, TL, FS (2026-10-15).
 >
 > Next steps (open items): Symbolics.jl support (Num unwrap/rewrap, symbolic constants such as
 > sqrt(2): WR entry); precompile workloads in package extensions (PC entry, deferred).
