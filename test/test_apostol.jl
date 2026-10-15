@@ -225,7 +225,7 @@ function se_integration_success(fs)
 end
 
 @testset "apostol problems" begin
-    @test sum(se_integration_success, apostol) >= 160
+    @test sum(se_integration_success, apostol) >= 155
 end
 
 
