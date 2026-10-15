@@ -728,6 +728,26 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   check refusals, plus compiling the new code; the Apostol set 49 → 59 s).
   Tests: test_integrate.jl "u-substitution (step US)"; the nested-radical refusal is now
   √(x + √(x + 1)) (√(1 + √x) integrates by u = √x).
+* **WR: Symbolics.jl check; opaque leaves, rational leaves, a Hermite bug** (2026-10-15, done, tests
+  green). Ran the Apostol set with Symbolics.jl variables (scratch script, not a testset):
+  - Symbolics' `Num` wrapper has `iscall == false`, so the whole integrand was a leaf, taken as a
+    parameter: ∫ f dx = f·x, "verified" (f is a constant to the tower). All 175 "succeeded", wrong.
+    Guard (`check_leaf`, `check_leaves` at the entry of `risch_integrate` and in the parameter branch
+    of `parse_tower`): a leaf other than x whose printed form mentions x as a token
+    (`mentions_var`) raises RischNotImplemented. Not in `sym_const` (US uses it for such subterms).
+  - Hermite reduction (`hermite_reduce`) bug: the new numerator is C + U B'/j with U = D/V^(j+1)
+    (Bronstein: A ← C − U B'/(1−j)); the code had C + B'/j. Wrong only when B' ≠ 0 (deg V ≥ 2) and
+    U ≠ 1, e.g. 1/((x-1)(x²+1)²), 1/((x²+1)(x²+2)²): these raised the self-check RischError.
+    Also used for tower levels (δ), so fixed there too.
+  - `leaf_rational` reads Symbolics' numeric leaves "(1//3)" (one pair of parentheses stripped,
+    `//` accepted); before, they became parameters, so e.g. the asin route (AS) refused 1/3 + 2x/3.
+  With `Symbolics.unwrap` on input: 166/175 integrate, all numerically correct (SimpleExpressions:
+  154; Symbolics has Ei). Open: 20 of those answers contain floats or approximated rationals
+  (e.g. √2/8 ↦ 38613965//218433572): the default `lift` is `identity` for Symbolics, so sqrt(2) is
+  evaluated by Julia. Needs a Symbolics-specific build/lift (unevaluated sqrt(2)) and Num
+  unwrap/rewrap, i.e. a package extension.
+  Tests: test_risch.jl "Hermite reduction: repeated factor of degree ≥ 2 with other factors",
+  "opaque leaves and rational leaves (step WR)".
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -959,10 +979,11 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US (2026-10-15).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US, WR (2026-10-15).
 >
-> Next steps (open items): precompile workloads in package extensions for SimpleExpressions /
-> SymEngine (PC entry, deferred); radicands like U³ after a substitution (US entry).
+> Next steps (open items): Symbolics.jl support (Num unwrap/rewrap, symbolic constants such as
+> sqrt(2): WR entry); precompile workloads in package extensions (PC entry, deferred); radicands
+> like U³ after a substitution (US entry).
 >
 > Ground rules: one plan step at a time; every result self-verified exactly by differentiation;
 > `NotElementary` only when the theory decides the case, otherwise `RischNotImplemented`; never

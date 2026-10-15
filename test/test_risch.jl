@@ -45,6 +45,38 @@ end
     @test !isempty(res.unresolved)
 end
 
+# step WR: Hermite reduction with a repeated factor V of degree ≥ 2 next to other factors (the new
+# numerator is C + U B'/j, U = D/V^(j+1)); before the fix these failed the self-check
+@testset "Hermite reduction: repeated factor of degree ≥ 2 with other factors" begin
+    for f in (rf(poly(1), poly(1, 0, 1) * poly(2, 0, 1)^2),                 # 1/((x²+1)(x²+2)²)
+              rf(poly(1), poly(-1, 1) * poly(1, 0, 1)^2),                   # 1/((x-1)(x²+1)²)
+              rf(poly(0, 0, -9//2), poly(1//4, 0, -3//4, 0, 0, 0, 1)),      # (x²+1)(x²-1/2)²
+              rf(poly(1, 0, 0, 1), poly(-1, 1) * poly(1, 1, 1)^3))          # (x-1)(x²+x+1)³
+        g, Qp, R, D = Risch.hermite_reduce(Risch.dx, f.num, f.den)
+        @test Risch.dx(g) + rf(Qp, poly(1)) + rf(R, D) == f
+        res = Risch.integrate_rational(f)
+        @test isempty(res.unresolved) && Risch.derivative_of(res) == f
+    end
+end
+
+# step WR: a leaf that prints with the variable in it (a wrapper type such as Symbolics' Num, for
+# which `iscall` is false) is refused, not taken as a parameter (∫ f dx = f·x); numeric leaves
+# printed as (p//q) are numbers
+struct WrLeaf
+    s::String
+end
+Base.show(io::IO, w::WrLeaf) = print(io, w.s)
+@testset "opaque leaves and rational leaves (step WR)" begin
+    xs = let; SimpleExpressions.@symbolic x; x; end
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(WrLeaf("1 / (1 + x)"), xs)
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(WrLeaf("exp(x)*x"), xs)
+    @test !Risch.mentions_var("x1 + max(y, 2)", "x")
+    @test Risch.mentions_var("sin(x)^2", "x")
+    @test Risch.leaf_rational(WrLeaf("(1//3)")) == Q(1, 3)
+    @test Risch.leaf_rational(WrLeaf("-2//5")) == Q(-2, 5)
+    @test Risch.leaf_rational(WrLeaf("(a)")) === nothing
+end
+
 @testset "RootSum: residues of degree > 2, verified in the exact field" begin
     for f in (rf(poly(1), poly(2, 0, 0, 0, 1)),                       # 1/(x⁴+2): needs 2^(1/4)
               rf(poly(1), poly(1, 1, 0, 1)),                          # 1/(x³+x+1)

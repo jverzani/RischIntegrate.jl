@@ -628,7 +628,7 @@ function hermite_reduce(δ, A::P, D::P) where {P<:UPoly}
             B = rem(s * R, V)
             Cq = quo(R - B * Dstar * dV, V)
             g = g + frac(-B, j * V^j)
-            R = Cq + divint(δ(B), j)
+            R = Cq + Dstar * divint(δ(B), j)              # A ← C + U B'/j (U = D*)
             D = quo(D, V)
         end
     end
@@ -1145,7 +1145,8 @@ function leaf_rational(t)
         v isa Real && return leaf_rational(v)
     end
     s = string(t)
-    m = match(r"^(-?\d+)(?:/(\d+))?$", s)
+    (startswith(s, "(") && endswith(s, ")")) && (s = s[nextind(s, 1):prevind(s, lastindex(s))])
+    m = match(r"^(-?\d+)(?:/{1,2}(\d+))?$", s)          # 3, -1/2, and Symbolics' (1//3)
     if m !== nothing
         n = parse(BigInt, m.captures[1])
         d = m.captures[2] === nothing ? big(1) : parse(BigInt, m.captures[2])
@@ -2246,8 +2247,22 @@ function parse_tower(t, T::Tower)
     r !== nothing && return lq(T, r, 0)
     # step SY: any other symbol is a parameter, a new indeterminate of the constant field
     # ℚ(…, a) (answers hold for generic values of a)
+    check_leaf(t, T.xk)
     sym_const(T, t)
 end
+
+# step WR: a leaf that prints with the variable in it is an expression the TermInterface methods do
+# not open (e.g. a Symbolics `Num` wrapper: `iscall` is false). As a parameter it would give
+# ∫ f dx = f·x, "verified" since f would be a constant; refuse it instead.
+mentions_var(s::String, xk::String) = occursin(Regex("(*UCP)(?<!\\w)\\Q" * xk * "\\E(?!\\w)"), s)
+function check_leaf(t, xk::String)
+    s = string(t)
+    (s != xk && mentions_var(s, xk)) && throw(RischNotImplemented(
+        "the leaf $s mentions $xk but is not a term the TermInterface methods open " *
+        "(iscall is false; a wrapper type such as Symbolics' Num must be unwrapped first)"))
+    nothing
+end
+check_leaves(t, xk::String) = isnode(t) ? foreach(a -> check_leaves(a, xk), arguments(t)) : check_leaf(t, xk)
 
 # the term t as an indeterminate of the constant field (a parameter, step SY; an opaque
 # subterm, step US); a new one restarts the parse over the larger field
@@ -6902,6 +6917,7 @@ end
 # Public API
 # ---------------------------------------------------------------------------
 function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    check_leaves(f, string(x))                                         # step WR
     try
         integrate_direct(f, x; build = build, lift = lift, verify = verify)
     catch e
