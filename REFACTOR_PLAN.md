@@ -689,8 +689,10 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   test_tower 31 → 16 s, test_risch 61 → 43 s, test_trig 73 → 58 s; test_apostol.jl 98 → 50 s and
   149/175 with `MAX_PARAMS` raised from 2 to 4 (the four-parameter (c sin x + d cos x)/(a sin x +
   b cos x), which did not finish in minutes, now takes ~4–8 s).
-  Remaining ideas (not done): a fraction-free representation. (Reusing the tower across `bioche`, TB
-  and the general route was tried and reverted, see PC.)
+  A fraction-free representation was considered and dropped (2026-10-15): once compiled, all 175
+  Apostol integrals take 1.0 s together (53.6 s cold), the slowest 0.4 s; the cost is compilation,
+  not arithmetic. (Reusing the tower across `bioche`, TB and the general route was tried and
+  reverted, see PC.)
   Tests: test_integrate.jl SY tests: three parameters integrate, five are refused.
 * **PC: precompile workload** (2026-10-15, done, tests green). Tried first: building the tower once and
   sharing it (and the general-route integral) between `bioche`, its TB check and `risch_integrate`.
@@ -706,6 +708,26 @@ ground rules, lessons learned — are kept in §0 and §4 here. `Gruntz.jl` is a
   1/(a² sin²x + b² cos²x) 9.1 → 3.1 s; load 0.1 → 0.4 s; package precompilation 1 → 27 s. The
   remaining ~2 s is code specialized on the term type (parsing, building), which a workload in a
   package extension per term package (weak dependency) could cover.
+* **US: u-substitution (derivative-divides)** (2026-10-15, done, tests green). When the direct routes
+  throw RischNotImplemented or NotElementary, each subterm u of f (outermost first; not x, not of
+  degree ≤ 1 in x) is tried: q = f/u' (u' by the chain rule on terms, `term_deriv`; integer powers
+  as p b^(p-1) b', radicals as p b^p b'/b so the radical itself reappears) is parsed into a tower
+  over x with the parse hook `usub_hook`: u, and every subterm whose x occurs only inside u, become
+  opaque constants (`:sym` generators, via `sym_const` factored out of `parse_tower`); for
+  u = v^e also v = U^(1/e), v^(ke) = U^k; for u = x^k also x^(mk) = U^m. If q is a constant
+  there, f = G(u)·u' exactly (formally independent constants: the identity survives putting the
+  functions of u back). G is printed with u ↦ x, integrated in x (verified there; at most two
+  nested substitutions, `USUB_DEPTH`) and the answer printed with x ↦ u (as in AS). A RootSum
+  after the substitution is not mapped back (the candidate fails). If no candidate works, the
+  original exception is rethrown. `risch_integrate` is now this wrapper around `integrate_direct`.
+  E.g. cos 2x √(4 - sin 2x), x⁵/√(1 - x⁶), x/(√(1+x²)√(1+√(1+x²))), √(1+3cos²x) sin 2x,
+  log x/(x√(1+log x)), √(1+√x), x/(1+x⁴), and x e^(x²)/(1+x²) = Ei(1+x²)/(2e).
+  Apostol set 149 → 154 (9, 14, 20, 55, 66; 163 reaches Ei, which SimpleExpressions cannot build);
+  still failing: sin x/√(cos³x) (G = -1/√(U³): radicand U³ not supported), #19 (elliptic).
+  Cost: failing integrals try every candidate (test_integrate 63 → ~70–80 s, mostly in testsets that
+  check refusals, plus compiling the new code; the Apostol set 49 → 59 s).
+  Tests: test_integrate.jl "u-substitution (step US)"; the nested-radical refusal is now
+  √(x + √(x + 1)) (√(1 + √x) integrates by u = √x).
 * Out of scope (separate projects): RootSum for residues of degree > 2; the algebraic Risch algorithm
   (Trager / Bronstein vol. II: integral bases, places, divisors) for general algebraic integrands.
 
@@ -937,10 +959,10 @@ the interface above, `flat`'s output vectors, `solve_relation` (ℚ-linear relat
 > the five files `test_risch`, `test_tower`, `test_integrate`, `test_trig`, `test_constants`; all must
 > pass after every step. Please read `REFACTOR_PLAN.md` first: the ground rules (section 0), the
 > lessons learned (section 4) and the Progress entries — the most recent are RootSum, R1, R2, R3, T,
-> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC (2026-10-15).
+> RT, RF, RC, RN, TC, TS, TR, RE, SP, TE, TT, LR, SD, ST, TH, TB, TF, TA, AS, AC, SY, DL, NR, IT, NT, PF (all 2026-10-14), PC, US (2026-10-15).
 >
-> Next steps (open items): fraction-free arithmetic (PF entry); precompile workloads in package
-> extensions for SimpleExpressions / SymEngine (PC entry).
+> Next steps (open items): precompile workloads in package extensions for SimpleExpressions /
+> SymEngine (PC entry, deferred); radicands like U³ after a substitution (US entry).
 >
 > Ground rules: one plan step at a time; every result self-verified exactly by differentiation;
 > `NotElementary` only when the theory decides the case, otherwise `RischNotImplemented`; never

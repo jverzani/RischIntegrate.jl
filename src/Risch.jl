@@ -2246,6 +2246,12 @@ function parse_tower(t, T::Tower)
     r !== nothing && return lq(T, r, 0)
     # step SY: any other symbol is a parameter, a new indeterminate of the constant field
     # ℚ(…, a) (answers hold for generic values of a)
+    sym_const(T, t)
+end
+
+# the term t as an indeterminate of the constant field (a parameter, step SY; an opaque
+# subterm, step US); a new one restarts the parse over the larger field
+function sym_const(T::Tower, t)
     g = ConstGen(:sym, Q(0), t)
     j = findfirst(==(g), T.consts)
     if j === nothing
@@ -6734,9 +6740,179 @@ function tidy_terms(bd::Builder, t, xk::String)
 end
 
 # ---------------------------------------------------------------------------
+# Step US: u-substitution (derivative-divides), tried when the direct routes fail
+#
+# For a subterm u of f: if f = G(u)·u' with G free of x, then ∫ f dx = (∫ G(U) dU) at U = u.
+# The test is exact: q = f/u' (u' by the chain rule on terms) is parsed into a tower over x in
+# which u, and every subterm whose x occurs only inside u, is an opaque constant (a `:sym`
+# generator, step SY); q must be a constant there. Sound because the opaque constants are formally
+# independent: an identity between the formal expressions stays true when the actual functions
+# (of u only) are put back. For u = v^e (a radical) also v = U^(1/e) and v^(ke) = U^k, for
+# u = x^k also x^(mk) = U^m. G is the constant printed with u ↦ x (the variable x stands for U,
+# as in `integrate_arcsin`), integrated in x (verified there), and the answer printed with x ↦ u.
+# ---------------------------------------------------------------------------
+const USUB_DEPTH = Ref(0)       # nesting of substitutions (at most 2)
+
+isnode(t) = safe_iscall(t) && !isempty(arguments(t))
+depends_on(t, xk::String) = isnode(t) ? any(a -> depends_on(a, xk), arguments(t)) : string(t) == xk
+
+# the derivative of the term t in x by the chain rule, `nothing` if t is free of x
+function term_deriv(bd::Builder, t, xk::String)
+    depends_on(t, xk) || return nothing
+    isnode(t) || return bd.lift(1)
+    n, a = opname(operation(t)), arguments(t)
+    d = Any[term_deriv(bd, s, xk) for s in a]
+    neg(v) = mk(bd, :*, bd.lift(-1), v)
+    mul(vs...) = length(vs) == 1 ? vs[1] : mk(bd, :*, vs...)
+    if n === :+
+        ds = Any[v for v in d if v !== nothing]
+        return length(ds) == 1 ? ds[1] : mk(bd, :+, ds...)
+    elseif n === :- && length(a) == 1
+        return neg(d[1])
+    elseif n === :- && length(a) == 2
+        d[2] === nothing && return d[1]
+        return d[1] === nothing ? neg(d[2]) : mk(bd, :+, d[1], neg(d[2]))
+    elseif n === :*
+        ts = Any[mul(Any[j == i ? d[i] : a[j] for j in eachindex(a)]...) for i in eachindex(a) if d[i] !== nothing]
+        return length(ts) == 1 ? ts[1] : mk(bd, :+, ts...)
+    elseif n === :/ && length(a) == 2
+        d[2] === nothing && return mk(bd, :/, d[1], a[2])
+        r = neg(mk(bd, :/, mul(a[1], d[2]), mk(bd, :^, a[2], bd.lift(2))))
+        return d[1] === nothing ? r : mk(bd, :+, mk(bd, :/, d[1], a[2]), r)
+    elseif n === :^ && length(a) == 2
+        if d[2] === nothing
+            p = leaf_rational(a[2])
+            if p !== nothing && isone(denominator(p))           # (b^p)' = p b^(p-1) b'
+                pm = mk(bd, :^, a[1], bd.lift(numerator(p) - 1))
+                return mul(a[2], numerator(p) == 2 ? mul(a[1], d[1]) : mul(pm, d[1]))
+            end
+            return mul(a[2], t, mk(bd, :/, d[1], a[1]))        # radicals: p b^p b'/b (keeps the radical)
+        elseif is_e_const(a[1])
+            return mul(t, d[2])
+        end
+    elseif length(a) == 1
+        n === :sqrt && return mk(bd, :/, mul(t, d[1]), mul(bd.lift(2), a[1]))
+        n === :cbrt && return mk(bd, :/, mul(t, d[1]), mul(bd.lift(3), a[1]))
+        n === :exp && return mul(t, d[1])
+        n === :log && return mk(bd, :/, d[1], a[1])
+        n === :sin && return mul(mk(bd, :cos, a[1]), d[1])
+        n === :cos && return neg(mul(mk(bd, :sin, a[1]), d[1]))
+        n === :tan && return mul(mk(bd, :+, bd.lift(1), mk(bd, :^, t, bd.lift(2))), d[1])
+        n === :atan && return mk(bd, :/, d[1], mk(bd, :+, bd.lift(1), mk(bd, :^, a[1], bd.lift(2))))
+    end
+    throw(RischNotImplemented("no derivative rule for `$n` (u-substitution)"))
+end
+
+# the substitution u as a parse hook: `upow(t)` is k when the term t is U^k
+function usub_hook(u, xk::String)
+    us = string(u)
+    rp = radical_parts(u)                                   # u = v^e
+    vs, e0 = rp === nothing ? (nothing, Q(0)) : (string(rp[2]), rp[1])
+    kx = nothing                                            # u = x^k
+    if isnode(u) && opname(operation(u)) === :^ && string(arguments(u)[1]) == xk
+        k = leaf_rational(arguments(u)[2])
+        (k !== nothing && isone(denominator(k)) && k > 1) && (kx = Int(numerator(k)))
+    end
+    intk(r) = isone(denominator(r)) ? Int(numerator(r)) : nothing
+    function upow(t)
+        s = string(t)
+        isnode(t) || return s == vs ? intk(inv(e0)) : nothing       # u = x^e: x = U^(1/e)
+        s == us && return 1
+        if vs !== nothing
+            s == vs && return intk(inv(e0))
+            r = radical_parts(t)
+            (r !== nothing && string(r[2]) == vs) && return intk(r[1] / e0)
+        end
+        if kx !== nothing && opname(operation(t)) === :^ && string(arguments(t)[1]) == xk
+            m = leaf_rational(arguments(t)[2])
+            (m !== nothing && isone(denominator(m))) && return intk(Q(m) / kx)
+        end
+        nothing
+    end
+    only_in_u(t) = upow(t) !== nothing || (isnode(t) ? all(only_in_u, arguments(t)) : string(t) != xk)
+    function hook(t, T)
+        k = upow(t)
+        k === nothing || return sym_const(T, u)^k
+        (isnode(t) && depends_on(t, xk) && only_in_u(t)) || return nothing
+        sym_const(T, t)                                     # a function of u only: opaque
+    end
+    hook, upow
+end
+
+# subterms of f to try as u (outermost first): not x, not f, not of degree ≤ 1 in x
+function usub_candidates(f, xk::String)
+    out, seen = Any[], Set{String}()
+    function walk(t)
+        isnode(t) || return
+        s = string(t)
+        if !(s in seen) && depends_on(t, xk)
+            push!(seen, s)
+            e = radicand_element(t, xk)
+            (e === nothing || !isone(e.den) || degree(e.num) > 1) && push!(out, t)
+        end
+        foreach(walk, arguments(t))
+    end
+    foreach(walk, isnode(f) ? arguments(f) : Any[])
+    out
+end
+
+function integrate_usub(f, x, u, bd::Builder; build, lift, verify::Bool)
+    xk = string(x)
+    du = term_deriv(bd, u, xk)
+    hook, upow = usub_hook(u, xk)
+    T, el = build_tower(mk(bd, :/, f, du), xk; subst = hook)
+    (levelof(T, el) == 0 && isone(el.den) && degree(el.num) == 0) || return nothing
+    c = el.num.c[1]
+    if is_complex_field(ctype(T))
+        c = to_real(c)
+        c === nothing && return nothing
+    end
+    pw(k) = k == 1 ? bd.x : mk(bd, :^, bd.x, bd.lift(k))
+    to_x(t) = (k = upow(t); k !== nothing ? pw(k) : isnode(t) ? term_rebuild(bd, t, Any[to_x(s) for s in arguments(t)]) : t)
+    G = to_x(cterm(Builder(bd.build, bd.lift, bd.x, T.consts), c))
+    H = risch_integrate(G, x; build = build, lift = lift, verify = verify)
+    H isa IntegralWithRootSums && return nothing
+    back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? u : t)
+    back(H)
+end
+
+# the first substitution that works, or nothing
+function try_usub(f, x; build, lift, verify::Bool)
+    USUB_DEPTH[] < 2 || return nothing
+    xk = string(x)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    USUB_DEPTH[] += 1
+    try
+        for u in usub_candidates(f, xk)
+            r = try
+                integrate_usub(f, x, u, bd; build = build, lift = lift, verify = verify)
+            catch e
+                (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+                nothing
+            end
+            r === nothing || return r
+        end
+    finally
+        USUB_DEPTH[] -= 1
+    end
+    nothing
+end
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    try
+        integrate_direct(f, x; build = build, lift = lift, verify = verify)
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        r = try_usub(f, x; build = build, lift = lift, verify = verify)    # step US
+        r === nothing && throw(e)
+        r
+    end
+end
+
+function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = true)
     xk = string(x)
     # step IT: a factor free of x containing other symbols comes out, ∫ c g dx = c ∫ g dx (keeps the
     # parameter out of the constant field, and lets an iterated integral see c(y)·RootSum(x))

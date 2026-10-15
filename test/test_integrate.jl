@@ -244,7 +244,7 @@ function run_tests(x, evalat, name)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) + sqrt(x + 1) + sqrt(x + 2), x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / sqrt(x^3 + 1), x)  # elliptic
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(log(x)), x)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(1 + sqrt(x)), x)  # nested
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x + sqrt(x + 1)), x)  # nested
     end
 
     @testset "$name: square roots of quadratics: Euler substitutions (step 10b)" begin
@@ -508,6 +508,30 @@ function run_tests(x, evalat, name)
         @test count("asec", string(Risch.risch_integrate(x * asec(x), x))) == 1      # collected
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(acot(x) + atan(x), x)   # needs π/2
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(asec(x) + acsc(x), x)
+    end
+
+    @testset "$name: u-substitution (step US)" begin
+        fs = (cos(2x) * sqrt(4 - sin(2x)),                # u = sin 2x
+              x^5 / sqrt(1 - x^6),                        # u = x⁶
+              x / (sqrt(1 + x^2) * sqrt(1 + sqrt(1 + x^2))),   # u = √(1 + x²)
+              sqrt(1 + 3cos(x)^2) * sin(2x),              # u = cos²x
+              log(x) / (x * sqrt(1 + log(x))),            # u = log x
+              sqrt(1 + sqrt(x)),                          # u = √x (x = u²)
+              exp(sqrt(x)) / sqrt(x),
+              sin(x) * cos(x)^5 / (1 + cos(x)^6),
+              x / (1 + x^4))
+        for f in fs
+            F = Risch.risch_integrate(f, x)
+            for a in (0.5, 0.7, 0.9)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        if ti_special_ok(x)                               # Ei(1 + x²)/(2e)
+            f = x * exp(x^2) / (1 + x^2)
+            F = Risch.risch_integrate(f, x)
+            @test all(a -> antiderivative_ok(F, f, a, evalat), (0.5, 0.9))
+        end
+        @test_throws Risch.NotElementary Risch.risch_integrate(exp(x^2) / (1 + x^2), x)  # no u fits
     end
 
     @testset "$name: awaiting later stages" begin
