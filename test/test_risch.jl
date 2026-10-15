@@ -299,6 +299,16 @@ function run_tests(x, evalat, name)
             end
             @test isapprox(F(3.0) - F(1.1), re_simpson(t -> evalat(f, t), 1.1, 3.0); atol = 1e-8)
         end
+        # nested-radical real forms at tower levels (step NT): log, exp and log(log) levels
+        nt_simpson(g, a, b; n = 1000) = (h = (b - a) / n;
+            h / 3 * (g(a) + g(b) + sum((isodd(k) ? 4 : 2) * g(a + k * h) for k in 1:(n - 1))))
+        for (f, a, b) in ((1/(x*(log(x)^5 + 1)), 1.1, 6.0), (exp(x)/(exp(5x) + 1), -2.0, 2.0),
+                          (log(x)/(x*(log(x)^5 + 1)), 1.1, 6.0))
+            F = Risch.risch_integrate(f, x)
+            @test !(F isa Risch.IntegralWithRootSums) && occursin("sqrt(", string(F))
+            @test maximum(abs.(diff([evalat(F, t) for t in a:0.05:b]))) < 0.1
+            @test isapprox(evalat(F, b) - evalat(F, a), nt_simpson(t -> evalat(f, t), a, b); atol = 1e-8)
+        end
         # RootSums inside towers (step RT): at a log or exp level, nested, and base-level ones in a
         # tower; exp levels with Tr(α) ≠ 0 need the correction -Tr(α)·deg W·u
         for f in (1/(x*(log(x)^4 + 2)), 1/(x*(log(x)^3 + log(x) + 1)), (log(x)^2)/(x*(log(x)^3 + log(x) + 1)^2),

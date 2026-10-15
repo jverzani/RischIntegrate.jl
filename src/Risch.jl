@@ -4125,6 +4125,11 @@ function to_term(b::Builder, T::Tower, res::ElemIntegral)
                 l = mk(b, :atan, tower_to_term(b, q.T2, p))
                 push!(ts, isone(c) ? l : mk(b, :*, cterm(b, c), l))
             end
+            for (c, w, p) in q.natans                   # c √w atan(√w p)  (step NT)
+                r = mk(b, :sqrt, cterm(b, w))
+                l = mk(b, :atan, mk(b, :*, r, tower_to_term(b, q.T2, p)))
+                push!(ts, isone(c) ? mk(b, :*, r, l) : mk(b, :*, cterm(b, c), r, l))
+            end
         elseif q.e == 1                              # residues ±i: c·atan(u), no sqrt(1)
             l = mk(b, :atan, tower_to_term(b, T, q.u))
             push!(ts, isone(q.c) ? l : mk(b, :*, cterm(b, q.c), l))
@@ -5584,6 +5589,7 @@ struct TowerRealForm
     T2::Any
     logs::Vector{Any}        # (c ∈ ℚ(√d), w ∈ T2 at level i)
     atans::Vector{Any}       # (c ∈ ℚ(√d), p ∈ T2 at level i, a polynomial in θ)
+    natans::Vector{Any}      # (c, w ∈ ℚ(√d), p ∈ T2 at level i): c √w atan(√w p)  (step NT)
     corr::Q
     deriv::Any               # ∈ Kᵢ of T
 end
@@ -5593,11 +5599,21 @@ function tower_quartic_real(T::Tower, i::Int, A::UPoly, Dn::UPoly, dD::UPoly, q:
         S = QS{d}
         B3 = QSB{d,QI}
         pairs = Tuple{S,S}[]
+        nested = Tuple{S,S}[]                                   # (u, w = v²), v ∉ ℚ(√d) (step NT)
         for qk in (q1, quo(toQS(S, monic(q)), q1))
             u = -qk.c[2] / cfromQ(S, Q(2))
-            v = qs_sqrt(qk.c[1] - u * u)
-            (v === nothing || iszero(v)) && break
-            push!(pairs, (u, v))
+            w = qk.c[1] - u * u
+            v = qs_sqrt(w)
+            if v === nothing
+                real_sign(w) > 0 && push!(nested, (u, w))
+                continue
+            end
+            iszero(v) || push!(pairs, (u, v))
+        end
+        if length(nested) == 2
+            rf = tower_quartic_nested(T, i, A, Dn, dD, S, nested)
+            rf === nothing || return rf
+            continue
         end
         length(pairs) == 2 || continue
         T2 = change_constants(T, S, c -> cfromQ(S, c))
@@ -5646,9 +5662,57 @@ function tower_quartic_real(T::Tower, i::Int, A::UPoly, Dn::UPoly, dD::UPoly, q:
             tot = tot + lconst(T2, c, i) * D(T2, i, p) / (one(p) + p * p)
         end
         down(c) = iszero(c.b) ? c.a : throw(RischError("real form at a tower level: derivative not over ℚ"))
-        return TowerRealForm(T2, logs, atans, down(corr), change_constants(T2, T, tot, down))
+        return TowerRealForm(T2, logs, atans, Any[], down(corr), change_constants(T2, T, tot, down))
     end
     nothing
+end
+
+# Step NT: NR at a tower level. A conjugate pair u ± i√w (u, w ∈ ℚ(√d), √w ∉ ℚ(√d)): over T2 (the
+# tower over ℚ(√d)) W = gcd(D, A − (u + y) δD), y² = −w, by `d5_gcd` with modulus z² + w; W = U + y V′,
+# pair = u log(U² + w V′²) + Σ 2√w atan(√w pⱼ) (`log_to_atan_sqrt(U, V′, w)`, pⱼ ∈ K₂[θ]); the
+# derivative (c w p′/(1 + w p²) for the atans) is computed in T2 and read back into T.
+function tower_quartic_nested(T::Tower, i::Int, A::UPoly, Dn::UPoly, dD::UPoly, ::Type{S}, nested) where {S}
+    φ(c) = cfromQ(S, c)
+    T2 = change_constants(T, S, φ)
+    K2 = T2.Ts[i]
+    P2 = UPoly{K2}
+    up(p) = P2(K2[map_constants(T, T2, c, φ, i - 1) for c in p.c])
+    As, Ds, dDs = up(A), up(Dn), up(dD)
+    n = max(length(As.c), length(dDs.c))
+    co(p, k) = k <= length(p.c) ? p.c[k] : zero(eltype(p.c))
+    logs, natans = Any[], Any[]
+    corr = zero(S)
+    for (u, w) in nested
+        uK, wK = lconst(T2, u, i - 1), lconst(T2, w, i - 1)
+        m = P2(K2[wK, zero(K2), one(K2)])                       # z² + w
+        a = P2[P2(K2[c]) for c in Ds.c]
+        b = P2[P2(K2[co(As, k) - uK * co(dDs, k), -co(dDs, k)]) for k in 1:n]
+        outs = d5_gcd(m, a, b)
+        length(outs) == 1 || return nothing
+        Wv = outs[1][2]
+        length(Wv) >= 2 || return nothing
+        U = P2(K2[co(c, 1) for c in Wv])
+        V = P2(K2[co(c, 2) for c in Wv])
+        if !iszero(u)
+            ww = U * U + scale(wK, V * V)
+            push!(logs, (u, frac(ww)))
+            corr = corr + degree(ww) * u
+        end
+        if !iszero(U) && !iszero(V)
+            for p in log_to_atan_sqrt(U, V, wK)
+                push!(natans, (cfromQ(S, Q(2)), w, frac(p)))
+            end
+        end
+    end
+    tot = zero(T2.Ts[i + 1])
+    for (c, ww) in logs
+        tot = tot + lconst(T2, c, i) * (D(T2, i, ww) / ww)
+    end
+    for (c, w, p) in natans
+        tot = tot + lconst(T2, c * w, i) * D(T2, i, p) / (one(p) + lconst(T2, w, i) * p * p)
+    end
+    down(c) = iszero(c.b) ? c.a : throw(RischError("nested real form at a tower level: not over ℚ"))
+    TowerRealForm(T2, logs, Any[], natans, down(corr), change_constants(T2, T, tot, down))
 end
 
 # --- RootSums inside towers (step RT) ---------------------------------------------
