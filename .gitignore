@@ -3,3 +3,4 @@ notes.md
 .idea/
 /docs/build/
 /docs/Manifest*.toml
+/test/Manifest*.toml
