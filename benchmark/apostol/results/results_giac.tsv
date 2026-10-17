@@ -1,0 +1,355 @@
+L	4.801460027694702	1
+V	Giac	0.14.3
+V	RischIntegrate	1.0.0-DEV
+S	1	1.792229908853206e9
+R	1	solved	verified	2.5092039108276367	1/3*sqrt(1+2*x)*(1+2*x)
+S	2	1.792229912304815e9
+R	2	solved	verified	0.04760479927062988	-2/27*sqrt(1+3*x)*(1+3*x)+2/45*sqrt(1+3*x)*(1+3*x)^2
+S	3	1.792229912357388e9
+R	3	solved	verified	0.026983976364135742	2/3*sqrt(1+x)*(1+x)-4/5*sqrt(1+x)*(1+x)^2+2/7*sqrt(1+x)*(1+x)^3
+S	4	1.792229912420734e9
+R	4	solved	verified	0.01343083381652832	-4/9*sqrt(2-3*x)+2/27*sqrt(2-3*x)*(2-3*x)
+S	5	1.792229912438939e9
+R	5	solved	verified	0.1370248794555664	-1/4/(4+8*x+8*x^2+4*x^3+x^4)
+S	6	1.792229912590841e9
+R	6	solved	verified	0.04158186912536621	-3/4*cos(x)+1/12*cos(3*x)
+S	7	1.792229912661964e9
+R	7	solved	verified	0.02975010871887207	3/4*(-1+z)^(1/3)*(-1+z)+3/7*(-1+z)^(1/3)*(-1+z)^2
+S	8	1.792229912712167e9
+R	8	solved	verified	1.495826005935669	(-4+4*cos(2*x))/(6-8*cos(2*x)+2*cos(4*x))
+S	9	1.792229914212912e9
+R	9	solved	verified	1.6724660396575928	-1/3*sqrt(4-sin(2*x))*(4-sin(2*x))
+S	10	1.792229915886689e9
+R	10	solved	verified	0.04714798927307129	1/(3+cos(x))
+S	11	1.792229915935019e9
+R	11	solved	verified	1.2580249309539795	2/sqrt(cos(x))
+S	12	1.792229917194614e9
+R	12	solved	verified	0.8725080490112305	-2*cos(sqrt(1+x))
+S	13	1.792229918068457e9
+R	13	solved	verified	3.579308032989502	-1/n*cos(x*exp((-1+n)*ln(x)))
+S	14	1.79222992165362e9
+R	14	solved	verified	1.003316879272461	-1/3*sqrt(1-x^6)
+S	15	1.79222992267592e9
+R	15	solved	verified	0.005375862121582031	-4/5*(1+t)^(1/4)*(1+t)+4/9*(1+t)^(1/4)*(1+t)^2
+S	16	1.7922299226825e9
+R	16	solved	verified	0.17976689338684082	-2/(1+(sqrt(1+x^2)+x)^2)
+S	17	1.792229922868476e9
+R	17	solved	verified	0.13857603073120117	1/40*((27+8*x^3)^(1/3))^2*(27+8*x^3)
+S	18	1.792229923008862e9
+R	18	solved	verified	0.22946381568908691	3/2*((sin(x)-cos(x))^(1/3))^2
+S	19	1.792229923247753e9
+R	19	error	none	0.4613149166107178	RischNotImplemented: radical of a non-rational expression (1+x^2+sqrt(1+x^2)*(1+x^2)): only radicals of rational functions of x are supported
+S	20	1.792229923720866e9
+R	20	solved	verified	0.14908599853515625	2*sqrt(1+sqrt(1+x^2))
+S	21	1.79222992387153e9
+R	21	error	none	0.14397096633911133	RischNotImplemented: radicals of 1+x^2-2*x: supported are u^(p/q) with u = (ax+b)/(cx+d), and √ of a quadratic polynomial; this needs the algebraic Risch algorithm or is not elementary in general
+S	22	1.792229924016501e9
+R	22	solved	verified	0.004167079925537109	-x*cos(x)+sin(x)
+S	23	1.792229924021907e9
+R	23	solved	verified	0.005154132843017578	(2-x^2)*cos(x)+2*x*sin(x)
+S	24	1.792229924028213e9
+R	24	solved	verified	0.005021810531616211	(-6+3*x^2)*cos(x)+(-6*x+x^3)*sin(x)
+S	25	1.792229924034713e9
+R	25	solved	verified	0.005376100540161133	(6*x-x^3)*cos(x)+(-6+3*x^2)*sin(x)
+S	26	1.792229924041256e9
+R	26	solved	verified	0.004354953765869141	-1/4*cos(2*x)
+S	27	1.792229924046694e9
+R	27	solved	verified	0.0045549869537353516	-1/4*x*cos(2*x)+1/8*sin(2*x)
+S	28	1.792229924054861e9
+R	28	solved	verified	0.00820779800415039	1/2*x-1/4*sin(2*x)
+S	29	1.792229924064157e9
+R	29	solved	verified	0.0031991004943847656	-3/4*cos(x)+1/12*cos(3*x)
+S	30	1.79222992406844e9
+R	30	solved	verified	0.006240129470825195	3/8*x-1/4*sin(2*x)+1/32*sin(4*x)
+S	31	1.792229924085291e9
+R	31	solved	verified	0.004937171936035156	-5/8*cos(x)+5/48*cos(3*x)-1/80*cos(5*x)
+S	32	1.792229924091859e9
+R	32	solved	verified	0.022436141967773438	5/16*x-15/64*sin(2*x)+3/64*sin(4*x)-1/192*sin(6*x)
+S	33	1.792229924115552e9
+R	33	solved	verified	0.0060291290283203125	1/4*x^2-1/8*cos(2*x)-1/4*x*sin(2*x)
+S	34	1.792229924122765e9
+R	34	solved	verified	0.005517005920410156	-3/4*x*cos(x)+3/4*sin(x)+1/12*x*cos(3*x)-1/36*sin(3*x)
+S	35	1.792229924129503e9
+R	35	solved	verified	0.025514841079711914	1/6*x^3-1/4*x*cos(2*x)+(1/8-1/4*x^2)*sin(2*x)
+S	36	1.792229924156264e9
+R	36	solved	verified	0.00350189208984375	1/2*x+1/4*sin(2*x)
+S	37	1.792229924160875e9
+R	37	solved	verified	0.008931159973144531	3/4*sin(x)+1/12*sin(3*x)
+S	38	1.792229924171056e9
+R	38	solved	verified	0.003531932830810547	3/8*x+1/4*sin(2*x)+1/32*sin(4*x)
+S	39	1.792229924175726e9
+R	39	error	none	0.21748113632202148	RischNotImplemented: radical of a non-rational expression (a^2-x^2): only radicals of rational functions of x are supported
+S	40	1.792229924394184e9
+R	40	solved	verified	0.034780025482177734	(625/32-3125/96*(sqrt(5+x^2)+x)^2+625/16*(sqrt(5+x^2)+x)^4+125/16*(sqrt(5+x^2)+x)^6-25/96*(sqrt(5+x^2)+x)^8+1/160*(sqrt(5+x^2)+x)^10)/(sqrt(5+x^2)+x)^5
+S	41	1.79222992443078e9
+R	41	error	none	0.10092496871948242	RischNotImplemented: radicals of 4+t^3: supported are u^(p/q) with u = (ax+b)/(cx+d), and √ of a quadratic polynomial; this needs the algebraic Risch algorithm or is not elementary in general
+S	42	1.792229924532673e9
+R	42	solved	verified	0.010215997695922852	(-2*x-2*x*cos(2*x)+2*sin(2*x))/(2+2*cos(2*x))
+S	43	1.792229924571651e9
+R	43	solved	verified	0.06807112693786621	(20*x+30*x*cos(2*x)-8*sin(2*x)+12*x*cos(4*x)-8*sin(4*x)+2*x*cos(6*x)-8/3*sin(6*x))/(20+30*cos(2*x)+12*cos(4*x)+2*cos(6*x))
+S	44	1.792229924641029e9
+R	44	solved	verified	0.016158103942871094	(-2*x+2*x*cos(2*x)-2*sin(2*x))/(2-2*cos(2*x))
+S	45	1.792229924660455e9
+R	45	solved	verified	0.032798051834106445	(20*x-30*x*cos(2*x)+8*sin(2*x)+12*x*cos(4*x)-8*sin(4*x)-2*x*cos(6*x)+8/3*sin(6*x))/(20-30*cos(2*x)+12*cos(4*x)-2*cos(6*x))
+S	46	1.792229924694496e9
+R	46	solved	verified	0.008588075637817383	(-2/5-3/5*x)*cos(5*x)+3/25*sin(5*x)
+S	47	1.792229924704443e9
+R	47	solved	verified	0.02888202667236328	(1/24+1/8*(sqrt(1+x^2)+x)^2+1/8*(sqrt(1+x^2)+x)^4+1/24*(sqrt(1+x^2)+x)^6)/(sqrt(1+x^2)+x)^3
+S	48	1.792229924734924e9
+R	48	solved	verified	0.03331112861633301	-1/2*x^2+9/4*x^4-6*x^6+21/2*x^8-63/5*x^10+21/2*x^12-6*x^14+9/4*x^16-1/2*x^18+1/20*x^20
+S	49	1.792229924778115e9
+R	49	solved	verified	0.032827138900756836	(-1/81-1/108*x)/(49/36+7/3*x+x^2)
+S	50	1.7922299248123e9
+R	50	solved	verified	0.028474092483520508	1/5*x^5+1/2*x^10+2/3*x^15+1/2*x^20+1/5*x^25+1/30*x^30
+S	51	1.792229924842101e9
+R	51	solved	verified	0.04758596420288086	1/5*x^5-10/3*x^6+190/7*x^7-285/2*x^8+1615/3*x^9-7752/5*x^10+38760/11*x^11-6460*x^12+9690*x^13-83980/7*x^14+184756/15*x^15-20995/2*x^16+7410*x^17-12920/3*x^18+2040*x^19-3876/5*x^20+1615/7*x^21-570/11*x^22+190/23*x^23-5/6*x^24+1/25*x^25
+S	52	1.7922299249e9
+R	52	solved	verified	0.02756810188293457	cos(1/x)
+S	53	1.792229924944793e9
+R	53	solved	verified	0.007421970367431641	(24*(-1+x)^(1/4)-4*((-1+x)^(1/4))^3)*cos((-1+x)^(1/4))+(-24+12*sqrt(-1+x))*sin((-1+x)^(1/4))
+S	54	1.792229924953864e9
+R	54	solved	verified	0.013273000717163086	-1/8*cos(2*x^2)
+S	55	1.792229924968357e9
+R	55	solved	verified	0.18776607513427734	-2/9*sqrt(1+3*cos(x)^2)*(1+3*cos(x)^2)
+S	56	1.792229925157457e9
+R	56	solved	verified	0.005467891693115234	1/3*ln(2/3+x)
+S	57	1.792229925164412e9
+R	57	solved	verified	0.8370828628540039	2*x-2*x*ln(x)+x*ln(x)^2
+S	58	1.792229926007057e9
+R	58	solved	verified	0.0035660266876220703	-1/4*x^2+1/2*x^2*ln(x)
+S	59	1.792229926011902e9
+R	59	solved	verified	0.005117893218994141	1/4*x^2-1/2*x^2*ln(x)+1/2*x^2*ln(x)^2
+S	60	1.792229926018383e9
+R	60	solved	verified	0.004518985748291016	ln(1+t)
+S	61	1.792229926023964e9
+R	61	solved	verified	0.139481782913208	1/2*ln(2-2*cos(2*x))
+S	62	1.792229926164628e9
+R	62	error	none	1.9669380187988281	RischNotImplemented: log of the constant RischIntegrate.Frac{RischIntegrate.UPoly{RischIntegrate.Frac{RischIntegrate.UPoly{Rational{BigInt}}}}}(RischIntegrate.UPoly{RischIntegrate.Frac{RischIntegrate.UPoly{Rational{BigInt}}}}(RischIntegrate.Frac{RischIntegrate.UPoly{Rational{BigInt}}}[RischIntegrate.Frac{RischIntegrate.UPoly{Rational{BigInt}}}(RischIntegrate.UPoly{Rational{BigInt}}(Rational{BigInt
+S	63	1.792229928132488e9
+R	63	solved	verified	0.007816076278686523	2/27*x^3-2/9*x^3*ln(x)+1/3*x^3*ln(x)^2
+S	64	1.792229928141856e9
+R	64	solved	verified	0.004565000534057617	ln(ln(x))
+S	65	1.792229928147777e9
+R	65	solved	verified	0.015289068222045898	-1/2*ln(1-t)^2
+S	66	1.79222992816425e9
+R	66	solved	verified	0.035301923751831055	-2*sqrt(1+ln(x))+2/3*sqrt(1+ln(x))*(1+ln(x))
+S	67	1.792229928200955e9
+R	67	solved	verified	0.006072998046875	-3/128*x^4+3/32*x^4*ln(x)-3/16*x^4*ln(x)^2+1/4*x^4*ln(x)^3
+S	68	1.792229928208235e9
+R	68	solved	verified	0.37070298194885254	1/3*exp(x^3)
+S	69	1.792229928584991e9
+R	69	solved	verified	2.5092380046844482	2/ln(2)*exp(ln(2)*sqrt(x))
+S	70	1.792229931101037e9
+R	70	solved	verified	1.4762659072875977	1/2*exp(2*sin(x))
+S	71	1.792229932578515e9
+R	71	solved	verified	0.0227658748626709	-1/2*exp(x)*cos(x)+1/2*exp(x)*sin(x)
+S	72	1.792229932602714e9
+R	72	solved	verified	0.005121946334838867	1/2*exp(x)*cos(x)+1/2*exp(x)*sin(x)
+S	73	1.792229932608984e9
+R	73	solved	verified	0.006951093673706055	x-ln(1+exp(x))
+S	74	1.792229932617256e9
+R	74	solved	verified	0.00521087646484375	(-1+x)*exp(x)
+S	75	1.792229932623645e9
+R	75	solved	verified	0.0059659481048583984	(-1-x)*exp(-x)
+S	76	1.792229932631087e9
+R	76	solved	verified	0.0051229000091552734	(2-2*x+x^2)*exp(x)
+S	77	1.79222993263744e9
+R	77	solved	verified	0.009487152099609375	(-1/4-1/2*x-1/2*x^2)*exp(-2*x)
+S	78	1.79222993264826e9
+R	78	solved	verified	0.03580498695373535	(-2+2*sqrt(x))*exp(sqrt(x))
+S	79	1.792229932685206e9
+R	79	solved	verified	0.008542060852050781	(-1/2-1/2*x^2)*exp(-x^2)
+S	80	1.792229932694968e9
+R	80	solved	verified	2.563681125640869	a/(a^2+b^2)*exp(a*x)*cos(b*x)+b/(a^2+b^2)*exp(a*x)*sin(b*x)
+S	81	1.792229935259973e9
+R	81	solved	verified	0.023529052734375	-b/(a^2+b^2)*exp(a*x)*cos(b*x)+a/(a^2+b^2)*exp(a*x)*sin(b*x)
+S	82	1.792229935284746e9
+R	82	solved	verified	0.06629204750061035	x*atan(1/x)+1/2*ln(1+x^2)
+S	83	1.792229935355205e9
+R	83	error	none	0.005374908447265625	RischNotImplemented: asin/acos of 1/x: only linear arguments a x + b are supported
+S	84	1.792229935363264e9
+R	84	error	none	0.0026471614837646484	RischNotImplemented: asin/acos of 1/x: only linear arguments a x + b are supported
+S	85	1.792229935368537e9
+R	85	solved	verified	0.5315539836883545	-2*x+x*asin(x)^2+2*asin(x)*sqrt(1-x^2)
+S	86	1.792229935927755e9
+R	86	solved	verified	0.1478109359741211	-1/x*asin(x)-1/2*ln(2+2*sqrt(1-x^2))+1/2*ln(2-2*sqrt(1-x^2))
+S	87	1.792229936076894e9
+R	87	error	none	0.13940119743347168	RischNotImplemented: radical of a non-rational expression (a^2-x^2): only radicals of rational functions of x are supported
+S	88	1.792229936217532e9
+R	88	solved	verified	0.020210981369018555	-2*atan((sqrt(1-2*x-x^2)-1)/x)
+S	89	1.792229936239231e9
+R	89	solved	verified	0.05592703819274902	1/a*atan(1/a*x)
+S	90	1.792229936296399e9
+R	90	solved	unverified	1.1072850227355957	RootSum(α -> α*log((x) + (2*a)*α), α^2 + (1/4/a/b) = 0)
+S	91	1.792229938837896e9
+R	91	solved	verified	0.16189312934875488	2/7*sqrt(7)*atan(sqrt(7)*(-1/7+2/7*x))
+S	92	1.792229939001149e9
+R	92	solved	verified	0.0076029300689697266	-1/2*x+1/2*x^2*atan(x)+1/2*atan(x)
+S	93	1.792229939014155e9
+R	93	solved	verified	0.11054611206054688	1/3*x^3*acos(x)+(-2/9-1/9*x^2)*sqrt(1-x^2)
+S	94	1.792229939153747e9
+R	94	solved	verified	0.012066125869750977	-x*atan(x)+(1/2+1/2*x^2)*atan(x)^2+1/2*ln(1+x^2)
+S	95	1.792229939167509e9
+R	95	solved	verified	0.00539708137512207	-sqrt(x)+x*atan(sqrt(x))+atan(sqrt(x))
+S	96	1.79222993917425e9
+R	96	solved	verified	0.03374314308166504	atan(sqrt(x))^2
+S	97	1.792229939209347e9
+R	97	solved	verified	0.1157689094543457	1/2*asin(x)+1/2*x*sqrt(1-x^2)
+S	98	1.79222993932636e9
+R	98	solved	verified	1.2296278476715088	(-sqrt(1+x^2)-x-1/2+1/2*(sqrt(1+x^2)+x)^2)/(1+(sqrt(1+x^2)+x)^2)*exp(atan((-1/2+1/2*(sqrt(1+x^2)+x)^2)/(sqrt(1+x^2)+x)))
+S	99	1.792229940557626e9
+R	99	solved	verified	0.03651094436645508	(sqrt(1+x^2)+x-1/2+1/2*(sqrt(1+x^2)+x)^2)/(1+(sqrt(1+x^2)+x)^2)*exp(atan((-1/2+1/2*(sqrt(1+x^2)+x)^2)/(sqrt(1+x^2)+x)))
+S	100	1.792229940595626e9
+R	100	solved	verified	0.010894060134887695	-1/2*x/(1+x^2)+1/2*atan(x)
+S	101	1.792229940608173e9
+R	101	solved	verified	0.5563499927520752	atan(exp(x))
+S	102	1.792229941165973e9
+R	102	solved	verified	0.2404308319091797	-x-1/exp(x)*atan(1/exp(x))+1/2*ln(1+exp(x)^2)
+S	103	1.792229941408023e9
+R	103	error	none	0.061215877532958984	RischNotImplemented: radical of a non-rational expression ((a+x)/(a-x)): only radicals of rational functions of x are supported
+S	104	1.792229941470109e9
+R	104	error	none	0.07167601585388184	RischNotImplemented: radical of a non-rational expression ((x-a)*(b-x)): only radicals of rational functions of x are supported
+S	105	1.79222994154266e9
+R	105	error	none	0.49595093727111816	RischNotImplemented: radical of a non-rational expression ((x-a)*(b-x)): only radicals of rational functions of x are supported
+S	106	1.792229942039542e9
+R	106	solved	verified	0.012331008911132812	3*ln(3+x)+2*ln(-1+x)
+S	107	1.792229942053331e9
+R	107	solved	verified	0.012735843658447266	1/4*ln(3+x)+7/4*ln(-1+x)
+S	108	1.792229942067572e9
+R	108	solved	verified	0.016087055206298828	2*x+1/2*x^2+ln(1+x)+9*ln(-3+x)
+S	109	1.792229942085174e9
+R	109	solved	verified	0.019582033157348633	2*ln(-1+x)+1/2*ln(x)-1/2*ln(2+x)
+S	110	1.792229942109763e9
+R	110	solved	verified	0.02991008758544922	1/(1+x)+3/2*ln(-1+x)-1/2*ln(1+x)
+S	111	1.792229942141513e9
+R	111	solved	verified	0.017724990844726562	ln(-1+x)+ln(1+x+x^2)+4/3*sqrt(3)*atan(sqrt(3)*(1/3+2/3*x))
+S	112	1.792229942160869e9
+R	112	solved	verified	0.026694059371948242	1/2/(2+x^2)+1/3*ln(-1+x)+1/3*ln(2+x^2)-1/6*sqrt(2)*atan(sqrt(2)/2*x)
+S	113	1.792229942196311e9
+R	113	solved	verified	0.570080041885376	1/4*sqrt(2)*ln(2-sqrt(2)*cos(x)+sqrt(2)*sin(x))-1/4*sqrt(2)*ln(2+sqrt(2)*cos(x)-sqrt(2)*sin(x))
+S	114	1.792229942767649e9
+R	114	solved	verified	0.12274312973022461	-1/2*ln(5-x^2+2*sqrt(4-x^2))
+S	115	1.79222994289178e9
+R	115	solved	verified	0.011476993560791016	ln(-10+3*x+x^2)
+S	116	1.792229942904629e9
+R	116	solved	verified	0.010402917861938477	2*ln(2+x)-3/2*ln(3+x)-1/2*ln(1+x)
+S	117	1.792229942916534e9
+R	117	solved	verified	0.016344070434570312	-1/3/(-1+x)+2/9*ln(-1+x)-2/9*ln(2+x)
+S	118	1.79222994293434e9
+R	118	solved	verified	0.018066883087158203	-x+1/2*x^2+3*ln(x)-ln(-1+x)+ln(2+x)
+S	119	1.792229942953986e9
+R	119	solved	verified	0.018389225006103516	3/2*x/(1/4+x+x^2)+ln(1+x)
+S	120	1.792229942973752e9
+R	120	solved	verified	0.012171030044555664	ln(1+x+x^2)+2*ln(-1+x)
+S	121	1.792229942987422e9
+R	121	solved	verified	0.015311956405639648	x-8/3*atan(1/2*x)+1/3*atan(x)
+S	122	1.792229943004163e9
+R	122	solved	verified	0.017065048217773438	2*ln(x)-ln(1+x)
+S	123	1.792229943022556e9
+R	123	solved	verified	0.008604049682617188	1/2/(1+x^2)+ln(x)-1/2*ln(1+x^2)
+S	124	1.792229943032458e9
+R	124	solved	verified	0.01299905776977539	(17+25/2*x+9/4*x^2)/(18+21*x+8*x^2+x^3)+2*ln(2+x)-17/8*ln(3+x)+1/8*ln(1+x)
+S	125	1.79222994304682e9
+R	125	solved	verified	0.007258892059326172	1/(1+x)+ln(1+x)
+S	126	1.792229943055427e9
+R	126	solved	verified	0.0063588619232177734	-ln(x)+1/2*ln(-1+x^2)
+S	127	1.792229943063208e9
+R	127	solved	verified	0.009169816970825195	x-9/5*ln(3+x)+4/5*ln(-2+x)
+S	128	1.792229943073843e9
+R	128	solved	verified	0.01752781867980957	-4/(-2+x)+ln(-2+x)
+S	129	1.792229943092937e9
+R	129	solved	verified	0.016640901565551758	-1/(-2+x)+atan(2-x)
+S	130	1.792229943111005e9
+R	130	solved	verified	0.014478921890258789	-5/2*ln(2+x)+4*ln(1+x)-3/2*ln(x)
+S	131	1.7922299431268e9
+R	131	solved	verified	0.007564067840576172	-1/2*x/(-1+x^2)-1/4*ln(-1+x)+1/4*ln(1+x)
+S	132	1.792229943135808e9
+R	132	solved	verified	0.009172916412353516	-1/3*ln(1+x+x^2)+2/3*ln(-1+x)
+S	133	1.792229943146635e9
+R	133	solved	verified	0.02717900276184082	1/(1+x^2)+ln(x)
+S	134	1.792229943175348e9
+R	134	solved	verified	0.009872913360595703	(1/4+1/4*x)/x^2-1/8*ln(x)+1/8*ln(-2+x)
+S	135	1.792229943186706e9
+R	135	solved	verified	0.013975143432617188	-x+ln(x)-1/2*ln(1+x^2)+atan(x)
+S	136	1.792229943202066e9
+R	136	solved	verified	0.005387067794799805	-1/4*ln(1+x)+1/4*ln(-1+x)-1/2*atan(x)
+S	137	1.792229943208878e9
+R	137	solved	verified	0.40952587127685547	1/8*sqrt(2)*ln(1+sqrt(2)*x+x^2)-1/8*sqrt(2)*ln(1-sqrt(2)*x+x^2)+1/4*sqrt(2)*atan(1+sqrt(2)*x)+1/4*sqrt(2)*atan(-1+sqrt(2)*x)
+S	138	1.79222994361966e9
+R	138	solved	verified	0.012042999267578125	1/(2+2*x+x^2)+atan(1+x)
+S	139	1.792229943633001e9
+R	139	solved	verified	0.014781951904296875	-x/(1+x+x^5)
+S	140	1.792229943649037e9
+R	140	solved	verified	2.2741191387176514	-1/10*sqrt(5)*atan((2+4/5*sqrt(5)+sin(x))/(-1-2/5*sqrt(5)+cos(x)))+1/10*sqrt(5)*x+1/10*sqrt(5)*atan(((2-4/5*sqrt(5))*cos(x)+(1-2/5*sqrt(5))*sin(x))/(1+(-1+2/5*sqrt(5))*cos(x)+(2-4/5*sqrt(5))*sin(x)))
+S	141	1.792229945928294e9
+R	141	error	none	0.33396005630493164	RischNotImplemented: the residues are algebraic constants of degree ≥ 2 over the constant field RischIntegrate.Frac{RischIntegrate.UPoly{RischIntegrate.QI}} (RootSum inside towers is implemented over ℚ and ℚ(i) only)
+S	142	1.792229946263189e9
+R	142	solved	verified	2.0714550018310547	1/6*sqrt(3)*ln(2+cos(x)+sqrt(3)*sin(x))-1/6*sqrt(3)*ln(2+cos(x)-sqrt(3)*sin(x))
+S	143	1.79222994833602e9
+R	143	solved	verified	0.49747490882873535	-4/3*sqrt(3)*atan(sin(x)/(2+sqrt(3)+cos(x)))+2/3*sqrt(3)*x
+S	144	1.792229948840427e9
+R	144	solved	verified	0.12653112411499023	x-1/2*sqrt(2)*x-1/2*sqrt(2)*atan((3-2*sqrt(2))*sin(2*x)/(1+(-3+2*sqrt(2))*cos(2*x)))
+S	145	1.792229948969354e9
+R	145	solved	verified	0.6433761119842529	-1/2/a/b*atan(((4*a+4*b)/(-a+b)*sin(2*x)+2*sin(4*x))/((6*a^2+4*a*b+6*b^2)/(a^2-2*a*b+b^2)+(8*a+8*b)/(-a+b)*cos(2*x)+2*cos(4*x)))+1/2/a/b*atan(((-4*a+4*b)/(a+b)*sin(2*x)+2*sin(4*x))/((6*a^2-4*a*b+6*b^2)/(a^2+2*a*b+b^2)+(-8*a+8*b)/(a+b)*cos(2*x)+2*cos(4*x)))
+S	146	1.792229949619627e9
+R	146	solved	verified	0.06176495552062988	(-4*a*b/(a^4+2*a^2*b^2+b^4)*cos(2*x)+(-2*a^2+2*b^2)/(a^4+2*a^2*b^2+b^4)*sin(2*x))/(2+(-2*a^2+2*b^2)/(a^2+b^2)*cos(2*x)+4*a*b/(a^2+b^2)*sin(2*x))
+S	147	1.792229949683262e9
+R	147	solved	verified	0.021780967712402344	1/2*x-1/2*ln(2+2*sin(x))
+S	148	1.792229949706814e9
+R	148	solved	verified	1.960806131362915	(-3*(sqrt(3-x^2)-sqrt(3))/x+3*((sqrt(3-x^2)-sqrt(3))/x)^3)/(1+2*(sqrt(3-x^2)-sqrt(3))^2*(1/x)^2+(sqrt(3-x^2)-sqrt(3))^4*(1/x)^4)-3*atan((sqrt(3-x^2)-sqrt(3))/x)
+S	149	1.792229951669902e9
+R	149	solved	verified	0.036715030670166016	-2*sqrt(3)/(1+(sqrt(3-x^2)-sqrt(3))^2*(1/x)^2)
+S	150	1.792229951708184e9
+R	150	solved	verified	0.33513808250427246	2*sqrt(3)/(1+(sqrt(3-x^2)-sqrt(3))^2*(1/x)^2)+1/2*sqrt(3)*ln((sqrt(3-x^2)-sqrt(3))^2*(1/x)^2)
+S	151	1.792229952046345e9
+R	151	solved	verified	0.012673139572143555	(-1/8+1/4*(sqrt(x^2+x)+x)+1/2*(sqrt(x^2+x)+x)^2)/(sqrt(x^2+x)+x+1/2)+1/4*ln((sqrt(x^2+x)+x+1/2)^2)
+S	152	1.792229952060839e9
+R	152	solved	verified	0.007333993911743164	(-25/8+1/8*(sqrt(5+x^2)+x)^4)/(sqrt(5+x^2)+x)^2+5/2*ln(sqrt(5+x^2)+x)
+S	153	1.792229952069545e9
+R	153	solved	verified	0.012253999710083008	(3/8+1/4*(sqrt(1+x^2+x)+x)+1/2*(sqrt(1+x^2+x)+x)^2)/(sqrt(1+x^2+x)+x+1/2)-1/2*ln(sqrt(1+x^2+x)+x+1/2)
+S	154	1.792229952083356e9
+R	154	solved	verified	0.011703968048095703	1/2*ln((sqrt(x^2+x)+x+1/2)^2)
+S	155	1.792229952096641e9
+R	155	solved	verified	0.5489110946655273	-asin(1/3+2/3*x)-1/x*sqrt(2-x-x^2)+1/8*sqrt(2)*ln(16/9-4/9*x+8/9*sqrt(2)*sqrt(2-x-x^2))-1/8*sqrt(2)*ln(16/9-4/9*x-8/9*sqrt(2)*sqrt(2-x-x^2))
+S	156	1.792229952647188e9
+R	156	error	none	0.13434386253356934	MethodError: no method matching li2(::GiacExpr) The function `li2` exists, but no method is defined for this combination of argument types. Closest candidates are: li2(!Matched::Missing) @ PolyLog ~/.julia/packages/PolyLog/HSSia/src/Missing.jl:2 li2(!Matched::Complex) @ PolyLog ~/.julia/packages/PolyLog/HSSia/src/Li2.jl:234 li2(!Matched::Real) @ PolyLog ~/.julia/packages/PolyLog/HSSia/src/Li2.jl:2
+S	157	1.792229952973999e9
+R	157	solved	verified	0.0021419525146484375	sin(x)
+S	158	1.792229952977397e9
+R	158	error	none	0.5717940330505371	MethodError: no method matching expinti(::GiacExpr) The function `expinti` exists, but no method is defined for this combination of argument types. Closest candidates are: expinti(!Matched::Float64) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:564 expinti(!Matched::Float32) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:605 expinti(!Matched::
+S	159	1.792229953551147e9
+R	159	error	none	1.168074131011963	MethodError: no method matching expinti(::GiacExpr) The function `expinti` exists, but no method is defined for this combination of argument types. Closest candidates are: expinti(!Matched::Float64) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:564 expinti(!Matched::Float32) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:605 expinti(!Matched::
+S	160	1.792229954721399e9
+R	160	error	none	0.04609799385070801	MethodError: no method matching expinti(::GiacExpr) The function `expinti` exists, but no method is defined for this combination of argument types. Closest candidates are: expinti(!Matched::Float64) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:564 expinti(!Matched::Float32) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:605 expinti(!Matched::
+S	161	1.792229954770341e9
+R	161	error	none	0.004503965377807617	MethodError: no method matching expinti(::GiacExpr) The function `expinti` exists, but no method is defined for this combination of argument types. Closest candidates are: expinti(!Matched::Float64) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:564 expinti(!Matched::Float32) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:605 expinti(!Matched::
+S	162	1.792229954776655e9
+R	162	error	none	0.0289459228515625	MethodError: no method matching expinti(::GiacExpr) The function `expinti` exists, but no method is defined for this combination of argument types. Closest candidates are: expinti(!Matched::Float64) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:564 expinti(!Matched::Float32) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:605 expinti(!Matched::
+S	163	1.792229954807445e9
+R	163	error	none	0.06387901306152344	MethodError: no method matching expinti(::GiacExpr) The function `expinti` exists, but no method is defined for this combination of argument types. Closest candidates are: expinti(!Matched::Float64) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:564 expinti(!Matched::Float32) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:605 expinti(!Matched::
+S	164	1.792229954873442e9
+R	164	error	none	0.010450124740600586	MethodError: no method matching expinti(::GiacExpr) The function `expinti` exists, but no method is defined for this combination of argument types. Closest candidates are: expinti(!Matched::Float64) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:564 expinti(!Matched::Float32) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:605 expinti(!Matched::
+S	165	1.792229954885859e9
+R	165	error	none	0.016834020614624023	MethodError: no method matching expinti(::GiacExpr) The function `expinti` exists, but no method is defined for this combination of argument types. Closest candidates are: expinti(!Matched::Float64) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:564 expinti(!Matched::Float32) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:605 expinti(!Matched::
+S	166	1.792229954904663e9
+R	166	solved	verified	0.0056209564208984375	(-1-t)/exp(t)
+S	167	1.792229954911465e9
+R	167	solved	verified	0.006780147552490234	(-2-2*t-t^2)/exp(t)
+S	168	1.792229954919514e9
+R	168	solved	verified	0.0063631534576416016	(-6-6*t-3*t^2-t^3)/exp(t)
+S	169	1.792229954927072e9
+R	169	solved	verified	4.234592914581299	(c*a+d*b)/(a^2+b^2)*x+(1/2*d*a-1/2*c*b)/(a^2+b^2)*ln(2+(-2*a^2+2*b^2)/(a^2+b^2)*cos(2*x)+4*a*b/(a^2+b^2)*sin(2*x))
+S	170	1.792229959163278e9
+R	170	error	none	0.004119873046875	MethodError: no method matching expinti(::GiacExpr) The function `expinti` exists, but no method is defined for this combination of argument types. Closest candidates are: expinti(!Matched::Float64) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:564 expinti(!Matched::Float32) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:605 expinti(!Matched::
+S	171	1.792229959169225e9
+R	171	error	none	0.0056231021881103516	MethodError: no method matching expinti(::GiacExpr) The function `expinti` exists, but no method is defined for this combination of argument types. Closest candidates are: expinti(!Matched::Float64) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:564 expinti(!Matched::Float32) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:605 expinti(!Matched::
+S	172	1.792229959176608e9
+R	172	error	none	6.837537050247192	NotElementary: no elementary antiderivative: the Risch differential equation y' + -1·u'·y = a has no solution in the coefficient field, so the coefficient of exp(u)^-1 has no elementary integral
+S	173	1.792229966062713e9
+R	173	error	none	0.010457992553710938	MethodError: no method matching expinti(::GiacExpr) The function `expinti` exists, but no method is defined for this combination of argument types. Closest candidates are: expinti(!Matched::Float64) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:564 expinti(!Matched::Float32) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:605 expinti(!Matched::
+S	174	1.792229966075222e9
+R	174	error	none	0.016451120376586914	MethodError: no method matching expinti(::GiacExpr) The function `expinti` exists, but no method is defined for this combination of argument types. Closest candidates are: expinti(!Matched::Float64) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:564 expinti(!Matched::Float32) @ SpecialFunctions ~/.julia/packages/SpecialFunctions/EJiJa/src/expint.jl:605 expinti(!Matched::
+S	175	1.792229966093743e9
+R	175	error	none	0.10444116592407227	RischNotImplemented: radicals of 1+t^3: supported are u^(p/q) with u = (ax+b)/(cx+d), and √ of a quadratic polynomial; this needs the algebraic Risch algorithm or is not elementary in general
+D
+T	63.94713807106018	120.0

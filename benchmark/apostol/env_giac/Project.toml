@@ -1,0 +1,7 @@
+# Giac.jl: RischIntegrate on Giac terms, and Giac's own integrate
+[deps]
+Giac = "e4421f97-9838-4fd0-9fa5-94f11373bf78"
+RischIntegrate = "c180fd1b-065d-41df-ac4d-d8d9562c1957"
+
+[sources]
+RischIntegrate = {path = "../../.."}
