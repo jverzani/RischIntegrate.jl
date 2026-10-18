@@ -11,6 +11,16 @@ the last section.
   `integrate_radical` (one polynomial radicand, squarefree, degree ≥ 3, index 2, no constant
   radicals). Test set "Hermite reduction on y² = a, genus ≥ 1 (SI2 phase 1)" in
   `test_integrate.jl`. `1/√(x³+1)` and `√(x⁶+1)` now raise `NotElementary`.
+  Fix (with phase 2): the residue at ∞± is the x⁻¹ coefficient of P/y (Laurent series of 1/y,
+  `hyp_res_inf`), not just the x^{m−1} coefficient of P.
+* Phase 2, residues at infinity only: done, tests green (2026-10-18).
+  * `hyp_pell`: the polynomial Pell equation by the continued fraction of √a; the unit is made primitive.
+  * `hyp_dlog_unit`: du/u is checked exactly, then λ = res(P)/res(du/u).
+  * Genus 1 is decided: ∞₊ − ∞₋ is a ℚ-point of an elliptic curve, so by Mazur its order is ≤ 12. No
+    unit with deg p ≤ 12 means `NotElementary`.
+  * Genus ≥ 2: search up to deg p ≤ 60, else `RischNotImplemented`.
+  * Not yet: lc(a) not a square (∞ is a place of degree 2). Finite residues: next.
+  * Trager's ∫x/√(x⁴+10x²−96x−71) gives his degree-8 unit.
 
 ## Where we start
 

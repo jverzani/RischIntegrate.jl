@@ -279,8 +279,27 @@ function run_tests(x, evalat, name)
                   x * sqrt(x^3 + 1)^3, 1 / sqrt(x^4 + 1), x^2 / sqrt(x^4 + 1))
             @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
         end
-        # residues: the log part on the curve (phase 2)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(x / sqrt(x^4 + 1), x)
+    end
+
+    @testset "$name: residues at infinity, polynomial Pell equation (SI2 phase 2)" begin
+        fs = (x / sqrt(x^4 + 1),                                # log(x² + √(x⁴+1))/2
+              x * sqrt(x^4 + 1),                                # with an algebraic part
+              (2x + 1) / sqrt(x^4 + 2x^3 + x^2 + 1),            # log(x² + x + √…)
+              x^2 / sqrt(x^6 + 1),                              # genus 2
+              (6x^5 + 2x) / sqrt((x^6 + x^2)^2 - 4),            # genus 5
+              x / sqrt(x^4 + 10x^2 - 96x - 71))                 # Trager: a unit of degree 8
+        for f in fs
+            F = Risch.risch_integrate(f, x)
+            for a in (6.0, 7.5, 9.0)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        # genus 1: ∞₊ - ∞₋ of infinite order (Mazur's bound)
+        for f in (x^2 / sqrt(x^4 + x^3 + 1), x / sqrt(x^4 + x + 1), (x + 1) / sqrt(x^4 + 1))
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+        # finite residues: not yet
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x - 1) * sqrt(x^4 + x + 1)), x)
     end
 
     @testset "$name: real log arguments in 10a answers (step RL)" begin
