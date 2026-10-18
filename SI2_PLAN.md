@@ -34,9 +34,23 @@ the last section.
   * Genus 1: no N ≤ 12 gives `NotElementary`, since Δ is a ℚ-point of the Jacobian (Mazur). Genus ≥ 2:
     `RischNotImplemented`.
   * Bug found on the way: the conditions at ∞ need the series of y (A^{1/2}), not of 1/y.
-  * Not yet: irrational or algebraic residues (e.g. ∫1/((x²+1)√(x³+1))). Also a faster test for
-    large multiples: Cantor's algorithm / Mumford representation. And a torsion bound for genus ≥ 2
-    (counting points over 𝔽_{pᵏ}).
+* Phase 2, quadratic irrational residues: done, tests green (2026-10-18).
+  * The residues on each factor of D are ±s√d (r² ≡ c mod F, c ∈ ℚ). They are grouped by the class
+    d ∈ ℚ*/ℚ*², and ∞₊ is in the class of lc(a). The √d are ℚ-independent, so each class needs its own
+    torsion divisor Δ_d over K = ℚ(√d).
+  * The same solver runs over K: `hyp_divisor_unit` is generic, and `HypEl{F}` / `ModP{p}` are
+    parametric. The filter prime p ≡ 3 mod 4 is chosen so that d is a square mod p.
+  * Output: for d > 0, λ log u with sqrt(d) symbolic. For d < 0, u·ū is constant, so
+    λ log u = −δβ atan(δB/A). Both are checked exactly (`hyp_check_dlog`, `hyp_check_norm`).
+  * Genus 1 is decided with N ≤ 12 for ℚ (Mazur) and N ≤ 18 for ℚ(√d) (Kamienny–Kenku–Momose).
+  * Residues only at a degree-2 place at ∞ (lc(a) not a square) go through the same path, e.g.
+    ∫x/√(2x⁴+1).
+* Next / not yet:
+  * Residues of degree > 2 over ℚ (e.g. ∫1/((x²+1)√(x³+1)): r² is not constant mod F). These need
+    the Rothstein–Trager style resultant in z, a ℚ-basis of the residue span, and divisors over a
+    larger number field.
+  * Faster divisor arithmetic for large multiples (Cantor's algorithm / Mumford representation).
+  * A torsion bound for genus ≥ 2 (counting points over 𝔽_{pᵏ}).
 
 ## Where we start
 

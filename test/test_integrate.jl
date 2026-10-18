@@ -324,8 +324,29 @@ function run_tests(x, evalat, name)
                   1 / ((x + 1) * sqrt(x^3 + 1)))                # (x + 1) | a: no residues after reduction
             @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
         end
-        # irrational residues: not yet
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x - 1) * sqrt(x^4 + x + 1)), x)
+    end
+
+    @testset "$name: quadratic irrational residues ±s√d (SI2 phase 2)" begin
+        fs = (1 / (x * sqrt(x^3 + 2)),                          # (√2/6) log(…): residues ±1/√2
+              1 / (x * sqrt(x^3 - 2)),                          # imaginary residues: -(√2/6) atan(…)
+              1 / (x * sqrt(x^5 - 3)),                          # genus 2, atan
+              x / sqrt(2x^4 + 1),                               # ∞ a place of degree 2: (√2/4) log(x² + √(2x⁴+1)/√2)
+              1 / (x * sqrt(x^6 + 2)) + x^2 / sqrt(x^6 + 2))    # two classes, √2 and ℚ
+        for f in fs
+            F = Risch.risch_integrate(f, x)
+            for a in (2.0, 3.5, 5.0)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        # genus 1, infinite order over ℚ(√d) (Kamienny–Kenku–Momose: N ≤ 18)
+        for f in (1 / ((x - 1) * sqrt(x^4 + x + 1)),            # ℚ√3
+                  1 / ((x - 1) * sqrt(x^3 + 1)),                # ℚ√2
+                  1 / ((x + 2) * sqrt(x^3 + 1)),                # ℚ√-7
+                  1 / (x * sqrt(x^3 + 2)) + 1 / ((x + 1) * sqrt(x^3 + 2)),   # the ℚ class fails
+                  1 / ((x - 2) * sqrt(x^3 + 1)))                # (2, 3) is torsion, ∫1/√(x³+1) is left
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+        # residues of degree 4: not yet
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x^2 + 1) * sqrt(x^3 + 1)), x)
     end
 
