@@ -298,8 +298,35 @@ function run_tests(x, evalat, name)
         for f in (x^2 / sqrt(x^4 + x^3 + 1), x / sqrt(x^4 + x + 1), (x + 1) / sqrt(x^4 + 1))
             @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
         end
-        # finite residues: not yet
+    end
+
+    @testset "$name: rational residues at finite places, torsion divisors (SI2 phase 2)" begin
+        y = sqrt(x^4 + x^3 + 3x^2 + 2x + 1)                     # (x² + x + 1)² - x³: v = x² + x + 1 + y, N(v) = x³
+        y6 = sqrt(x^6 + 2x^3 - 3x + 1)                          # (x³ + 1)² - 3x, genus 2
+        dlv = (2x + 1 + (4x^3 + 3x^2 + 6x + 2) / (2y)) / (x^2 + x + 1 + y)
+        fs = (1 / (x * sqrt(x^3 + 1)),                          # log((x³ + 2 - 2√…)/x³)/3, N = 3
+              sqrt(x^3 + 1) / x,                                # with an algebraic part
+              (3x^3 + 2) / (x * sqrt(x^3 + 1)^3),
+              (x^2 + 1) / (x * sqrt(x^4 + 1)),                  # finite and infinite residues
+              1 / (x * sqrt(x^4 + 1)),
+              1 / (x * sqrt(x^5 + 1)),                          # genus 2, N = 5
+              1 / (x * sqrt(x^6 + 1)),
+              dlv, dlv - 1 / x,                                 # residues 3/2 at a finite place, -1/2 at ∞₊
+              (3x^2 + (6x^5 + 6x^2 - 3) / (2y6)) / (x^3 + 1 + y6))
+        for f in fs
+            F = Risch.risch_integrate(f, x)
+            for a in (2.0, 3.5, 5.0)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        # genus 1: the divisor has infinite order (Mazur's bound)
+        for f in (1 / (x * sqrt(x^4 + x + 1)), x * dlv + 7 / (x * y),
+                  1 / ((x + 1) * sqrt(x^3 + 1)))                # (x + 1) | a: no residues after reduction
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+        # irrational residues: not yet
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x - 1) * sqrt(x^4 + x + 1)), x)
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x^2 + 1) * sqrt(x^3 + 1)), x)
     end
 
     @testset "$name: real log arguments in 10a answers (step RL)" begin

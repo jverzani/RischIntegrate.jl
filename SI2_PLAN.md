@@ -21,6 +21,22 @@ the last section.
   * Genus ≥ 2: search up to deg p ≤ 60, else `RischNotImplemented`.
   * Not yet: lc(a) not a square (∞ is a place of degree 2). Finite residues: next.
   * Trager's ∫x/√(x⁴+10x²−96x−71) gives his degree-8 unit.
+* Phase 2, rational residues at finite places: done, tests green (2026-10-18). `hyp_log_part`.
+  * `hyp_finite_residues`: r² ≡ R²/(D′²a) mod each irreducible factor of D. The places with residue +r
+    are where y ≡ R/(rD′) mod G_r.
+  * b = gcd of all residues (∞₊ included), Δ = Σ (r/b)(P_r − σP_r) + (ρ₊/b)(∞₊ − ∞₋).
+  * For N = 1…12, `hyp_divisor_unit` solves for v = p + qy vanishing to order 2N·n at P_r, with
+    the pole orders at ∞± fixed. These are linear conditions: a Hensel lift of √a mod G^e, and the
+    Laurent series of y at ∞. Riemann–Roch gives dimension ≤ 1, and dimension 1 iff NΔ is principal.
+    Then u = v/ΠG^{Nn} and λ = b/N.
+  * The system is first solved mod 2³¹−1 (`ModP`): a trivial kernel mod p proves a trivial kernel over
+    ℚ, so the exact solve runs only when a solution is likely.
+  * Genus 1: no N ≤ 12 gives `NotElementary`, since Δ is a ℚ-point of the Jacobian (Mazur). Genus ≥ 2:
+    `RischNotImplemented`.
+  * Bug found on the way: the conditions at ∞ need the series of y (A^{1/2}), not of 1/y.
+  * Not yet: irrational or algebraic residues (e.g. ∫1/((x²+1)√(x³+1))). Also a faster test for
+    large multiples: Cantor's algorithm / Mumford representation. And a torsion bound for genus ≥ 2
+    (counting points over 𝔽_{pᵏ}).
 
 ## Where we start
 
