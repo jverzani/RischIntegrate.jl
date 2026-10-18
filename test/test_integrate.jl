@@ -346,8 +346,28 @@ function run_tests(x, evalat, name)
                   1 / ((x - 2) * sqrt(x^3 + 1)))                # (2, 3) is torsion, ∫1/√(x³+1) is left
             @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
         end
-        # residues of degree 4: not yet
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x^2 + 1) * sqrt(x^3 + 1)), x)
+    end
+
+    @testset "$name: torsion orders mod p; genus 2; residues of degree 4 (SI2 phase 2)" begin
+        # genus 2: the orders of the divisor modulo two primes differ
+        for f in (x^2 / sqrt(x^6 + x + 1),                      # ∞₊ - ∞₋
+                  1 / ((x - 1) * sqrt(x^5 + 1)),                # residues ±1/√2
+                  1 / ((x + 1) * sqrt(x^5 + 3)))
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+        # residues of degree 4, ℚ-independent: P₁ - σP₁ over a quartic field has infinite order
+        for f in (1 / ((x^2 + 1) * sqrt(x^3 + 1)), 1 / ((x^2 - 2) * sqrt(x^3 + 1)))
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+        # torsion found mod p, then one exact test
+        for f in (1 / (x * sqrt(x^5 + 1)), x / sqrt(x^4 + 10x^2 - 96x - 71))
+            F = Risch.risch_integrate(f, x)
+            for a in (6.0, 7.5)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        # degree-4 residues with other residues: not yet
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x^2 + 1) * (x - 2) * sqrt(x^3 + 1)), x)
     end
 
     @testset "$name: real log arguments in 10a answers (step RL)" begin

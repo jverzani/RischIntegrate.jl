@@ -45,12 +45,27 @@ the last section.
   * Genus 1 is decided with N ≤ 12 for ℚ (Mazur) and N ≤ 18 for ℚ(√d) (Kamienny–Kenku–Momose).
   * Residues only at a degree-2 place at ∞ (lc(a) not a square) go through the same path, e.g.
     ∫x/√(2x⁴+1).
+* Phase 2, torsion orders by reduction mod p; genus 2; residues of degree 4 (decision): done, tests
+  green (2026-10-18). `hyp_torsion_order`.
+  * Take a prime 𝔭 of residue degree 1 over p ≥ 7 where y² = a has good reduction. Reduction is
+    injective on Jacobian torsion (Katz), so a torsion Δ has the same order N mod 𝔭.
+  * The order mod p is the least N | #J(𝔽_p) with NΔ̄ principal, found with the same linear system
+    over 𝔽_p. #J = #C(𝔽_p) for genus 1, and (N₁² + N₂)/2 − p for genus 2 (`hyp_count1/2`). Genus ≥ 3
+    uses the Weil bound.
+  * Two primes with different orders give `NotElementary`, for any genus. Equal orders leave one exact
+    test at N. This replaces the N ≤ 12/18 search, which stays as the fallback when no primes are found.
+  * It also decides the Pell case for genus ≥ 2.
+  * `ModP` has one global modulus (`with_mod`), so the code isn't recompiled per prime.
+  * Degree-4 residues (`hyp_quartic_decision`): one quadratic factor F with r² ≡ h mod F not constant,
+    and no residue at ∞. The residues are ℚ-dependent iff h² ≡ c and c/N(h) is a square. When they
+    are independent, elementary iff P₁ − σP₁ is torsion, decided mod p.
+    E.g. ∫1/((x²+1)√(x³+1)) is `NotElementary`.
 * Next / not yet:
-  * Residues of degree > 2 over ℚ (e.g. ∫1/((x²+1)√(x³+1)): r² is not constant mod F). These need
-    the Rothstein–Trager style resultant in z, a ℚ-basis of the residue span, and divisors over a
-    larger number field.
+  * Constructing the log for torsion divisors over quartic fields (number-field arithmetic,
+    RootSum-style output). Also degree-4 residues mixed with others, and dependent residues.
+  * Residues of degree > 4 (a general ℚ-basis of the residue span).
   * Faster divisor arithmetic for large multiples (Cantor's algorithm / Mumford representation).
-  * A torsion bound for genus ≥ 2 (counting points over 𝔽_{pᵏ}).
+  * #J for genus ≥ 3 (counts over 𝔽_{pᵏ}, k ≤ g).
 
 ## Where we start
 

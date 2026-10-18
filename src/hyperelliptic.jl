@@ -235,35 +235,58 @@ end
 hyp_invmod(M::P, V::P) where {P<:UPoly} = hyp_solve_mod(one(P), M, V)
 
 # ℤ/pℤ (p < 2³¹ prime): a field for UPoly, used to filter linear systems (a trivial kernel mod p
-# implies a trivial kernel over ℚ or ℚ(√d): reduction mod a prime can only lower the rank)
-struct ModP{p}
+# implies a trivial kernel over ℚ or ℚ(√d): reduction mod a prime can only lower the rank) and for
+# torsion orders. One type for every p (no recompilation per prime): the modulus is HYP_MOD[], set by
+# `with_mod` around each computation.
+const HYP_MOD = Ref(2147483647)
+function with_mod(f, p::Int)
+    old = HYP_MOD[]
+    HYP_MOD[] = p
+    try
+        f()
+    finally
+        HYP_MOD[] = old
+    end
+end
+struct ModP
     v::Int
 end
-modp(::Type{ModP{p}}, n::Integer) where {p} = ModP{p}(Int(mod(n, p)))
-function modp(::Type{ModP{p}}, q::Q) where {p}         # nothing when p divides the denominator
-    d = mod(denominator(q), p)
-    iszero(d) ? nothing : modp(ModP{p}, numerator(q)) * inv(ModP{p}(Int(d)))
+modp(n::Integer) = ModP(Int(mod(n, HYP_MOD[])))
+function modp(q::Q)                                    # nothing when p divides the denominator
+    d = mod(denominator(q), HYP_MOD[])
+    iszero(d) ? nothing : modp(numerator(q)) * inv(ModP(Int(d)))
 end
-Base.zero(::Type{ModP{p}}) where {p} = ModP{p}(0)
-Base.one(::Type{ModP{p}}) where {p} = ModP{p}(1)
-Base.zero(::ModP{p}) where {p} = ModP{p}(0)
-Base.one(::ModP{p}) where {p} = ModP{p}(1)
+Base.zero(::Type{ModP}) = ModP(0)
+Base.one(::Type{ModP}) = ModP(1)
+Base.zero(::ModP) = ModP(0)
+Base.one(::ModP) = ModP(1)
 Base.iszero(a::ModP) = a.v == 0
 Base.isone(a::ModP) = a.v == 1
-Base.:+(a::ModP{p}, b::ModP{p}) where {p} = ModP{p}(mod(a.v + b.v, p))
-Base.:-(a::ModP{p}, b::ModP{p}) where {p} = ModP{p}(mod(a.v - b.v, p))
-Base.:-(a::ModP{p}) where {p} = ModP{p}(mod(-a.v, p))
-Base.:*(a::ModP{p}, b::ModP{p}) where {p} = ModP{p}(mod(a.v * b.v, p))
-Base.:*(n::Integer, a::ModP{p}) where {p} = modp(ModP{p}, n) * a
-Base.inv(a::ModP{p}) where {p} = iszero(a) ? throw(DivideError()) : ModP{p}(powermod(a.v, p - 2, p))
-Base.:/(a::ModP{p}, b::ModP{p}) where {p} = a * inv(b)
-
-# A reduction K → ℤ/pℤ for K = ℚ or ℚ(√d): (the type ModP{p}, the map on constants, which returns
-# nothing on a vanishing denominator). For ℚ(√d), p ≡ 3 mod 4 with d a square mod p, √d ↦ d^((p+1)/4).
-function hyp_reduction(::Type{Q})
-    T = ModP{2147483647}
-    T, c -> modp(T, c)
+Base.:(==)(a::ModP, b::ModP) = a.v == b.v
+Base.:+(a::ModP, b::ModP) = ModP(mod(a.v + b.v, HYP_MOD[]))
+Base.:-(a::ModP, b::ModP) = ModP(mod(a.v - b.v, HYP_MOD[]))
+Base.:-(a::ModP) = ModP(mod(-a.v, HYP_MOD[]))
+Base.:*(a::ModP, b::ModP) = ModP(mod(a.v * b.v, HYP_MOD[]))
+Base.:*(n::Integer, a::ModP) = modp(n) * a
+Base.inv(a::ModP) = iszero(a) ? throw(DivideError()) : ModP(powermod(a.v, HYP_MOD[] - 2, HYP_MOD[]))
+Base.:/(a::ModP, b::ModP) = a * inv(b)
+modp_chi(a::ModP) = iszero(a) ? 0 : (powermod(a.v, (HYP_MOD[] - 1) ÷ 2, HYP_MOD[]) == 1 ? 1 : -1)
+function modp_sqrt(a::ModP)                            # a square root, or nothing (small p: by search)
+    p = HYP_MOD[]
+    modp_chi(a) == -1 && return nothing
+    if p % 4 == 3
+        return ModP(powermod(a.v, (p + 1) ÷ 4, p))
+    end
+    for t in 0:(p - 1)
+        mod(t * t - a.v, p) == 0 && return ModP(t)
+    end
+    nothing
 end
+modp_roots(f::UPoly{ModP}) = [ModP(t) for t in 0:(HYP_MOD[] - 1) if iszero(peval(f, ModP(t)))]
+
+# A reduction K → ℤ/pℤ for K = ℚ or ℚ(√d): (p, the map on constants, which returns nothing on a
+# vanishing denominator; valid inside with_mod(p)). For ℚ(√d): p ≡ 3 mod 4 with d a square mod p.
+hyp_reduction(::Type{Q}) = (2147483647, c -> modp(c))
 function hyp_reduction(::Type{QS{d}}) where {d}
     p = 2147483647                                      # 2³¹ - 1 ≡ 3 mod 4
     while true
@@ -273,13 +296,12 @@ function hyp_reduction(::Type{QS{d}}) where {d}
         end
         p -= 4
     end
-    T = ModP{p}
-    r = T(powermod(mod(d, p), (p + 1) ÷ 4, p))
+    r = powermod(mod(d, p), (p + 1) ÷ 4, p)
     function φ(c::QS{d})
-        a, b = modp(T, c.a), modp(T, c.b)
-        (a === nothing || b === nothing) ? nothing : a + b * r
+        a, b = modp(c.a), modp(c.b)
+        (a === nothing || b === nothing) ? nothing : a + b * ModP(r)
     end
-    T, φ
+    p, φ
 end
 # a polynomial mapped coefficientwise (nothing if a coefficient fails)
 function hyp_map(φ, p::UPoly, ::Type{T}) where {T}
@@ -333,6 +355,20 @@ function hyp_sqrt_lift(a::P, S::P, G::P, e::Int) where {P<:UPoly}
     Y
 end
 
+# The shape of the system for N·Δ: degree bounds dp, dq of p, q, the conditions at infinity
+# [(branch sign, pole order)], and the orders eᵢ = 2N nᵢ at the places Pᵢ
+function hyp_shape(na::Int, degs, ns, ninf::Int, N::Int)
+    es = [2N * n for n in ns]
+    M = sum((es[i] * degs[i] for i in eachindex(es)); init = 0)
+    if isodd(na)
+        return fld(M, 2), fld(M - na, 2), Tuple{Int,Int}[], es
+    end
+    m = na ÷ 2
+    op, om = M ÷ 2 - N * ninf, M ÷ 2 + N * ninf
+    omax = max(op, om)
+    omax, omax - m, (ninf == 0 ? Tuple{Int,Int}[] : [(op < om ? 1 : -1, min(op, om))]), es
+end
+
 # v = p + q y with div(v) ≥ Σ 2N nᵢ P_{rᵢ} - o₊∞₊ - o₋∞₋ (o± = M/2 ∓ N n∞, M = Σ 2N nᵢ deg Gᵢ; for deg a
 # odd the single place at infinity, pole order ≤ M). The divisor has degree 0, so the solutions form a
 # space of dimension ≤ 1, and dimension 1 iff N·Δ is principal (Δ = Σ nᵢ(P_{rᵢ} - σP_{rᵢ}) +
@@ -340,38 +376,28 @@ end
 # res = [(Gᵢ, nᵢ, Sᵢ)]; l = √lc(a) (used only when n∞ ≠ 0).
 function hyp_divisor_unit(a::UPoly{K}, res, ninf::Int, l, N::Int; maxsize::Int = 1500) where {K}
     na = degree(a)
-    es = [2N * n for (_, n, _) in res]
-    M = sum((es[i] * degree(res[i][1]) for i in eachindex(res)); init = 0)
-    if isodd(na)
-        dp, dq = fld(M, 2), fld(M - na, 2)
-        conds = Tuple{Int,Int}[]                        # (branch sign, pole order)
-    else
-        m = na ÷ 2
-        op, om = M ÷ 2 - N * ninf, M ÷ 2 + N * ninf
-        omax = max(op, om)
-        dp, dq = omax, omax - m
-        conds = ninf == 0 ? Tuple{Int,Int}[] : [(op < om ? 1 : -1, min(op, om))]
-    end
+    dp, dq, conds, es = hyp_shape(na, [degree(G) for (G, _, _) in res], [n for (_, n, _) in res], ninf, N)
     (dp < 0 && dq < 0) && return nothing
     dp + dq + 2 > maxsize && return :toolarge
     sq = isempty(conds) ? Q[] : hyp_sqrt_series(hyp_down(a), max(dq, 0) + na ÷ 2 - conds[1][2] + 1, Q(1, 2))  # y
     s = K[cfromQ(K, c) for c in sq]
     # filter mod p first, then the exact system over K
-    T, φ = hyp_reduction(K)
-    sp = T[]
-    ok = true
-    for c in s
-        m = φ(c)
-        m === nothing ? (ok = false) : push!(sp, m)
-    end
-    ap, lp = hyp_map(φ, a, T), l === nothing ? nothing : φ(l)
-    resp = [(hyp_map(φ, G, T), n, hyp_map(φ, S, T)) for (G, n, S) in res]
-    ok = ok && ap !== nothing && !(l !== nothing && lp === nothing) &&
-         all(r -> r[1] !== nothing && r[3] !== nothing, resp)
-    if ok
+    pr, φ = hyp_reduction(K)
+    trivial = with_mod(pr) do
+        sp = ModP[]
+        for c in s
+            m = φ(c)
+            m === nothing && return false
+            push!(sp, m)
+        end
+        ap, lp = hyp_map(φ, a, ModP), l === nothing ? nothing : φ(l)
+        resp = [(hyp_map(φ, G, ModP), n, hyp_map(φ, S, ModP)) for (G, n, S) in res]
+        (ap === nothing || (l !== nothing && lp === nothing) ||
+         any(r -> r[1] === nothing || r[3] === nothing, resp)) && return false
         colsp = hyp_divisor_cols(ap, resp, es, conds, sp, lp, dp, dq)
-        isempty(nullspace_cols(colsp, length(colsp))) && return nothing
+        isempty(nullspace_cols(colsp, length(colsp)))
     end
+    trivial && return nothing
     cols = hyp_divisor_cols(a, res, es, conds, s, l, dp, dq)
     ker = nullspace_cols(cols, length(cols))
     isempty(ker) && return nothing
@@ -437,6 +463,169 @@ end
 # genus of y² = a, a squarefree
 hyp_genus(a::QX) = (degree(a) - 1) ÷ 2
 
+# --- torsion orders by reduction mod p ------------------------------------------------
+# Let Δ = Σ nᵢ(Pᵢ - σPᵢ) + n∞(∞₊ - ∞₋) be defined over a number field L. For a prime 𝔭 of L with
+# residue field 𝔽_p, p ≥ 7 (so e(𝔭/p) ≤ 4 < p - 1 for the fields used here) and y² = a of good
+# reduction at p, reduction is injective on the torsion of the Jacobian (Katz): if Δ is torsion of
+# order N, then Δ̄ has order N in Jac(𝔽_p). Two primes with different orders prove that Δ has infinite
+# order; equal orders N leave one exact test (N·Δ principal or not). The order mod p divides #J(𝔽_p):
+# #J = #C(𝔽_p) for genus 1, (N₁² + N₂)/2 - p for genus 2 (Nₖ = #C(𝔽_{pᵏ})); otherwise the Weil bound.
+
+# #C(𝔽_p) for y² = ā (inside with_mod(p))
+function hyp_count1(ap::UPoly{ModP})
+    p = HYP_MOD[]
+    n = sum(1 + modp_chi(peval(ap, ModP(t))) for t in 0:(p - 1))
+    n + (isodd(degree(ap)) ? 1 : 1 + modp_chi(lc(ap)))
+end
+
+# #C(𝔽_{p²}): 𝔽_{p²} = 𝔽_p(w), w² = ν a non-residue; χ(z) = z^((p²-1)/2)
+function hyp_count2(ap::UPoly{ModP})
+    p = HYP_MOD[]
+    ν = first(t for t in 2:(p - 1) if modp_chi(ModP(t)) == -1)
+    mul((a, b), (c, d)) = (mod(a * c + ν * b * d, p), mod(a * d + b * c, p))
+    function pw(z, e)
+        r = (1, 0)
+        while e > 0
+            isodd(e) && (r = mul(r, z))
+            z = mul(z, z)
+            e >>= 1
+        end
+        r
+    end
+    cs = [c.v for c in ap.c]
+    n = 0
+    for u in 0:(p - 1), v in 0:(p - 1)
+        z = (u, v)
+        acc = (0, 0)
+        for c in reverse(cs)
+            acc = mul(acc, z)
+            acc = (mod(acc[1] + c, p), acc[2])
+        end
+        χ = acc == (0, 0) ? 0 : (pw(acc, (p * p - 1) ÷ 2) == (1, 0) ? 1 : -1)
+        n += 1 + χ
+    end
+    n + (isodd(degree(ap)) ? 1 : 2)                     # lc ∈ 𝔽_p is a square in 𝔽_{p²}
+end
+
+# the least N among `cand` with N·Δ̄ principal over 𝔽_p (Δ̄ from pts = [(α, β, n)], points (α, β) ∈ 𝔽_p²);
+# nothing if none, :toolarge past the size cap. sp: the series of y at ∞ mod p (if ninf ≠ 0).
+function hyp_order_modp(ap::UPoly{ModP}, pts, ninf::Int, lp, sp, cand; maxsize::Int = 2500)
+    na = degree(ap)
+    x = xpoly(ModP)
+    res = [(x - UPoly{ModP}([α]), n, UPoly{ModP}([β])) for (α, β, n) in pts]
+    for N in cand
+        dp, dq, conds, es = hyp_shape(na, [1 for _ in pts], [n for (_, _, n) in pts], ninf, N)
+        (dp < 0 && dq < 0) && continue
+        dp + dq + 2 > maxsize && return :toolarge
+        cols = hyp_divisor_cols(ap, res, es, conds, sp, lp, dp, dq)
+        isempty(nullspace_cols(cols, length(cols))) || return N
+    end
+    nothing
+end
+
+# The order of Δ if it is torsion: :infinite (proved), the common order N mod two primes, or nothing
+# (no suitable primes, or too large). ptsfun(p) (inside with_mod(p)) gives (pts, lp) for the reduction
+# of Δ at a prime of degree 1 over p (or nothing if p is unsuitable: not split, ramified, bad).
+function hyp_torsion_order(a::QX, ninf::Int, ptsfun; nprimes::Int = 2, pmax::Int = 400)
+    g = hyp_genus(a)
+    orders = Int[]
+    p = 5
+    while length(orders) < nprimes
+        p += 2
+        p > pmax && return nothing
+        is_probable_prime(big(p)) || continue
+        r = with_mod(p) do
+            ap = hyp_map(modp, a, ModP)
+            (ap === nothing || degree(ap) != degree(a) || degree(gcd(ap, deriv(ap))) != 0) && return nothing
+            pl = ptsfun(p)
+            pl === nothing && return nothing
+            pts, lp = pl
+            nJ = g == 1 ? hyp_count1(ap) : g == 2 ? (hyp_count1(ap)^2 + hyp_count2(ap)) ÷ 2 - p : 0
+            cand = nJ > 0 ? sort!(Int.(divisors(big(nJ)))) : collect(1:floor(Int, (sqrt(p) + 1)^(2g)))
+            sp = ModP[]
+            if ninf != 0
+                for c in hyp_sqrt_series(a, 2 * maximum(cand) * abs(ninf) + 2, Q(1, 2))
+                    m = modp(c)
+                    m === nothing && return nothing
+                    push!(sp, m)
+                end
+            end
+            N = hyp_order_modp(ap, pts, ninf, lp, sp, cand)
+            N === nothing && throw(RischError("hyp_torsion_order: no order mod $p (it must divide #J = $nJ)"))
+            N
+        end
+        r === nothing && continue
+        r === :toolarge && return nothing
+        push!(orders, r)
+        orders[end] == orders[1] || return :infinite
+    end
+    orders[1]
+end
+
+# ptsfun for a class d (K = ℚ or ℚ(√d)): rd = [(G, n, S₀)], y ≡ √d·S₀ at Pᵢ over the roots of G; at ∞
+# l = linf·√d∞ (used when ninf ≠ 0, then d∞ = d or 1)
+function hyp_class_pts(d::Int, rd, linf::Q, dinf::Int)
+    function (p)
+        (d != 1 && mod(d, p) == 0) && return nothing
+        sd = d == 1 ? one(ModP) : modp_sqrt(modp(d))
+        sd === nothing && return nothing
+        pts = Tuple{ModP,ModP,Int}[]
+        for (G, n, S0) in rd
+            Gp, Sp = hyp_map(modp, G, ModP), hyp_map(modp, S0, ModP)
+            (Gp === nothing || Sp === nothing || degree(Gp) != degree(G)) && return nothing
+            rts = modp_roots(Gp)
+            length(rts) == degree(G) || return nothing     # split, distinct roots
+            for α in rts
+                β = sd * peval(Sp, α)
+                iszero(β) && return nothing
+                push!(pts, (α, β, n))
+            end
+        end
+        length(unique(first.(pts))) == length(pts) || return nothing
+        lp = modp(linf)
+        lp === nothing && return nothing
+        dinf == 1 || (lp = lp * (dinf == d ? sd : modp_sqrt(modp(dinf))))
+        pts, lp
+    end
+end
+
+# Residues of degree 4 (decision only): D = F irreducible of degree 2 with r² ≡ h mod F not constant,
+# no residue at ∞. The residues are ±r₁, ±r₂, rⱼ = √h(αⱼ); r₁/r₂ ∈ ℚ iff h² ≡ c mod F with c/N(h) a
+# square. If r₁, r₂ are ℚ-independent, the integral is elementary iff Δ₁ = P₁ - σP₁ is torsion
+# (Δ₂ is its conjugate), P₁ = (α₁, R(α₁)/(r₁D′(α₁))) over L = ℚ(α₁, r₁).
+function hyp_quartic_decision(a::QX, R::QX, D::QX, ρ::Q, uterm)
+    gen = hyp_genus(a)
+    fs = factor_Q(D)
+    (length(fs) == 1 && degree(D) == 2 && iszero(ρ)) || return RischNotImplemented(
+        "√($uterm): residues of degree > 2 over ℚ: only one quadratic factor of the denominator, without " *
+        "residues at ∞, is supported")
+    F, dD = fs[1], deriv(D)
+    h = rem(R * R * hyp_invmod(dD * dD * a, F), F)
+    h2 = rem(h * h, F)
+    if degree(h2) <= 0 && rat_sqrt((isempty(h2.c) ? Q(0) : h2.c[1]) / resultant(F, h)) !== nothing
+        return RischNotImplemented("√($uterm): residues of degree 4 that are ℚ-dependent are not supported")
+    end
+    function ptsfun(p)
+        Fp, Rp, hp, dp = (hyp_map(modp, f, ModP) for f in (F, R, h, dD))
+        any(isnothing, (Fp, Rp, hp, dp)) && return nothing
+        rts = modp_roots(Fp)
+        length(rts) == 2 || return nothing              # F splits (so p ∤ disc F)
+        any(α -> iszero(peval(hp, α)), rts) && return nothing
+        α = rts[1]
+        r = modp_sqrt(peval(hp, α))
+        r === nothing && return nothing                 # a prime of degree 1 of L over p
+        Tuple{ModP,ModP,Int}[(α, peval(Rp, α) / (r * peval(dp, α)), 1)], one(ModP)
+    end
+    ord = hyp_torsion_order(a, 0, ptsfun)
+    ord === :infinite && return NotElementary(
+        "√($uterm): the residues have degree 4 and are ℚ-independent, and the divisor P₁ - σP₁ has infinite " *
+        "order in the Jacobian (its orders modulo two primes differ)")
+    ord === nothing && return RischNotImplemented(
+        "√($uterm): residues of degree 4: no suitable primes found to decide torsion")
+    RischNotImplemented("√($uterm): residues of degree 4 whose divisor is probably torsion (order $ord mod two " *
+                        "primes); constructing the logarithm over a quartic field is not implemented yet")
+end
+
 # The log part of (P + R/D)/y (simple poles, some residue ≠ 0): a list of (d, λ, p, q, G, λPu), one per
 # class d of residues, with λ ∈ K = ℚ(√d) (ℚ for d = 1), p, q ∈ K[x], G ∈ ℚ[x], d(λ log((p + q y)/G)) =
 # λPu/y and λPu ∈ ℚ(x); together they have the residues of the integrand. Or the exception to raise.
@@ -457,18 +646,27 @@ function hyp_log_part(a::QX, P::QX, R::QX, D::QX, uterm)
         pq === :none && gen == 1 && return NotElementary(
             "√($uterm): the residues are at ∞₊, ∞₋ only, and ∞₊ - ∞₋ has infinite order on the elliptic " *
             "curve (no unit p + q√a with deg p ≤ 12, Mazur's bound)")
+        if !(pq isa Tuple)                              # genus ≥ 2: the order of ∞₊ - ∞₋ mod p
+            ord = hyp_torsion_order(a, 1, p -> (lp = modp(l); lp === nothing ? nothing : (Tuple{ModP,ModP,Int}[], lp)))
+            ord === :infinite && return NotElementary(
+                "√($uterm): the residues are at ∞₊, ∞₋ only, and ∞₊ - ∞₋ has infinite order in the Jacobian " *
+                "(its orders modulo two primes differ)")
+            if ord isa Int                              # a unit of degree ord, if any
+                pq = hyp_pell(a; maxdeg = ord, maxbits = typemax(Int))
+                pq isa Tuple || return NotElementary(
+                    "√($uterm): ∞₊ - ∞₋ is not torsion (its order mod p would be $ord, but there is no unit of degree $ord)")
+            end
+        end
         pq isa Tuple || return RischNotImplemented(
             "√($uterm): residues at infinity, but no unit p + q√a found (polynomial Pell equation " *
-            "p² - a q² = c; search bound reached on a curve of genus $gen, no torsion bound yet)")
+            "p² - a q² = c; search bound reached on a curve of genus $gen, no torsion order found)")
         pu, qu = pq
         Pu = hyp_dlog(a, pu, qu)
         λ = hyp_res_inf(a, P) / hyp_res_inf(a, Pu.num)
         return [(1, λ, pu, qu, one(QX), Pu * kconst(λ))]
     end
     fin = iszero(R) ? Dict{Int,Vector{Tuple{QX,Q,QX}}}() : hyp_finite_residues(a, R, D)
-    fin === nothing && return RischNotImplemented(
-        "√($uterm): residues of degree > 2 over ℚ; the logarithmic part on a curve of genus $gen with " *
-        "such residues is not implemented yet")
+    fin === nothing && return hyp_quartic_decision(a, R, D, ρ, uterm)
     # ∞₊: residue -ρ/√lc(a) = s∞√d∞, lc(a) = σ² d∞/m²; l = √lc(a) ∈ ℚ(√d∞)
     dinf, linf = 1, Q(1)
     if !isodd(na)
@@ -488,9 +686,16 @@ function hyp_log_part(a::QX, P::QX, R::QX, D::QX, uterm)
         lK = isodd(na) ? nothing : (dinf == 1 ? cfromQ(K, linf) : d == dinf ? K(Q(0), linf) : nothing)
         (ninf != 0 && lK === nothing) && throw(RischError("hyp_log_part: ∞ residue in the wrong class"))
         aK = hyp_lift(K, a)
-        Nmax = gen == 1 ? (d == 1 ? 12 : 18) : 12
+        cls = d == 1 ? "" : " (residues in ℚ√$d)"
+        # the order by reduction mod p (any genus), else the search N ≤ Nmax (genus 1: a proof)
+        ord = hyp_torsion_order(a, ninf, hyp_class_pts(d, [(G, res[i][2], S0) for (i, (G, _, S0)) in enumerate(rd)],
+                                                       linf, dinf))
+        ord === :infinite && return NotElementary(
+            "√($uterm): the divisor of the residues$cls has infinite order in the Jacobian (its orders " *
+            "modulo two primes differ)")
+        Ns = ord isa Int ? [ord] : collect(1:(gen == 1 ? (d == 1 ? 12 : 18) : 12))
         found = false
-        for N in 1:Nmax
+        for N in Ns
             pq = hyp_divisor_unit(aK, res, ninf, lK, N)
             pq === nothing && continue
             pq === :toolarge && return RischNotImplemented(
@@ -504,12 +709,14 @@ function hyp_log_part(a::QX, P::QX, R::QX, D::QX, uterm)
             break
         end
         found && continue
-        cls = d == 1 ? "" : " (residues in ℚ√$d)"
+        ord isa Int && return NotElementary(
+            "√($uterm): the divisor of the residues$cls is not torsion (its order mod p would be $ord, " *
+            "but $ord·Δ is not principal)")
         gen == 1 && return NotElementary(
             "√($uterm): the divisor of the residues$cls has infinite order on the elliptic curve " *
-            "(no multiple N ≤ $Nmax is principal; torsion bound of Mazur / Kamienny–Kenku–Momose)")
-        return RischNotImplemented("√($uterm): no multiple N ≤ $Nmax of the divisor of the residues$cls is " *
-                                   "principal on a curve of genus $gen (no torsion bound yet)")
+            "(no multiple N ≤ $(last(Ns)) is principal; torsion bound of Mazur / Kamienny–Kenku–Momose)")
+        return RischNotImplemented("√($uterm): no multiple N ≤ $(last(Ns)) of the divisor of the residues$cls is " *
+                                   "principal on a curve of genus $gen (no torsion order found)")
     end
     out
 end
