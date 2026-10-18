@@ -242,7 +242,7 @@ function run_tests(x, evalat, name)
             end
         end
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) + sqrt(x + 1) + sqrt(x + 2), x)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / sqrt(x^3 + 1), x)  # elliptic
+        @test_throws Risch.NotElementary Risch.risch_integrate(1 / sqrt(x^3 + 1), x)  # elliptic (SI2 phase 1)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(log(x)), x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x + sqrt(x + 1)), x)  # nested
     end
@@ -258,7 +258,29 @@ function run_tests(x, evalat, name)
                 @test antiderivative_ok(F, f, a, evalat)
             end
         end
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x^6 + 1), x)
+        @test_throws Risch.NotElementary Risch.risch_integrate(sqrt(x^6 + 1), x)      # genus 2 (SI2 phase 1)
+    end
+
+    @testset "$name: Hermite reduction on y² = a, genus ≥ 1 (SI2 phase 1)" begin
+        fs = (3x^2 / (2 * sqrt(x^3 + 1)),                       # √(x³+1)
+              (x^3 - 2) / sqrt((x^3 + 1)^3),                    # -2x/√(x³+1)
+              (x^3 - x) / (2 * x^2 * sqrt(x^3 + x)),            # √(x³+x)/x: a pole at a ramified place
+              (5x^4 + 1) / sqrt(x^5 + x + 1)^3 * (x^5 + x + 1) / 2,   # √(x⁵+x+1), genus 2
+              x^2 + 1 / (x^2 + 1) + 3x^2 / (2 * sqrt(x^3 + 1)))     # with a rational part
+        for f in fs
+            F = Risch.risch_integrate(f, x)
+            for a in (0.5, 1.3, 2.6)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        for f in (1 / sqrt(x^3 + 1),                            # first kind
+                  x / sqrt(x^3 + 1),                            # second kind
+                  sqrt(x^3 + 1), 1 / sqrt(x^3 + 1)^3, 1 / (x^2 * sqrt(x^3 + 1)),
+                  x * sqrt(x^3 + 1)^3, 1 / sqrt(x^4 + 1), x^2 / sqrt(x^4 + 1))
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+        # residues: the log part on the curve (phase 2)
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(x / sqrt(x^4 + 1), x)
     end
 
     @testset "$name: real log arguments in 10a answers (step RL)" begin

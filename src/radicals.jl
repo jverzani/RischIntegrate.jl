@@ -110,6 +110,15 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         # real points: ψ(t) = √Q > 0 (step EL)
         cands = Any[(S, φ, k -> ψ^k, tterm, real_pos(Any[ψ]))
                     for (S, φ, ψ, tterm) in euler_substitution(co(N, 3), co(N, 2), co(N, 1), b0, uterm; pref = cfix_d(cfix))]
+    elseif isone(Dd) && degree(N) >= 3 && n == 2 && cfix === nothing
+        # SI2 phase 1: y² = u of genus ≥ 1, Hermite reduction on the curve (hyperelliptic.jl)
+        hradval = function (ue, e)                      # ue^e = yᵏ: k, or nothing
+            wm = ue == u ? (u, 1) : get(pmap, ue, nothing)
+            (wm === nothing || wm[1] != u) && return nothing
+            k = 2 * e * wm[2]
+            isone(denominator(k)) ? Int(numerator(k)) : nothing
+        end
+        return integrate_hyperelliptic(f, xk, u, uterm, hradval, b0, verify)
     else
         throw(RischNotImplemented(
             "radicals of $uterm: supported are u^(p/q) with u = (ax+b)/(cx+d), and √ of a quadratic " *
