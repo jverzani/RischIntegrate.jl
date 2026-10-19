@@ -51,7 +51,17 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         end
     end
     if !isempty(rads)                  # a RootSum is in the substitution variable t: evaluate through x
-        F = integrate_radical(f, x, rads; build = build, lift = lift, verify = verify)
+        F = try
+            integrate_radical(f, x, rads; build = build, lift = lift, verify = verify)
+        catch e
+            e isa RischNotImplemented || rethrow()
+            try                                         # products of radicals of any index (SI2 phase 3a)
+                integrate_kummer(f, x, rads; build = build, lift = lift, verify = verify)
+            catch e2
+                e2 isa RischNotImplemented || rethrow()
+                throw(occursin("phase 3b", e2.msg) ? e2 : e)
+            end
+        end
         return F isa IntegralWithRootSums ? IntegralWithRootSums(F.elementary, F.rootsums, xk) : F
     end
     if has_trig(f)                     # polynomial × exp × trig first (Stage 5c), else the ℚ(i) tower

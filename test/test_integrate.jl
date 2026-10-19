@@ -243,7 +243,7 @@ function run_tests(x, evalat, name)
         end
         F = Risch.risch_integrate(sqrt(x) + sqrt(x + 1) + sqrt(x + 2), x)    # x = t², then two roots (step BQ)
         @test antiderivative_ok(F, sqrt(x) + sqrt(x + 1) + sqrt(x + 2), 2.0, evalat)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x^3 + 1) + sqrt(x^3 + 2) + sqrt(x^3 + 3), x)
+        @test_throws Risch.NotElementary Risch.risch_integrate(sqrt(x^3 + 1) + sqrt(x^3 + 2) + sqrt(x^3 + 3), x)  # phase 3a
         @test_throws Risch.NotElementary Risch.risch_integrate(1 / sqrt(x^3 + 1), x)  # elliptic (SI2 phase 1)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(log(x)), x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x + sqrt(x + 1)), x)  # nested
@@ -292,6 +292,35 @@ function run_tests(x, evalat, name)
             F = Risch.risch_integrate(f, x)
             for a in pts
                 @test isapprox(fd(t -> real(evalat(F, complex(t))), a), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
+    end
+
+    @testset "$name: products of radicals of any index: Hermite reduction (SI2 phase 3a)" begin
+        for (f, pts) in (((3x^8 - 2x^5 - x^2 * (3x^3 - 1)^(2 // 3)) / (3x^3 - 1)^(3 // 4), (1.0, 2.0)),   # Rubi
+                         (1 / (x^3 + 1)^(4 // 3), (0.5, 2.0)),                     # x/(x³+1)^(1/3)
+                         (1 / (x^4 + 1)^(5 // 4), (0.5, 2.0)),
+                         (x^2 / (x^3 + 1)^(1 // 3), (0.5, 2.0)),
+                         (((x + 1)^(1 // 3) + (x + 2)^(1 // 4)) / ((x + 1)^(1 // 3) * (x + 2)^(1 // 4)), (0.5, 2.0)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test isapprox(fd(t -> real(evalat(F, complex(t))), a), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
+        # Chebyshev: ∫ xᵐ(1 + 2xⁿ)ᵖ is elementary iff (m+1)/n or (m+1)/n + p is an integer (p ∉ ℤ). Every
+        # non-elementary case must be decided; an elementary one may still need the log part (phase 3b)
+        for n in (3, 4), m in (0, 1, 2), p in (1 // 3, -2 // 3, 1 // 4, -3 // 4)
+            f = x^m * (1 + 2x^n)^p
+            if isinteger((m + 1) // n) || isinteger((m + 1) // n + p)
+                F = try
+                    Risch.risch_integrate(f, x)
+                catch e
+                    e isa Risch.RischNotImplemented || rethrow()
+                    nothing
+                end
+                F === nothing || @test isapprox(fd(t -> real(evalat(F, complex(t))), 1.7), real(evalat(f, 1.7)); rtol = 1e-5)
+            else
+                @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
             end
         end
     end
@@ -579,8 +608,8 @@ function run_tests(x, evalat, name)
                 @test antiderivative_ok(F, f, a, evalat)
             end
         end
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate((x^2 + 1)^(1//3), x)   # index 3
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt((x^2 + 1) / (x + 1)), x)
+        @test_throws Risch.NotElementary Risch.risch_integrate((x^2 + 1)^(1//3), x)   # index 3 (phase 3a; Chebyshev)
+        @test_throws Risch.NotElementary Risch.risch_integrate(sqrt((x^2 + 1) / (x + 1)), x)   # genus 1 (phase 3a)
     end
 
     @testset "$name: square roots of quadratics over ℚ(√d) (step 10c)" begin
@@ -634,7 +663,7 @@ function run_tests(x, evalat, name)
         @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) * sqrt(x) * sqrt(x + 1), x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) * sqrt(-x - 1), x)   # never real
         @test_throws Risch.NotElementary Risch.risch_integrate(sqrt(x) * sqrt(x^2 + 1), x)  # genus 1 (step BQ)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) * cbrt(x + 1), x)
+        @test_throws Risch.NotElementary Risch.risch_integrate(sqrt(x) * cbrt(x + 1), x)   # phase 3a; Chebyshev
     end
 
     # SimpleExpressions evaluates sqrt(2) eagerly to a Float64: symbolic constant radicals
