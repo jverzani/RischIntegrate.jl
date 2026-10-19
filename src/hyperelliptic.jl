@@ -51,6 +51,7 @@ function parse_hyp(t, xk::String, a::QXF, radval)
                 ue = radicand_element(ut, xk)
                 k = ue === nothing ? nothing : radval(ue, e)
                 k === nothing && throw(RischNotImplemented("radical $t: not a power of √($a)"))
+                k isa Tuple && return hyp_mul(a, HypEl(k[2], zero(QXF)), hyp_ypow(a, k[1]))   # sᵏ yᵏ (SQ)
                 return hyp_ypow(a, k)
             end
             n = opname(operation(t))
@@ -989,7 +990,7 @@ end
 
 # The hook from `integrate_radical`: one radicand u ∈ ℚ[x] of degree ≥ 3, square roots only.
 # radval(ue, e) = the exponent k with ue^e = yᵏ, or nothing.
-function integrate_hyperelliptic(f, xk::String, u::QXF, uterm, radval, b0::Builder, verify::Bool)
+function integrate_hyperelliptic(f, xk::String, u::QXF, uterm, radval, b0::Builder, verify::Bool; yterm = nothing)
     a = u.num
     isone(u.den) && degree(a) >= 3 || throw(RischError("integrate_hyperelliptic: not a polynomial radicand"))
     sf = squarefree(a)
@@ -1005,7 +1006,7 @@ function integrate_hyperelliptic(f, xk::String, u::QXF, uterm, radval, b0::Build
         dgy == q * u - frac(P) - frac(R, D) ||
             throw(RischError("internal check failed: hyperelliptic Hermite reduction"))
     end
-    yterm = mk(b0, :sqrt, uterm)
+    yterm === nothing && (yterm = mk(b0, :sqrt, uterm))
     logt = nothing
     rss = Any[]                                         # RootSums (degree-4 residues)
     nores(after = "Hermite reduction") = NotElementary(

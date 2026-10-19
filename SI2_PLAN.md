@@ -108,10 +108,26 @@ the last section.
     * l mod p is not needed for classes without a residue at ∞.
     * Logs whose argument may be negative on the real domain (sampled) are printed as (λ/2) log(u²).
     * No `sqrt(1)` in atan terms.
+* Step SQ, radicands with repeated factors: done, tests green (2026-10-18). `radicals.jl`.
+  * Square roots, u = s²w with w squarefree: the variable is Y = √u/s. Y² = w holds on every interval,
+    whatever the sign of s (the principal √u is |s|√w).
+    * deg w ≥ 3: Hermite reduction / log part with yterm = √u/s. `parse_hyp` accepts (k, sᵏ) from
+      radval.
+    * deg w = 1, 2: 10a / Euler, with u^(k/2) = s(φ)ᵏ·radpow(k) and `R = Yterm` in
+      `euler_substitution`. The positivity list is empty (Y has no fixed sign), so sign-changing logs
+      print as log(w²)/2.
+    * w constant (√((x+1)²) = |x+1|): Y is locally constant, and ∫f = ∫f₀ + Y∫f₁. This fixed a
+      pre-existing wrong answer for x < −1: the Euler parametrisation degenerates on one branch. With
+      constant radicals (SymEngine's √2·√((x−1)²)): F± on the two branches √u = ±s√c, combined with
+      sign(s) = (√u/s)/√c.
+  * Index n ≥ 3, u = sⁿ(x−a)ʲ(x−b)ᵏ with n | j+k (or one linear factor), gcd(j, n) = 1: genus 0,
+    u^(1/n) = s(x−b)^((j+k)/n)·v^(j/n) with v = (x−a)/(x−b) (10a). t is printed through u^(1/n) as
+    T^{j′}/v^{e₀}. `integrate_root_repeated`.
+  * Rubi scan (48 problems with √ or roots of degree ≥ 3): 34 OK, 1 NotElementary (consistent),
+    13 RischNotImplemented.
 * Gaps seen in Rubi's library:
-  * Radicands with repeated factors (√((x−3)²(x+1)) is genus 0).
   * Two different radicands of degree ≥ 3.
-  * Cube and fourth roots (phase 3).
+  * Cube and fourth roots of radicands with three or more distinct factors (phase 3).
   * Nested radicals.
 * Next / not yet: non-multiquadratic quartic residues mixed with dependent ones; residues of degree > 4.
   * Residues of degree > 4 (a general ℚ-basis of the residue span).

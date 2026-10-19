@@ -261,6 +261,39 @@ function run_tests(x, evalat, name)
         @test_throws Risch.NotElementary Risch.risch_integrate(sqrt(x^6 + 1), x)      # genus 2 (SI2 phase 1)
     end
 
+    @testset "$name: radicals of radicands with repeated factors (step SQ)" begin
+        # u = s² w, w squarefree: Y = √u/s with Y² = w on every interval (whatever the sign of s); the
+        # answers are checked on both sides of the zeros of s
+        for (f, pts) in ((1 / sqrt(x^3 - 5x^2 + 3x + 9), (-0.5, 1.0, 2.0, 4.0, 6.0)),   # (x - 3)²(x + 1), Rubi
+                         (1 / sqrt(x^3 - 5x^2 + 3x + 9)^3, (-0.5, 1.0, 4.0, 6.0)),
+                         (sqrt(x^3 - 5x^2 + 3x + 9), (-0.5, 1.0, 4.0, 6.0)),
+                         (x / sqrt((x - 1)^2 * (x^2 + 1)), (-2.0, 0.5, 2.0, 3.0)),    # Euler, w quadratic
+                         (sqrt(x^5 + x^4), (-0.5, 1.0, 2.0)),                         # x⁴(x + 1)
+                         (sqrt(x^2 + 2x + 1), (-3.0, 1.0)),                           # |x + 1|: w constant
+                         (sqrt(2 * (x - 1)^2) / (x + 1), (-0.5, 0.0, 2.0)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        for f in (1 / sqrt((x + 2)^2 * (x^3 + 1)), 1 / (x * sqrt(x^2 * (x^3 + 1))))   # w = x³ + 1: genus 1
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+        # index n ≥ 3: u = sⁿ (x - a)ʲ (x - b)ᵏ with n | j + k is genus 0, u^(1/n) = s (x - b)^((j+k)/n) v^(j/n),
+        # v = (x - a)/(x - b) (step 10a); t is printed through u^(1/n)
+        for (f, pts) in ((1 / ((x - 1)^2 * (x + 1))^(1 // 3), (1.5, 3.0, -0.5)),          # Rubi
+                         (((x - 1)^2 * (x + 1))^(1 // 3) / x^2, (1.5, 3.0, -0.5)),
+                         (1 / (x^3 - 5x^2 + 3x + 9)^(1 // 3), (-0.5, 2.0, 5.0)),
+                         (1 / (x^3 - 5x^2 + 3x + 9)^(4 // 3), (-0.5, 2.0, 5.0)),
+                         (x * ((x + 2)^3 * (x - 1))^(1 // 4), (1.5, 3.0)),
+                         (((x + 1)^2 * (x - 2)^4)^(1 // 3), (2.5, 4.0, 0.5)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test isapprox(fd(t -> real(evalat(F, complex(t))), a), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
+    end
+
     @testset "$name: Hermite reduction on y² = a, genus ≥ 1 (SI2 phase 1)" begin
         fs = (3x^2 / (2 * sqrt(x^3 + 1)),                       # √(x³+1)
               (x^3 - 2) / sqrt((x^3 + 1)^3),                    # -2x/√(x³+1)

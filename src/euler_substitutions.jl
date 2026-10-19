@@ -51,11 +51,12 @@ end
 # a small rational point (S = ℚ), else S = ℚ(i)(√d) with √A (A > 0, the point at infinity) or
 # y₀ = √Q(x₀) (x₀ = 0 if C > 0, else the vertex). i is there for the atan terms (residues
 # ±i·r); the answer is real (Step 7 real form, sqrt(d) kept symbolic).
-function euler_substitution(A::Q, B::Q, C::Q, b::Builder, uterm; pref::Int = 1)
+# R: the term for √Q (default sqrt(uterm); √u/s for a radicand u = s²Q, step SQ)
+function euler_substitution(A::Q, B::Q, C::Q, b::Builder, uterm; pref::Int = 1, R = nothing)
     P = UPoly{Q}
     t = frac(xpoly(Q))
     kq(c) = frac(P(Q[c]))
-    R = mk(b, :sqrt, uterm)
+    R === nothing && (R = mk(b, :sqrt, uterm))
     sA = A > 0 ? rat_sqrt(A) : nothing
     if sA !== nothing
         φ = (t * t - kq(C)) / (kq(B) + kq(2 * sA) * t)
@@ -84,7 +85,7 @@ function euler_substitution(A::Q, B::Q, C::Q, b::Builder, uterm; pref::Int = 1)
         x0 = Q(p) // Q(q)
         y0 = rat_sqrt(Qv(x0))
         (y0 === nothing || iszero(y0)) && continue
-        return [euler_point(Q, y0, A, B, x0, b, uterm)]
+        return [euler_point(Q, y0, A, B, x0, b, uterm, R)]
     end
     # over ℚ(i)(√d), several candidates (the constants the answer needs are not known in
     # advance, e.g. ∫ dx/(x √(2x² + 3)) needs √3, not √2): √A (A > 0), the point (0, √C)
@@ -95,7 +96,7 @@ function euler_substitution(A::Q, B::Q, C::Q, b::Builder, uterm; pref::Int = 1)
             gcd(p, q) == 1 || continue
             x0 = Q(p) // Q(q)
             (Qv(x0) > 0 && rat_sqrt(Qv(x0) / pref) !== nothing) || continue
-            push!(cands, euler_point(qs_field(Qv(x0))..., A, B, x0, b, uterm))
+            push!(cands, euler_point(qs_field(Qv(x0))..., A, B, x0, b, uterm, R))
             break
         end
     end
@@ -112,8 +113,8 @@ function euler_substitution(A::Q, B::Q, C::Q, b::Builder, uterm; pref::Int = 1)
         (x0 === nothing || Qv(x0) <= 0) && continue
         any(c -> c[1] === Q, cands) && break
         y0 = rat_sqrt(Qv(x0))
-        y0 === nothing ? push!(cands, euler_point(qs_field(Qv(x0))..., A, B, x0, b, uterm)) :
-                         push!(cands, euler_point(Q, y0, A, B, x0, b, uterm))
+        y0 === nothing ? push!(cands, euler_point(qs_field(Qv(x0))..., A, B, x0, b, uterm, R)) :
+                         push!(cands, euler_point(Q, y0, A, B, x0, b, uterm, R))
     end
     isempty(cands) && throw(RischNotImplemented("√($uterm): the radicand is never positive: no real square root"))
     unique(c -> c[1], cands)                            # one candidate per constant field
@@ -129,7 +130,7 @@ end
 # Euler substitution through the point (x₀, y₀) of R² = Q(x) (y₀ ∈ S, y₀ > 0):
 # R = y₀ + t (x - x₀), t = (R - y₀)/(x - x₀); with h = x - x₀, Q(x) = y₀² + Q'(x₀) h + A h²
 # gives h = (2 y₀ t - Q'(x₀))/(A - t²), x = x₀ + h, R = y₀ + t h.
-function euler_point(::Type{S}, y0::S, A::Q, B::Q, x0::Q, b::Builder, uterm) where {S}
+function euler_point(::Type{S}, y0::S, A::Q, B::Q, x0::Q, b::Builder, uterm, R = mk(b, :sqrt, uterm)) where {S}
     PS = UPoly{S}
     t = frac(xpoly(S))
     kS(c) = frac(PS(S[c]))
@@ -137,7 +138,6 @@ function euler_point(::Type{S}, y0::S, A::Q, B::Q, x0::Q, b::Builder, uterm) whe
     h = (kS(y0 + y0) * t - kS(c(2 * A * x0 + B))) / (kS(c(A)) - t * t)
     φ = kS(c(x0)) + h
     ψ = kS(y0) + t * h
-    R = mk(b, :sqrt, uterm)
     xr = iszero(x0) ? b.x : mk(b, :+, b.x, cterm(b, -x0))
     S, φ, ψ, mk(b, :/, mk(b, :+, R, cterm(b, -y0)), xr)
 end
