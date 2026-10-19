@@ -307,20 +307,38 @@ function run_tests(x, evalat, name)
                 @test isapprox(fd(t -> real(evalat(F, complex(t))), a), real(evalat(f, a)); rtol = 1e-5)
             end
         end
-        # Chebyshev: ∫ xᵐ(1 + 2xⁿ)ᵖ is elementary iff (m+1)/n or (m+1)/n + p is an integer (p ∉ ℤ). Every
-        # non-elementary case must be decided; an elementary one may still need the log part (phase 3b)
+        # Chebyshev: ∫ xᵐ(1 + 2xⁿ)ᵖ is elementary iff (m+1)/n or (m+1)/n + p is an integer (p ∉ ℤ): every
+        # case is decided (with the log part of phase 3b)
+        val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, complex(a)))
         for n in (3, 4), m in (0, 1, 2), p in (1 // 3, -2 // 3, 1 // 4, -3 // 4)
             f = x^m * (1 + 2x^n)^p
             if isinteger((m + 1) // n) || isinteger((m + 1) // n + p)
-                F = try
-                    Risch.risch_integrate(f, x)
-                catch e
-                    e isa Risch.RischNotImplemented || rethrow()
-                    nothing
-                end
-                F === nothing || @test isapprox(fd(t -> real(evalat(F, complex(t))), 1.7), real(evalat(f, 1.7)); rtol = 1e-5)
+                F = Risch.risch_integrate(f, x)
+                @test isapprox(fd(t -> val(F, t), 1.7), real(evalat(f, 1.7)); rtol = 1e-5)
             else
                 @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+            end
+        end
+    end
+
+    @testset "$name: the log part for one radical of index q ≥ 3 (SI2 phase 3b)" begin
+        # residues r·μ_q with rᵠ in one class tᵠσ; v vanishing at one place of each orbit; the answer is a
+        # RootSum over αᵠ = 1 or over zᵠ = σ
+        val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, complex(a)))
+        for (f, pts) in ((1 / (x^3 + 1)^(1 // 3), (0.5, 2.0)),                          # residues at ∞
+                         ((x^3 - 1) / (x^3 + 2)^(1 // 3), (0.5, 2.0)),                  # Rubi
+                         (1 / ((x^3 - 1) * (x^3 + 2)^(1 // 3)), (2.0, 3.0)),            # Rubi: finite residues
+                         ((3 + 4x^4)^(1 // 4) / x^2, (0.5, 2.0)),                       # Rubi: ℚ(4^(1/4)) = ℚ(√2)
+                         (x^2 * (3 + 4x^4)^(5 // 4), (0.5, 2.0)),                       # Rubi
+                         (1 / ((x^4 + 1) * (x^4 + 2)^(1 // 4)), (0.5, 2.0)),            # Rubi: class -1, α⁴ + 1
+                         ((x^4 + 1)^(3 // 4) / (x^4 + 2)^2, (0.5, 2.0)),                # Rubi
+                         (1 / ((x^3 + 3x^2 + 3x) * (x^3 + 3x^2 + 3x + 3)^(1 // 3)), (0.5, 2.0)),   # Rubi
+                         (1 / (x * (2x^7 - 27)^(2 // 3)), (2.0, 3.0)),                   # Rubi: ∞ ramified, v = y + 3
+                         ((x^7 + 1)^(2 // 3) / x^8, (0.5, 2.0)),                         # Rubi
+                         (1 / (x * (x^5 + 1)^(1 // 3)), (0.5, 2.0)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test isapprox(fd(t -> val(F, t), a), real(evalat(f, a)); rtol = 1e-5)
             end
         end
     end

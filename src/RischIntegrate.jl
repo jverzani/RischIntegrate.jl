@@ -49,6 +49,7 @@ include("inverse_trig.jl")
 include("u_substitution.jl")
 include("risch_integrate.jl")
 include("biquadratic.jl")
+include("kummer_logs.jl")
 include("real_log_arguments.jl")
 
 export integrate

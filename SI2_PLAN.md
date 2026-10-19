@@ -156,9 +156,32 @@ the last section.
     positive.
   * Rubi scan: 36 OK, 1 NotElementary, 11 RischNotImplemented: 10 need the log part (phase 3b), plus
     one nested radical.
-* Next: phase 3b, the log part for radicals of index ≥ 3. Residues at the q places over a root of D
-  differ by roots of unity, so the divisors live on superelliptic Jacobians. Generalize the
-  linear-algebra search (`hyp_divisor_unit`) and the torsion orders mod p.
+* Phase 3b, the log part for one radical of index q ≥ 3: done, tests green (2026-10-19).
+  `kummer_logs.jl`.
+  * Scope: one component θ = yᵖ, y = b^(1/q).
+  * Residues over a pole form one orbit r·μ_q, with s = rᵠ ≡ hᵠbᵖ mod F; at ∞ likewise when q | m.
+  * Supported: all s rational and in one class tᵠσ (σ q-th-power free), all t of one sign.
+    L = ℚ(σ^(1/q)) (the factor of zᵠ − σ at the real root when reducible, e.g. 4^(1/4) = √2).
+  * Look for v ∈ L[x, y] vanishing to order N·n at the branch-0 place of each pole: y ≡ S_F mod F, with
+    the q-th root Hensel-lifted. At ∞:
+    * n∞ = 0: q deg c_k + km ≤ Z with gcd(m, q) | Z (∞ may be ramified; this was a bug that the scan
+      exposed).
+    * n∞ ≠ 0: Puiseux conditions at the unramified places.
+  * Riemann–Roch gives dimension ≤ 1. The yᵖ-component of λ v′/v (solved in L(x)[y]/(yᵠ − b)) is
+    subtracted, and the rest must reduce to 0 by phase 3a. That is the exact verification.
+  * Output: the log part is (λ/q)Σᵢ ζ^(−ip) log(τⁱv), written as a RootSum.
+    * zᵠ − σ irreducible: (b₀/N)·RootSum over zᵠ = σ of z log v(z, x, y). z ↦ ζᶜz permutes the places
+      like τ does; this also covers negative σ for even q, e.g. α⁴ + 1.
+    * Otherwise: over αᵠ = 1.
+  * No `NotElementary` from a failed search yet (N ≤ 8): that would need torsion orders mod p for
+    superelliptic curves.
+  * Chebyshev sweep: 504/504 decided (157/157 elementary integrated, 347/347 non-elementary proved).
+  * Rubi scan: 46 OK, 1 NotElementary (consistent), 1 RischNotImplemented (a nested radical).
+* Next / not yet:
+  * Phase 3b with several classes, or components with several bases.
+  * Real forms (log + atan) instead of RootSums over roots of unity.
+  * Torsion orders mod p for superelliptic Jacobians (decisions when the search fails).
+  * Nested radicals; phase 5 (radicals over exp/log).
 * Gaps seen in Rubi's library:
   * Nested radicals.
   * Cube and fourth roots of radicands with three or more distinct factors (phase 3).

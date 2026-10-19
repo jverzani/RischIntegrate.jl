@@ -173,7 +173,8 @@ function parse_kum(t, xk::String, bs::Vector{QX}, rad)
 end
 
 # ∫ g θ, θ = Π bₖ^rₖ: (C with ∫ g θ = C θ) or the exception to raise
-function kum_component(bs::Vector{QX}, r::Vector{Q}, g::QXF, θterm)
+# (with `needlog`: when there are residues, (:needlog, C, P, R, D) for the log part, phase 3b)
+function kum_component(bs::Vector{QX}, r::Vector{Q}, g::QXF, θterm; needlog::Bool = false)
     ks = [k for k in eachindex(bs) if !iszero(r[k])]
     A = prod((bs[k] for k in ks); init = one(QX))
     M = sum((scale(r[k], deriv(bs[k]) * quo(A, bs[k])) for k in ks); init = zero(QX))
@@ -229,6 +230,7 @@ function kum_component(bs::Vector{QX}, r::Vector{Q}, g::QXF, θterm)
     dx(C) + C * frac(M, A) + frac(P, A) + frac(R, A * D) == g ||
         throw(RischError("internal check failed: Hermite reduction for a product of radicals"))
     (iszero(P) && iszero(R)) && return C
+    needlog && !iszero(R) && return (:needlog, C, P, R, D)
     iszero(R) || return RischNotImplemented(
         "∫ (…)·$θterm: residues at finite places; the logarithmic part for radicals of index ≥ 3 is not " *
         "implemented yet (SI2 phase 3b)")
@@ -241,6 +243,7 @@ function kum_component(bs::Vector{QX}, r::Vector{Q}, g::QXF, θterm)
         end
         e0 = Int(rho) - degree(A)                       # P/A θ ∝ x^e0 P(x) S(1/x)
         res = sum((P.c[j + 1] * s[j + e0 + 2] for j in 0:degree(P) if 0 <= j + e0 + 1 <= N); init = Q(0))
+        needlog && !iszero(res) && return (:needlog, C, P, R, D)
         iszero(res) || return RischNotImplemented(
             "∫ (…)·$θterm: residues at infinity; the logarithmic part for radicals of index ≥ 3 is not " *
             "implemented yet (SI2 phase 3b)")
@@ -288,7 +291,20 @@ function integrate_kummer(f, x, rads; build = nothing, lift = nothing, verify::B
         end
         θs = Any[mk(b0, :^, poly_term(b0, bs[k]), b0.lift(e[k])) for k in 1:nb if !iszero(e[k])]
         θterm = length(θs) == 1 ? θs[1] : mk(b0, :*, θs...)
-        C = kum_component(bs, e, g, θterm)
+        C = kum_component(bs, e, g, θterm; needlog = count(!iszero, e) == 1)
+        if C isa Tuple                                  # residues: the log part (phase 3b, one base)
+            _, C0, P, R, D = C
+            k = findfirst(!iszero, e)
+            lp = kum_log_part(bs[k], Int(numerator(e[k])), Int(denominator(e[k])), P, R, D, θterm, b0, xk)
+            lp isa Exception && throw(lp)
+            Wsub, rs = lp
+            # the rest, (P + R/D)/b - Wsub, must reduce to an algebraic C1 (it has no residues left)
+            C1 = kum_component(bs, e, frac(P, bs[k]) + frac(R, bs[k] * D) - Wsub, θterm)
+            C1 isa Exception && throw(C1 isa NotElementary ? C1 : RischNotImplemented(
+                "phase 3b: residues left after the logarithmic part ($(C1.msg))"))
+            C = C0 + C1
+            push!(rss, rs)
+        end
         C isa Exception && throw(C)
         iszero(C) || push!(terms, mk(b0, :*, frac_term(b0, C), θterm))
     end

@@ -353,6 +353,7 @@ function Base.inv(a::NFz)
     nfz(s)
 end
 Base.:/(a::NFz, b::NFz) = a * inv(b)
+Base.:^(a::NFz, n::Integer) = field_pow(a, n)
 cfromQ(::Type{NFz}, q::Q) = NFz(QX(Q[q]))
 hyp_reduction(::Type{NFz}) = nothing                    # no filter (the order is known mod p already)
 # Tr_{L/ℚ}(c) from the power sums of the roots of M
