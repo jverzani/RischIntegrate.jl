@@ -241,7 +241,9 @@ function run_tests(x, evalat, name)
                 @test antiderivative_ok(F, f, a, evalat)
             end
         end
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) + sqrt(x + 1) + sqrt(x + 2), x)
+        F = Risch.risch_integrate(sqrt(x) + sqrt(x + 1) + sqrt(x + 2), x)    # x = t², then two roots (step BQ)
+        @test antiderivative_ok(F, sqrt(x) + sqrt(x + 1) + sqrt(x + 2), 2.0, evalat)
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x^3 + 1) + sqrt(x^3 + 2) + sqrt(x^3 + 3), x)
         @test_throws Risch.NotElementary Risch.risch_integrate(1 / sqrt(x^3 + 1), x)  # elliptic (SI2 phase 1)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(log(x)), x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x + sqrt(x + 1)), x)  # nested
@@ -291,6 +293,26 @@ function run_tests(x, evalat, name)
             for a in pts
                 @test isapprox(fd(t -> real(evalat(F, complex(t))), a), real(evalat(f, a)); rtol = 1e-5)
             end
+        end
+    end
+
+    @testset "$name: two square roots: the biquadratic splitting (step BQ)" begin
+        # f = f₀ + f₁√a + f₂√b + f₃√a√b: each Galois projection on its own (Liouville), √a√b as √(ab)
+        ya, yb = sqrt(1 + x^3), sqrt(1 - 2x + x^5)
+        for (f, pts) in (((-2ya + 5x^4 * ya - 3x^2 * yb) / (2ya * yb), (0.2, 1.3, 2.0)),   # Rubi: √(x⁵-2x+1) - √(x³+1)
+                         (1 / (x * sqrt(x^3 + 1)) + x / sqrt(x^4 + 1), (0.5, 2.0)),
+                         (1 / (sqrt(x + 1) * sqrt(x^3 + 1)), (0.5, 2.0)),                  # √(ab) = (x+1)√(x²-x+1)
+                         ((sqrt(x^3 + 1) + sqrt(x^3 + 2)) / (x * sqrt(x^3 + 1) * sqrt(x^3 + 2)), (0.5, 2.0)),
+                         (x^2 / (sqrt(x^3 + 1) * sqrt(x^3 + 2)), (0.5, 2.0)),             # ab of genus 2: Pell
+                         (sqrt(x^3 + x) * sqrt(x^3 + 2x) / x^2, (0.5, 2.0)))              # ab = x²(…): step SQ
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test isapprox(fd(t -> real(evalat(F, complex(t))), a), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
+        for f in (sqrt(x^3 + 1) * sqrt(x^4 + 1),                        # √(ab), genus 3
+                  1 / (sqrt(x^3 + 1) + sqrt(x^3 + 2)))                   # = √(x³+2) - √(x³+1)
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
         end
     end
 
@@ -611,7 +633,7 @@ function run_tests(x, evalat, name)
         end
         @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) * sqrt(x) * sqrt(x + 1), x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) * sqrt(-x - 1), x)   # never real
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) * sqrt(x^2 + 1), x)  # genus 1
+        @test_throws Risch.NotElementary Risch.risch_integrate(sqrt(x) * sqrt(x^2 + 1), x)  # genus 1 (step BQ)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) * cbrt(x + 1), x)
     end
 

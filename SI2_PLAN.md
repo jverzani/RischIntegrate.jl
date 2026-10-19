@@ -125,8 +125,19 @@ the last section.
     T^{j′}/v^{e₀}. `integrate_root_repeated`.
   * Rubi scan (48 problems with √ or roots of degree ≥ 3): 34 OK, 1 NotElementary (consistent),
     13 RischNotImplemented.
+* Step BQ, two square roots of different radicands (not both linear): done, tests green
+  (2026-10-18). `biquadratic.jl`.
+  * K = ℚ(x)(√a, √b) has Galois group V₄. f = f₀ + f₁√a + f₂√b + f₃√a√b, and the parts are the four
+    character projections.
+  * Projecting Liouville's form shows that ∫f is elementary iff every part is, each over its own
+    quadratic subfield. So a `NotElementary` part proves the whole.
+  * Each part goes back through `risch_integrate` (√a, √b, √(ab); steps SQ, 10a, Euler,
+    hyperelliptic), and √(ab) is rewritten to √a√b in the answer. That is valid on every branch,
+    since the answer only uses Y² = ab.
+  * Bonus: ∫(√x + √(x+1) + √(x+2)) now works (x = t², then two roots). √x√(x²+1) is decided
+    (genus 1).
 * Gaps seen in Rubi's library:
-  * Two different radicands of degree ≥ 3.
+  * Three or more radicands.
   * Cube and fourth roots of radicands with three or more distinct factors (phase 3).
   * Nested radicals.
 * Next / not yet: non-multiquadratic quartic residues mixed with dependent ones; residues of degree > 4.

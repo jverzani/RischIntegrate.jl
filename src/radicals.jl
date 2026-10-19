@@ -84,7 +84,13 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         return try_substitutions(f, xk, Any[(Q, tt, (ue, e) -> throw(RischError("unexpected radicand")), x)],
                                  b0, verify, cfix)
     end
-    length(groups) == 2 && return integrate_two_radicals(f, xk, groups, b0, verify, cfix, pmap)
+    if length(groups) == 2
+        linear(g) = isone(g[1].den) && degree(g[1].num) == 1
+        # two square roots, not both of linear polynomials: the biquadratic splitting (step BQ)
+        (all(g -> g[3] == 2, groups) && !all(linear, groups) && cfix === nothing) &&
+            return integrate_biquadratic(f, x, xk, groups, b0, verify, pmap)
+        return integrate_two_radicals(f, xk, groups, b0, verify, cfix, pmap)
+    end
     length(groups) > 2 && throw(RischNotImplemented(
         "radicals of more than two different radicands (a curve of genus ≥ 1 in general)"))
     u, uterm, n = groups[1]
