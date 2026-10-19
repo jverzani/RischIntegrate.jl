@@ -94,72 +94,14 @@ function kum_log_part(b::QX, p::Int, q::Int, P::QX, R::QX, D::QX, θterm, b0::Bu
     run(f) = degree(Mz) == 1 ? f(Q, identity, -Mz.c[1]) : with_nf(Mz) do
         f(NFz, c -> cfromQ(NFz, c), nfz(xpoly(Q)))
     end
-    found = run() do K, emb, z
+    search(Ns, maxu) = run() do K, emb, z
         PL = UPoly{K}
-        lift(f::QX) = PL(K[emb(c) for c in f.c])
-        bL = lift(b)
-        # branch-0 data: S_F (finite), w (∞)
-        Sd = Tuple{PL,Int,PL}[]                         # (F, n_F, S_F)
-        for (i, (F, s, hF)) in enumerate(fin)
-            FL = lift(F)
-            rF = z * emb(ts[i] / (σ == 1 ? 1 : 1))      # the residue t σ^(1/q) (z = σ^(1/q))
-            yp = rem(PL([rF]) * hyp_invmod(lift(hF), FL), FL)
-            S = rem(yp^pinv * hyp_invmod(bL^((p * pinv - 1) ÷ q), FL), FL)
-            push!(Sd, (FL, ns[i], S))
-        end
-        w = nothing
-        if s∞ !== nothing                               # w^(p-q) = -r∞/κ, w^p = w^(p-q) lc, w = (w^p)^p′/lc^((pp′-1)/q)
-            r∞ = z * emb(ts[end])
-            wpq = -r∞ / emb(κ)
-            wp = wpq * emb(lc(b))
-            w = wp^pinv / emb(lc(b))^((p * pinv - 1) ÷ q)
-        end
-        for N in 1:Nmax
-            es = [N * n for (_, n, _) in Sd]
-            Z = sum((es[i] * degree(Sd[i][1]) for i in eachindex(Sd)); init = 0)
-            if n∞ == 0
-                # gcd(m, q) places at ∞, each of ramification q/gcd: balanced pole orders Z/gcd each, i.e.
-                # q deg c_k + k m ≤ Z (no cancellation between the k: different orders mod q/gcd)
-                Z % gcd(m, q) == 0 || continue
-                o0 = o1 = omax = 0
-                dks = [fld(Z - k * m, q) for k in 0:(q - 1)]
-            else                                        # q | m: q unramified places at ∞
-                (Z + N * n∞) % q == 0 || continue
-                o1 = (Z + N * n∞) ÷ q
-                o0 = o1 - N * n∞
-                omax = max(o0, o1)
-                omax < 0 && continue
-                dks = [floor(Int, Q(omax) - Q(k * m, q)) for k in 0:(q - 1)]
-            end
-            unknowns = [(k, j) for k in 0:(q - 1) for j in 0:dks[k + 1]]
-            isempty(unknowns) && continue
-            length(unknowns) > 800 && break
-            mods = [(F^es[i], kum_root_lift(bL, S, F, es[i], q)) for (i, (F, _, S)) in enumerate(Sd)]
-            ypows = [[rem(Y^k, Ge) for k in 0:(q - 1)] for (Ge, Y) in mods]
-            ser = n∞ == 0 ? nothing : [K[emb(c) for c in hyp_sqrt_series(b, omax + m + 2, Q(k, q))] for k in 0:(q - 1)]
-            x = xpoly(K)
-            cols = Vector{K}[]
-            for (k, j) in unknowns
-                col = K[]
-                for (i, (Ge, _)) in enumerate(mods)
-                    rr = rem(x^j * ypows[i][k + 1], Ge)
-                    append!(col, [d <= length(rr.c) ? rr.c[d] : zero(K) for d in 1:degree(Ge)])
-                end
-                if n∞ != 0                              # E_k(t) = w^k [T^k]_(j + km/q - t)
-                    sh = j + (k * m) ÷ q
-                    E(t) = (0 <= sh - t <= length(ser[k + 1]) - 1) ? w^k * ser[k + 1][sh - t + 1] : zero(K)
-                    if o0 < o1                          # branch 0: Σ_k E_k(t) = 0 for o0 < t ≤ o1
-                        for t in (o0 + 1):o1
-                            push!(col, E(t))
-                        end
-                    else                                # other branches: E_k(t) = E_0(t) for o1 < t ≤ o0
-                        for t in (o1 + 1):o0, k2 in 1:(q - 1)
-                            push!(col, k == k2 ? E(t) : k == 0 ? -E(t) : zero(K))
-                        end
-                    end
-                end
-                push!(cols, col)
-            end
+        bL, Sd, w = kum_lp_data(K, emb, z, b, p, q, fin, ts, ns, s∞, κ)
+        for N in Ns
+            sys = kum_lp_system(K, emb, bL, Sd, w, b, q, n∞, N; maxu = maxu)
+            sys === nothing && continue
+            sys === :toolarge && break
+            unknowns, cols = sys
             ker = nullspace_cols(cols, length(cols))
             isempty(ker) && continue
             v = ker[1]
@@ -185,10 +127,28 @@ function kum_log_part(b::QX, p::Int, q::Int, P::QX, R::QX, D::QX, θterm, b0::Bu
             λ = z * emb(Q(q) * bb / N)
             Wl = η[p + 1] * frac(PL([λ]))
             Wq = kum_down(Wl)
-            Wq === nothing && continue                  # not rational: not the log part
+            Wq === nothing && return :notrational      # a principal N·Δ whose log part is not the one wanted
             return (N, cs, Wq)
         end
         nothing
+    end
+    found = search(1:Nmax, 800)
+    found === :notrational && return ni("the logarithmic part found is not rational")
+    if found === nothing && q > 2 && is_probable_prime(big(q))
+        # q prime: the class of Δ (over L ∌ ζ) is torsion iff its χ-part is (its nontrivial isotypic parts are
+        # conjugate, the trivial one comes from ℙ¹), i.e. iff the integral is elementary. Its order N₁ mod a
+        # prime, a second prime where N₁Δ̄ is not principal, or N₁Δ not principal over L, prove it is not.
+        ord = kum_lp_order(b, p, q, fin, ts, ns, s∞, κ, n∞, σ, Mz)
+        ord === :infinite && return NotElementary(
+            "∫ (…)·$θterm: the divisor of the residues has infinite order in the Jacobian of y^$q = b " *
+            "(its orders modulo two primes differ)")
+        if ord isa Int                                  # the only possible order: one exact test
+            found = search([ord], 5000)
+            found === :notrational && return ni("the logarithmic part found is not rational")
+            found === nothing && return NotElementary(
+                "∫ (…)·$θterm: the divisor of the residues is not torsion (its order mod p would be $ord, " *
+                "but $ord·Δ is not principal)")
+        end
     end
     found === nothing && return ni("no torsion multiple N ≤ $Nmax of the divisor of the residues found")
     N, cs, Wsub = found
@@ -219,6 +179,140 @@ function kum_log_part(b::QX, p::Int, q::Int, P::QX, R::QX, D::QX, θterm, b0::Bu
     end
     fac = mk(b0, :*, cterm(b0, bb / N), zt)
     Wsub, ScaledRootSum(fac, TermRootSum(QX(vcat(Q[-1], zeros(Q, q - 1), Q[1])), coeffs, xk))
+end
+
+struct KumBadPrime <: Exception end
+
+# branch-0 data over K (L, or 𝔽_p with emb = reduction): b, the places (F, n_F, S_F) and w at ∞
+function kum_lp_data(::Type{K}, emb, z, b::QX, p::Int, q::Int, fin, ts, ns, s∞, κ) where {K}
+    PL = UPoly{K}
+    pinv = invmod(p, q)
+    lift(f::QX) = PL(K[emb(c) for c in f.c])
+    bL = lift(b)
+    Sd = Tuple{PL,Int,PL}[]                             # (F, n_F, S_F)
+    for (i, (F, s, hF)) in enumerate(fin)
+        FL = lift(F)
+        rF = z * emb(ts[i])                             # the residue t σ^(1/q) (z = σ^(1/q))
+        yp = rem(PL([rF]) * hyp_invmod(lift(hF), FL), FL)
+        S = rem(yp^pinv * hyp_invmod(bL^((p * pinv - 1) ÷ q), FL), FL)
+        push!(Sd, (FL, ns[i], S))
+    end
+    w = nothing
+    if s∞ !== nothing                                   # w^(p-q) = -r∞/κ, w^p = w^(p-q) lc, w = (w^p)^p′/lc^((pp′-1)/q)
+        wpq = -(z * emb(ts[end])) / emb(κ)
+        w = (wpq * emb(lc(b)))^pinv / emb(lc(b))^((p * pinv - 1) ÷ q)
+    end
+    bL, Sd, w
+end
+
+# the linear system for v with div(v) = N·Δ (see kum_log_part): (unknowns, columns), nothing when N·Δ is
+# not integral, :toolarge
+function kum_lp_system(::Type{K}, emb, bL, Sd, w, b::QX, q::Int, n∞::Int, N::Int; maxu::Int = 800) where {K}
+    m = degree(b)
+    es = [N * n for (_, n, _) in Sd]
+    Z = sum((es[i] * degree(Sd[i][1]) for i in eachindex(Sd)); init = 0)
+    if n∞ == 0
+        # gcd(m, q) places at ∞, each of ramification q/gcd: balanced pole orders Z/gcd each, i.e.
+        # q deg c_k + k m ≤ Z (no cancellation between the k: different orders mod q/gcd)
+        Z % gcd(m, q) == 0 || return nothing
+        o0 = o1 = omax = 0
+        dks = [fld(Z - k * m, q) for k in 0:(q - 1)]
+    else                                                # q | m: q unramified places at ∞
+        (Z + N * n∞) % q == 0 || return nothing
+        o1 = (Z + N * n∞) ÷ q
+        o0 = o1 - N * n∞
+        omax = max(o0, o1)
+        omax < 0 && return nothing
+        dks = [floor(Int, Q(omax) - Q(k * m, q)) for k in 0:(q - 1)]
+    end
+    unknowns = [(k, j) for k in 0:(q - 1) for j in 0:dks[k + 1]]
+    isempty(unknowns) && return nothing
+    length(unknowns) > maxu && return :toolarge
+    mods = [(F^es[i], kum_root_lift(bL, S, F, es[i], q)) for (i, (F, _, S)) in enumerate(Sd)]
+    ypows = [[rem(Y^k, Ge) for k in 0:(q - 1)] for (Ge, Y) in mods]
+    ser = n∞ == 0 ? nothing : [K[emb(c) for c in hyp_sqrt_series(b, omax + m + 2, Q(k, q))] for k in 0:(q - 1)]
+    x = xpoly(K)
+    cols = Vector{K}[]
+    for (k, j) in unknowns
+        col = K[]
+        for (i, (Ge, _)) in enumerate(mods)
+            rr = rem(x^j * ypows[i][k + 1], Ge)
+            append!(col, [d <= length(rr.c) ? rr.c[d] : zero(K) for d in 1:degree(Ge)])
+        end
+        if n∞ != 0                                      # E_k(t) = w^k [T^k]_(j + km/q - t)
+            sh = j + (k * m) ÷ q
+            E(t) = (0 <= sh - t <= length(ser[k + 1]) - 1) ? w^k * ser[k + 1][sh - t + 1] : zero(K)
+            if o0 < o1                                  # branch 0: Σ_k E_k(t) = 0 for o0 < t ≤ o1
+                for t in (o0 + 1):o1
+                    push!(col, E(t))
+                end
+            else                                        # other branches: E_k(t) = E_0(t) for o1 < t ≤ o0
+                for t in (o1 + 1):o0, k2 in 1:(q - 1)
+                    push!(col, k == k2 ? E(t) : k == 0 ? -E(t) : zero(K))
+                end
+            end
+        end
+        push!(cols, col)
+    end
+    unknowns, cols
+end
+
+# The order of Δ by reduction mod primes p ≥ 7 of good reduction (p ∤ q σ lc(b) disc(b), b and the poles
+# squarefree and coprime mod p) with a root of the minimal polynomial Mz of σ^(1/q) mod p (a prime of
+# degree 1 of L; unramified, so reduction is injective on torsion): :infinite (proved), N₁ (the order mod
+# one prime, confirmed at two more), or nothing.
+function kum_lp_order(b::QX, p::Int, q::Int, fin, ts, ns, s∞, κ, n∞::Int, σ::Int, Mz::QX;
+                      cap::Int = 40, pmax::Int = 400, nconfirm::Int = 2)
+    N1, conf = nothing, 0
+    pr = 5
+    while pr < pmax
+        pr += 2
+        is_probable_prime(big(pr)) || continue
+        (pr % q == 0 || σ % pr == 0) && continue
+        r = with_mod(pr) do
+            emb = c -> (v = modp(c); v === nothing ? throw(KumBadPrime()) : v)
+            try
+                bp = hyp_map(modp, b, ModP)
+                (bp === nothing || degree(bp) != degree(b) || degree(gcd(bp, deriv(bp))) != 0) && return nothing
+                for (F, _, _) in fin
+                    Fp = hyp_map(modp, F, ModP)
+                    (Fp === nothing || degree(Fp) != degree(F) || degree(gcd(Fp, deriv(Fp))) != 0 ||
+                     degree(gcd(Fp, bp)) != 0) && return nothing
+                end
+                Mp = hyp_map(modp, Mz, ModP)
+                Mp === nothing && return nothing
+                rts = modp_roots(Mp)
+                isempty(rts) && return nothing
+                bL, Sd, w = kum_lp_data(ModP, emb, rts[1], b, p, q, fin, ts, ns, s∞, κ)
+                (w !== nothing && iszero(w)) && return nothing
+                principal(N) = (sys = kum_lp_system(ModP, emb, bL, Sd, w, b, q, n∞, N; maxu = 3000);
+                                sys isa Tuple ? !isempty(nullspace_cols(sys[2], length(sys[2]))) : sys)
+                if N1 === nothing
+                    for N in 1:cap
+                        t = principal(N)
+                        t === :toolarge && return nothing
+                        t === true && return (:order, N)
+                    end
+                    return nothing                      # order > cap here: try another prime
+                end
+                t = principal(N1)
+                t === :toolarge && return nothing
+                t === true ? :same : :different
+            catch e
+                (e isa KumBadPrime || e isa RischError || e isa DivideError) || rethrow()
+                nothing
+            end
+        end
+        r === nothing && continue
+        r === :different && return :infinite
+        if r isa Tuple
+            N1 = r[2]
+        else
+            conf += 1
+            conf >= nconfirm && return N1
+        end
+    end
+    nothing
 end
 
 # an element of L(x) with rational coefficients, in ℚ(x) (or nothing)

@@ -271,6 +271,7 @@ Base.:*(a::ModP, b::ModP) = ModP(mod(a.v * b.v, HYP_MOD[]))
 Base.:*(n::Integer, a::ModP) = modp(n) * a
 Base.inv(a::ModP) = iszero(a) ? throw(DivideError()) : ModP(powermod(a.v, HYP_MOD[] - 2, HYP_MOD[]))
 Base.:/(a::ModP, b::ModP) = a * inv(b)
+Base.:^(a::ModP, n::Integer) = n < 0 ? inv(a)^(-n) : ModP(powermod(a.v, n, HYP_MOD[]))
 modp_chi(a::ModP) = iszero(a) ? 0 : (powermod(a.v, (HYP_MOD[] - 1) ÷ 2, HYP_MOD[]) == 1 ? 1 : -1)
 modp_sqrt(a::ModP) = (r = sqrt_mod(a.v, HYP_MOD[]); r === nothing ? nothing : ModP(r))
 # a square root of a mod the odd prime p (Tonelli–Shanks), or nothing
