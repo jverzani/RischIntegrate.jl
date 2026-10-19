@@ -60,9 +60,24 @@ the last section.
     and no residue at ∞. The residues are ℚ-dependent iff h² ≡ c and c/N(h) is a square. When they
     are independent, elementary iff P₁ − σP₁ is torsion, decided mod p.
     E.g. ∫1/((x²+1)√(x³+1)) is `NotElementary`.
+* Phase 2, the log part for residues of degree 4: done, tests green (2026-10-18). `hyp_quartic_log`.
+  * r₁² = h(α₁) is irrational, so L = ℚ(α₁, r₁) = ℚ(r₁) = ℚ[z]/(M), with α₁ = (z² − h₀)/h₁ and
+    M ∝ F((z² − h₀)/h₁). `NFz`: one type with a global modulus (`with_nf`), like `ModP`.
+  * With N from the orders mod p, `hyp_divisor_unit` runs over L for u = v/(x − α₁)^N with
+    div(u) = N(P₁ − σP₁), at P₁ = (α₁, R(α₁)/(z D′(α₁))).
+  * Log part: Σⱼ (rⱼ/N) log uⱼ = ½ Σ_{M(z)=0} (z/N) log U(z), with U = (p + q y)(x − α₂)^N (since
+    1/(x − α₁) = (x − α₂)/F). Output: `ScaledRootSum(1/(2N), TermRootSum(M, …))`, whose coefficients
+    are Pⱼ(x) + Qⱼ(x)√a.
+  * If h(α₁) is a square in ℚ(α₁), M = M₁(z)M₁(−z): L = ℚ[z]/(M₁), factor 1, plus −(Σz) log F.
+  * Exact checks: d log u over L, then the residue-free rest after subtracting ½Tr_{L/ℚ}((z/N)Pu)
+    (computed from the power sums of M).
+  * The assembly of the printed answer is not covered by the exact checks: a sign error in the
+    −(Σz) log F term was caught only by the numerical test.
+  * Test example: P₁ = (1+√2, (1+√2)√6), 4-torsion on y² = 3(x³ − x) (a twist of the 4-torsion
+    point of y² = x³ − x).
 * Next / not yet:
-  * Constructing the log for torsion divisors over quartic fields (number-field arithmetic,
-    RootSum-style output). Also degree-4 residues mixed with others, and dependent residues.
+  * Degree-4 residues mixed with other residues, ℚ-dependent ones, and residues at ∞ together with
+    them.
   * Residues of degree > 4 (a general ℚ-basis of the residue span).
   * Faster divisor arithmetic for large multiples (Cantor's algorithm / Mumford representation).
   * #J for genus ≥ 3 (counts over 𝔽_{pᵏ}, k ≤ g).

@@ -303,6 +303,46 @@ function hyp_reduction(::Type{QS{d}}) where {d}
     end
     p, φ
 end
+# A number field L = ℚ[z]/(M), M ∈ ℚ[z] monic irreducible, as a field for UPoly (the log part with
+# residues of degree 4). One type for every M: the modulus is HYP_NF[], set by `with_nf`.
+const HYP_NF = Ref{QX}(QX(Q[0, 1]))
+function with_nf(f, M::QX)
+    old = HYP_NF[]
+    HYP_NF[] = M
+    try
+        f()
+    finally
+        HYP_NF[] = old
+    end
+end
+struct NFz
+    c::QX                                               # reduced mod HYP_NF[]
+end
+nfz(p::QX) = NFz(rem(p, HYP_NF[]))
+Base.zero(::Type{NFz}) = NFz(zero(QX))
+Base.one(::Type{NFz}) = NFz(one(QX))
+Base.zero(::NFz) = zero(NFz)
+Base.one(::NFz) = one(NFz)
+Base.iszero(a::NFz) = iszero(a.c)
+Base.isone(a::NFz) = isone(a.c)
+Base.:(==)(a::NFz, b::NFz) = a.c == b.c
+Base.hash(a::NFz, h::UInt) = hash(a.c, h)
+Base.:+(a::NFz, b::NFz) = NFz(a.c + b.c)
+Base.:-(a::NFz, b::NFz) = NFz(a.c - b.c)
+Base.:-(a::NFz) = NFz(-a.c)
+Base.:*(a::NFz, b::NFz) = nfz(a.c * b.c)
+Base.:*(n::Integer, a::NFz) = NFz(n * a.c)
+function Base.inv(a::NFz)
+    s, _, g = gcdex(a.c, HYP_NF[])
+    (iszero(a) || !isone(g)) && throw(DivideError())
+    nfz(s)
+end
+Base.:/(a::NFz, b::NFz) = a * inv(b)
+cfromQ(::Type{NFz}, q::Q) = NFz(QX(Q[q]))
+hyp_reduction(::Type{NFz}) = nothing                    # no filter (the order is known mod p already)
+# Tr_{L/ℚ}(c) from the power sums of the roots of M
+nf_trace(c::NFz, ps) = sum((c.c.c[k] * ps[k] for k in eachindex(c.c.c)); init = Q(0))
+
 # a polynomial mapped coefficientwise (nothing if a coefficient fails)
 function hyp_map(φ, p::UPoly, ::Type{T}) where {T}
     c = T[]
@@ -382,8 +422,9 @@ function hyp_divisor_unit(a::UPoly{K}, res, ninf::Int, l, N::Int; maxsize::Int =
     sq = isempty(conds) ? Q[] : hyp_sqrt_series(hyp_down(a), max(dq, 0) + na ÷ 2 - conds[1][2] + 1, Q(1, 2))  # y
     s = K[cfromQ(K, c) for c in sq]
     # filter mod p first, then the exact system over K
-    pr, φ = hyp_reduction(K)
-    trivial = with_mod(pr) do
+    red = hyp_reduction(K)
+    trivial = red !== nothing && with_mod(red[1]) do
+        φ = red[2]
         sp = ModP[]
         for c in s
             m = φ(c)
@@ -622,8 +663,56 @@ function hyp_quartic_decision(a::QX, R::QX, D::QX, ρ::Q, uterm)
         "order in the Jacobian (its orders modulo two primes differ)")
     ord === nothing && return RischNotImplemented(
         "√($uterm): residues of degree 4: no suitable primes found to decide torsion")
-    RischNotImplemented("√($uterm): residues of degree 4 whose divisor is probably torsion (order $ord mod two " *
-                        "primes); constructing the logarithm over a quartic field is not implemented yet")
+    hyp_quartic_log(a, R, D, F, h, ord, uterm)
+end
+
+# The log part for degree-4 residues when the order mod p is N. L = ℚ(r₁) = ℚ[z]/(M): r₁² = h(α₁) =
+# h₀ + h₁α₁ is irrational, so α₁ = (z² - h₀)/h₁ ∈ ℚ(r₁) and M = h₁⁻² F((z² - h₀)/h₁)·(monic). The roots of M
+# are the residues ±r₁, ±r₂. Solve for u = v/(x - α₁)^N with div(u) = N(P₁ - σP₁) over L; then the log part
+# is Σⱼ (rⱼ/N) log uⱼ = ½ Σ_{M(z)=0} (z/N) log u(z), and with 1/(x - α₁) = (x - α₂)/F(x) (Σ z = 0 removes the
+# log F terms) = ½ Σ_z (z/N) log U(z), U = (p + q y)(x - α₂)^N. Returns [(:rootsum, M, U-coefficients by
+# powers of z (pairs (Pⱼ, Qⱼ) for Pⱼ + Qⱼ y), N, its derivative over y as an element of ℚ(x))].
+function hyp_quartic_log(a::QX, R::QX, D::QX, F::QX, h::QX, N::Int, uterm)
+    h0, h1 = h.c[1], h.c[2]
+    Az = QX(Q[-h0 / h1, Q(0), 1 / h1])                  # α₁ = (z² - h₀)/h₁
+    M = monic(scale(h1 * h1, scale(F.c[3], Az * Az) + scale(F.c[2], Az) + QX(Q[F.c[1]])))
+    # r₁ ∈ ℚ(α₁) (h(α₁) a square there): M = M₁(z)·M₁(-z), L = ℚ[z]/(M₁) of degree 2 with roots r₁, r₂, and
+    # the log part is Σ_{M₁(z)=0} (z/N) log u(z) (factor 1, not ½; Σ z ≠ 0 leaves -(Σ z) log F)
+    fsM = factor_Q(M)
+    length(fsM) == 1 || all(f -> degree(f) == 2, fsM) || return RischNotImplemented(
+        "√($uterm): residues of degree 4 with an unexpected splitting field")
+    M = fsM[1]
+    half = degree(M) == 4 ? Q(1, 2) : Q(1)
+    with_nf(M) do
+        L = NFz
+        PL = UPoly{L}
+        z = nfz(xpoly(Q))
+        α1 = nfz(Az)
+        α2 = cfromQ(L, -F.c[2] / F.c[3]) - α1
+        aL = hyp_lift(L, a)
+        β1 = peval(hyp_lift(L, R), α1) / (z * peval(hyp_lift(L, deriv(D)), α1))
+        G = PL([-α1, one(L)])
+        pq = hyp_divisor_unit(aL, [(G, 1, PL([β1]))], 0, nothing, N)
+        pq === nothing && return NotElementary(
+            "√($uterm): the divisor of the degree-4 residues is not torsion (its order mod p would be $N, " *
+            "but $N·Δ is not principal)")
+        pq === :toolarge && return RischNotImplemented("√($uterm): the degree-4 log part is too large")
+        pu, qu = pq
+        Pu = hyp_dlog(aL, pu, qu)
+        hyp_check_dlog(aL, pu, qu, G^N, Pu) || throw(RischError("internal check failed: d log u over L"))
+        # ½ Tr(z/N · Pu) = ½ Tr(T)/F^{2N}, T = (z/N)·Pu·F^{2N} ∈ L[x]
+        F2N = hyp_lift(L, F)^(2N)
+        Fq, z0 = divrem(F2N, Pu.den)
+        iszero(z0) || throw(RischError("hyp_quartic_log: the denominator of d log u does not divide F^2N"))
+        T = scale(z * cfromQ(L, Q(1, N)), Pu.num * Fq)
+        ps = power_sums(M)
+        dlog = frac(QX(Q[half * nf_trace(c, ps) for c in T.c]), F^(2N))
+        x2 = PL([-α2, one(L)])^N
+        PU, QU = pu * x2, qu * x2
+        coef(f, j) = QX(Q[(j + 1 <= length(c.c.c) ? c.c.c[j + 1] : Q(0)) for c in f.c])
+        cs = [(coef(PU, j), coef(QU, j)) for j in 0:(degree(M) - 1)]
+        Any[(:rootsum, M, cs, N, dlog, half, ps[2], F)]          # ps[2] = Σ z
+    end
 end
 
 # The log part of (P + R/D)/y (simple poles, some residue ≠ 0): a list of (d, λ, p, q, G, λPu), one per
@@ -774,6 +863,7 @@ function integrate_hyperelliptic(f, xk::String, u::QXF, uterm, radval, b0::Build
     end
     yterm = mk(b0, :sqrt, uterm)
     logt = nothing
+    rss = Any[]                                         # RootSums (degree-4 residues)
     nores(after = "Hermite reduction") = NotElementary(
         "after $after ∫ ($(zpoly_string(P, xk)))/√($uterm) is left: a nonzero differential without " *
         "residues on a curve of genus $(hyp_genus(a))")
@@ -783,7 +873,18 @@ function integrate_hyperelliptic(f, xk::String, u::QXF, uterm, radval, b0::Build
         lp isa Exception && throw(lp)
         W = frac(P) + frac(R, D)
         lts = Any[]
-        for (d, λ, pu, qu, G, λPu) in lp
+        for e in lp
+            if e[1] === :rootsum                        # half·Σ_{M(z)=0} (z/N) log U(z) - half·(Σ z)·log F
+                _, M, cs, N, dlog, half, Σz, Fx = e
+                W = W - dlog
+                coeffs = Any[(iszero(Pj) && iszero(Qj)) ? nothing :
+                             iszero(Qj) ? poly_term(b0, Pj) :
+                             mk(b0, :+, poly_term(b0, Pj), mk(b0, :*, poly_term(b0, Qj), yterm)) for (Pj, Qj) in cs]
+                push!(rss, ScaledRootSum(cterm(b0, half / N), TermRootSum(M, coeffs, xk)))
+                iszero(Σz) || push!(lts, mk(b0, :*, cterm(b0, -half * Σz), mk(b0, :log, poly_term(b0, Fx))))
+                continue
+            end
+            d, λ, pu, qu, G, λPu = e
             K = d == 1 ? Q : QS{d}
             if verify
                 Pu = hyp_dlog(hyp_lift(K, a), pu, qu)
@@ -797,14 +898,20 @@ function integrate_hyperelliptic(f, xk::String, u::QXF, uterm, radval, b0::Build
             throw(RischError("hyperelliptic log part: residues left after subtracting the logarithms"))
         P = W.num
         iszero(P) || throw(nores("Hermite reduction and the logarithmic part"))
-        logt = length(lts) == 1 ? lts[1] : mk(b0, :+, lts...)
+        logt = isempty(lts) ? nothing : length(lts) == 1 ? lts[1] : mk(b0, :+, lts...)
     end
     alg = iszero(g) ? nothing : mk(b0, :*, frac_term(b0, g), yterm)
     logt === nothing || (alg = alg === nothing ? logt : mk(b0, :+, alg, logt))
-    iszero(el.p) && return alg === nothing ? b0.lift(0) : alg
-    T, _ = build_tower(b0.x, xk)
-    F = integrate_built(T, el.p, b0, verify)
-    alg === nothing && return F
-    F isa IntegralWithRootSums && return IntegralWithRootSums(mk(b0, :+, F.elementary, alg), F.rootsums, F.var)
-    mk(b0, :+, F, alg)
+    F = nothing
+    if !iszero(el.p)
+        T, _ = build_tower(b0.x, xk)
+        F = integrate_built(T, el.p, b0, verify)
+    end
+    if F isa IntegralWithRootSums
+        append!(rss, F.rootsums)
+        F = F.elementary
+    end
+    E = F === nothing ? alg : alg === nothing ? F : mk(b0, :+, F, alg)
+    E === nothing && (E = b0.lift(0))
+    isempty(rss) ? E : IntegralWithRootSums(E, rss, xk)
 end

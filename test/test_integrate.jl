@@ -370,6 +370,23 @@ function run_tests(x, evalat, name)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x^2 + 1) * (x - 2) * sqrt(x^3 + 1)), x)
     end
 
+    @testset "$name: the log part for residues of degree 4: RootSums over a quartic field (SI2 phase 2)" begin
+        # P₁ = (1 + √2, (1 + √2)√6) is 4-torsion on y² = 3(x³ - x) (the twist of the 4-torsion point
+        # (1 + √2, (1 + √2)√2) of y² = x³ - x), so N(P₁ - σP₁) is principal for N = 2; residues (√2 ∓ 1)/(4√3)
+        val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, a))
+        for f in (1 / ((x^2 - 2x - 1) * sqrt(3x^3 - 3x)) + 1 / (4 * sqrt(3x^3 - 3x)),   # L = ℚ(√2, √3)
+                  1 / ((x^2 - 2x - 1) * sqrt(x^3 - x)) + 1 / (4 * sqrt(x^3 - x)))      # L = ℚ(√2): r₁ ∈ ℚ(α₁)
+            F = Risch.risch_integrate(f, x)
+            @test F isa Risch.IntegralWithRootSums
+            for a in (1.7, 2.6, 4.1)
+                h = 1e-5
+                @test isapprox((val(F, a + h) - val(F, a - h)) / (2h), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
+        # the same log part, but ∫ -dx/(4√(3x³ - 3x)) is left (first kind)
+        @test_throws Risch.NotElementary Risch.risch_integrate(1 / ((x^2 - 2x - 1) * sqrt(3x^3 - 3x)), x)
+    end
+
     @testset "$name: real log arguments in 10a answers (step RL)" begin
         # t = u^(1/n) > 0: log(-w) where w < 0 on (0, ∞), log(w²)/2 where w changes sign there;
         # SimpleExpressions evaluates in real arithmetic, so a negative log argument would throw
