@@ -373,11 +373,10 @@ function run_tests(x, evalat, name)
     @testset "$name: the log part for residues of degree 4: RootSums over a quartic field (SI2 phase 2)" begin
         # P₁ = (1 + √2, (1 + √2)√6) is 4-torsion on y² = 3(x³ - x) (the twist of the 4-torsion point
         # (1 + √2, (1 + √2)√2) of y² = x³ - x), so N(P₁ - σP₁) is principal for N = 2; residues (√2 ∓ 1)/(4√3)
-        val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, a))
+        val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, complex(a)))
         for f in (1 / ((x^2 - 2x - 1) * sqrt(3x^3 - 3x)) + 1 / (4 * sqrt(3x^3 - 3x)),   # L = ℚ(√2, √3)
                   1 / ((x^2 - 2x - 1) * sqrt(x^3 - x)) + 1 / (4 * sqrt(x^3 - x)))      # L = ℚ(√2): r₁ ∈ ℚ(α₁)
-            F = Risch.risch_integrate(f, x)
-            @test F isa Risch.IntegralWithRootSums
+            F = Risch.risch_integrate(f, x)          # r₁ = (√6 - √3)/12 is multiquadratic: logs with √3, √6 (classes)
             for a in (1.7, 2.6, 4.1)
                 h = 1e-5
                 @test isapprox((val(F, a + h) - val(F, a - h)) / (2h), real(evalat(f, a)); rtol = 1e-5)
@@ -385,16 +384,48 @@ function run_tests(x, evalat, name)
         end
         # the same log part, but ∫ -dx/(4√(3x³ - 3x)) is left (first kind)
         @test_throws Risch.NotElementary Risch.risch_integrate(1 / ((x^2 - 2x - 1) * sqrt(3x^3 - 3x)), x)
+        # the RootSum construction over L = ℚ[z]/(M) (used when the residues are not multiquadratic), called
+        # directly on this example: subtracting its derivative leaves exactly -1/4
+        Q, QX = Risch.Q, Risch.UPoly{Risch.Q}
+        a, Fq, R1 = QX(Q[0, -3, 0, 3]), QX(Q[-1, -2, 1]), QX(Q[1])
+        hq = rem(R1 * R1 * Risch.hyp_invmod(Risch.deriv(Fq)^2 * a, Fq), Fq)
+        lp = Risch.hyp_quartic_decision(a, R1, Fq, Fq, hq, "u")
+        @test lp isa Vector && lp[1][1] === :rootsum && Risch.frac(R1, Fq) - lp[1][5] == Risch.kconst(Q(-1, 4))
+    end
+
+    @testset "$name: dependent residues: multiquadratic residues split into classes (SI2 phase 2)" begin
+        # r² = A + B√e with A² - eB² a square: r = √p₁ + (B/2p₁)√p₁√e lies in two classes d₁, d₂; residues of
+        # different factors in the same class are pooled (one divisor per class)
+        y = sqrt(x^3 - x)
+        fs = (1 / ((x^2 - 2x - 1) * y) + 1 / (4y),                              # r = (√2 - 1)/4: classes 1, 2
+              1 / ((x^2 - 2x - 1) * y) + 1 / ((x^2 + 2x - 1) * y) + 1 / (2y),  # two factors sharing classes 1, 2
+              1 / ((x^2 - 2x - 1) * y) + 3 / ((x^2 + 2x - 1) * y) + 1 / y,
+              (x + 1) / ((x^2 - 2x - 1) * y) + 1 / (2y),
+              # Rubi's library
+              x^3 / ((x^4 - 1) * sqrt(2x^8 + 1)),
+              (1 - x^2) / ((1 + x^2) * sqrt(1 + x^4)),
+              (1 + x^2) / ((1 - x^2) * sqrt(1 + x^2 + x^4)))
+        for f in fs
+            F = Risch.risch_integrate(f, x)
+            for a in (1.7, 2.6, 4.1)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        @test_throws Risch.NotElementary Risch.risch_integrate(1 / ((x^2 - 2x - 1) * y) + 1 / ((x^2 + 2x - 1) * y), x)
+        f = x / sqrt(1 - x^4)                                                   # residues at ∞ in ℚ√-1: -atan(√(1-x⁴)/x²)/2
+        F = Risch.risch_integrate(f, x)
+        for a in (-0.7, 0.3, 0.8)
+            @test antiderivative_ok(F, f, a, evalat)
+        end
     end
 
     @testset "$name: degree-4 residues mixed with other residues (SI2 phase 2)" begin
         # the residue span is a direct sum (Kummer: square classes of K₁ = ℚ(√d, √e) certified mod p),
         # so each group is decided on its own
-        val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, a))
+        val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, complex(a)))
         y = sqrt(3x^3 - 3x)
         f = 1 / ((x^2 - 2x - 1) * y) + 1 / ((x^2 + 2x - 1) * y) + 1 / (2y)    # two quartic pairs: two RootSums
         F = Risch.risch_integrate(f, x)
-        @test F isa Risch.IntegralWithRootSums && length(F.rootsums) == 2
         for a in (1.7, 2.6, 4.1)
             h = 1e-5
             @test isapprox((val(F, a + h) - val(F, a - h)) / (2h), real(evalat(f, a)); rtol = 1e-5)

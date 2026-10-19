@@ -271,32 +271,46 @@ Base.:*(n::Integer, a::ModP) = modp(n) * a
 Base.inv(a::ModP) = iszero(a) ? throw(DivideError()) : ModP(powermod(a.v, HYP_MOD[] - 2, HYP_MOD[]))
 Base.:/(a::ModP, b::ModP) = a * inv(b)
 modp_chi(a::ModP) = iszero(a) ? 0 : (powermod(a.v, (HYP_MOD[] - 1) ÷ 2, HYP_MOD[]) == 1 ? 1 : -1)
-function modp_sqrt(a::ModP)                            # a square root, or nothing (small p: by search)
-    p = HYP_MOD[]
-    modp_chi(a) == -1 && return nothing
-    if p % 4 == 3
-        return ModP(powermod(a.v, (p + 1) ÷ 4, p))
+modp_sqrt(a::ModP) = (r = sqrt_mod(a.v, HYP_MOD[]); r === nothing ? nothing : ModP(r))
+# a square root of a mod the odd prime p (Tonelli–Shanks), or nothing
+function sqrt_mod(a::Integer, p::Int)
+    a = Int(mod(a, p))
+    a == 0 && return 0
+    powermod(a, (p - 1) ÷ 2, p) == 1 || return nothing
+    p % 4 == 3 && return powermod(a, (p + 1) ÷ 4, p)
+    q, s = p - 1, 0
+    while iseven(q)
+        q ÷= 2
+        s += 1
     end
-    for t in 0:(p - 1)
-        mod(t * t - a.v, p) == 0 && return ModP(t)
+    z = 2
+    while powermod(z, (p - 1) ÷ 2, p) != p - 1
+        z += 1
     end
-    nothing
+    m, c, t, r = s, powermod(z, q, p), powermod(a, q, p), powermod(a, (q + 1) ÷ 2, p)
+    while t != 1
+        i, t2 = 0, t
+        while t2 != 1
+            t2 = mod(t2 * t2, p)
+            i += 1
+        end
+        b = powermod(c, 1 << (m - i - 1), p)
+        m, c = i, mod(b * b, p)
+        t, r = mod(t * c, p), mod(r * b, p)
+    end
+    r
 end
 modp_roots(f::UPoly{ModP}) = [ModP(t) for t in 0:(HYP_MOD[] - 1) if iszero(peval(f, ModP(t)))]
 
 # A reduction K → ℤ/pℤ for K = ℚ or ℚ(√d): (p, the map on constants, which returns nothing on a
-# vanishing denominator; valid inside with_mod(p)). For ℚ(√d): p ≡ 3 mod 4 with d a square mod p.
+# vanishing denominator; valid inside with_mod(p)). For ℚ(√d): a prime p < 2³¹ with d a square mod p.
 hyp_reduction(::Type{Q}) = (2147483647, c -> modp(c))
 function hyp_reduction(::Type{QS{d}}) where {d}
-    p = 2147483647                                      # 2³¹ - 1 ≡ 3 mod 4
-    while true
-        if is_probable_prime(big(p)) && mod(d, p) != 0
-            r = powermod(mod(d, p), (p + 1) ÷ 4, p)
-            mod(r * r - d, p) == 0 && break
-        end
-        p -= 4
+    p = 2147483647
+    while !(is_probable_prime(big(p)) && mod(d, p) != 0 && sqrt_mod(d, p) !== nothing)
+        p -= 2
     end
-    r = powermod(mod(d, p), (p + 1) ÷ 4, p)
+    r = sqrt_mod(d, p)
     function φ(c::QS{d})
         a, b = modp(c.a), modp(c.b)
         (a === nothing || b === nothing) ? nothing : a + b * ModP(r)
@@ -366,11 +380,13 @@ function hyp_finite_residues(a::QX, R::QX, D::QX)
     dD = deriv(D)
     byr = Dict{Tuple{Int,Q},QX}()
     quart = Tuple{QX,QX}[]
+    extra = Tuple{Int,QX,Q,QX}[]                        # class entries from split quadratic factors
     for F in factor_Q(D)
         h = rem(R * R * hyp_invmod(dD * dD * a, F), F)
         if degree(h) > 0                                # residues of degree 4 (F quadratic), else unsupported
             degree(F) == 2 || return nothing
-            push!(quart, (F, h))
+            cl = hyp_split_quadratic(F, h, R, dD)
+            cl === nothing ? push!(quart, (F, h)) : append!(extra, cl)
             continue
         end
         d, sv = hyp_sqrt_class(h.c[1])
@@ -380,7 +396,40 @@ function hyp_finite_residues(a::QX, R::QX, D::QX)
     for ((d, sv), G) in byr
         push!(get!(out, d, Tuple{QX,Q,QX}[]), (G, sv, rem(R * hyp_invmod(scale(sv * d, dD), G), G)))
     end
+    for (d, G, sv, S0) in extra
+        push!(get!(out, d, Tuple{QX,Q,QX}[]), (G, sv, S0))
+    end
     out, quart
+end
+
+# A quadratic factor F (monic, α = (-b + s√e)/2, √e = (2α + b)/s) whose residues r with r² = h(α) = A + B√e
+# lie in a multiquadratic field: N = A² - eB² = n² a rational square. Then (denesting, p₁ = (A + n)/2 ≠ 0)
+#   r = √p₁ + (B/(2p₁)) √p₁ √e_α,   √e_α = (2α + b)/s = ε√e,  ε = ±1 over the two roots,
+# i.e. r = s₁√d₁ + ε c √d₂ with √p₁ = s₁√d₁, √d₁√e = t√d₂, c = B s₁ t/(2p₁): one entry in class d₁ (the
+# places y ≡ S, S = R/(ρD′), ρ = √p₁ τ(x), τ = 1 + (B/(2p₁))(2x + b)/s) and one in class d₂ (the places
+# y ≡ εS). Returns [(d, F, coefficient > 0, S₀)] with S = √d·S₀ (S₀ ∈ ℚ[x] mod F), or nothing if N is not a
+# square (the residues generate a quartic field that is not multiquadratic: RootSums).
+function hyp_split_quadratic(F::QX, h::QX, R::QX, dD::QX)
+    b, c0 = F.c[2], F.c[1]
+    e, s = hyp_sqrt_class(b * b - 4c0)
+    h0, h1 = h.c[1], h.c[2]
+    A, B = h0 - h1 * b / 2, h1 * s / 2
+    n = rat_sqrt(A * A - e * B * B)
+    n === nothing && return nothing
+    (!iszero(A) && sign(n) != sign(A)) && (n = -n)
+    iszero(A + n) && (n = -n)
+    p1 = (A + n) / 2
+    d1, s1 = hyp_sqrt_class(p1)
+    τ = QX(Q[1 + B * b / (2p1 * s), B / (p1 * s)])
+    S01 = rem(R * hyp_invmod(scale(s1 * d1, τ * dD), F), F)
+    d2, t = hyp_sqrt_class(Q(d1 * e))
+    (d1 < 0 && e < 0) && (t = -t)                      # √d₁√e = t√d₂ for principal roots
+    c = B * s1 * t / (2p1)
+    S02 = rem(scale(t / (e * s), S01 * QX(Q[b, 2])), F)
+    c < 0 && ((c, S02) = (-c, -S02))
+    out = Tuple{Int,QX,Q,QX}[(d1, F, s1, S01)]
+    iszero(c) || push!(out, (d2, F, c, S02))
+    out
 end
 
 # c = (s√d)², s > 0, d squarefree: (d, s)
@@ -629,9 +678,10 @@ function hyp_class_pts(d::Int, rd, linf::Q, dinf::Int)
             end
         end
         length(unique(first.(pts))) == length(pts) || return nothing
+        (dinf != 1 && dinf != d) && return pts, one(ModP)   # no residue at ∞ in this class: l unused
         lp = modp(linf)
         lp === nothing && return nothing
-        dinf == 1 || (lp = lp * (dinf == d ? sd : modp_sqrt(modp(dinf))))
+        dinf == 1 || (lp = lp * sd)
         pts, lp
     end
 end
@@ -887,17 +937,39 @@ hyp_down_frac(f::Frac{UPoly{QS{d}}}) where {d} = frac(hyp_down(f.num), hyp_down(
 
 # λ log((p + q y)/G) as a real term. ℚ(√d), d > 0: λ, p, q printed with sqrt(d). d < 0: u ū is a constant
 # (div(u ū) = NΔ + conj(NΔ) = 0), so with √d = iδ, u = A + iδB and λ = iδβ: λ log u = -δβ atan(δB/A) + const.
-function hyp_log_term(b0::Builder, yterm, d::Int, λ, p, q, G)
+# whether u = (p + q√a)/G is positive where a > 0 (sampled on [-12, 12]; it only chooses the printed form)
+function hyp_positive(a::QX, d::Int, p, q, G::QX)
+    num(c::Q) = Float64(c)
+    num(c::QSB) = Float64(c.a) + Float64(c.b) * sqrt(Float64(d))
+    ev(f, x) = foldr((c, acc) -> acc * x + num(c), f.c; init = 0.0)
+    for x in range(-12, 12; length = 481)
+        av = ev(a, x)
+        av > 0 || continue
+        g = ev(G, x)
+        abs(g) < 1e-9 && continue
+        (ev(p, x) + ev(q, x) * sqrt(av)) / g < 0 && return false
+    end
+    true
+end
+
+# When u may be negative on the real domain (sampled), λ log u is printed as (λ/2) log(u²) (as in step RL):
+# real-valued there, with the same derivative.
+function hyp_log_term(b0::Builder, yterm, a::QX, d::Int, λ, p, q, G)
     if d > 0 || d == 1
         v = mk(b0, :+, poly_term(b0, p), mk(b0, :*, poly_term(b0, q), yterm))
-        lg = mk(b0, :log, isone(G) ? v : mk(b0, :/, v, poly_term(b0, G)))
-        return isone(λ) ? lg : mk(b0, :*, cterm(b0, λ), lg)
+        arg = isone(G) ? v : mk(b0, :/, v, poly_term(b0, G))
+        hyp_positive(a, d, p, q, G) && return isone(λ) ? mk(b0, :log, arg) : mk(b0, :*, cterm(b0, λ), mk(b0, :log, arg))
+        return mk(b0, :*, cterm(b0, λ * cfromQ(typeof(λ), Q(1, 2))), mk(b0, :log, mk(b0, :^, arg, b0.lift(2))))
     end
     δ = -d
     re(f) = QX(Q[c.a for c in f.c])
     im(f) = QX(Q[c.b for c in f.c])
     A = mk(b0, :+, poly_term(b0, re(p)), mk(b0, :*, poly_term(b0, re(q)), yterm))
     B = mk(b0, :+, poly_term(b0, im(p)), mk(b0, :*, poly_term(b0, im(q)), yterm))
+    if δ == 1                                           # d = -1: no sqrt(1)
+        at = mk(b0, :atan, mk(b0, :/, B, A))
+        return isone(-λ.b) ? at : mk(b0, :*, cterm(b0, -λ.b), at)
+    end
     rδ = mk(b0, :sqrt, b0.lift(δ))
     at = mk(b0, :atan, mk(b0, :/, mk(b0, :*, rδ, B), A))
     mk(b0, :*, cterm(b0, QS{δ}(Q(0), -λ.b)), at)
@@ -964,7 +1036,7 @@ function integrate_hyperelliptic(f, xk::String, u::QXF, uterm, radval, b0::Build
                     throw(RischError("internal check failed: d log((p + q y)/G) on the curve"))
             end
             W = W - λPu
-            push!(lts, hyp_log_term(b0, yterm, d, λ, pu, qu, G))
+            push!(lts, hyp_log_term(b0, yterm, a, d, λ, pu, qu, G))
         end
         (isone(W.den) && hyp_residue_free(a, W.num, zero(QX))) ||
             throw(RischError("hyperelliptic log part: residues left after subtracting the logarithms"))

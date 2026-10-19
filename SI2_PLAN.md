@@ -87,8 +87,33 @@ the last section.
     * Square roots mod p are fixed per prime factor of the d, e (and −1), so the maps K₁ → 𝔽_p are
       consistent.
   * Uncertified or dependent cases give `RischNotImplemented`.
-* Next / not yet:
-  * ℚ-dependent degree-4 residues; residues of degree > 4 (a general residue basis).
+* Phase 2, dependent residues: done, tests green (2026-10-18).
+  * Inside one pair, dependence is impossible: r₁/r₂ = q ∈ ℚ forces h(α₁) = q² h(α₂) and then h rational.
+    So it is always between groups.
+  * For a quadratic factor with r² = A + B√e and A² − eB² = n² a rational square, the residues are
+    multiquadratic. Denesting gives r = √p₁ + (B/2p₁)√p₁√e_α with p₁ = (A+n)/2 (`hyp_split_quadratic`).
+    That is one entry in class d₁ = [p₁] (places y ≡ S) and one in class d₂ = [p₁e] (places y ≡ εS,
+    ε = ±1 over the two roots).
+  * The class machinery then pools all residues of a class over all factors, with integer
+    multiplicities. That resolves every dependency among multiquadratic residues, and the answers are
+    logs and atans with √d instead of RootSums.
+  * The RootSum path remains for non-multiquadratic quartic residues (A² − eB² not a square). It has a
+    direct exact unit test, because no torsion example of that kind has been found yet.
+  * Rubi's library was used as a source of integrands (`library_of_problems.jl` in
+    RUBISymbolicIntegration.jl, parsed as Expr, not evaluated). There were 48 problems with √ of a
+    polynomial of degree ≥ 3. No `NotElementary` contradicts an elementary Rubi answer.
+  * Fixes found along the way:
+    * Square roots mod p by Tonelli–Shanks. The filter for ℚ(√−1) looped forever, because it only
+      looked at primes p ≡ 3 mod 4.
+    * l mod p is not needed for classes without a residue at ∞.
+    * Logs whose argument may be negative on the real domain (sampled) are printed as (λ/2) log(u²).
+    * No `sqrt(1)` in atan terms.
+* Gaps seen in Rubi's library:
+  * Radicands with repeated factors (√((x−3)²(x+1)) is genus 0).
+  * Two different radicands of degree ≥ 3.
+  * Cube and fourth roots (phase 3).
+  * Nested radicals.
+* Next / not yet: non-multiquadratic quartic residues mixed with dependent ones; residues of degree > 4.
   * Residues of degree > 4 (a general ℚ-basis of the residue span).
   * Faster divisor arithmetic for large multiples (Cantor's algorithm / Mumford representation).
   * #J for genus ≥ 3 (counts over 𝔽_{pᵏ}, k ≤ g).
