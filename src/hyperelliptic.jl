@@ -359,14 +359,20 @@ hyp_lift(::Type{K}, p::QX) where {K} = UPoly{K}(K[cfromQ(K, c) for c in p.c])   
 # ℚ*/ℚ*²: Dict d => [(G, s, S₀)], with residues ±s√d (s ∈ ℚ, s > 0, d squarefree) at the places over the
 # roots of G (the product of the irreducible factors of D in that class), and y ≡ S = √d·S₀,
 # S₀ ≡ R/(s d D′) mod G at the places with residue +s√d (y ≡ -S at those with -s√d).
-# Over the roots α of a factor F: res = R(α)/(D′(α) y(α)), so res² ≡ R²/(D′² a) mod F. `nothing` when
-# this is not a constant mod F (residues of degree > 2).
+# Over the roots α of a factor F: res = R(α)/(D′(α) y(α)), so res² ≡ R²/(D′² a) mod F. Factors where this
+# is not a constant (residues of degree 4) are returned apart: (classes, [(F, h)]), F quadratic and
+# h ≡ R²/(D′² a) mod F. `nothing` for such a factor of degree > 2.
 function hyp_finite_residues(a::QX, R::QX, D::QX)
     dD = deriv(D)
     byr = Dict{Tuple{Int,Q},QX}()
+    quart = Tuple{QX,QX}[]
     for F in factor_Q(D)
         h = rem(R * R * hyp_invmod(dD * dD * a, F), F)
-        degree(h) == 0 || return nothing
+        if degree(h) > 0                                # residues of degree 4 (F quadratic), else unsupported
+            degree(F) == 2 || return nothing
+            push!(quart, (F, h))
+            continue
+        end
         d, sv = hyp_sqrt_class(h.c[1])
         byr[(d, sv)] = get(byr, (d, sv), one(QX)) * F
     end
@@ -374,7 +380,7 @@ function hyp_finite_residues(a::QX, R::QX, D::QX)
     for ((d, sv), G) in byr
         push!(get!(out, d, Tuple{QX,Q,QX}[]), (G, sv, rem(R * hyp_invmod(scale(sv * d, dD), G), G)))
     end
-    out
+    out, quart
 end
 
 # c = (s√d)², s > 0, d squarefree: (d, s)
@@ -630,22 +636,12 @@ function hyp_class_pts(d::Int, rd, linf::Q, dinf::Int)
     end
 end
 
-# Residues of degree 4 (decision only): D = F irreducible of degree 2 with r² ≡ h mod F not constant,
-# no residue at ∞. The residues are ±r₁, ±r₂, rⱼ = √h(αⱼ); r₁/r₂ ∈ ℚ iff h² ≡ c mod F with c/N(h) a
-# square. If r₁, r₂ are ℚ-independent, the integral is elementary iff Δ₁ = P₁ - σP₁ is torsion
-# (Δ₂ is its conjugate), P₁ = (α₁, R(α₁)/(r₁D′(α₁))) over L = ℚ(α₁, r₁).
-function hyp_quartic_decision(a::QX, R::QX, D::QX, ρ::Q, uterm)
-    gen = hyp_genus(a)
-    fs = factor_Q(D)
-    (length(fs) == 1 && degree(D) == 2 && iszero(ρ)) || return RischNotImplemented(
-        "√($uterm): residues of degree > 2 over ℚ: only one quadratic factor of the denominator, without " *
-        "residues at ∞, is supported")
-    F, dD = fs[1], deriv(D)
-    h = rem(R * R * hyp_invmod(dD * dD * a, F), F)
-    h2 = rem(h * h, F)
-    if degree(h2) <= 0 && rat_sqrt((isempty(h2.c) ? Q(0) : h2.c[1]) / resultant(F, h)) !== nothing
-        return RischNotImplemented("√($uterm): residues of degree 4 that are ℚ-dependent are not supported")
-    end
+# Residues of degree 4: F | D irreducible of degree 2 with r² ≡ h mod F not constant. The residues over
+# the roots of F are ±r₁, ±r₂, rⱼ = √h(αⱼ). When they are ℚ-independent of each other and of all other
+# residues (`hyp_residues_independent`), this part is elementary iff Δ₁ = P₁ - σP₁ is torsion (Δ₂ is
+# its conjugate), P₁ = (α₁, R(α₁)/(r₁D′(α₁))) over L = ℚ(α₁, r₁).
+function hyp_quartic_decision(a::QX, R::QX, D::QX, F::QX, h::QX, uterm)
+    dD = deriv(D)
     function ptsfun(p)
         Fp, Rp, hp, dp = (hyp_map(modp, f, ModP) for f in (F, R, h, dD))
         any(isnothing, (Fp, Rp, hp, dp)) && return nothing
@@ -715,6 +711,72 @@ function hyp_quartic_log(a::QX, R::QX, D::QX, F::QX, h::QX, N::Int, uterm)
     end
 end
 
+# ℚ-independence of the residues across groups (Kummer theory): let K₁ = ℚ(√d for the classes, √e for the
+# quadratic fields ℚ(αₖ) of the degree-4 factors Fₖ). Square roots of elements of K₁* in pairwise different
+# square classes are K₁-linearly independent, so a ℚ-relation among the residues splits into relations
+# inside each square class. The class residues lie in K₁ (the class of 1); the residues rⱼₖ = √wⱼₖ,
+# wⱼₖ = hₖ(αⱼₖ), are put in classes different from 1 and from those of the other factors, and inside one
+# factor r₁ₖ/r₂ₖ ∉ ℚ is tested exactly. Then the residue span is a direct sum, one summand per class d and
+# per pair (r₁ₖ, r₂ₖ). w/w′ ∉ K₁*² is proved by one prime 𝔭 of degree 1 of K₁ (p splits completely: a
+# square root mod p of every prime factor of the d, e and of -1) with w/w′ a non-residue mod 𝔭. False when
+# a pair is dependent or not certified with primes < pmax.
+function hyp_residues_independent(ds::Vector{Int}, quart; pmax::Int = 3000)
+    fields = [begin
+                  b, c = F.c[2] / F.c[3], F.c[1] / F.c[3]   # F/lc = x² + b x + c, α = (-b ± s√e)/2
+                  e, sv = hyp_sqrt_class(b * b - 4c)
+                  (b, e, sv)
+              end for (F, _) in quart]
+    gens = BigInt[]                                     # prime factors (and -1) of the d and e
+    for n in vcat(ds, [e for (_, e, _) in fields])
+        n < 0 && push!(gens, big(-1))
+        append!(gens, first.(factorint(big(abs(n)))))
+    end
+    unique!(gens)
+    # within a factor: r₁/r₂ ∈ ℚ iff h² ≡ c mod F with c/N(h) a square (exact); r₁, r₂ may share a square
+    # class of K₁ (e.g. r₁/r₂ = 3 - 2√2) and still be ℚ-independent, so this pair is not certified mod p
+    for (F, h) in quart
+        h2 = rem(h * h, F)
+        degree(h2) <= 0 && rat_sqrt((isempty(h2.c) ? Q(0) : h2.c[1]) / resultant(F, h)) !== nothing && return false
+    end
+    vals = [(k, j) for k in eachindex(quart) for j in (1, 2)]
+    # (0, 0) stands for the class residues (in K₁): only when there are any
+    pending = Set((u, v) for u in vcat(isempty(ds) ? Tuple{Int,Int}[] : [(0, 0)], vals) for v in vals
+                  if u < v && u[1] != v[1])
+    p = 5
+    while !isempty(pending)
+        p += 2
+        p > pmax && return false
+        (is_probable_prime(big(p)) && all(g -> mod(g, p) != 0, filter(g -> g != -1, gens))) || continue
+        with_mod(p) do
+            sq = Dict{BigInt,ModP}()
+            for g in gens
+                r = modp_sqrt(modp(g))
+                r === nothing && return
+                sq[g] = r
+            end
+            rt(n) = (r = n < 0 ? sq[big(-1)] : one(ModP);
+                     for (q, k) in factorint(big(abs(n))); isodd(k) && (r = r * sq[q]); end; r)
+            w = Dict{Tuple{Int,Int},ModP}((0, 0) => one(ModP))
+            for (k, (F, h)) in enumerate(quart)
+                b, e, sv = fields[k]
+                bp, sp, hp = modp(b), modp(sv), hyp_map(modp, h, ModP)
+                (bp === nothing || sp === nothing || hp === nothing) && return
+                half = inv(modp(2))
+                for (j, σ) in ((1, 1), (2, -1))
+                    α = (-bp + σ * (sp * rt(e))) * half
+                    v = peval(hp, α)
+                    iszero(v) && return
+                    w[(k, j)] = v
+                end
+            end
+            for (u, v) in collect(pending)
+                modp_chi(w[u] / w[v]) == -1 && delete!(pending, (u, v))
+            end
+        end
+    end
+    true
+end
+
 # The log part of (P + R/D)/y (simple poles, some residue ≠ 0): a list of (d, λ, p, q, G, λPu), one per
 # class d of residues, with λ ∈ K = ℚ(√d) (ℚ for d = 1), p, q ∈ K[x], G ∈ ℚ[x], d(λ log((p + q y)/G)) =
 # λPu/y and λPu ∈ ℚ(x); together they have the residues of the integrand. Or the exception to raise.
@@ -754,8 +816,11 @@ function hyp_log_part(a::QX, P::QX, R::QX, D::QX, uterm)
         λ = hyp_res_inf(a, P) / hyp_res_inf(a, Pu.num)
         return [(1, λ, pu, qu, one(QX), Pu * kconst(λ))]
     end
-    fin = iszero(R) ? Dict{Int,Vector{Tuple{QX,Q,QX}}}() : hyp_finite_residues(a, R, D)
-    fin === nothing && return hyp_quartic_decision(a, R, D, ρ, uterm)
+    fr = iszero(R) ? (Dict{Int,Vector{Tuple{QX,Q,QX}}}(), Tuple{QX,QX}[]) : hyp_finite_residues(a, R, D)
+    fr === nothing && return RischNotImplemented(
+        "√($uterm): residues of degree > 4 over ℚ; the logarithmic part on a curve of genus $gen with such " *
+        "residues is not implemented yet")
+    fin, quart = fr
     # ∞₊: residue -ρ/√lc(a) = s∞√d∞, lc(a) = σ² d∞/m²; l = √lc(a) ∈ ℚ(√d∞)
     dinf, linf = 1, Q(1)
     if !isodd(na)
@@ -763,6 +828,8 @@ function hyp_log_part(a::QX, P::QX, R::QX, D::QX, uterm)
     end
     sinf = iszero(ρ) ? Q(0) : -ρ / (linf * dinf)        # -ρ/(linf √d∞) = (-ρ/(linf d∞)) √d∞
     classes = sort!(collect(union(keys(fin), iszero(sinf) ? Int[] : [dinf])))
+    isempty(quart) || hyp_residues_independent(classes, quart) || return RischNotImplemented(
+        "√($uterm): residues of degree 4 whose ℚ-independence from the other residues could not be proved")
     out = Any[]
     for d in classes
         K = d == 1 ? Q : QS{d}
@@ -806,6 +873,11 @@ function hyp_log_part(a::QX, P::QX, R::QX, D::QX, uterm)
             "(no multiple N ≤ $(last(Ns)) is principal; torsion bound of Mazur / Kamienny–Kenku–Momose)")
         return RischNotImplemented("√($uterm): no multiple N ≤ $(last(Ns)) of the divisor of the residues$cls is " *
                                    "principal on a curve of genus $gen (no torsion order found)")
+    end
+    for (F, h) in quart                                 # each quadratic factor separately
+        e = hyp_quartic_decision(a, R, D, F, h, uterm)
+        e isa Exception && return e
+        append!(out, e)
     end
     out
 end

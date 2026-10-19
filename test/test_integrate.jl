@@ -366,8 +366,8 @@ function run_tests(x, evalat, name)
                 @test antiderivative_ok(F, f, a, evalat)
             end
         end
-        # degree-4 residues with other residues: not yet
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x^2 + 1) * (x - 2) * sqrt(x^3 + 1)), x)
+        # residues of degree > 4: not yet
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x^3 + 2) * sqrt(x^3 + 1)), x)
     end
 
     @testset "$name: the log part for residues of degree 4: RootSums over a quartic field (SI2 phase 2)" begin
@@ -385,6 +385,28 @@ function run_tests(x, evalat, name)
         end
         # the same log part, but ∫ -dx/(4√(3x³ - 3x)) is left (first kind)
         @test_throws Risch.NotElementary Risch.risch_integrate(1 / ((x^2 - 2x - 1) * sqrt(3x^3 - 3x)), x)
+    end
+
+    @testset "$name: degree-4 residues mixed with other residues (SI2 phase 2)" begin
+        # the residue span is a direct sum (Kummer: square classes of K₁ = ℚ(√d, √e) certified mod p),
+        # so each group is decided on its own
+        val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, a))
+        y = sqrt(3x^3 - 3x)
+        f = 1 / ((x^2 - 2x - 1) * y) + 1 / ((x^2 + 2x - 1) * y) + 1 / (2y)    # two quartic pairs: two RootSums
+        F = Risch.risch_integrate(f, x)
+        @test F isa Risch.IntegralWithRootSums && length(F.rootsums) == 2
+        for a in (1.7, 2.6, 4.1)
+            h = 1e-5
+            @test isapprox((val(F, a + h) - val(F, a - h)) / (2h), real(evalat(f, a)); rtol = 1e-5)
+        end
+        g4 = 1 / ((x^2 - 2x - 1) * y) + 1 / (4y)                              # elementary on its own
+        for f in (g4 + 1 / ((x - 2) * y),                                      # + a class ℚ√2 of infinite order
+                  g4 + 1 / ((x - 3) * y),
+                  1 / ((x^2 - 2x - 1) * (x^2 + 2x - 1) * y),                   # both pairs torsion, ∫ dx/(8y) left
+                  1 / ((x^2 + 1) * (x - 2) * sqrt(x^3 + 1)),                   # quartic pair + rational residues
+                  1 / ((x^2 + 1) * (x^2 - 2) * sqrt(x^3 + 1)))                 # two quartic pairs
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
     end
 
     @testset "$name: real log arguments in 10a answers (step RL)" begin

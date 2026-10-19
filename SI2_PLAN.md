@@ -75,9 +75,20 @@ the last section.
     −(Σz) log F term was caught only by the numerical test.
   * Test example: P₁ = (1+√2, (1+√2)√6), 4-torsion on y² = 3(x³ − x) (a twist of the 4-torsion
     point of y² = x³ − x).
+* Phase 2, degree-4 residues mixed with other residues: done, tests green (2026-10-18).
+  * `hyp_finite_residues` returns the classes and, separately, the quadratic factors with nonconstant
+    h. Each such factor is handled on its own by `hyp_quartic_decision` / `hyp_quartic_log`, next to
+    the classes and the residues at ∞.
+  * Decoupling needs the residue span to be a direct sum (`hyp_residues_independent`). The argument
+    is Kummer theory over K₁ = ℚ(√d, √e): different square classes of K₁* are K₁-independent.
+    * Class residues lie in K₁. The pairs rⱼₖ = √hₖ(αⱼₖ) are certified to lie in other square
+      classes than 1 and than the other factors, by one degree-1 prime with a non-residue per pair.
+    * Inside one factor, r₁/r₂ ∉ ℚ is tested exactly. r₁/r₂ ∈ K₁ is possible and harmless, e.g. 3 − 2√2.
+    * Square roots mod p are fixed per prime factor of the d, e (and −1), so the maps K₁ → 𝔽_p are
+      consistent.
+  * Uncertified or dependent cases give `RischNotImplemented`.
 * Next / not yet:
-  * Degree-4 residues mixed with other residues, ℚ-dependent ones, and residues at ∞ together with
-    them.
+  * ℚ-dependent degree-4 residues; residues of degree > 4 (a general residue basis).
   * Residues of degree > 4 (a general ℚ-basis of the residue span).
   * Faster divisor arithmetic for large multiples (Cantor's algorithm / Mumford representation).
   * #J for genus ≥ 3 (counts over 𝔽_{pᵏ}, k ≤ g).
