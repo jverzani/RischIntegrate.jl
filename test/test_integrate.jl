@@ -263,6 +263,21 @@ function run_tests(x, evalat, name)
         @test_throws Risch.NotElementary Risch.risch_integrate(sqrt(x^6 + 1), x)      # genus 2 (SI2 phase 1)
     end
 
+    @testset "$name: denesting square roots (step DN)" begin
+        # √(a + b√c) = √((a+d)/2) + sign(b)·√((a-d)/2) when a² - b²c = d² in ℚ(x); valid on the interval of a
+        # sample point
+        for (f, pts) in ((sqrt(x + sqrt(x^2 - 1)), (1.5, 3.0)), (1 / sqrt(x + sqrt(x^2 - 1)), (1.5, 3.0)),
+                         (x / sqrt(x + sqrt(x^2 - 1))^3, (1.5, 3.0)),
+                         (sqrt(x + 2sqrt(x - 1)), (2.5, 4.0)), (sqrt(x - 2sqrt(x - 1)), (2.5, 4.0)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        # not denestable (a² - b²c not a square): not yet
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((1 + x^4) * sqrt(sqrt(1 + x^4) - x^2)), x)
+    end
+
     @testset "$name: radicals of radicands with repeated factors (step SQ)" begin
         # u = s² w, w squarefree: Y = √u/s with Y² = w on every interval (whatever the sign of s); the
         # answers are checked on both sides of the zeros of s

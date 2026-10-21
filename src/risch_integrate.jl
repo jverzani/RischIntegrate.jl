@@ -50,6 +50,12 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
             end
         end
     end
+    if any(((_, u),) -> radicand_element(u, xk) === nothing, rads)
+        # nested square roots that denest (step DN): rewrite, then integrate the ordinary radicals
+        bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+        g = denest_rewrite(f, xk, bd)
+        g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    end
     if !isempty(rads)                  # a RootSum is in the substitution variable t: evaluate through x
         F = try
             integrate_radical(f, x, rads; build = build, lift = lift, verify = verify)

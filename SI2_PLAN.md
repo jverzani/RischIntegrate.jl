@@ -338,7 +338,7 @@ algorithm is needed yet.
 
 ## Nested radicals (begun 2026-10-21)
 
-1. Denesting (step DN). √(a + b√c) with a, b, c ∈ ℚ(x) and a² − b²c = d² a square in ℚ(x):
+1. Denesting (step DN): done, tests green (2026-10-21; `denest.jl`, a rewrite before the radical paths). √(a + b√c) with a, b, c ∈ ℚ(x) and a² − b²c = d² a square in ℚ(x):
    √(a + b√c) = √((a+d)/2) + s√((a−d)/2), where s = sign b on the interval used. (√p₁ + s√p₂)² =
    p₁ + p₂ + 2s√(p₁p₂) = a + s|b|√c. The integrand is rewritten and integrated with ordinary radicals.
    The answer is valid on the interval around a sample point where b keeps its sign.
