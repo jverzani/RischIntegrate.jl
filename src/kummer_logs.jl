@@ -149,6 +149,16 @@ function kum_log_part(b::QX, p::Int, q::Int, P::QX, R::QX, D::QX, θterm, b0::Bu
                 "∫ (…)·$θterm: the divisor of the residues is not torsion (its order mod p would be $ord, " *
                 "but $ord·Δ is not principal)")
         end
+    elseif found === nothing && q > 2 && kum_cyclo_disjoint(σ, q)
+        # q composite: only the parts of [Δ] with characters of exact order q matter. T = Π_{ℓ|q}(1 - τ^(q/ℓ))
+        # kills the others and not these, which are conjugate (L ∩ ℚ(ζ_q) = ℚ): elementary iff T·[Δ] is
+        # torsion. T·Δ needs ζ_q: its orders are computed mod primes p ≡ 1 mod q only.
+        ord = kum_lp_order_T(b, p, q, fin, ts, ns, s∞, κ, n∞, σ, Mz)
+        ord === :infinite && return NotElementary(
+            "∫ (…)·$θterm: the order-$q part of the divisor of the residues has infinite order in the " *
+            "Jacobian of y^$q = b (its orders modulo two primes differ)")
+        ord isa Int && return ni("the order-$q part of the divisor of the residues is probably torsion (order " *
+                                 "$ord mod p); the logarithmic part over ℚ(σ^(1/q), ζ_q) is not implemented")
     end
     found === nothing && return ni("no torsion multiple N ≤ $Nmax of the divisor of the residues found")
     N, cs, Wsub = found
@@ -294,6 +304,158 @@ function kum_lp_order(b::QX, p::Int, q::Int, fin, ts, ns, s∞, κ, n∞::Int, �
                         t === true && return (:order, N)
                     end
                     return nothing                      # order > cap here: try another prime
+                end
+                t = principal(N1)
+                t === :toolarge && return nothing
+                t === true ? :same : :different
+            catch e
+                (e isa KumBadPrime || e isa RischError || e isa DivideError) || rethrow()
+                nothing
+            end
+        end
+        r === nothing && continue
+        r === :different && return :infinite
+        if r isa Tuple
+            N1 = r[2]
+        else
+            conf += 1
+            conf >= nconfirm && return N1
+        end
+    end
+    nothing
+end
+
+# ℚ(σ^(1/q)) ∩ ℚ(ζ_q) = ℚ (sufficient): for odd q always (L has a real embedding, odd-order abelian
+# subfields of a pure field are trivial); for even q, σ > 0 and the only possible abelian subfield ℚ(√σ)
+# (after taking σ = s² to s^(1/(q/2))) not inside ℚ(ζ_q): its conductor (|d| or 4|d|) does not divide q.
+function kum_cyclo_disjoint(σ::Int, q::Int, q0::Int = q)
+    isodd(q) && return true
+    σ <= 0 && return false
+    s = isqrt(σ)
+    s * s == σ && return s == 1 || kum_cyclo_disjoint(s, q ÷ 2, q0)
+    _, d = sqfree_split(big(σ))
+    f = mod(d, 4) == 1 ? abs(d) : 4 * abs(d)
+    q0 % f != 0
+end
+
+# T = Π_{ℓ | q prime} (1 - τ^(q/ℓ)) in ℤ[τ]/(τ^q - 1): its coefficients c₀ … c_{q-1}
+function kum_T(q::Int)
+    c = zeros(Int, q)
+    c[1] = 1
+    for (ℓ, _) in factorint(big(q))
+        k = q ÷ Int(ℓ)
+        c2 = copy(c)
+        for i in 0:(q - 1)
+            c2[mod(i + k, q) + 1] -= c[i + 1]
+        end
+        c = c2
+    end
+    c
+end
+
+# the system for N·T·Δ over a field K ∋ ζ (ζ of order q): per-branch multiplicities at the places
+# τᵏP_F (y ≡ ζᵏ S_F) and at the branches of ∞ (q | m), shifted by full fibers to be ≥ 0
+function kum_branch_system(::Type{K}, emb, bL, Sd, w, b::QX, q::Int, n∞::Int, N::Int, c::Vector{Int}, ζ;
+                           maxu::Int = 3000) where {K}
+    m = degree(b)
+    PL = UPoly{K}
+    mults = Vector{Int}[]
+    for (_, n, _) in Sd
+        mk = [N * n * c[k + 1] for k in 0:(q - 1)]
+        push!(mults, mk .- min(0, minimum(mk)))
+    end
+    Z = sum((sum(mults[i]) * degree(Sd[i][1]) for i in eachindex(Sd)); init = 0)
+    if n∞ == 0
+        Z % gcd(m, q) == 0 || return nothing
+        dks = [fld(Z - k * m, q) for k in 0:(q - 1)]
+        os = nothing
+    else                                                # q | m: zero orders a_j at the branches of ∞
+        a = [N * n∞ * c[j + 1] for j in 0:(q - 1)]
+        (Z + sum(a)) % q == 0 || return nothing
+        O = (Z + sum(a)) ÷ q
+        os = [O - a[j + 1] for j in 0:(q - 1)]          # pole orders
+        omax = maximum(os)
+        omax < 0 && return nothing
+        dks = [floor(Int, Q(omax) - Q(k * m, q)) for k in 0:(q - 1)]
+    end
+    unknowns = [(k, j) for k in 0:(q - 1) for j in 0:dks[k + 1]]
+    isempty(unknowns) && return nothing
+    length(unknowns) > maxu && return :toolarge
+    x = xpoly(K)
+    conds = []                                          # (G^e, ζᵏY powers)
+    for (i, (F, _, S)) in enumerate(Sd)
+        emax = maximum(mults[i])
+        emax == 0 && continue
+        Y = kum_root_lift(bL, S, F, emax, q)
+        for k in 0:(q - 1)
+            e = mults[i][k + 1]
+            e == 0 && continue
+            Ge = F^e
+            Yk = PL([ζ^k]) * Y
+            push!(conds, (Ge, [rem(Yk^i, Ge) for i in 0:(q - 1)]))
+        end
+    end
+    ser = os === nothing ? nothing : [K[emb(cc) for cc in hyp_sqrt_series(b, maximum(os) + m + 2, Q(k, q))] for k in 0:(q - 1)]
+    cols = Vector{K}[]
+    for (k, j) in unknowns
+        col = K[]
+        for (Ge, yp) in conds
+            rr = rem(x^j * yp[k + 1], Ge)
+            append!(col, [d <= length(rr.c) ? rr.c[d] : zero(K) for d in 1:degree(Ge)])
+        end
+        if os !== nothing                               # branch jb: Σ_k ζ^(jb k) E_k(t) = 0 for t > o_jb
+            sh = j + (k * m) ÷ q
+            E(t) = (0 <= sh - t <= length(ser[k + 1]) - 1) ? w^k * ser[k + 1][sh - t + 1] : zero(K)
+            for jb in 0:(q - 1), t in (os[jb + 1] + 1):maximum(os)
+                push!(col, ζ^(jb * k) * E(t))
+            end
+        end
+        push!(cols, col)
+    end
+    unknowns, cols
+end
+
+# as kum_lp_order, for N·T·Δ, at primes p ≡ 1 mod q (ζ_q ∈ 𝔽_p): :infinite (proved), N₁, or nothing
+function kum_lp_order_T(b::QX, p::Int, q::Int, fin, ts, ns, s∞, κ, n∞::Int, σ::Int, Mz::QX;
+                        cap::Int = 40, pmax::Int = 1200, nconfirm::Int = 2)
+    c = kum_T(q)
+    ℓs = [Int(ℓ) for (ℓ, _) in factorint(big(q))]
+    N1, conf = nothing, 0
+    pr = 1
+    while pr < pmax
+        pr += q
+        (pr >= 7 && is_probable_prime(big(pr)) && σ % pr != 0) || continue
+        r = with_mod(pr) do
+            emb = c0 -> (v = modp(c0); v === nothing ? throw(KumBadPrime()) : v)
+            try
+                bp = hyp_map(modp, b, ModP)
+                (bp === nothing || degree(bp) != degree(b) || degree(gcd(bp, deriv(bp))) != 0) && return nothing
+                for (F, _, _) in fin
+                    Fp = hyp_map(modp, F, ModP)
+                    (Fp === nothing || degree(Fp) != degree(F) || degree(gcd(Fp, deriv(Fp))) != 0 ||
+                     degree(gcd(Fp, bp)) != 0) && return nothing
+                end
+                Mp = hyp_map(modp, Mz, ModP)
+                Mp === nothing && return nothing
+                rts = modp_roots(Mp)
+                isempty(rts) && return nothing
+                ζ = nothing                             # an element of order exactly q
+                for g in 2:(pr - 1)
+                    z0 = ModP(powermod(g, (pr - 1) ÷ q, pr))
+                    all(ℓ -> !isone(z0^(q ÷ ℓ)), ℓs) && (ζ = z0; break)
+                end
+                ζ === nothing && return nothing
+                bL, Sd, w = kum_lp_data(ModP, emb, rts[1], b, p, q, fin, ts, ns, s∞, κ)
+                (w !== nothing && iszero(w)) && return nothing
+                principal(N) = (sys = kum_branch_system(ModP, emb, bL, Sd, w, b, q, n∞, N, c, ζ);
+                                sys isa Tuple ? !isempty(nullspace_cols(sys[2], length(sys[2]))) : sys)
+                if N1 === nothing
+                    for N in 1:cap
+                        t = principal(N)
+                        t === :toolarge && return nothing
+                        t === true && return (:order, N)
+                    end
+                    return nothing
                 end
                 t = principal(N1)
                 t === :toolarge && return nothing

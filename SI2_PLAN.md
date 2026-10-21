@@ -190,10 +190,24 @@ the last section.
       3, 5, 7) are still found from the order mod p and never declared non-elementary.
   * Chebyshev sweep: 504/504 decided (157/157 elementary integrated, 347/347 non-elementary proved).
   * Rubi scan: 46 OK, 1 NotElementary (consistent), 1 RischNotImplemented (a nested radical).
+  * Decisions for composite q (2026-10-21, `kum_lp_order_T`):
+    * Only the parts of [Δ] with characters of exact order q matter. T = Π_{ℓ|q}(1 − τ^(q/ℓ)) kills the
+      others and not these (χ(T) ≠ 0). When L ∩ ℚ(ζ_q) = ℚ (`kum_cyclo_disjoint`: q odd, or σ > 0 and
+      ℚ(√σ) ⊄ ℚ(ζ_q) by its conductor), the order-q parts are conjugate. So the integral is elementary
+      iff T·[Δ] is torsion.
+    * T·Δ lives on the branches y ≡ ζᵏS, so its orders are computed only mod primes p ≡ 1 mod q, by
+      a per-branch system made effective with full fibers (`kum_branch_system`, with per-branch pole
+      orders at ∞).
+    * Different orders give `NotElementary`. Equal orders give `RischNotImplemented` ("probably
+      torsion"): the exact test and the construction over ℚ(σ^(1/q), ζ_q) are not implemented.
+    * Consistency test: with Nmax = 0, known torsion cases for q = 4, 6 are "probably torsion" and
+      never declared non-elementary.
+    * Undecided: high genus where the orders mod small primes exceed the cap (40), e.g.
+      1/((x−1)(x⁵+2)^(1/4)) (genus 6); negative σ for even q.
 * Next / not yet:
   * Phase 3b with several classes, or components with several bases.
   * Real forms (log + atan) instead of RootSums over roots of unity.
-  * Decisions for composite q.
+  * Composite q: the log part when only the order-q part is torsion (over ℚ(σ^(1/q), ζ_q)).
   * Nested radicals; phase 5 (radicals over exp/log).
 * Gaps seen in Rubi's library:
   * Nested radicals.

@@ -343,15 +343,19 @@ function run_tests(x, evalat, name)
         end
     end
 
-    @testset "$name: deciding the log part for a prime index q ≥ 3 (SI2 phase 3b)" begin
+    @testset "$name: deciding the log part for an index q ≥ 3 (SI2 phase 3b)" begin
         # q prime: Δ torsion iff its χ-part is iff elementary; the order N₁ of Δ mod one prime, then N₁Δ̄
         # at another prime (different orders: infinite order), or one exact test at N₁ over L
         for f in (1 / ((x - 2) * (x^3 + 1)^(1 // 3)), 1 / ((x - 1) * (x^3 + 2)^(1 // 3)),
                   1 / ((x - 1) * (x^4 + 1)^(1 // 3)), 1 / ((x - 2) * (x^5 + 1)^(1 // 5)))
             @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
         end
-        # q = 4 (not prime): an order-2 part may be non-torsion without mattering: no decision
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x - 1) * (x^4 + 2)^(1 // 4)), x)
+        # q composite: T = Π_{ℓ|q}(1 - τ^(q/ℓ)) removes the parts of order < q; orders of T·Δ mod p ≡ 1 mod q
+        @test Risch.kum_T(4) == [1, 0, -1, 0] && Risch.kum_T(6) == [1, 0, -1, -1, 0, 1]
+        for f in (1 / ((x - 1) * (x^4 + 2)^(1 // 4)), 1 / ((x - 2) * (x^4 + 1)^(1 // 4)),
+                  x / ((x - 1) * (x^4 + 3)^(3 // 4)), 1 / ((x - 2) * (x^6 + 1)^(1 // 6)), 1 / ((x - 1) * (x^3 + 2)^(1 // 6)))
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
         # consistency: with the search over L switched off (Nmax = 0), torsion cases are still found from
         # the order mod p, never declared non-elementary
         b0 = Risch.Builder(Risch.auto_build(x, x), Risch.auto_lift(x, x), x)
@@ -364,6 +368,14 @@ function run_tests(x, evalat, name)
             @test c isa Tuple
             _, _, P, R, D = c
             @test Risch.kum_log_part(b, p, q, P, R, D, "θ", b0, "x"; Nmax = 0) isa Tuple
+        end
+        # composite q, Nmax = 0: torsion cases are "probably torsion" (no construction over ℚ(ζ_q) yet), never
+        # declared non-elementary
+        for (b, p, q, g) in ((QX(Q[1, 0, 0, 0, 1]), 3, 4, Risch.frac(QX(Q[1]), QX(Q[0, 1, 0, 0, 0, 1]))),
+                             (QX(Q[1, 0, 0, 0, 1]), 3, 4, Risch.frac(QX(Q[1]), QX(Q[1, 0, 0, 0, 1]))),
+                             (QX(Q[1, 0, 0, 0, 0, 0, 1]), 5, 6, Risch.frac(QX(Q[1]), QX(Q[0, 1, 0, 0, 0, 0, 0, 1]))))
+            _, _, P, R, D = Risch.kum_component([b], [Q(p, q)], g, "θ"; needlog = true)
+            @test Risch.kum_log_part(b, p, q, P, R, D, "θ", b0, "x"; Nmax = 0) isa Risch.RischNotImplemented
         end
     end
 
