@@ -297,13 +297,13 @@ function integrate_kummer(f, x, rads; build = nothing, lift = nothing, verify::B
             k = findfirst(!iszero, e)
             lp = kum_log_part(bs[k], Int(numerator(e[k])), Int(denominator(e[k])), P, R, D, θterm, b0, xk)
             lp isa Exception && throw(lp)
-            Wsub, rs = lp
+            Wsub, rs1 = lp
             # the rest, (P + R/D)/b - Wsub, must reduce to an algebraic C1 (it has no residues left)
             C1 = kum_component(bs, e, frac(P, bs[k]) + frac(R, bs[k] * D) - Wsub, θterm)
             C1 isa Exception && throw(C1 isa NotElementary ? C1 : RischNotImplemented(
                 "phase 3b: residues left after the logarithmic part ($(C1.msg))"))
             C = C0 + C1
-            push!(rss, rs)
+            append!(rss, rs1)
         end
         C isa Exception && throw(C)
         iszero(C) || push!(terms, mk(b0, :*, frac_term(b0, C), θterm))

@@ -343,6 +343,24 @@ function run_tests(x, evalat, name)
         end
     end
 
+    @testset "$name: several residue classes, residues of both signs (SI2 phase 3b)" begin
+        # classes σᵢ with σᵢ/σⱼ not q-th powers in ℚ(ζ_q) are independent: each class on its own
+        val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, complex(a)))
+        for (f, pts) in ((1 / ((x^3 - 1) * (x^3 + 2)^(1 // 3)) + (x^3 - 1) / (x^3 + 2)^(1 // 3), (2.0, 3.0)),   # 9 and 1
+                         (1 / ((x^3 - 1) * (x^3 + 2)^(1 // 3)) + 1 / (x * (x^3 + 2)^(1 // 3)), (2.0, 3.0)),      # 9 and 4
+                         (1 / (x^3 + 1)^(1 // 3) + 1 / (x * (x^3 + 1)^(1 // 3)), (0.5, 2.0)))   # one class, both signs
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test isapprox(fd(t -> val(F, t), a), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
+        # one class of infinite order is enough
+        @test_throws Risch.NotElementary Risch.risch_integrate(1 / (x^3 + 1)^(1 // 3) + 1 / ((x - 2) * (x^3 + 1)^(1 // 3)), x)
+        # q = 4 with classes -1 and 8: (-4)^(1/4) ∈ ℚ(i), they may be dependent: no decision
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x^4 + 1) * (x^4 + 2)^(1 // 4)) +
+                                                                     1 / (x * (x^4 + 2)^(1 // 4)), x)
+    end
+
     @testset "$name: deciding the log part for an index q ≥ 3 (SI2 phase 3b)" begin
         # q prime: Δ torsion iff its χ-part is iff elementary; the order N₁ of Δ mod one prime, then N₁Δ̄
         # at another prime (different orders: infinite order), or one exact test at N₁ over L

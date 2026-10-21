@@ -216,8 +216,16 @@ the last section.
       constructed through T_G, and the rest reduces exactly.
     * Undecided: high genus where the orders mod small primes exceed the cap (40), e.g.
       1/((x−1)(x⁵+2)^(1/4)) (genus 6); negative σ for even q.
+  * Several residue classes and mixed signs (2026-10-21):
+    * Group the residues by class σᵢ (`kum_log_part`), and handle each class in `kum_log_class`.
+    * Independence: when no σᵢ/σⱼ is a q-th power in ℚ(ζ_q) (checked with `kum_cyclo_disjoint` on
+      the ratio), the spans σᵢ^(1/q)ℚ(ζ_q) are independent (Kummer). Then the integral is elementary
+      iff each class divisor is torsion, and the log parts add up. Otherwise `RischNotImplemented`,
+      e.g. classes −1 and 8 for q = 4, since (−4)^(1/4) ∈ ℚ(i).
+    * Residues of both signs in a class: negative coefficients are made effective by full fibers. The
+      plain Δ system is now the orbit system with T = 1 (level set "all branches but 0").
 * Next / not yet:
-  * Phase 3b with several classes, or components with several bases.
+  * Components with several bases.
   * Real forms (log + atan) instead of RootSums over roots of unity.
   * Nested radicals; phase 5 (radicals over exp/log).
 * Gaps seen in Rubi's library:

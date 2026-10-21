@@ -48,7 +48,7 @@ function kum_root_lift(b::P, S::P, G::P, e::Int, q::Int) where {P<:UPoly}
     Y
 end
 
-# the log part (Wsub, ScaledRootSum) with d/dx(log part) = Wsub θ, or the exception to raise
+# the log part (Wsub, [ScaledRootSum]) with d/dx(log part) = Wsub θ, or the exception to raise
 function kum_log_part(b::QX, p::Int, q::Int, P::QX, R::QX, D::QX, θterm, b0::Builder, xk::String; Nmax::Int = 8)
     m = degree(b)
     ni(msg) = RischNotImplemented("∫ (…)·$θterm: $msg (SI2 phase 3b)")
@@ -72,14 +72,45 @@ function kum_log_part(b::QX, p::Int, q::Int, P::QX, R::QX, D::QX, θterm, b0::Bu
         κ = sum((P.c[j + 1] * sr[j + e0 + 2] for j in 0:degree(P) if 0 <= j + e0 + 1 <= N0); init = Q(0))
     end
     s∞ = iszero(κ) ? nothing : (-κ)^q * lc(b)^(p - q)   # r∞ = -w^(p-q) κ, w^q = lc(b)
+    # several classes σ₁, σ₂, …: the residue spans σᵢ^(1/q)·ℚ(ζ_q) are independent when no σᵢ/σⱼ is a q-th
+    # power in ℚ(ζ_q) (Kummer); then the integral is elementary iff each class's divisor is (torsion), and
+    # the log parts add up
+    groups = Dict{Int,Vector{Int}}()
+    for (i, (_, sF, _)) in enumerate(fin)
+        push!(get!(groups, kum_qclass(sF, q)[2], Int[]), i)
+    end
+    σ∞ = s∞ === nothing ? nothing : kum_qclass(s∞, q)[2]
+    σ∞ === nothing || get!(groups, σ∞, Int[])
+    isempty(groups) && return ni("no residues found")
+    σs = sort!(collect(keys(groups)))
+    for i in eachindex(σs), j in eachindex(σs)
+        i < j || continue
+        ρ = kum_qclass(Q(σs[i], σs[j]), q)[2]           # σᵢ/σⱼ modulo q-th powers
+        (ρ != 1 && kum_cyclo_disjoint(ρ, q)) || return ni(
+            "residues in the classes $(σs[i]) and $(σs[j]), which may be dependent over ℚ(ζ_$q)")
+    end
+    Wtot, rss = zero(QXF), Any[]
+    for σc in σs
+        r = kum_log_class(b, p, q, fin[groups[σc]], σc == σ∞ ? s∞ : nothing, κ, θterm, b0, xk; Nmax = Nmax)
+        r isa Exception && return r
+        Wtot = Wtot + r[1]
+        push!(rss, r[2])
+    end
+    Wtot, rss
+end
+
+# the log part for the residues of one class (fin: the poles of the class; s∞: the residue at ∞ if it is
+# in the class): (Wsub, ScaledRootSum) or the exception to raise
+function kum_log_class(b::QX, p::Int, q::Int, fin, s∞, κ::Q, θterm, b0::Builder, xk::String; Nmax::Int = 8)
+    m = degree(b)
+    ni(msg) = RischNotImplemented("∫ (…)·$θterm: $msg (SI2 phase 3b)")
+    pinv = invmod(p, q)
     cls = [kum_qclass(s, q) for (_, s, _) in fin]
     s∞ === nothing || push!(cls, kum_qclass(s∞, q))
     isempty(cls) && return ni("no residues found")
     σ = cls[1][2]
-    all(c -> c[2] == σ, cls) || return ni("residues in several classes")
     ts = [c[1] for c in cls]
-    (all(t -> t > 0, ts) || all(t -> t < 0, ts)) || return ni("residues of both signs")
-    bb = reduce(gcd, abs.(ts)) * sign(ts[1])
+    bb = reduce(gcd, abs.(ts)) * sign(ts[1])           # n = t/b₀ may be negative (full fibers make Δ effective)
     ns = [Int(t / bb) for t in ts]
     n∞ = s∞ === nothing ? 0 : ns[end]
     # L = ℚ(σ^(1/q)): ℚ[z]/(z^q - σ) when irreducible; else σ > 0 and the factor vanishing at the real
@@ -237,53 +268,8 @@ end
 # the linear system for v with div(v) = N·Δ (see kum_log_part): (unknowns, columns), nothing when N·Δ is
 # not integral, :toolarge
 function kum_lp_system(::Type{K}, emb, bL, Sd, w, b::QX, q::Int, n∞::Int, N::Int; maxu::Int = 800) where {K}
-    m = degree(b)
-    es = [N * n for (_, n, _) in Sd]
-    Z = sum((es[i] * degree(Sd[i][1]) for i in eachindex(Sd)); init = 0)
-    if n∞ == 0
-        # gcd(m, q) places at ∞, each of ramification q/gcd: balanced pole orders Z/gcd each, i.e.
-        # q deg c_k + k m ≤ Z (no cancellation between the k: different orders mod q/gcd)
-        Z % gcd(m, q) == 0 || return nothing
-        o0 = o1 = omax = 0
-        dks = [fld(Z - k * m, q) for k in 0:(q - 1)]
-    else                                                # q | m: q unramified places at ∞
-        (Z + N * n∞) % q == 0 || return nothing
-        o1 = (Z + N * n∞) ÷ q
-        o0 = o1 - N * n∞
-        omax = max(o0, o1)
-        omax < 0 && return nothing
-        dks = [floor(Int, Q(omax) - Q(k * m, q)) for k in 0:(q - 1)]
-    end
-    unknowns = [(k, j) for k in 0:(q - 1) for j in 0:dks[k + 1]]
-    isempty(unknowns) && return nothing
-    length(unknowns) > maxu && return :toolarge
-    mods = [(F^es[i], kum_root_lift(bL, S, F, es[i], q)) for (i, (F, _, S)) in enumerate(Sd)]
-    ypows = [[rem(Y^k, Ge) for k in 0:(q - 1)] for (Ge, Y) in mods]
-    ser = n∞ == 0 ? nothing : [K[emb(c) for c in hyp_sqrt_series(b, omax + m + 2, Q(k, q))] for k in 0:(q - 1)]
-    x = xpoly(K)
-    cols = Vector{K}[]
-    for (k, j) in unknowns
-        col = K[]
-        for (i, (Ge, _)) in enumerate(mods)
-            rr = rem(x^j * ypows[i][k + 1], Ge)
-            append!(col, [d <= length(rr.c) ? rr.c[d] : zero(K) for d in 1:degree(Ge)])
-        end
-        if n∞ != 0                                      # E_k(t) = w^k [T^k]_(j + km/q - t)
-            sh = j + (k * m) ÷ q
-            E(t) = (0 <= sh - t <= length(ser[k + 1]) - 1) ? w^k * ser[k + 1][sh - t + 1] : zero(K)
-            if o0 < o1                                  # branch 0: Σ_k E_k(t) = 0 for o0 < t ≤ o1
-                for t in (o0 + 1):o1
-                    push!(col, E(t))
-                end
-            else                                        # other branches: E_k(t) = E_0(t) for o1 < t ≤ o0
-                for t in (o1 + 1):o0, k2 in 1:(q - 1)
-                    push!(col, k == k2 ? E(t) : k == 0 ? -E(t) : zero(K))
-                end
-            end
-        end
-        push!(cols, col)
-    end
-    unknowns, cols
+    # Δ itself is T = 1: the orbit system handles negative n (by full fibers) and the branches at ∞
+    kum_orbit_system(K, emb, bL, Sd, w, b, q, n∞, N, [k == 0 ? 1 : 0 for k in 0:(q - 1)]; maxu = maxu)
 end
 
 # The order of Δ by reduction mod primes p ≥ 7 of good reduction (p ∤ q σ lc(b) disc(b), b and the poles
