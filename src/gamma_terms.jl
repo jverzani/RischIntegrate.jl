@@ -58,6 +58,9 @@ function gamma_factors(t, xk::String, sign::Int = 1, acc = (Any[], Ref(Q(0)), An
     elseif n === :exp && length(args) == 1
         push!(exps, (args[1], sign))
         return acc
+    elseif n === :^ && length(args) == 2 && is_e_const(args[1])   # e^u (SymEngine's form of exp(u))
+        push!(exps, (args[2], sign))
+        return acc
     end
     rp = radical_parts(t)
     if rp !== nothing && string(rp[2]) == xk
@@ -74,7 +77,7 @@ function gamma_factors(t, xk::String, sign::Int = 1, acc = (Any[], Ref(Q(0)), An
         end
         return acc
     end
-    if n === :^ && length(args) == 2 && opname(operation(args[1])) === :exp      # exp(u)^k
+    if n === :^ && length(args) == 2 && safe_iscall(args[1]) && opname(operation(args[1])) === :exp   # exp(u)^k
         k = leaf_rational(args[2])
         k === nothing && return nothing
         push!(exps, (args[1], sign * Int(k)))          # (only integer k reach here in practice)
