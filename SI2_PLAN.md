@@ -378,6 +378,16 @@ log parts stay elementary.
   * Verification: the derivative identity above is standard (as for Ei, erf answers); tests check
     numerically against the integrand.
   * Keep `NotElementary` available (e.g. a keyword or a flag on the result) so the decision is not lost.
+* H3, incomplete gamma: done, tests green (2026-10-21; `gamma_terms.jl`).
+  * ∫ xˢ e^(bx+d) dx = −e^d (−b)^(−s−1) Γ(s+1, −bx) for b < 0, s ∉ ℤ (rational, or a symbolic exponent such
+    as t^(a−1)e^(−t)). Integer-s terms of the sum go to the usual integrator; half-integers already give erf.
+  * Tried as a fallback when the integral is decided `NotElementary` (with `HYP_ANSWERS[]`).
+  * The Γ term is a symbolic `gamma(s+1, −bx)` when the term type can build one (Expr), else a `GammaTerm`
+    evaluated numerically (numeric s).
+  * Not yet:
+    * a symbolic exponent with SimpleExpressions / SymEngine (neither represents gamma(a, x));
+    * b > 0 (Γ at a negative argument);
+    * other shapes, e.g. P(x)·xˢ e^(bx) with P a polynomial: it works term by term only if written as a sum.
 * H2, general remainders on hyperelliptic curves of genus 1: reduce to Legendre/Carlson forms (F, E, Π)
   through the roots of a (needs algebraic numbers), or Appell-type functions. Larger.
 

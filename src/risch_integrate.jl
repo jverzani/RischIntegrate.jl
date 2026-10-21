@@ -15,6 +15,10 @@ function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = t
         integrate_direct(f, x; build = build, lift = lift, verify = verify)
     catch e
         (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        if e isa NotElementary && HYP_ANSWERS[]           # xˢ e^(bx+d): incomplete gamma (phase 6, H3)
+            g = try_gamma(f, x; build = build, lift = lift, verify = verify)
+            g === nothing || return g
+        end
         r = try_usub(f, x; build = build, lift = lift, verify = verify)    # step US
         r === nothing && throw(e)
         r

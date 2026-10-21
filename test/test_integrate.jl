@@ -282,6 +282,14 @@ function run_tests(x, evalat, name)
                 end
             end
             @test occursin("₂F₁(1/2, 1/3; 4/3; -x^3)", string(Risch.risch_integrate(1 / sqrt(x^3 + 1), x)))
+            # incomplete gamma (H3): ∫ xˢ e^(bx+d) = -e^d (-b)^(-s-1) Γ(s+1, -bx), b < 0, s ∉ ℤ (half-integers: erf)
+            for (f, pts) in ((x^(1 // 3) * exp(-x), (0.5, 2.0)), (exp(-2x) / x^(1 // 3), (0.5, 2.0)),
+                             (x^(5 // 4) * exp(1 - x), (0.5, 2.0)), (3x^(1 // 3) * exp(-x) + x^2 * exp(-x), (0.5, 2.0)))
+                F = Risch.risch_integrate(f, x)
+                for a in pts
+                    @test isapprox(fd(t -> val(F, t), a), real(evalat(f, a)); rtol = 1e-6)
+                end
+            end
             # α < 0 (the argument would cross the branch cut on the domain), or not a binomial: still decided
             @test_throws Risch.NotElementary Risch.risch_integrate(1 / sqrt(x^3 - 1), x)
             @test_throws Risch.NotElementary Risch.risch_integrate(1 / sqrt(x^3 + x + 1), x)
