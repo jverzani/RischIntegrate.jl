@@ -320,7 +320,9 @@ function integrate_root_repeated(f, xk::String, u, uterm, n::Int, b0::Builder, v
     P = UPoly{Q}
     N = u.num
     sf = squarefree(N)
-    any(((_, m),) -> m >= n, sf) || length(sf) >= 2 || return nothing
+    # (a single factor with multiplicity 2 ≤ m < n too: u^(1/n) = (x - a)^(m/n) printed through u^(1/n) is
+    # right on both sides of a, unlike the base-wise powers of the Kummer path)
+    any(((_, m),) -> m >= 2, sf) || length(sf) >= 2 || return nothing
     s = prod((p^(m ÷ n) for (p, m) in sf); init = one(P))
     rest = [(p, m % n) for (p, m) in sf if m % n != 0]
     lin = Tuple{Q,Int}[]                                # (root, multiplicity) of the linear factors left

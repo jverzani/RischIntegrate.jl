@@ -347,7 +347,8 @@ function run_tests(x, evalat, name)
                          (1 / (x^3 - 5x^2 + 3x + 9)^(1 // 3), (-0.5, 2.0, 5.0)),
                          (1 / (x^3 - 5x^2 + 3x + 9)^(4 // 3), (-0.5, 2.0, 5.0)),
                          (x * ((x + 2)^3 * (x - 1))^(1 // 4), (1.5, 3.0)),
-                         (((x + 1)^2 * (x - 2)^4)^(1 // 3), (2.5, 4.0, 0.5)))
+                         (((x + 1)^2 * (x - 2)^4)^(1 // 3), (2.5, 4.0, 0.5)),
+                         ((x^2 - 2x + 1)^(1 // 5) / (1 - x), (0.31, 0.57, 2.0)))   # apostol 21: both sides of 1
             F = Risch.risch_integrate(f, x)
             for a in pts
                 @test isapprox(fd(t -> real(evalat(F, complex(t))), a), real(evalat(f, a)); rtol = 1e-5)
