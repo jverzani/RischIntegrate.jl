@@ -304,7 +304,9 @@ function integrate_kummer(f, x, rads; build = nothing, lift = nothing, verify::B
             C1 isa Exception && throw(C1 isa NotElementary ? C1 : RischNotImplemented(
                 "phase 3b: residues left after the logarithmic part ($(C1.msg))"))
             C = C0 + C1
-            append!(rss, rs1)
+            for r in rs1                                # RootSums, or their real forms (log, atan)
+                r isa ScaledRootSum ? push!(rss, r) : push!(terms, r)
+            end
         end
         C isa Exception && throw(C)
         iszero(C) || push!(terms, mk(b0, :*, frac_term(b0, C), θterm))

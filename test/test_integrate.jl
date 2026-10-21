@@ -343,6 +343,25 @@ function run_tests(x, evalat, name)
         end
     end
 
+    @testset "$name: real forms (log + atan) of the phase-3b log parts" begin
+        # Σ_r r log v(r) over r^q = σ (or α^q = 1): real roots give (r/2) log(v²), conjugate pairs
+        # μ cos θ log(Re² + Im²) - 2μ sin θ atan(Im/Re); cos, sin in square roots for q = 3, 4, 6 (and 8, 12)
+        for (f, pts) in ((1 / (x^3 + 1)^(1 // 3), (0.5, 2.0, -0.5)),
+                         (1 / ((x^3 - 1) * (x^3 + 2)^(1 // 3)), (2.0, 3.0)),
+                         ((3 + 4x^4)^(1 // 4) / x^2, (0.5, 2.0)),
+                         (1 / ((x^4 + 1) * (x^4 + 2)^(1 // 4)), (0.5, 2.0)),          # roots of z⁴ = -1
+                         (1 / (x * (x^6 + 1)^(1 // 6)), (0.5, 2.0)),
+                         (1 / (x * (x + 1)^(1 // 3) * (x - 1)^(2 // 3)), (2.0, 3.0)))
+            F = Risch.risch_integrate(f, x)
+            @test !(F isa Risch.IntegralWithRootSums)
+            for a in pts
+                @test antiderivative_ok(F, f, a, evalat)                       # real-valued at real points
+            end
+        end
+        # q = 5: cos(2π/5) needs nested radicals: the RootSum stays
+        @test Risch.risch_integrate(1 / (x * (x^5 + 1)^(1 // 5)), x) isa Risch.IntegralWithRootSums
+    end
+
     @testset "$name: several residue classes, residues of both signs (SI2 phase 3b)" begin
         # classes σᵢ with σᵢ/σⱼ not q-th powers in ℚ(ζ_q) are independent: each class on its own
         val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, complex(a)))

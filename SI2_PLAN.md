@@ -235,8 +235,16 @@ the last section.
     * Good reduction mod p now also requires the bases to be pairwise coprime (`kum_good_mod`).
     * Consistency test: genus-0 components (every degree-0 divisor principal) with the search over L
       off are constructed by the decision path, for q = 3 (prime) and q = 4 (T_G).
+  * Real forms (2026-10-21, `kum_real_logs`). The phase-3b RootSums Σ_r r log v(r) over rᵠ = σ
+    (or αᵠ = 1, times σ^(1/q)) become explicit real logs and atans:
+    * a real root r gives (r/2) log(v(r)²);
+    * a conjugate pair r = μe^(±iθ) gives μ cos θ log(Re² + Im²) − 2μ sin θ atan(Im/Re).
+    * cos and sin are square-root constants for angle denominators dividing 12 or equal to 8, i.e.
+      q = 3, 4, 6 (and 8, 12 for negative σ). Otherwise (q = 5, 7, …) the RootSum stays.
+    * A common √3 or √2 in the sines is factored out of Im (Im² gets a rational coefficient).
+    * Checked numerically (Chebyshev sweep: all elementary log parts, now in real form). Answers are
+      real-valued at real points.
 * Next / not yet:
-  * Real forms (log + atan) instead of RootSums over roots of unity.
   * Nested radicals; phase 5 (radicals over exp/log).
 * Gaps seen in Rubi's library:
   * Nested radicals.

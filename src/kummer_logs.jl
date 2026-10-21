@@ -266,7 +266,8 @@ function kum_log_class(C::KumCurve, fin, s∞, κ::Q, θterm, b0::Builder, xk::S
             end
             isempty(tsi) || (zc[i + 1] = length(tsi) == 1 ? tsi[1] : mk(b0, :+, tsi...))
         end
-        return Wsub, ScaledRootSum(cterm(b0, bb / N), TermRootSum(Mz, zc, xk))
+        rt = kum_real_logs(b0, cterm(b0, bb / N), abs(σ), σ < 0, q, zc)
+        return Wsub, rt === nothing ? ScaledRootSum(cterm(b0, bb / N), TermRootSum(Mz, zc, xk)) : rt
     end
     # output: (b₀σ^(1/q)/N) Σ_{α^q=1} α log(Σ_j cⱼ ωⱼ α^(-j))
     zt = σ == 1 ? b0.lift(1) : mk(b0, :^, b0.lift(σ), b0.lift(Q(1, q)))
@@ -277,7 +278,74 @@ function kum_log_class(C::KumCurve, fin, s∞, κ::Q, θterm, b0::Builder, xk::S
         coeffs[mod(-k, q) + 1] = k == 0 ? ck : mk(b0, :*, ck, ωt[k + 1])
     end
     fac = mk(b0, :*, cterm(b0, bb / N), zt)
-    Wsub, ScaledRootSum(fac, TermRootSum(QX(vcat(Q[-1], zeros(Q, q - 1), Q[1])), coeffs, xk))
+    rt = kum_real_logs(b0, fac, 1, false, q, coeffs)
+    Wsub, rt === nothing ? ScaledRootSum(fac, TermRootSum(QX(vcat(Q[-1], zeros(Q, q - 1), Q[1])), coeffs, xk)) : rt
+end
+
+# cos(2πm/d) and sin(2πm/d) as constants (Q, or QS{2}/QS{3} for ±√2/2, ±√3/2; nothing for 0), for d | 12 or
+# d = 8; else nothing
+function kum_cos_sin(m::Int, d::Int)
+    g = gcd(m, d)
+    m, d = m ÷ g, d ÷ g
+    d in (1, 2, 3, 4, 6, 8, 12) || return nothing
+    function val(x)
+        for (v, c) in ((0.0, Q(0)), (0.5, Q(1, 2)), (1.0, Q(1)), (sqrt(2) / 2, QS{2}(Q(0), Q(1, 2))),
+                       (sqrt(3) / 2, QS{3}(Q(0), Q(1, 2))))
+            abs(abs(x) - v) < 1e-12 && return iszero(v) ? nothing : (x < 0 ? -c : c)
+        end
+        throw(RischError("kum_cos_sin: unexpected value $x"))
+    end
+    t = 2π * m / d
+    val(cos(t)), val(sin(t))
+end
+
+# Σ_{r} r log v(r) over the roots r = μ e^(iθₖ) of r^q = ±μ^q (μ = |σ|^(1/q), θₖ = 2π(2k + s)/(2q), s = 1 for a
+# negative σ), times fac, as real logs and atans: a real root gives (r/2) log(v(r)²); a pair r, r̄ (0 < θ < π)
+# gives μ cos θ log(Re² + Im²) - 2 μ sin θ atan(Im/Re), Re + i Im = v(r) = Σᵢ cᵢ μⁱ e^(i i θ) (the cᵢ are real).
+# When every sin(iθ) is a rational multiple of one √d, it is factored out of Im (Im² = d Im′²). nothing when
+# some cos, sin is not a square-root expression here.
+function kum_real_logs(b0::Builder, fac, absσ::Int, neg::Bool, q::Int, coeffs)
+    μp(i) = (absσ == 1 || i == 0) ? nothing : mk(b0, :^, b0.lift(absσ), b0.lift(Q(i, q)))
+    times(a, b) = a === nothing ? b : b === nothing ? a : mk(b0, :*, a, b)
+    sumt(ts) = isempty(ts) ? b0.lift(0) : length(ts) == 1 ? ts[1] : mk(b0, :+, ts...)
+    ct(c) = c === nothing ? nothing : isone(c) ? nothing : cterm(b0, c)
+    signed(c, t) = c == -1 ? mk(b0, :*, b0.lift(-1), t) : times(ct(c), t)
+    out = Any[]
+    for k in 0:(q - 1)
+        m, d = 2k + (neg ? 1 : 0), 2q                   # θ = 2π m/d
+        θ = 2π * m / d
+        (θ > π + 1e-12) && continue                     # conjugates: only 0 ≤ θ ≤ π
+        vals = Any[]
+        for (i, c) in enumerate(coeffs)
+            c === nothing && continue
+            cs = kum_cos_sin((i - 1) * m, d)
+            cs === nothing && return nothing
+            push!(vals, (i - 1, c, cs...))
+        end
+        csθ = kum_cos_sin(m, d)
+        csθ === nothing && return nothing
+        cθ, sθ = csθ
+        μ = μp(1)
+        re = Any[signed(ci, times(μp(i), c)) for (i, c, ci, _) in vals if ci !== nothing]
+        R = sumt(re)
+        if abs(sin(θ)) < 1e-12                          # a real root ±μ: (r/2) log(v(r)²)
+            push!(out, mk(b0, :*, mk(b0, :/, signed(cθ, μ === nothing ? b0.lift(1) : μ), b0.lift(2)),
+                          mk(b0, :log, mk(b0, :^, R, b0.lift(2)))))
+            continue
+        end
+        sis = [si for (_, _, _, si) in vals if si !== nothing]
+        rd = all(si -> si isa QS{3}, sis) ? 3 : all(si -> si isa QS{2}, sis) ? 2 : 1
+        down(si) = rd == 1 ? si : si.b                  # si = b√rd
+        im = Any[signed(down(si), times(μp(i), c)) for (i, c, _, si) in vals if si !== nothing]
+        I = sumt(im)
+        I2 = mk(b0, :^, I, b0.lift(2))
+        rd == 1 || (I2 = mk(b0, :*, b0.lift(rd), I2))
+        Iat = rd == 1 ? I : mk(b0, :*, mk(b0, :sqrt, b0.lift(rd)), I)
+        cθ === nothing || push!(out, mk(b0, :*, signed(cθ, μ === nothing ? b0.lift(1) : μ),
+                                         mk(b0, :log, mk(b0, :+, mk(b0, :^, R, b0.lift(2)), I2))))
+        push!(out, mk(b0, :*, signed(-2 * sθ, μ === nothing ? b0.lift(1) : μ), mk(b0, :atan, mk(b0, :/, Iat, R))))
+    end
+    mk(b0, :*, fac, sumt(out))
 end
 
 # ωⱼ as a term
