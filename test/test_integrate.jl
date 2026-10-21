@@ -1166,6 +1166,26 @@ let
     end
 end
 
+# step PR: parameters in a radicand, removed by x = s u + h (Expr terms; checked numerically at sample
+# parameter values)
+@testset "parameters in radicands (step PR)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, vals) = Core.eval(Main, Expr(:let, Expr(:block, [Expr(:(=), k, v) for (k, v) in vals]...), e))
+    for (f, avals, xs) in ((:((a ^ 2 + -1 * x ^ 2) ^ (5 // 2)), (:a => 2.0,), (0.31, 1.5)),        # apostol 39
+                           (:(1 / sqrt(a ^ 2 + -1 * x ^ 2)), (:a => 2.0,), (0.31, 1.5)),           # 87
+                           (:(((a + x) / (a + -1x)) ^ (1 // 2)), (:a => 2.0,), (0.31, 1.5)),        # 103
+                           (:(sqrt((x + -1a) * (b + -1x))), (:a => 0.2, :b => 0.9), (0.31, 0.57)),  # 104
+                           (:(1 / sqrt((x + -1a) * (b + -1x))), (:a => 0.2, :b => 0.9), (0.31, 0.57)),  # 105
+                           (:(x / sqrt(a * x + b)), (:a => 2.0, :b => 1.0), (0.31, 1.5)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in xs
+            h = 1e-6
+            d = (ev(F, (avals..., :x => complex(x0 + h))) - ev(F, (avals..., :x => complex(x0 - h)))) / (2h)
+            @test isapprox(real(d), ev(f, (avals..., :x => x0)); rtol = 1e-5)
+        end
+    end
+end
+
 # Expr terms. Giac.jl writes log as `ln`: the operation name ln is read as log (shown here with
 # Expr terms); an Expr has the call 1 // 3 for a rational number; an Expr answer of an inner
 # integration (u-substitution) has Symbol operations such as :expinti

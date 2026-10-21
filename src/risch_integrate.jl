@@ -54,6 +54,10 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
             end
         end
     end
+    if any(((_, u),) -> has_param(u, xk), rads)        # parameters in a radicand: x = s u + h (step PR)
+        r = integrate_param_radicals(f, x, rads; build = build, lift = lift, verify = verify)
+        r === nothing || return r
+    end
     if any(((_, u),) -> radicand_element(u, xk) === nothing, rads)
         # nested square roots that denest (step DN): rewrite, then integrate the ordinary radicals
         bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
