@@ -336,6 +336,19 @@ algorithm is needed yet.
   at them.
 * Covers cube roots of cubics, (x³+1)^(1/3), x/(x⁴+1)^(1/4), etc.
 
+## Nested radicals (begun 2026-10-21)
+
+1. Denesting (step DN). √(a + b√c) with a, b, c ∈ ℚ(x) and a² − b²c = d² a square in ℚ(x):
+   √(a + b√c) = √((a+d)/2) + s√((a−d)/2), where s = sign b on the interval used. (√p₁ + s√p₂)² =
+   p₁ + p₂ + 2s√(p₁p₂) = a + s|b|√c. The integrand is rewritten and integrated with ordinary radicals.
+   The answer is valid on the interval around a sample point where b keeps its sign.
+   E.g. √(x + √(x²−1)), √(x + 2√(x−1)).
+2. Not denestable (e.g. Rubi's 1/((1+x⁴)√(√(1+x⁴) − x²)), where a² − c = −1). y₂ = √(y₁ − x²) and
+   y₂·y₂′ = √(x⁴ − y₁²) = i, so ℚ(i)(x, y₂) is Galois over ℚ(i)(x) with group V₄. The projections live in
+   ℚ(i)(x)(y₁), ℚ(i)(x)(y₂ + i/y₂), ℚ(i)(x)(y₂ − i/y₂), and (y₂ ± i/y₂)² = ±2i − 2x² (genus 0). This
+   needs radicands with constants in ℚ(i) (Euler substitutions over ℚ(i)), then real forms.
+3. General nested radicals: a primitive element and its minimal polynomial, i.e. phase 4.
+
 ## Phase 4: general algebraic curves (optional, large)
 
 * Integral bases by Trager's algorithm (or van Hoeij's) for F(x, y) = 0.
