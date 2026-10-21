@@ -291,15 +291,16 @@ function integrate_kummer(f, x, rads; build = nothing, lift = nothing, verify::B
         end
         θs = Any[mk(b0, :^, poly_term(b0, bs[k]), b0.lift(e[k])) for k in 1:nb if !iszero(e[k])]
         θterm = length(θs) == 1 ? θs[1] : mk(b0, :*, θs...)
-        C = kum_component(bs, e, g, θterm; needlog = count(!iszero, e) == 1)
-        if C isa Tuple                                  # residues: the log part (phase 3b, one base)
+        C = kum_component(bs, e, g, θterm; needlog = true)
+        if C isa Tuple                                  # residues: the log part (phase 3b)
             _, C0, P, R, D = C
-            k = findfirst(!iszero, e)
-            lp = kum_log_part(bs[k], Int(numerator(e[k])), Int(denominator(e[k])), P, R, D, θterm, b0, xk)
+            ks = [k for k in eachindex(bs) if !iszero(e[k])]
+            curve = KumCurve(bs[ks], e[ks])
+            lp = kum_log_part(curve, P, R, D, θterm, b0, xk)
             lp isa Exception && throw(lp)
             Wsub, rs1 = lp
-            # the rest, (P + R/D)/b - Wsub, must reduce to an algebraic C1 (it has no residues left)
-            C1 = kum_component(bs, e, frac(P, bs[k]) + frac(R, bs[k] * D) - Wsub, θterm)
+            # the rest, (P + R/D)/A - Wsub, must reduce to an algebraic C1 (it has no residues left)
+            C1 = kum_component(bs, e, frac(P, curve.A) + frac(R, curve.A * D) - Wsub, θterm)
             C1 isa Exception && throw(C1 isa NotElementary ? C1 : RischNotImplemented(
                 "phase 3b: residues left after the logarithmic part ($(C1.msg))"))
             C = C0 + C1

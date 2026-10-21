@@ -1,5 +1,7 @@
 # ---------------------------------------------------------------------------
-# SI2 phase 3b: the log part for one radical, θ = yᵖ, y = b^(1/q) (b squarefree, gcd(p, q) = 1)
+# SI2 phase 3b: the log part for one component θ. Written below for one radical, θ = yᵖ, y = b^(1/q)
+# (b squarefree, gcd(p, q) = 1); the code works with any component θ = Π bₖ^rₖ through the integral basis
+# ωⱼ of `KumCurve` (θᵠ = B, ωⱼ in place of y^(jp mod q), θ = ω₁).
 #
 # After Hermite reduction the integrand is h θ, h = (P + R/D)/b. With τ: y ↦ ζy (ζ = e^(2πi/q)),
 # τ*θ = ζᵖθ, the residues over a root β of D are h(β) y(P)ᵖ: one orbit r·μ_q, and s = r^q ≡ hᵠ bᵖ
@@ -48,30 +50,70 @@ function kum_root_lift(b::P, S::P, G::P, e::Int, q::Int) where {P<:UPoly}
     Y
 end
 
+# A component θ = Π bₖ^rₖ (bₖ coprime squarefree, rₖ ∈ (0,1)), q = lcm of the denominators: θ^q = B,
+# B = Π bₖ^(q rₖ). Integral basis ωⱼ = Π bₖ^{j rₖ} = θʲ/gⱼ, gⱼ = Π bₖ^⌊j rₖ⌋ (j = 0 … q-1), diagonal for
+# τ: θ ↦ ζθ (ωⱼ ↦ ζʲωⱼ), θ = ω₁. At ∞ ωⱼ ~ wʲ/Π lcₖ^⌊j rₖ⌋ · x^ρⱼ (w the leading coefficient of θ,
+# wᵠ = Π lcₖ^(q rₖ)), ρⱼ = Σ {j rₖ} deg bₖ. One base: ωⱼ = y^(jp mod q), the phase-3b setting above.
+struct KumCurve
+    bs::Vector{QX}
+    rs::Vector{Q}
+    q::Int
+    es::Vector{Int}             # q rₖ
+    B::QX
+    A::QX
+    ρ::Q
+    fr::Vector{Vector{Q}}       # {j rₖ}
+    fl::Vector{Vector{Int}}     # ⌊j rₖ⌋
+    ρs::Vector{Q}
+end
+function KumCurve(bs::Vector{QX}, rs::Vector{Q})
+    q = reduce(lcm, Int.(denominator.(rs)))
+    es = [Int(r * q) for r in rs]
+    B = prod((bs[k]^es[k] for k in eachindex(bs)); init = one(QX))
+    A = prod(bs; init = one(QX))
+    fr = [[mod(j * r, 1) for r in rs] for j in 0:(q - 1)]
+    fl = [[Int(floor(j * r)) for r in rs] for j in 0:(q - 1)]
+    ρs = [sum((fr[j + 1][k] * degree(bs[k]) for k in eachindex(bs)); init = Q(0)) for j in 0:(q - 1)]
+    KumCurve(bs, rs, q, es, B, A, ρs[2], fr, fl, ρs)
+end
+# the series in 1/x of Π (bₖ/(lcₖ x^dₖ))^αₖ, coefficients 0 … N
+function kum_series(C::KumCurve, αs, N::Int)
+    s = [Q(1); zeros(Q, N)]
+    for k in eachindex(C.bs)
+        iszero(αs[k]) && continue
+        sk = hyp_sqrt_series(C.bs[k], N, Q(αs[k]))
+        s = [sum(s[i + 1] * sk[j - i + 1] for i in 0:j) for j in 0:N]
+    end
+    s
+end
+kum_lcprod(C::KumCurve, ex) = prod((lc(C.bs[k])^ex[k] for k in eachindex(C.bs)); init = Q(1))
+
 # the log part (Wsub, [ScaledRootSum]) with d/dx(log part) = Wsub θ, or the exception to raise
-function kum_log_part(b::QX, p::Int, q::Int, P::QX, R::QX, D::QX, θterm, b0::Builder, xk::String; Nmax::Int = 8)
-    m = degree(b)
+kum_log_part(b::QX, p::Int, q::Int, P::QX, R::QX, D::QX, θterm, b0::Builder, xk::String; Nmax::Int = 8) =
+    kum_log_part(KumCurve([b], [Q(p, q)]), P, R, D, θterm, b0, xk; Nmax = Nmax)
+function kum_log_part(C::KumCurve, P::QX, R::QX, D::QX, θterm, b0::Builder, xk::String; Nmax::Int = 8)
+    q, A = C.q, C.A
     ni(msg) = RischNotImplemented("∫ (…)·$θterm: $msg (SI2 phase 3b)")
-    pinv = invmod(p, q)
     dD = deriv(D)
-    # residue data: (F, s) at finite places; s∞ (with κ) at ∞
+    # residue data: (F, s) at finite places (residue h θ, h = R/(A D′), s = hᵠ B); s∞ (with κ) at ∞
     fin = Tuple{QX,Q,QX}[]                              # (F, s, h mod F)
     if !iszero(R)
         for F in factor_Q(D)
-            hF = rem(R * hyp_invmod(b * dD, F), F)
-            sF = rem(hF^q * b^p, F)
+            hF = rem(R * hyp_invmod(A * dD, F), F)
+            sF = rem(hF^q * C.B, F)
             degree(sF) == 0 || return ni("residues of degree > q over ℚ")
             push!(fin, (F, sF.c[1], hF))
         end
     end
     κ = Q(0)
-    if isone(denominator(Q(p * m, q))) && !iszero(P)
+    if isone(denominator(C.ρ)) && !iszero(P)            # the x⁻¹ coefficient of P Π bₖ^(rₖ-1)
         N0 = degree(P) + 2
-        sr = hyp_sqrt_series(b, N0, Q(p, q) - 1)
-        e0 = (p * m) ÷ q - m
+        sr = kum_series(C, C.rs .- 1, N0)
+        e0 = Int(C.ρ) - degree(A)
         κ = sum((P.c[j + 1] * sr[j + e0 + 2] for j in 0:degree(P) if 0 <= j + e0 + 1 <= N0); init = Q(0))
     end
-    s∞ = iszero(κ) ? nothing : (-κ)^q * lc(b)^(p - q)   # r∞ = -w^(p-q) κ, w^q = lc(b)
+    # r∞ = -κ w/Π lcₖ, wᵠ = Π lcₖ^eₖ: s∞ = (-κ)ᵠ Π lcₖ^eₖ / Π lcₖ^q
+    s∞ = iszero(κ) ? nothing : (-κ)^q * kum_lcprod(C, C.es) / kum_lcprod(C, fill(q, length(C.bs)))
     # several classes σ₁, σ₂, …: the residue spans σᵢ^(1/q)·ℚ(ζ_q) are independent when no σᵢ/σⱼ is a q-th
     # power in ℚ(ζ_q) (Kummer); then the integral is elementary iff each class's divisor is (torsion), and
     # the log parts add up
@@ -91,7 +133,7 @@ function kum_log_part(b::QX, p::Int, q::Int, P::QX, R::QX, D::QX, θterm, b0::Bu
     end
     Wtot, rss = zero(QXF), Any[]
     for σc in σs
-        r = kum_log_class(b, p, q, fin[groups[σc]], σc == σ∞ ? s∞ : nothing, κ, θterm, b0, xk; Nmax = Nmax)
+        r = kum_log_class(C, fin[groups[σc]], σc == σ∞ ? s∞ : nothing, κ, θterm, b0, xk; Nmax = Nmax)
         r isa Exception && return r
         Wtot = Wtot + r[1]
         push!(rss, r[2])
@@ -101,10 +143,9 @@ end
 
 # the log part for the residues of one class (fin: the poles of the class; s∞: the residue at ∞ if it is
 # in the class): (Wsub, ScaledRootSum) or the exception to raise
-function kum_log_class(b::QX, p::Int, q::Int, fin, s∞, κ::Q, θterm, b0::Builder, xk::String; Nmax::Int = 8)
-    m = degree(b)
+function kum_log_class(C::KumCurve, fin, s∞, κ::Q, θterm, b0::Builder, xk::String; Nmax::Int = 8)
+    q = C.q
     ni(msg) = RischNotImplemented("∫ (…)·$θterm: $msg (SI2 phase 3b)")
-    pinv = invmod(p, q)
     cls = [kum_qclass(s, q) for (_, s, _) in fin]
     s∞ === nothing || push!(cls, kum_qclass(s∞, q))
     isempty(cls) && return ni("no residues found")
@@ -125,13 +166,13 @@ function kum_log_class(b::QX, p::Int, q::Int, fin, s∞, κ::Q, θterm, b0::Buil
     run(f) = degree(Mz) == 1 ? f(Q, identity, -Mz.c[1]) : with_nf(Mz) do
         f(NFz, c -> cfromQ(NFz, c), nfz(xpoly(Q)))
     end
-    # v with div(v) = N·Δ, or (TG = (c_G, Θ)) N·T_G·Δ over L; λ = q b₀ σ^(1/q)/(N Θ)
+    # v = Σ cⱼ ωⱼ with div(v) = N·Δ, or (TG = (c_G, Θ)) N·T_G·Δ over L; λ = q b₀ σ^(1/q)/(N Θ)
     search(Ns, maxu; TG = nothing) = run() do K, emb, z
         PL = UPoly{K}
-        bL, Sd, w = kum_lp_data(K, emb, z, b, p, q, fin, ts, ns, s∞, κ)
+        cd, Sd, w = kum_lp_data(K, emb, z, C, fin, ts, ns, s∞, κ)
         for N in Ns
-            sys = TG === nothing ? kum_lp_system(K, emb, bL, Sd, w, b, q, n∞, N; maxu = maxu) :
-                  kum_orbit_system(K, emb, bL, Sd, w, b, q, n∞, N, TG[1]; maxu = maxu)
+            sys = kum_orbit_system(K, emb, cd, Sd, w, C, n∞, N,
+                                   TG === nothing ? [k == 0 ? 1 : 0 for k in 0:(q - 1)] : TG[1]; maxu = maxu)
             sys === nothing && continue
             sys === :toolarge && break
             unknowns, cols = sys
@@ -142,23 +183,22 @@ function kum_log_class(b::QX, p::Int, q::Int, fin, s∞, κ::Q, θterm, b0::Buil
             for (i, (k, j)) in enumerate(unknowns)
                 cs[k + 1] = cs[k + 1] + PL([i2 == j ? v[i] : zero(K) for i2 in 0:j])
             end
-            # η = v′/v in L(x)[y]/(y^q - b): v′ = Σ (c_k′ + k c_k b′/(q b)) y^k
+            # η = v′/v in L(x)⟨ω⟩: v′ = Σ (cⱼ′ + cⱼ Σₖ {j rₖ} bₖ′/bₖ) ωⱼ; ωᵢωⱼ = ω_{i+j mod q} · carry
             F_ = Frac{PL}
-            fb = frac(bL)
-            dv = F_[frac(deriv(cs[k + 1])) + frac(cs[k + 1]) * frac(PL([emb(Q(k, q))])) * frac(deriv(bL)) / fb for k in 0:(q - 1)]
+            dv = F_[frac(deriv(cs[jj + 1])) + frac(cs[jj + 1]) * kum_dlogω(K, emb, C, jj) for jj in 0:(q - 1)]
             mcols = Vector{F_}[]
-            for jj in 0:(q - 1)                         # v·y^jj
+            for jj in 0:(q - 1)                         # v·ω_jj
                 col = [zero(F_) for _ in 1:q]
                 for k in 0:(q - 1)
-                    d, rmd = divrem(k + jj, q)
-                    col[rmd + 1] = col[rmd + 1] + frac(cs[k + 1]) * fb^d
+                    t, cr = kum_carry(K, emb, C, k, jj)
+                    col[t + 1] = col[t + 1] + frac(cs[k + 1] * cr)
                 end
                 push!(mcols, col)
             end
             η = solve_columns(mcols, dv)
             η === nothing && throw(RischError("kum_log_part: v is not invertible"))
             λ = z * emb(Q(q) * bb / (N * (TG === nothing ? 1 : TG[2])))
-            Wl = η[p + 1] * frac(PL([λ]))
+            Wl = η[2] * frac(PL([λ]))                   # the θ = ω₁ component
             Wq = kum_down(Wl)
             Wq === nothing && return :notrational      # a principal N·Δ whose log part is not the one wanted
             return (N, cs, Wq)
@@ -171,9 +211,9 @@ function kum_log_class(b::QX, p::Int, q::Int, fin, s∞, κ::Q, θterm, b0::Buil
         # q prime: the class of Δ (over L ∌ ζ) is torsion iff its χ-part is (its nontrivial isotypic parts are
         # conjugate, the trivial one comes from ℙ¹), i.e. iff the integral is elementary. Its order N₁ mod a
         # prime, a second prime where N₁Δ̄ is not principal, or N₁Δ not principal over L, prove it is not.
-        ord = kum_lp_order(b, p, q, fin, ts, ns, s∞, κ, n∞, σ, Mz)
+        ord = kum_lp_order(C, fin, ts, ns, s∞, κ, n∞, σ, Mz)
         ord === :infinite && return NotElementary(
-            "∫ (…)·$θterm: the divisor of the residues has infinite order in the Jacobian of y^$q = b " *
+            "∫ (…)·$θterm: the divisor of the residues has infinite order in the Jacobian of θ^$q = B " *
             "(its orders modulo two primes differ)")
         if ord isa Int                                  # the only possible order: one exact test
             found = search([ord], 5000)
@@ -194,10 +234,10 @@ function kum_log_class(b::QX, p::Int, q::Int, fin, s∞, κ::Q, θterm, b0::Buil
         cG = kum_TG(q)
         Θ = kum_Theta(cG, q)
         if !iszero(Θ)
-            ord = kum_lp_order_T(b, p, q, fin, ts, ns, s∞, κ, n∞, σ, Mz)
+            ord = kum_lp_order_T(C, fin, ts, ns, s∞, κ, n∞, σ, Mz)
             ord === :infinite && return NotElementary(
                 "∫ (…)·$θterm: the order-$q part of the divisor of the residues has infinite order in the " *
-                "Jacobian of y^$q = b (its orders modulo two primes differ)")
+                "Jacobian of θ^$q = B (its orders modulo two primes differ)")
             if ord isa Int
                 for d in sort!(Int.(divisors(big(ord))))
                     found = search([d], 5000; TG = (cG, Θ))
@@ -212,72 +252,102 @@ function kum_log_class(b::QX, p::Int, q::Int, fin, s∞, κ::Q, θterm, b0::Buil
     end
     found === nothing && return ni("no torsion multiple N ≤ $Nmax of the divisor of the residues found")
     N, cs, Wsub = found
-    yt = mk(b0, :^, poly_term(b0, b), b0.lift(Q(1, q)))
+    ωt = [kum_ω_term(b0, C, j) for j in 0:(q - 1)]
     if degree(Mz) == q && q > 1 && σ != 1
-        # z ↦ ζᶜz permutes the chosen places like τ: the log part is (b₀/N) Σ_{z^q = σ} z log v(z, x, y)
+        # z ↦ ζᶜz permutes the chosen places like τ: the log part is (b₀/N) Σ_{z^q = σ} z log v(z, x)
         zc = Any[nothing for _ in 1:q]
         for i in 0:(q - 1)
-            ts = Any[]
+            tsi = Any[]
             for k in 0:(q - 1)
                 pk = QX(Q[(i + 1 <= length(a.c.c) ? a.c.c[i + 1] : Q(0)) for a in cs[k + 1].c])
                 iszero(pk) && continue
                 t = poly_term(b0, pk)
-                push!(ts, k == 0 ? t : mk(b0, :*, t, k == 1 ? yt : mk(b0, :^, yt, b0.lift(k))))
+                push!(tsi, k == 0 ? t : mk(b0, :*, t, ωt[k + 1]))
             end
-            isempty(ts) || (zc[i + 1] = length(ts) == 1 ? ts[1] : mk(b0, :+, ts...))
+            isempty(tsi) || (zc[i + 1] = length(tsi) == 1 ? tsi[1] : mk(b0, :+, tsi...))
         end
         return Wsub, ScaledRootSum(cterm(b0, bb / N), TermRootSum(Mz, zc, xk))
     end
-    # output: (b₀σ^(1/q)/N) Σ_{α^q=1} α log(Σ_k c_k yᵏ α^(e_k)), e_k = -p′k mod q
+    # output: (b₀σ^(1/q)/N) Σ_{α^q=1} α log(Σ_j cⱼ ωⱼ α^(-j))
     zt = σ == 1 ? b0.lift(1) : mk(b0, :^, b0.lift(σ), b0.lift(Q(1, q)))
     coeffs = Any[nothing for _ in 1:q]
     for k in 0:(q - 1)
         ck = kum_poly_term(b0, cs[k + 1], zt, σ, q)
         ck === nothing && continue
-        t = k == 0 ? ck : mk(b0, :*, ck, k == 1 ? yt : mk(b0, :^, yt, b0.lift(k)))
-        coeffs[mod(-pinv * k, q) + 1] = t
+        coeffs[mod(-k, q) + 1] = k == 0 ? ck : mk(b0, :*, ck, ωt[k + 1])
     end
     fac = mk(b0, :*, cterm(b0, bb / N), zt)
     Wsub, ScaledRootSum(fac, TermRootSum(QX(vcat(Q[-1], zeros(Q, q - 1), Q[1])), coeffs, xk))
 end
 
+# ωⱼ as a term
+function kum_ω_term(b0::Builder, C::KumCurve, j::Int)
+    fs = Any[mk(b0, :^, poly_term(b0, C.bs[k]), b0.lift(C.fr[j + 1][k])) for k in eachindex(C.bs) if !iszero(C.fr[j + 1][k])]
+    isempty(fs) ? b0.lift(1) : length(fs) == 1 ? fs[1] : mk(b0, :*, fs...)
+end
+# ωⱼ′/ωⱼ = Σₖ {j rₖ} bₖ′/bₖ over K
+function kum_dlogω(::Type{K}, emb, C::KumCurve, j::Int) where {K}
+    PL = UPoly{K}
+    lift(f::QX) = PL(K[emb(c) for c in f.c])
+    sum((frac(PL([emb(C.fr[j + 1][k])])) * frac(lift(deriv(C.bs[k])), lift(C.bs[k])) for k in eachindex(C.bs)
+         if !iszero(C.fr[j + 1][k])); init = zero(Frac{PL}))
+end
+# ωᵢωⱼ = carry · ω_t, t = i + j mod q, carry = Π bₖ^(⌊t rₖ⌋ + ⌊(i+j)/q⌋ eₖ - ⌊i rₖ⌋ - ⌊j rₖ⌋)
+function kum_carry(::Type{K}, emb, C::KumCurve, i::Int, j::Int) where {K}
+    PL = UPoly{K}
+    t, d = mod(i + j, C.q), (i + j) ÷ C.q
+    cr = prod((C.bs[k]^(C.fl[t + 1][k] + d * C.es[k] - C.fl[i + 1][k] - C.fl[j + 1][k]) for k in eachindex(C.bs));
+              init = one(QX))
+    t, PL(K[emb(c) for c in cr.c])
+end
+
 struct KumBadPrime <: Exception end
 
-# branch-0 data over K (L, or 𝔽_p with emb = reduction): b, the places (F, n_F, S_F) and w at ∞
-function kum_lp_data(::Type{K}, emb, z, b::QX, p::Int, q::Int, fin, ts, ns, s∞, κ) where {K}
+# branch-0 data over K (L, or 𝔽_p with emb = reduction): (B, [gⱼ]) lifted, the places (F, n_F, S_F) with
+# θ ≡ S_F, and the leading coefficient w of θ at the branch 0 of ∞
+function kum_lp_data(::Type{K}, emb, z, C::KumCurve, fin, ts, ns, s∞, κ) where {K}
     PL = UPoly{K}
-    pinv = invmod(p, q)
     lift(f::QX) = PL(K[emb(c) for c in f.c])
-    bL = lift(b)
+    gs = [prod((C.bs[k]^C.fl[j + 1][k] for k in eachindex(C.bs)); init = one(QX)) for j in 0:(C.q - 1)]
+    cd = (B = lift(C.B), g = [lift(gj) for gj in gs])
     Sd = Tuple{PL,Int,PL}[]                             # (F, n_F, S_F)
     for (i, (F, s, hF)) in enumerate(fin)
         FL = lift(F)
-        rF = z * emb(ts[i])                             # the residue t σ^(1/q) (z = σ^(1/q))
-        yp = rem(PL([rF]) * hyp_invmod(lift(hF), FL), FL)
-        S = rem(yp^pinv * hyp_invmod(bL^((p * pinv - 1) ÷ q), FL), FL)
+        rF = z * emb(ts[i])                             # the residue t σ^(1/q) (z = σ^(1/q)) = h θ
+        S = rem(PL([rF]) * hyp_invmod(lift(hF), FL), FL)
         push!(Sd, (FL, ns[i], S))
     end
     w = nothing
-    if s∞ !== nothing                                   # w^(p-q) = -r∞/κ, w^p = w^(p-q) lc, w = (w^p)^p′/lc^((pp′-1)/q)
-        wpq = -(z * emb(ts[end])) / emb(κ)
-        w = (wpq * emb(lc(b)))^pinv / emb(lc(b))^((p * pinv - 1) ÷ q)
+    s∞ === nothing || (w = -(z * emb(ts[end])) * emb(kum_lcprod(C, ones(Int, length(C.bs)))) / emb(κ))
+    cd, Sd, w
+end
+
+# good reduction mod the current prime: the bases squarefree, of the same degrees, pairwise coprime, and the
+# poles squarefree and coprime to them
+function kum_good_mod(C::KumCurve, fin)
+    bps = UPoly{ModP}[]
+    for b in C.bs
+        bp = hyp_map(modp, b, ModP)
+        (bp === nothing || degree(bp) != degree(b) || degree(gcd(bp, deriv(bp))) != 0) && return false
+        any(c -> degree(gcd(c, bp)) != 0, bps) && return false
+        push!(bps, bp)
     end
-    bL, Sd, w
+    Ap = prod(bps; init = one(UPoly{ModP}))
+    for (F, _, _) in fin
+        Fp = hyp_map(modp, F, ModP)
+        (Fp === nothing || degree(Fp) != degree(F) || degree(gcd(Fp, deriv(Fp))) != 0 ||
+         degree(gcd(Fp, Ap)) != 0) && return false
+    end
+    true
 end
 
-# the linear system for v with div(v) = N·Δ (see kum_log_part): (unknowns, columns), nothing when N·Δ is
-# not integral, :toolarge
-function kum_lp_system(::Type{K}, emb, bL, Sd, w, b::QX, q::Int, n∞::Int, N::Int; maxu::Int = 800) where {K}
-    # Δ itself is T = 1: the orbit system handles negative n (by full fibers) and the branches at ∞
-    kum_orbit_system(K, emb, bL, Sd, w, b, q, n∞, N, [k == 0 ? 1 : 0 for k in 0:(q - 1)]; maxu = maxu)
-end
-
-# The order of Δ by reduction mod primes p ≥ 7 of good reduction (p ∤ q σ lc(b) disc(b), b and the poles
-# squarefree and coprime mod p) with a root of the minimal polynomial Mz of σ^(1/q) mod p (a prime of
-# degree 1 of L; unramified, so reduction is injective on torsion): :infinite (proved), N₁ (the order mod
-# one prime, confirmed at two more), or nothing.
-function kum_lp_order(b::QX, p::Int, q::Int, fin, ts, ns, s∞, κ, n∞::Int, σ::Int, Mz::QX;
+# The order of Δ by reduction mod primes p ≥ 7 of good reduction (p ∤ q σ, `kum_good_mod`) with a root of
+# the minimal polynomial Mz of σ^(1/q) mod p (a prime of degree 1 of L; unramified, so reduction is
+# injective on torsion): :infinite (proved), N₁ (the order mod one prime, confirmed at two more), or nothing.
+function kum_lp_order(C::KumCurve, fin, ts, ns, s∞, κ, n∞::Int, σ::Int, Mz::QX;
                       cap::Int = 40, pmax::Int = 400, nconfirm::Int = 2)
+    q = C.q
+    c1 = [k == 0 ? 1 : 0 for k in 0:(q - 1)]
     N1, conf = nothing, 0
     pr = 5
     while pr < pmax
@@ -287,20 +357,14 @@ function kum_lp_order(b::QX, p::Int, q::Int, fin, ts, ns, s∞, κ, n∞::Int, �
         r = with_mod(pr) do
             emb = c -> (v = modp(c); v === nothing ? throw(KumBadPrime()) : v)
             try
-                bp = hyp_map(modp, b, ModP)
-                (bp === nothing || degree(bp) != degree(b) || degree(gcd(bp, deriv(bp))) != 0) && return nothing
-                for (F, _, _) in fin
-                    Fp = hyp_map(modp, F, ModP)
-                    (Fp === nothing || degree(Fp) != degree(F) || degree(gcd(Fp, deriv(Fp))) != 0 ||
-                     degree(gcd(Fp, bp)) != 0) && return nothing
-                end
+                kum_good_mod(C, fin) || return nothing
                 Mp = hyp_map(modp, Mz, ModP)
                 Mp === nothing && return nothing
                 rts = modp_roots(Mp)
                 isempty(rts) && return nothing
-                bL, Sd, w = kum_lp_data(ModP, emb, rts[1], b, p, q, fin, ts, ns, s∞, κ)
+                cd, Sd, w = kum_lp_data(ModP, emb, rts[1], C, fin, ts, ns, s∞, κ)
                 (w !== nothing && iszero(w)) && return nothing
-                principal(N) = (sys = kum_lp_system(ModP, emb, bL, Sd, w, b, q, n∞, N; maxu = 3000);
+                principal(N) = (sys = kum_orbit_system(ModP, emb, cd, Sd, w, C, n∞, N, c1; maxu = 3000);
                                 sys isa Tuple ? !isempty(nullspace_cols(sys[2], length(sys[2]))) : sys)
                 if N1 === nothing
                     for N in 1:cap
@@ -358,59 +422,78 @@ function kum_T(q::Int)
     c
 end
 
-# the system for N·T·Δ over a field K ∋ ζ (ζ of order q): per-branch multiplicities at the places
-# τᵏP_F (y ≡ ζᵏ S_F) and at the branches of ∞ (q | m), shifted by full fibers to be ≥ 0
-function kum_branch_system(::Type{K}, emb, bL, Sd, w, b::QX, q::Int, n∞::Int, N::Int, c::Vector{Int}, ζ;
-                           maxu::Int = 3000) where {K}
-    m = degree(b)
-    PL = UPoly{K}
+# the multiplicities of N·c·Δ at the places τᵏP_F, shifted by full fibers to be ≥ 0, the pole orders at the
+# branches of ∞ (q | m, n∞ ≠ 0; else nothing) and the degree bounds of the cⱼ; nothing when N·c·Δ is not
+# integral
+function kum_shape(C::KumCurve, Sd, n∞::Int, N::Int, c::Vector{Int})
+    q = C.q
     mults = Vector{Int}[]
     for (_, n, _) in Sd
         mk = [N * n * c[k + 1] for k in 0:(q - 1)]
-        push!(mults, mk .- min(0, minimum(mk)))
+        push!(mults, mk .- minimum(mk))
     end
     Z = sum((sum(mults[i]) * degree(Sd[i][1]) for i in eachindex(Sd)); init = 0)
     if n∞ == 0
-        Z % gcd(m, q) == 0 || return nothing
-        dks = [fld(Z - k * m, q) for k in 0:(q - 1)]
-        os = nothing
-    else                                                # q | m: zero orders a_j at the branches of ∞
-        a = [N * n∞ * c[j + 1] for j in 0:(q - 1)]
-        (Z + sum(a)) % q == 0 || return nothing
-        O = (Z + sum(a)) ÷ q
-        os = [O - a[j + 1] for j in 0:(q - 1)]          # pole orders
-        omax = maximum(os)
-        omax < 0 && return nothing
-        dks = [floor(Int, Q(omax) - Q(k * m, q)) for k in 0:(q - 1)]
+        # the q/den(ρ) places at ∞, each of ramification den(ρ): balanced pole orders, i.e.
+        # q (deg cⱼ + ρⱼ) ≤ Z (no cancellation between the j)
+        Z % (q ÷ Int(denominator(C.ρ))) == 0 || return nothing
+        return mults, nothing, [floor(Int, Q(Z, q) - C.ρs[j + 1]) for j in 0:(q - 1)]
     end
+    a = [N * n∞ * c[j + 1] for j in 0:(q - 1)]
+    a = a .- minimum(a)
+    (Z + sum(a)) % q == 0 || return nothing
+    O = (Z + sum(a)) ÷ q
+    os = [O - a[j + 1] for j in 0:(q - 1)]
+    omax = maximum(os)
+    omax < 0 && return nothing
+    mults, os, [floor(Int, Q(omax) - C.ρs[j + 1]) for j in 0:(q - 1)]
+end
+
+# for each j: (the leading coefficient wʲ/Π lcₖ^⌊j rₖ⌋, the series Sⱼ(1/x)) of ωⱼ = lead · x^ρⱼ Sⱼ(1/x) at
+# the branch 0 of ∞
+function kum_inf_coeffs(::Type{K}, emb, C::KumCurve, w, len::Int) where {K}
+    [(w^j * emb(inv(kum_lcprod(C, C.fl[j + 1]))), K[emb(cc) for cc in kum_series(C, C.fr[j + 1], len)])
+     for j in 0:(C.q - 1)]
+end
+
+# the system for N·c·Δ over a field K ∋ ζ (ζ of order q): per-branch multiplicities at the places
+# τᵏP_F (θ ≡ ζᵏ S_F) and per-branch pole orders at ∞; v = Σ cⱼ ωⱼ, ωⱼ = θʲ/gⱼ
+function kum_branch_system(::Type{K}, emb, cd, Sd, w, C::KumCurve, n∞::Int, N::Int, c::Vector{Int}, ζ;
+                           maxu::Int = 3000) where {K}
+    q = C.q
+    PL = UPoly{K}
+    sh = kum_shape(C, Sd, n∞, N, c)
+    sh === nothing && return nothing
+    mults, os, dks = sh
     unknowns = [(k, j) for k in 0:(q - 1) for j in 0:dks[k + 1]]
     isempty(unknowns) && return nothing
     length(unknowns) > maxu && return :toolarge
     x = xpoly(K)
-    conds = []                                          # (G^e, ζᵏY powers)
+    conds = []                                          # (G^e, [ωⱼ at the branch mod G^e])
     for (i, (F, _, S)) in enumerate(Sd)
         emax = maximum(mults[i])
         emax == 0 && continue
-        Y = kum_root_lift(bL, S, F, emax, q)
+        Θ = kum_root_lift(cd.B, S, F, emax, q)
         for k in 0:(q - 1)
             e = mults[i][k + 1]
             e == 0 && continue
             Ge = F^e
-            Yk = PL([ζ^k]) * Y
-            push!(conds, (Ge, [rem(Yk^i, Ge) for i in 0:(q - 1)]))
+            Θk = PL([ζ^k]) * Θ
+            push!(conds, (Ge, [rem(Θk^j * hyp_invmod(rem(cd.g[j + 1], Ge), Ge), Ge) for j in 0:(q - 1)]))
         end
     end
-    ser = os === nothing ? nothing : [K[emb(cc) for cc in hyp_sqrt_series(b, maximum(os) + m + 2, Q(k, q))] for k in 0:(q - 1)]
+    ic = os === nothing ? nothing : kum_inf_coeffs(K, emb, C, w, maximum(os) + maximum(dks) + 2)
     cols = Vector{K}[]
     for (k, j) in unknowns
         col = K[]
-        for (Ge, yp) in conds
-            rr = rem(x^j * yp[k + 1], Ge)
+        for (Ge, ωv) in conds
+            rr = rem(x^j * ωv[k + 1], Ge)
             append!(col, [d <= length(rr.c) ? rr.c[d] : zero(K) for d in 1:degree(Ge)])
         end
         if os !== nothing                               # branch jb: Σ_k ζ^(jb k) E_k(t) = 0 for t > o_jb
-            sh = j + (k * m) ÷ q
-            E(t) = (0 <= sh - t <= length(ser[k + 1]) - 1) ? w^k * ser[k + 1][sh - t + 1] : zero(K)
+            lw, sk = ic[k + 1]
+            s0 = j + Int(C.ρs[k + 1])
+            E(t) = (0 <= s0 - t <= length(sk) - 1) ? lw * sk[s0 - t + 1] : zero(K)
             for jb in 0:(q - 1), t in (os[jb + 1] + 1):maximum(os)
                 push!(col, ζ^(jb * k) * E(t))
             end
@@ -421,8 +504,9 @@ function kum_branch_system(::Type{K}, emb, bL, Sd, w, b::QX, q::Int, n∞::Int, 
 end
 
 # as kum_lp_order, for N·T·Δ, at primes p ≡ 1 mod q (ζ_q ∈ 𝔽_p): :infinite (proved), N₁, or nothing
-function kum_lp_order_T(b::QX, p::Int, q::Int, fin, ts, ns, s∞, κ, n∞::Int, σ::Int, Mz::QX;
-                        c::Vector{Int} = kum_T(q), cap::Int = 40, pmax::Int = 1200, nconfirm::Int = 2)
+function kum_lp_order_T(C::KumCurve, fin, ts, ns, s∞, κ, n∞::Int, σ::Int, Mz::QX;
+                        c::Vector{Int} = kum_T(C.q), cap::Int = 40, pmax::Int = 1200, nconfirm::Int = 2)
+    q = C.q
     ℓs = [Int(ℓ) for (ℓ, _) in factorint(big(q))]
     N1, conf = nothing, 0
     pr = 1
@@ -432,13 +516,7 @@ function kum_lp_order_T(b::QX, p::Int, q::Int, fin, ts, ns, s∞, κ, n∞::Int,
         r = with_mod(pr) do
             emb = c0 -> (v = modp(c0); v === nothing ? throw(KumBadPrime()) : v)
             try
-                bp = hyp_map(modp, b, ModP)
-                (bp === nothing || degree(bp) != degree(b) || degree(gcd(bp, deriv(bp))) != 0) && return nothing
-                for (F, _, _) in fin
-                    Fp = hyp_map(modp, F, ModP)
-                    (Fp === nothing || degree(Fp) != degree(F) || degree(gcd(Fp, deriv(Fp))) != 0 ||
-                     degree(gcd(Fp, bp)) != 0) && return nothing
-                end
+                kum_good_mod(C, fin) || return nothing
                 Mp = hyp_map(modp, Mz, ModP)
                 Mp === nothing && return nothing
                 rts = modp_roots(Mp)
@@ -449,9 +527,9 @@ function kum_lp_order_T(b::QX, p::Int, q::Int, fin, ts, ns, s∞, κ, n∞::Int,
                     all(ℓ -> !isone(z0^(q ÷ ℓ)), ℓs) && (ζ = z0; break)
                 end
                 ζ === nothing && return nothing
-                bL, Sd, w = kum_lp_data(ModP, emb, rts[1], b, p, q, fin, ts, ns, s∞, κ)
+                cd, Sd, w = kum_lp_data(ModP, emb, rts[1], C, fin, ts, ns, s∞, κ)
                 (w !== nothing && iszero(w)) && return nothing
-                principal(N) = (sys = kum_branch_system(ModP, emb, bL, Sd, w, b, q, n∞, N, c, ζ);
+                principal(N) = (sys = kum_branch_system(ModP, emb, cd, Sd, w, C, n∞, N, c, ζ);
                                 sys isa Tuple ? !isempty(nullspace_cols(sys[2], length(sys[2]))) : sys)
                 if N1 === nothing
                     for N in 1:cap
@@ -513,78 +591,59 @@ kum_Theta(cG::Vector{Int}, q::Int) = sum(cG[k + 1] * kum_ramanujan(q ÷ gcd(k, q
 # the branches 0 … q-1 grouped into Galois orbits (by the order d = q/gcd(k, q) of ζᵏ)
 kum_orbit(q::Int, k::Int) = q ÷ gcd(k, q)
 
-# The system for N·T_G·Δ over L (no ζ): multiplicities m_k = N n c_k at the places τᵏP_F (y ≡ ζᵏS),
-# shifted by full fibers to be ≥ 0; each level set J = {k : m_k ≥ e} is a union of orbits, and
-# "v vanishes to order e on J" is v ≡ 0 mod (F^e, Q_J(y)), Q_J = Π_{orbits d ⊆ J} Y^φ(d) Φ_d(y/Y). At ∞
-# (q | m, n∞ ≠ 0) the zero orders a_j = N n∞ c_j (shifted) and the pole orders o_j: for each t the set
-# {j : o_j < t} is a union of orbits, and "Σ_k ζ^(jk) E_k(t) = 0 for j in an orbit d" is
-# Σ_k c_d(k - k₀) E_k(t) = 0 for all k₀ (Ramanujan sums: rational).
-function kum_orbit_system(::Type{K}, emb, bL, Sd, w, b::QX, q::Int, n∞::Int, N::Int, c::Vector{Int};
+# The system for N·c·Δ over L (no ζ; c = 1 for Δ itself, c = T_G): multiplicities m_k = N n c_k at the
+# places τᵏP_F (θ ≡ ζᵏS), shifted by full fibers to be ≥ 0; each level set J = {k : m_k ≥ e} is a union of
+# orbits, and "v vanishes to order e on J" is v ≡ 0 mod (F^e, Q_J(θ)), Q_J = Π_{orbits d ⊆ J} Θ^φ(d) Φ_d(θ/Θ),
+# with v = Σ cⱼ gⱼ⁻¹ θʲ near F. At ∞ (q | m, n∞ ≠ 0) the zero orders a_j = N n∞ c_j (shifted) and the pole
+# orders o_j: for each t the set {j : o_j < t} is a union of orbits, and "Σ_k ζ^(jk) E_k(t) = 0 for j in an
+# orbit d" is Σ_k c_d(k - k₀) E_k(t) = 0 for all k₀ (Ramanujan sums: rational).
+function kum_orbit_system(::Type{K}, emb, cd, Sd, w, C::KumCurve, n∞::Int, N::Int, c::Vector{Int};
                           maxu::Int = 3000) where {K}
-    m = degree(b)
+    q = C.q
     PL = UPoly{K}
     divs = [d for d in 1:q if q % d == 0]
     cyc = Dict(d => kum_cyclotomic(d) for d in divs)
-    mults = Vector{Int}[]
-    for (_, n, _) in Sd
-        mk = [N * n * c[k + 1] for k in 0:(q - 1)]
-        push!(mults, mk .- minimum(mk))
-    end
-    Z = sum((sum(mults[i]) * degree(Sd[i][1]) for i in eachindex(Sd)); init = 0)
-    if n∞ == 0
-        Z % gcd(m, q) == 0 || return nothing
-        dks = [fld(Z - k * m, q) for k in 0:(q - 1)]
-        os = nothing
-    else
-        a = [N * n∞ * c[j + 1] for j in 0:(q - 1)]
-        a = a .- minimum(a)
-        (Z + sum(a)) % q == 0 || return nothing
-        O = (Z + sum(a)) ÷ q
-        os = [O - a[j + 1] for j in 0:(q - 1)]
-        omax = maximum(os)
-        omax < 0 && return nothing
-        dks = [floor(Int, Q(omax) - Q(k * m, q)) for k in 0:(q - 1)]
-    end
+    sh = kum_shape(C, Sd, n∞, N, c)
+    sh === nothing && return nothing
+    mults, os, dks = sh
     unknowns = [(k, j) for k in 0:(q - 1) for j in 0:dks[k + 1]]
     isempty(unknowns) && return nothing
     length(unknowns) > maxu && return :toolarge
     x = xpoly(K)
-    conds = []                                          # (F^e, [y^k mod (F^e, Q_J) as coefficient lists in y])
+    conds = []                                          # (F^e, [gⱼ⁻¹ θʲ mod (F^e, Q_J) as coefficient lists])
     for (i, (F, _, S)) in enumerate(Sd)
         levels = sort!(unique(filter(>(0), mults[i])))
         isempty(levels) && continue
-        Y = kum_root_lift(bL, S, F, maximum(levels), q)
+        Θ = kum_root_lift(cd.B, S, F, maximum(levels), q)
         for e in levels
             Ge = F^e
-            Ye = rem(Y, Ge)
+            Θe = rem(Θ, Ge)
             J = [k for k in 0:(q - 1) if mults[i][k + 1] >= e]
-            # Q_J = Π_{d} Y^φ(d) Φ_d(y/Y) over the orbits d contained in J
-            QJ = [one(PL)]                              # coefficients in y, low → high
+            QJ = [one(PL)]                              # coefficients in θ, low → high
             for d in divs
                 ks = [k for k in 0:(q - 1) if kum_orbit(q, k) == d]
                 all(k -> k in J, ks) || continue
                 Φ = cyc[d]
-                fac = [rem(PL([emb(Φ.c[i2 + 1])]) * Ye^(degree(Φ) - i2), Ge) for i2 in 0:degree(Φ)]
+                fac = [rem(PL([emb(Φ.c[i2 + 1])]) * Θe^(degree(Φ) - i2), Ge) for i2 in 0:degree(Φ)]
                 QJ = kum_ypoly_mul(QJ, fac, Ge)
             end
             nJ = length(QJ) - 1
-            # y^k mod Q_J (monic in y) for k < q: coefficient vectors of length nJ
-            red = Vector{PL}[]
-            cur = [i2 == 1 ? one(PL) : zero(PL) for i2 in 1:max(nJ, 1)]
-            for k in 0:(q - 1)
-                push!(red, nJ == 0 ? PL[] : copy(cur))
-                nJ == 0 && continue
-                # multiply by y: shift, reduce the top with Q_J
+            nJ == 0 && continue
+            red = Vector{PL}[]                          # θʲ mod Q_J (monic in θ), times gⱼ⁻¹
+            cur = [i2 == 1 ? one(PL) : zero(PL) for i2 in 1:nJ]
+            for jj in 0:(q - 1)
+                gi = hyp_invmod(rem(cd.g[jj + 1], Ge), Ge)
+                push!(red, [rem(ci * gi, Ge) for ci in cur])
                 top = cur[nJ]
                 cur = [i2 == 1 ? zero(PL) : cur[i2 - 1] for i2 in 1:nJ]
                 for i2 in 1:nJ
                     cur[i2] = rem(cur[i2] - top * QJ[i2], Ge)
                 end
             end
-            nJ == 0 || push!(conds, (Ge, red))
+            push!(conds, (Ge, red))
         end
     end
-    ser = os === nothing ? nothing : [K[emb(cc) for cc in hyp_sqrt_series(b, maximum(os) + m + 2, Q(k, q))] for k in 0:(q - 1)]
+    ic = os === nothing ? nothing : kum_inf_coeffs(K, emb, C, w, maximum(os) + maximum(dks) + 2)
     cols = Vector{K}[]
     for (k, j) in unknowns
         col = K[]
@@ -595,8 +654,9 @@ function kum_orbit_system(::Type{K}, emb, bL, Sd, w, b::QX, q::Int, n∞::Int, N
             end
         end
         if os !== nothing
-            sh = j + (k * m) ÷ q
-            E(t) = (0 <= sh - t <= length(ser[k + 1]) - 1) ? w^k * ser[k + 1][sh - t + 1] : zero(K)
+            lw, sk = ic[k + 1]
+            s0 = j + Int(C.ρs[k + 1])
+            E(t) = (0 <= s0 - t <= length(sk) - 1) ? lw * sk[s0 - t + 1] : zero(K)
             for t in (minimum(os) + 1):maximum(os)
                 Jt = [jb for jb in 0:(q - 1) if os[jb + 1] < t]
                 for d in divs

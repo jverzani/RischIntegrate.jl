@@ -361,6 +361,37 @@ function run_tests(x, evalat, name)
                                                                      1 / (x * (x^4 + 2)^(1 // 4)), x)
     end
 
+    @testset "$name: several radicands in one component (SI2 phase 3b)" begin
+        # θ = Π bₖ^rₖ: the integral basis ωⱼ = Π bₖ^{j rₖ} replaces y^k (KumCurve)
+        val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, complex(a)))
+        for (f, pts) in ((1 / (x * (x + 1)^(1 // 3) * (x - 1)^(2 // 3)), (2.0, 3.0)),     # genus 0
+                         (1 / ((x + 1)^(1 // 3) * (x - 1)^(2 // 3)), (2.0, 3.0)),
+                         (x / ((x + 2)^(1 // 3) * (x - 1)^(2 // 3) * (x + 3)), (2.0, 3.0)),
+                         (1 / ((x + 1)^(1 // 4) * (x - 1)^(3 // 4)), (2.0, 3.0)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test isapprox(fd(t -> val(F, t), a), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
+        for f in (1 / ((x^2 + 1)^(1 // 3) * (x - 1)^(2 // 3)), 1 / (x * (x^2 + 1)^(1 // 3) * (x - 1)^(1 // 3)))
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+        # genus 0, search over L off (Nmax = 0): the decision finds order 1 and constructs (q = 3: prime path,
+        # q = 4: T_G); the rest reduces exactly
+        b0 = Risch.Builder(Risch.auto_build(x, x), Risch.auto_lift(x, x), x)
+        Q, QX = Risch.Q, Risch.UPoly{Risch.Q}
+        bs = [QX(Q[1, 1]), QX(Q[-1, 1])]
+        for (rs, g) in (([Q(1, 3), Q(2, 3)], Risch.frac(QX(Q[1]), QX(Q[0, -1, 0, 1]))),
+                        ([Q(1, 4), Q(3, 4)], Risch.frac(QX(Q[1]), QX(Q[-1, 0, 1]))))
+            _, _, P, R, D = Risch.kum_component(bs, rs, g, "θ"; needlog = true)
+            C = Risch.KumCurve(bs, rs)
+            lp = Risch.kum_log_part(C, P, R, D, "θ", b0, "x"; Nmax = 0)
+            @test lp isa Tuple
+            lp isa Tuple && @test !(Risch.kum_component(bs, rs, Risch.frac(P, C.A) + Risch.frac(R, C.A * D) - lp[1],
+                                                         "θ") isa Exception)
+        end
+    end
+
     @testset "$name: deciding the log part for an index q ≥ 3 (SI2 phase 3b)" begin
         # q prime: Δ torsion iff its χ-part is iff elementary; the order N₁ of Δ mod one prime, then N₁Δ̄
         # at another prime (different orders: infinite order), or one exact test at N₁ over L

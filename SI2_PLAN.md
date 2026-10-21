@@ -224,8 +224,18 @@ the last section.
       e.g. classes −1 and 8 for q = 4, since (−4)^(1/4) ∈ ℚ(i).
     * Residues of both signs in a class: negative coefficients are made effective by full fibers. The
       plain Δ system is now the orbit system with T = 1 (level set "all branches but 0").
+  * Several radicands in one component (2026-10-21):
+    * θ = Π bₖ^rₖ, q = lcm of the denominators, θ^q = B = Π bₖ^(q rₖ) (singular when q rₖ > 1).
+    * Use the integral basis ωⱼ = Π bₖ^{j rₖ} = θʲ/gⱼ (`KumCurve`). It is diagonal for τ (ωⱼ ↦ ζʲωⱼ),
+      and θ = ω₁.
+    * The rewrite: products ωᵢωⱼ = carry·ω_{i+j}; values θʲ/gⱼ at the poles (gⱼ a unit); at ∞
+      ωⱼ ~ wʲ/Π lcₖ^⌊j rₖ⌋·x^ρⱼ·Π series; residues s = hᵠB; degree bounds q(deg cⱼ + ρⱼ) ≤ Z (ramified)
+      or deg cⱼ ≤ o − ρⱼ.
+    * One base is the special case ωⱼ = y^(jp mod q); the old (b, p, q) entry remains as a wrapper.
+    * Good reduction mod p now also requires the bases to be pairwise coprime (`kum_good_mod`).
+    * Consistency test: genus-0 components (every degree-0 divisor principal) with the search over L
+      off are constructed by the decision path, for q = 3 (prime) and q = 4 (T_G).
 * Next / not yet:
-  * Components with several bases.
   * Real forms (log + atan) instead of RootSums over roots of unity.
   * Nested radicals; phase 5 (radicals over exp/log).
 * Gaps seen in Rubi's library:
