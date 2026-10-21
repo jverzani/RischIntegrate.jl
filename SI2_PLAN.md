@@ -198,16 +198,27 @@ the last section.
     * T·Δ lives on the branches y ≡ ζᵏS, so its orders are computed only mod primes p ≡ 1 mod q, by
       a per-branch system made effective with full fibers (`kum_branch_system`, with per-branch pole
       orders at ∞).
-    * Different orders give `NotElementary`. Equal orders give `RischNotImplemented` ("probably
-      torsion"): the exact test and the construction over ℚ(σ^(1/q), ζ_q) are not implemented.
-    * Consistency test: with Nmax = 0, known torsion cases for q = 4, 6 are "probably torsion" and
-      never declared non-elementary.
+    * Different orders give `NotElementary`.
+    * Construction over L, no ζ needed (2026-10-21):
+      * Use the Galois trace T_G = Σ_{a∈(ℤ/q)*} T(τ^a) (`kum_TG`). It is invariant under τ ↦ τ^a, so
+        T_G·Δ is defined over L. It still kills the lower-order parts and acts on the order-q parts by
+        Θ = Σ_k c_k μ(q/gcd(k,q)) ∈ ℚ (= q in all cases tried).
+      * Every level set of branches is a union of Galois orbits, so the conditions are rational
+        (`kum_orbit_system`):
+        * at the poles, v ≡ 0 mod (F^e, Q_J(y)) with Q_J = Π Y^φ(d) Φ_d(y/Y);
+        * at ∞, Ramanujan-sum combinations Σ_k c_d(k − k₀) E_k(t) = 0.
+      * λ = q b₀ σ^(1/q)/(N Θ). The rest is as for prime q (the yᵖ-part of λ v′/v, the exact check by
+        phase 3a, RootSum output).
+    * Decision: decide with T mod p (small multiplicities). If T·Δ has order N_T, the order of T_G·Δ
+      divides N_T, so exact tests at the divisors of N_T either construct the answer or prove
+      `NotElementary`.
+    * Consistency test: with Nmax = 0, the torsion cases for q = 4, 6 (incl. (3+4x⁴)^(1/4)/x²) are
+      constructed through T_G, and the rest reduces exactly.
     * Undecided: high genus where the orders mod small primes exceed the cap (40), e.g.
       1/((x−1)(x⁵+2)^(1/4)) (genus 6); negative σ for even q.
 * Next / not yet:
   * Phase 3b with several classes, or components with several bases.
   * Real forms (log + atan) instead of RootSums over roots of unity.
-  * Composite q: the log part when only the order-q part is torsion (over ℚ(σ^(1/q), ζ_q)).
   * Nested radicals; phase 5 (radicals over exp/log).
 * Gaps seen in Rubi's library:
   * Nested radicals.

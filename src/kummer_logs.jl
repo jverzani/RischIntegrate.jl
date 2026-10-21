@@ -94,11 +94,13 @@ function kum_log_part(b::QX, p::Int, q::Int, P::QX, R::QX, D::QX, θterm, b0::Bu
     run(f) = degree(Mz) == 1 ? f(Q, identity, -Mz.c[1]) : with_nf(Mz) do
         f(NFz, c -> cfromQ(NFz, c), nfz(xpoly(Q)))
     end
-    search(Ns, maxu) = run() do K, emb, z
+    # v with div(v) = N·Δ, or (TG = (c_G, Θ)) N·T_G·Δ over L; λ = q b₀ σ^(1/q)/(N Θ)
+    search(Ns, maxu; TG = nothing) = run() do K, emb, z
         PL = UPoly{K}
         bL, Sd, w = kum_lp_data(K, emb, z, b, p, q, fin, ts, ns, s∞, κ)
         for N in Ns
-            sys = kum_lp_system(K, emb, bL, Sd, w, b, q, n∞, N; maxu = maxu)
+            sys = TG === nothing ? kum_lp_system(K, emb, bL, Sd, w, b, q, n∞, N; maxu = maxu) :
+                  kum_orbit_system(K, emb, bL, Sd, w, b, q, n∞, N, TG[1]; maxu = maxu)
             sys === nothing && continue
             sys === :toolarge && break
             unknowns, cols = sys
@@ -124,7 +126,7 @@ function kum_log_part(b::QX, p::Int, q::Int, P::QX, R::QX, D::QX, θterm, b0::Bu
             end
             η = solve_columns(mcols, dv)
             η === nothing && throw(RischError("kum_log_part: v is not invertible"))
-            λ = z * emb(Q(q) * bb / N)
+            λ = z * emb(Q(q) * bb / (N * (TG === nothing ? 1 : TG[2])))
             Wl = η[p + 1] * frac(PL([λ]))
             Wq = kum_down(Wl)
             Wq === nothing && return :notrational      # a principal N·Δ whose log part is not the one wanted
@@ -151,14 +153,31 @@ function kum_log_part(b::QX, p::Int, q::Int, P::QX, R::QX, D::QX, θterm, b0::Bu
         end
     elseif found === nothing && q > 2 && kum_cyclo_disjoint(σ, q)
         # q composite: only the parts of [Δ] with characters of exact order q matter. T = Π_{ℓ|q}(1 - τ^(q/ℓ))
-        # kills the others and not these, which are conjugate (L ∩ ℚ(ζ_q) = ℚ): elementary iff T·[Δ] is
-        # torsion. T·Δ needs ζ_q: its orders are computed mod primes p ≡ 1 mod q only.
-        ord = kum_lp_order_T(b, p, q, fin, ts, ns, s∞, κ, n∞, σ, Mz)
-        ord === :infinite && return NotElementary(
-            "∫ (…)·$θterm: the order-$q part of the divisor of the residues has infinite order in the " *
-            "Jacobian of y^$q = b (its orders modulo two primes differ)")
-        ord isa Int && return ni("the order-$q part of the divisor of the residues is probably torsion (order " *
-                                 "$ord mod p); the logarithmic part over ℚ(σ^(1/q), ζ_q) is not implemented")
+        # kills the others and not these, which are conjugate (L ∩ ℚ(ζ_q) = ℚ); so does its Galois trace
+        # T_G = Σ_a T(τ^a), which acts on them by Θ = Tr χ(T) ∈ ℚ. T_G is invariant under τ ↦ τ^a, so T_G·Δ
+        # is defined over L and its conditions are rational (cyclotomic factors, Ramanujan sums): elementary
+        # iff T_G·Δ is torsion, and then λ = q b₀ σ^(1/q)/(N Θ).
+        # decided with T (small multiplicities): T·Δ of infinite order mod p proves it; if T·Δ is torsion of
+        # order N_T, its conjugates T(τ^a)·Δ are too, so the order of T_G·Δ divides N_T: the exact tests at
+        # the divisors of N_T construct the log part, or prove that T·Δ is not torsion
+        cG = kum_TG(q)
+        Θ = kum_Theta(cG, q)
+        if !iszero(Θ)
+            ord = kum_lp_order_T(b, p, q, fin, ts, ns, s∞, κ, n∞, σ, Mz)
+            ord === :infinite && return NotElementary(
+                "∫ (…)·$θterm: the order-$q part of the divisor of the residues has infinite order in the " *
+                "Jacobian of y^$q = b (its orders modulo two primes differ)")
+            if ord isa Int
+                for d in sort!(Int.(divisors(big(ord))))
+                    found = search([d], 5000; TG = (cG, Θ))
+                    found === nothing || break
+                end
+                found === nothing && return NotElementary(
+                    "∫ (…)·$θterm: the order-$q part of the divisor of the residues is not torsion (T·Δ would " *
+                    "have order $ord, but no N | $ord makes N·T_G·Δ principal)")
+                found === :notrational && return ni("the logarithmic part found is not rational")
+            end
+        end
     end
     found === nothing && return ni("no torsion multiple N ≤ $Nmax of the divisor of the residues found")
     N, cs, Wsub = found
@@ -417,8 +436,7 @@ end
 
 # as kum_lp_order, for N·T·Δ, at primes p ≡ 1 mod q (ζ_q ∈ 𝔽_p): :infinite (proved), N₁, or nothing
 function kum_lp_order_T(b::QX, p::Int, q::Int, fin, ts, ns, s∞, κ, n∞::Int, σ::Int, Mz::QX;
-                        cap::Int = 40, pmax::Int = 1200, nconfirm::Int = 2)
-    c = kum_T(q)
+                        c::Vector{Int} = kum_T(q), cap::Int = 40, pmax::Int = 1200, nconfirm::Int = 2)
     ℓs = [Int(ℓ) for (ℓ, _) in factorint(big(q))]
     N1, conf = nothing, 0
     pr = 1
@@ -475,6 +493,156 @@ function kum_lp_order_T(b::QX, p::Int, q::Int, fin, ts, ns, s∞, κ, n∞::Int,
         end
     end
     nothing
+end
+
+# T_G = Σ_{a ∈ (ℤ/q)*} T(τ^a): coefficients, invariant under k ↦ a k
+function kum_TG(q::Int)
+    c = kum_T(q)
+    cG = zeros(Int, q)
+    for a in 1:(q - 1)
+        gcd(a, q) == 1 || continue
+        for k in 0:(q - 1)
+            cG[mod(a * k, q) + 1] += c[k + 1]
+        end
+    end
+    cG
+end
+
+function kum_moebius(n::Int)
+    r = 1
+    for (_, e) in factorint(big(n))
+        e > 1 && return 0
+        r = -r
+    end
+    r
+end
+kum_totient(n::Int) = prod((Int(ℓ)^(e - 1) * (Int(ℓ) - 1) for (ℓ, e) in factorint(big(n))); init = 1)
+# Ramanujan's sum c_d(m) = Σ_{ζ of order d} ζ^m
+kum_ramanujan(d::Int, m::Int) = (g = gcd(d, mod(m, d) == 0 ? d : m);
+                                  kum_moebius(d ÷ g) * kum_totient(d) ÷ kum_totient(d ÷ g))
+# Θ = χ(T_G) for χ(τ) = ζ^p (gcd(p, q) = 1): Σ_k c_k ζ^(kp) = Σ over orbits c_O μ(q/gcd(k, q))
+kum_Theta(cG::Vector{Int}, q::Int) = sum(cG[k + 1] * kum_ramanujan(q ÷ gcd(k, q), 1) // kum_totient(q ÷ gcd(k, q))
+                                         for k in 0:(q - 1)) |> x -> (isone(denominator(x)) ? Int(x) : x)
+
+# the branches 0 … q-1 grouped into Galois orbits (by the order d = q/gcd(k, q) of ζᵏ)
+kum_orbit(q::Int, k::Int) = q ÷ gcd(k, q)
+
+# The system for N·T_G·Δ over L (no ζ): multiplicities m_k = N n c_k at the places τᵏP_F (y ≡ ζᵏS),
+# shifted by full fibers to be ≥ 0; each level set J = {k : m_k ≥ e} is a union of orbits, and
+# "v vanishes to order e on J" is v ≡ 0 mod (F^e, Q_J(y)), Q_J = Π_{orbits d ⊆ J} Y^φ(d) Φ_d(y/Y). At ∞
+# (q | m, n∞ ≠ 0) the zero orders a_j = N n∞ c_j (shifted) and the pole orders o_j: for each t the set
+# {j : o_j < t} is a union of orbits, and "Σ_k ζ^(jk) E_k(t) = 0 for j in an orbit d" is
+# Σ_k c_d(k - k₀) E_k(t) = 0 for all k₀ (Ramanujan sums: rational).
+function kum_orbit_system(::Type{K}, emb, bL, Sd, w, b::QX, q::Int, n∞::Int, N::Int, c::Vector{Int};
+                          maxu::Int = 3000) where {K}
+    m = degree(b)
+    PL = UPoly{K}
+    divs = [d for d in 1:q if q % d == 0]
+    cyc = Dict(d => kum_cyclotomic(d) for d in divs)
+    mults = Vector{Int}[]
+    for (_, n, _) in Sd
+        mk = [N * n * c[k + 1] for k in 0:(q - 1)]
+        push!(mults, mk .- minimum(mk))
+    end
+    Z = sum((sum(mults[i]) * degree(Sd[i][1]) for i in eachindex(Sd)); init = 0)
+    if n∞ == 0
+        Z % gcd(m, q) == 0 || return nothing
+        dks = [fld(Z - k * m, q) for k in 0:(q - 1)]
+        os = nothing
+    else
+        a = [N * n∞ * c[j + 1] for j in 0:(q - 1)]
+        a = a .- minimum(a)
+        (Z + sum(a)) % q == 0 || return nothing
+        O = (Z + sum(a)) ÷ q
+        os = [O - a[j + 1] for j in 0:(q - 1)]
+        omax = maximum(os)
+        omax < 0 && return nothing
+        dks = [floor(Int, Q(omax) - Q(k * m, q)) for k in 0:(q - 1)]
+    end
+    unknowns = [(k, j) for k in 0:(q - 1) for j in 0:dks[k + 1]]
+    isempty(unknowns) && return nothing
+    length(unknowns) > maxu && return :toolarge
+    x = xpoly(K)
+    conds = []                                          # (F^e, [y^k mod (F^e, Q_J) as coefficient lists in y])
+    for (i, (F, _, S)) in enumerate(Sd)
+        levels = sort!(unique(filter(>(0), mults[i])))
+        isempty(levels) && continue
+        Y = kum_root_lift(bL, S, F, maximum(levels), q)
+        for e in levels
+            Ge = F^e
+            Ye = rem(Y, Ge)
+            J = [k for k in 0:(q - 1) if mults[i][k + 1] >= e]
+            # Q_J = Π_{d} Y^φ(d) Φ_d(y/Y) over the orbits d contained in J
+            QJ = [one(PL)]                              # coefficients in y, low → high
+            for d in divs
+                ks = [k for k in 0:(q - 1) if kum_orbit(q, k) == d]
+                all(k -> k in J, ks) || continue
+                Φ = cyc[d]
+                fac = [rem(PL([emb(Φ.c[i2 + 1])]) * Ye^(degree(Φ) - i2), Ge) for i2 in 0:degree(Φ)]
+                QJ = kum_ypoly_mul(QJ, fac, Ge)
+            end
+            nJ = length(QJ) - 1
+            # y^k mod Q_J (monic in y) for k < q: coefficient vectors of length nJ
+            red = Vector{PL}[]
+            cur = [i2 == 1 ? one(PL) : zero(PL) for i2 in 1:max(nJ, 1)]
+            for k in 0:(q - 1)
+                push!(red, nJ == 0 ? PL[] : copy(cur))
+                nJ == 0 && continue
+                # multiply by y: shift, reduce the top with Q_J
+                top = cur[nJ]
+                cur = [i2 == 1 ? zero(PL) : cur[i2 - 1] for i2 in 1:nJ]
+                for i2 in 1:nJ
+                    cur[i2] = rem(cur[i2] - top * QJ[i2], Ge)
+                end
+            end
+            nJ == 0 || push!(conds, (Ge, red))
+        end
+    end
+    ser = os === nothing ? nothing : [K[emb(cc) for cc in hyp_sqrt_series(b, maximum(os) + m + 2, Q(k, q))] for k in 0:(q - 1)]
+    cols = Vector{K}[]
+    for (k, j) in unknowns
+        col = K[]
+        for (Ge, red) in conds
+            for ci in red[k + 1]
+                rr = rem(x^j * ci, Ge)
+                append!(col, [d <= length(rr.c) ? rr.c[d] : zero(K) for d in 1:degree(Ge)])
+            end
+        end
+        if os !== nothing
+            sh = j + (k * m) ÷ q
+            E(t) = (0 <= sh - t <= length(ser[k + 1]) - 1) ? w^k * ser[k + 1][sh - t + 1] : zero(K)
+            for t in (minimum(os) + 1):maximum(os)
+                Jt = [jb for jb in 0:(q - 1) if os[jb + 1] < t]
+                for d in divs
+                    js = [jb for jb in 0:(q - 1) if kum_orbit(q, jb) == d]
+                    all(jb -> jb in Jt, js) || continue
+                    for k0 in 0:(q - 1)
+                        push!(col, emb(Q(kum_ramanujan(d, k - k0))) * E(t))
+                    end
+                end
+            end
+        end
+        push!(cols, col)
+    end
+    unknowns, cols
+end
+
+# the cyclotomic polynomial Φ_d over ℚ
+function kum_cyclotomic(d::Int)
+    f = QX(vcat(Q[-1], zeros(Q, d - 1), Q[1]))          # x^d - 1
+    for e in 1:(d - 1)
+        d % e == 0 && (f = quo(f, kum_cyclotomic(e)))
+    end
+    f
+end
+
+# product of two polynomials in y with coefficients in L[x] mod G
+function kum_ypoly_mul(a::Vector{P}, b::Vector{P}, G::P) where {P<:UPoly}
+    r = [zero(P) for _ in 1:(length(a) + length(b) - 1)]
+    for i in eachindex(a), j in eachindex(b)
+        r[i + j - 1] = rem(r[i + j - 1] + a[i] * b[j], G)
+    end
+    r
 end
 
 # an element of L(x) with rational coefficients, in ℚ(x) (or nothing)

@@ -369,13 +369,18 @@ function run_tests(x, evalat, name)
             _, _, P, R, D = c
             @test Risch.kum_log_part(b, p, q, P, R, D, "θ", b0, "x"; Nmax = 0) isa Tuple
         end
-        # composite q, Nmax = 0: torsion cases are "probably torsion" (no construction over ℚ(ζ_q) yet), never
-        # declared non-elementary
+        # composite q, Nmax = 0: the log part is constructed from N·T_G·Δ over L (T_G the Galois trace of T,
+        # Θ = χ(T_G) = q here) and what is left reduces exactly (phase 3a)
+        @test Risch.kum_TG(6) == [2, 1, -1, -2, -1, 1] && Risch.kum_Theta(Risch.kum_TG(6), 6) == 6
         for (b, p, q, g) in ((QX(Q[1, 0, 0, 0, 1]), 3, 4, Risch.frac(QX(Q[1]), QX(Q[0, 1, 0, 0, 0, 1]))),
                              (QX(Q[1, 0, 0, 0, 1]), 3, 4, Risch.frac(QX(Q[1]), QX(Q[1, 0, 0, 0, 1]))),
-                             (QX(Q[1, 0, 0, 0, 0, 0, 1]), 5, 6, Risch.frac(QX(Q[1]), QX(Q[0, 1, 0, 0, 0, 0, 0, 1]))))
+                             (QX(Q[1, 0, 0, 0, 0, 0, 1]), 5, 6, Risch.frac(QX(Q[1]), QX(Q[0, 1, 0, 0, 0, 0, 0, 1]))),
+                             (QX(Q[3, 0, 0, 0, 4]), 1, 4, Risch.frac(QX(Q[1]), QX(Q[0, 0, 1]))))
             _, _, P, R, D = Risch.kum_component([b], [Q(p, q)], g, "θ"; needlog = true)
-            @test Risch.kum_log_part(b, p, q, P, R, D, "θ", b0, "x"; Nmax = 0) isa Risch.RischNotImplemented
+            lp = Risch.kum_log_part(b, p, q, P, R, D, "θ", b0, "x"; Nmax = 0)
+            @test lp isa Tuple
+            lp isa Tuple && @test !(Risch.kum_component([b], [Q(p, q)], Risch.frac(P, b) + Risch.frac(R, b * D) - lp[1],
+                                                         "θ") isa Exception)
         end
     end
 
