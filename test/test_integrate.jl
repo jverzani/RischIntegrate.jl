@@ -343,6 +343,30 @@ function run_tests(x, evalat, name)
         end
     end
 
+    @testset "$name: deciding the log part for a prime index q ≥ 3 (SI2 phase 3b)" begin
+        # q prime: Δ torsion iff its χ-part is iff elementary; the order N₁ of Δ mod one prime, then N₁Δ̄
+        # at another prime (different orders: infinite order), or one exact test at N₁ over L
+        for f in (1 / ((x - 2) * (x^3 + 1)^(1 // 3)), 1 / ((x - 1) * (x^3 + 2)^(1 // 3)),
+                  1 / ((x - 1) * (x^4 + 1)^(1 // 3)), 1 / ((x - 2) * (x^5 + 1)^(1 // 5)))
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+        # q = 4 (not prime): an order-2 part may be non-torsion without mattering: no decision
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x - 1) * (x^4 + 2)^(1 // 4)), x)
+        # consistency: with the search over L switched off (Nmax = 0), torsion cases are still found from
+        # the order mod p, never declared non-elementary
+        b0 = Risch.Builder(Risch.auto_build(x, x), Risch.auto_lift(x, x), x)
+        Q, QX = Risch.Q, Risch.UPoly{Risch.Q}
+        for (b, p, q, g) in ((QX(Q[1, 0, 0, 1]), 2, 3, Risch.frac(QX(Q[1]), QX(Q[0, 1, 0, 0, 1]))),
+                             (QX(Q[1, 0, 0, 1]), 2, 3, Risch.frac(QX(Q[1]), QX(Q[1, 0, 0, 1]))),
+                             (QX(Q[1, 0, 0, 0, 0, 1]), 2, 3, Risch.frac(QX(Q[1]), QX(Q[0, 1, 0, 0, 0, 0, 1]))),
+                             (QX(Q[-27, 0, 0, 0, 0, 0, 0, 2]), 1, 3, Risch.frac(QX(Q[1]), QX(Q[0, -27, 0, 0, 0, 0, 0, 0, 2]))))
+            c = Risch.kum_component([b], [Q(p, q)], g, "θ"; needlog = true)
+            @test c isa Tuple
+            _, _, P, R, D = c
+            @test Risch.kum_log_part(b, p, q, P, R, D, "θ", b0, "x"; Nmax = 0) isa Tuple
+        end
+    end
+
     @testset "$name: two square roots: the biquadratic splitting (step BQ)" begin
         # f = f₀ + f₁√a + f₂√b + f₃√a√b: each Galois projection on its own (Liouville), √a√b as √(ab)
         ya, yb = sqrt(1 + x^3), sqrt(1 - 2x + x^5)

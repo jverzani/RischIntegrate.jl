@@ -173,14 +173,27 @@ the last section.
     * zᵠ − σ irreducible: (b₀/N)·RootSum over zᵠ = σ of z log v(z, x, y). z ↦ ζᶜz permutes the places
       like τ does; this also covers negative σ for even q, e.g. α⁴ + 1.
     * Otherwise: over αᵠ = 1.
-  * No `NotElementary` from a failed search yet (N ≤ 8): that would need torsion orders mod p for
-    superelliptic curves.
+  * Decisions for a prime index q ≥ 3 (2026-10-21, `kum_lp_order`):
+    * L = ℚ(σ^(1/q)) doesn't contain ζ. The nontrivial isotypic parts of [Δ] are conjugate, and the
+      trivial part comes from ℙ¹. So [Δ] is torsion iff its χ-part is, iff the integral is elementary.
+      Composite q (4, 6) is not decided: an order-2 or order-3 part may be non-torsion without mattering.
+    * No #J(𝔽_p) is needed:
+      1. Find the order N₁ of Δ̄ at one good prime (p ≥ 7, p ∤ qσ, b and the poles squarefree and
+         coprime mod p, a root of the minimal polynomial of σ^(1/q) mod p), by the same linear system
+         over 𝔽_p, N ≤ 40.
+      2. Test N₁Δ̄ at further primes. "Not principal" means infinite order: `NotElementary`.
+      3. Otherwise run one exact test at N₁ over L. If it is principal, that gives the answer even
+         when N₁ > Nmax; if not, `NotElementary`.
+    * `kum_lp_data` and `kum_lp_system` are generic over L and 𝔽_p (`ModP` got `^`; its absence
+      would have crashed the ∞ case).
+    * Consistency test: with the search over L switched off (Nmax = 0), known torsion cases (orders 3,
+      3, 5, 7) are still found from the order mod p and never declared non-elementary.
   * Chebyshev sweep: 504/504 decided (157/157 elementary integrated, 347/347 non-elementary proved).
   * Rubi scan: 46 OK, 1 NotElementary (consistent), 1 RischNotImplemented (a nested radical).
 * Next / not yet:
   * Phase 3b with several classes, or components with several bases.
   * Real forms (log + atan) instead of RootSums over roots of unity.
-  * Torsion orders mod p for superelliptic Jacobians (decisions when the search fails).
+  * Decisions for composite q.
   * Nested radicals; phase 5 (radicals over exp/log).
 * Gaps seen in Rubi's library:
   * Nested radicals.
