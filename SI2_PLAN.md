@@ -355,6 +355,26 @@ algorithm is needed yet.
    needs radicands with constants in ℚ(i) (Euler substitutions over ℚ(i)), then real forms.
 3. General nested radicals: a primitive element and its minimal polynomial, i.e. phase 4.
 
+## Phase 6: non-elementary answers with hypergeometric / elliptic functions
+
+When an integral is proved non-elementary (phases 1, 3a, 2/3b decisions), the residue-free remainder
+∫ (P/A)·θ dx is known exactly after Hermite reduction and the log part. Express it with special functions
+(HypergeometricFunctions.jl, `_₂F₁`), as Rubi does, instead of raising `NotElementary`. The algebraic and
+log parts stay elementary.
+
+* H1, binomial radicands θ = (α + βxⁿ)ᵖ (one base, b = α + βxⁿ). The remainder is Σₖ cₖ xᵏ (α + βxⁿ)^(p−1)
+  (P/A·θ with A = b). Each monomial:
+      ∫ xᵐ(α + βxⁿ)^q dx = xᵐ⁺¹ (α + βxⁿ)^q / ((m+1)(1 + βxⁿ/α)^q) · ₂F₁(−q, (m+1)/n; (m+1)/n + 1; −βxⁿ/α)
+  (m ≠ −1). The factor (α + βxⁿ)^q/(1 + βxⁿ/α)^q keeps the principal branch. Covers the Chebyshev
+  sweep's 347 non-elementary cases and Rubi's elliptic-type answers in binomial form.
+  * Output: a `_₂F₁` operation (OPS entry, deferred/placeholder call for symbolic packages without it,
+    as for the SpecialFunctions answers); a dependency on HypergeometricFunctions.jl.
+  * Verification: the derivative identity above is standard (as for Ei, erf answers); tests check
+    numerically against the integrand.
+  * Keep `NotElementary` available (e.g. a keyword or a flag on the result) so the decision is not lost.
+* H2, general remainders on hyperelliptic curves of genus 1: reduce to Legendre/Carlson forms (F, E, Π)
+  through the roots of a (needs algebraic numbers), or Appell-type functions. Larger.
+
 ## Phase 4: general algebraic curves (optional, large)
 
 * Integral bases by Trager's algorithm (or van Hoeij's) for F(x, y) = 0.
