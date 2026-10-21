@@ -993,6 +993,7 @@ end
 # The hook from `integrate_radical`: one radicand u ∈ ℚ[x] of degree ≥ 3, square roots only.
 # radval(ue, e) = the exponent k with ue^e = yᵏ, or nothing.
 function integrate_hyperelliptic(f, xk::String, u::QXF, uterm, radval, b0::Builder, verify::Bool; yterm = nothing)
+    sqmode = yterm !== nothing                          # y = √u/s (step SQ): not the principal √a, no ₂F₁ terms
     a = u.num
     isone(u.den) && degree(a) >= 3 || throw(RischError("integrate_hyperelliptic: not a polynomial radicand"))
     sf = squarefree(a)
@@ -1015,7 +1016,14 @@ function integrate_hyperelliptic(f, xk::String, u::QXF, uterm, radval, b0::Build
         "after $after ∫ ($(zpoly_string(P, xk)))/√($uterm) is left: a nonzero differential without " *
         "residues on a curve of genus $(hyp_genus(a))")
     if !(iszero(P) && iszero(R))
-        hyp_residue_free(a, P, R) && throw(nores())
+        if hyp_residue_free(a, P, R)                    # P/y = P a^(-1/2): ₂F₁ terms for a binomial a (phase 6)
+            hts = sqmode ? nothing : hyp_binomial_terms(a, Q(-1, 2), P, xk)
+            hts === nothing && throw(nores())
+            append!(rss, hts)
+            P = zero(QX)
+        end
+    end
+    if !(iszero(P) && iszero(R))
         lp = hyp_log_part(a, P, R, D, uterm)
         lp isa Exception && throw(lp)
         W = frac(P) + frac(R, D)
@@ -1044,7 +1052,11 @@ function integrate_hyperelliptic(f, xk::String, u::QXF, uterm, radval, b0::Build
         (isone(W.den) && hyp_residue_free(a, W.num, zero(QX))) ||
             throw(RischError("hyperelliptic log part: residues left after subtracting the logarithms"))
         P = W.num
-        iszero(P) || throw(nores("Hermite reduction and the logarithmic part"))
+        if !iszero(P)
+            hts = sqmode ? nothing : hyp_binomial_terms(a, Q(-1, 2), P, xk)
+            hts === nothing && throw(nores("Hermite reduction and the logarithmic part"))
+            append!(rss, hts)
+        end
         logt = isempty(lts) ? nothing : length(lts) == 1 ? lts[1] : mk(b0, :+, lts...)
     end
     alg = iszero(g) ? nothing : mk(b0, :*, frac_term(b0, g), yterm)

@@ -51,6 +51,7 @@ include("risch_integrate.jl")
 include("biquadratic.jl")
 include("denest.jl")
 include("nested.jl")
+include("hypergeometric.jl")
 include("kummer_logs.jl")
 include("real_log_arguments.jl")
 

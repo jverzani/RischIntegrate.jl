@@ -4,6 +4,7 @@ import SymEngine
 import SpecialFunctions
 using RischIntegrate
 import RischIntegrate as Risch
+Risch.HYP_ANSWERS[] = false     # the decision tests expect NotElementary (₂F₁ answers: their own testset)
 
 fd(f, a; h = 1e-6) = (f(a + h) - f(a - h)) / (2h)
 
@@ -261,6 +262,32 @@ function run_tests(x, evalat, name)
             end
         end
         @test_throws Risch.NotElementary Risch.risch_integrate(sqrt(x^6 + 1), x)      # genus 2 (SI2 phase 1)
+    end
+
+    @testset "$name: non-elementary remainders as ₂F₁ terms (phase 6, H1)" begin
+        # ∫ xᵐ(α + βxⁿ)^q = α^q x^(m+1)/(m+1) ₂F₁(-q, (m+1)/n; (m+1)/n + 1; -βxⁿ/α) for the residue-free
+        # remainder of a binomial radicand (α > 0); the elementary parts stay as they are
+        Risch.HYP_ANSWERS[] = true
+        try
+            val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, complex(a)))
+            for (f, pts) in ((1 / sqrt(x^3 + 1), (0.5, 2.0)), (sqrt(x^3 + 1), (0.5, 2.0)),
+                             (1 / (x^2 * sqrt(x^3 + 1)), (0.5, 2.0)), (1 / sqrt(1 - x^3), (0.3, -2.0)),
+                             (sqrt(x^6 + 1), (0.5, 1.5)), (x / (x^4 + 1)^(1 // 3), (0.5, 2.0)),
+                             ((x^2 + 1)^(1 // 3), (0.5, 2.0)),
+                             (1 / (x^3 + 1)^(1 // 3) + x^2 / sqrt(x^4 + 1), (0.5, 2.0)))   # log part + ₂F₁
+                F = Risch.risch_integrate(f, x)
+                @test F isa Risch.IntegralWithRootSums
+                for a in pts
+                    @test isapprox(fd(t -> val(F, t), a), real(evalat(f, a)); rtol = 1e-6)
+                end
+            end
+            @test occursin("₂F₁(1/2, 1/3; 4/3; -x^3)", string(Risch.risch_integrate(1 / sqrt(x^3 + 1), x)))
+            # α < 0 (the argument would cross the branch cut on the domain), or not a binomial: still decided
+            @test_throws Risch.NotElementary Risch.risch_integrate(1 / sqrt(x^3 - 1), x)
+            @test_throws Risch.NotElementary Risch.risch_integrate(1 / sqrt(x^3 + x + 1), x)
+        finally
+            Risch.HYP_ANSWERS[] = false
+        end
     end
 
     @testset "$name: denesting square roots (step DN)" begin

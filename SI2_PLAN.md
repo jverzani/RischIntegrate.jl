@@ -362,7 +362,13 @@ When an integral is proved non-elementary (phases 1, 3a, 2/3b decisions), the re
 (HypergeometricFunctions.jl, `_₂F₁`), as Rubi does, instead of raising `NotElementary`. The algebraic and
 log parts stay elementary.
 
-* H1, binomial radicands θ = (α + βxⁿ)ᵖ (one base, b = α + βxⁿ). The remainder is Σₖ cₖ xᵏ (α + βxⁿ)^(p−1)
+* H1: done, tests green (2026-10-21; `hypergeometric.jl`). `HypTerm`s are kept in an
+  `IntegralWithRootSums` and evaluated numerically, so no symbolic package needs to know ₂F₁. They are
+  hooked where phase 1 (hyperelliptic, not in step SQ mode) and phase 3a (Kummer, one binomial base) would
+  raise `NotElementary` on a residue-free remainder. `HYP_ANSWERS[]` (default true; the decision tests
+  set it false). Chebyshev sweep with it on: all 504 integrals answered and verified numerically (347 with
+  ₂F₁). α < 0 is still `NotElementary`: the argument would cross the branch cut.
+  Original plan: binomial radicands θ = (α + βxⁿ)ᵖ (one base, b = α + βxⁿ). The remainder is Σₖ cₖ xᵏ (α + βxⁿ)^(p−1)
   (P/A·θ with A = b). Each monomial:
       ∫ xᵐ(α + βxⁿ)^q dx = xᵐ⁺¹ (α + βxⁿ)^q / ((m+1)(1 + βxⁿ/α)^q) · ₂F₁(−q, (m+1)/n; (m+1)/n + 1; −βxⁿ/α)
   (m ≠ −1). The factor (α + βxⁿ)^q/(1 + βxⁿ/α)^q keeps the principal branch. Covers the Chebyshev

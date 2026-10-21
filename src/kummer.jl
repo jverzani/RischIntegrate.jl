@@ -174,7 +174,9 @@ end
 
 # ∫ g θ, θ = Π bₖ^rₖ: (C with ∫ g θ = C θ) or the exception to raise
 # (with `needlog`: when there are residues, (:needlog, C, P, R, D) for the log part, phase 3b)
-function kum_component(bs::Vector{QX}, r::Vector{Q}, g::QXF, θterm; needlog::Bool = false)
+# (with `hyp`: a non-elementary remainder P/A·θ with one binomial base as (:hyp, C, HypTerms), phase 6)
+function kum_component(bs::Vector{QX}, r::Vector{Q}, g::QXF, θterm; needlog::Bool = false, hyp::Bool = false,
+                       var::String = "x")
     ks = [k for k in eachindex(bs) if !iszero(r[k])]
     A = prod((bs[k] for k in ks); init = one(QX))
     M = sum((scale(r[k], deriv(bs[k]) * quo(A, bs[k])) for k in ks); init = zero(QX))
@@ -248,6 +250,10 @@ function kum_component(bs::Vector{QX}, r::Vector{Q}, g::QXF, θterm; needlog::Bo
             "∫ (…)·$θterm: residues at infinity; the logarithmic part for radicals of index ≥ 3 is not " *
             "implemented yet (SI2 phase 3b)")
     end
+    if hyp && length(ks) == 1                           # P/A θ = P b^(r-1)
+        hts = hyp_binomial_terms(bs[ks[1]], r[ks[1]] - 1, P, var)
+        hts === nothing || return (:hyp, C, hts)
+    end
     NotElementary("after Hermite reduction ∫ ($(zpoly_string(P, "x")))/($(zpoly_string(A, "x")))·$θterm is left: " *
                   "a nonzero differential without residues")
 end
@@ -291,8 +297,11 @@ function integrate_kummer(f, x, rads; build = nothing, lift = nothing, verify::B
         end
         θs = Any[mk(b0, :^, poly_term(b0, bs[k]), b0.lift(e[k])) for k in 1:nb if !iszero(e[k])]
         θterm = length(θs) == 1 ? θs[1] : mk(b0, :*, θs...)
-        C = kum_component(bs, e, g, θterm; needlog = true)
-        if C isa Tuple                                  # residues: the log part (phase 3b)
+        C = kum_component(bs, e, g, θterm; needlog = true, hyp = true, var = xk)
+        if C isa Tuple && C[1] === :hyp                 # a ₂F₁ remainder (phase 6)
+            append!(rss, C[3])
+            C = C[2]
+        elseif C isa Tuple                              # residues: the log part (phase 3b)
             _, C0, P, R, D = C
             ks = [k for k in eachindex(bs) if !iszero(e[k])]
             curve = KumCurve(bs[ks], e[ks])
@@ -300,7 +309,11 @@ function integrate_kummer(f, x, rads; build = nothing, lift = nothing, verify::B
             lp isa Exception && throw(lp)
             Wsub, rs1 = lp
             # the rest, (P + R/D)/A - Wsub, must reduce to an algebraic C1 (it has no residues left)
-            C1 = kum_component(bs, e, frac(P, curve.A) + frac(R, curve.A * D) - Wsub, θterm)
+            C1 = kum_component(bs, e, frac(P, curve.A) + frac(R, curve.A * D) - Wsub, θterm; hyp = true, var = xk)
+            if C1 isa Tuple && C1[1] === :hyp
+                append!(rss, C1[3])
+                C1 = C1[2]
+            end
             C1 isa Exception && throw(C1 isa NotElementary ? C1 : RischNotImplemented(
                 "phase 3b: residues left after the logarithmic part ($(C1.msg))"))
             C = C0 + C1
