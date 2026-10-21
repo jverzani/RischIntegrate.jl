@@ -50,6 +50,7 @@ include("u_substitution.jl")
 include("risch_integrate.jl")
 include("biquadratic.jl")
 include("denest.jl")
+include("nested.jl")
 include("kummer_logs.jl")
 include("real_log_arguments.jl")
 

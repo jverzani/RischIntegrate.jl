@@ -274,8 +274,17 @@ function run_tests(x, evalat, name)
                 @test antiderivative_ok(F, f, a, evalat)
             end
         end
-        # not denestable (a² - b²c not a square): not yet
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((1 + x^4) * sqrt(sqrt(1 + x^4) - x^2)), x)
+        # not denestable, a² - b²c = -s²: biquadratic over ℚ(i) (u₁ = y₂ + i s/y₂, u₁² = 2a + 2is), Euler
+        # substitution over ℚ(i), exact real parts
+        for (f, pts) in ((1 / ((1 + x^4) * sqrt(sqrt(1 + x^4) - x^2)), (0.5, 1.5, -0.7)),     # Rubi
+                         (sqrt(sqrt(1 + x^4) + x^2) / (1 + x^4), (0.5, 1.5)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test isapprox(fd(t -> real(evalat(F, complex(t))), a), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
+        # residues outside ℚ(i) in the conjugate piece: not yet
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(sqrt(1 + x^4) - x^2), x)
     end
 
     @testset "$name: radicals of radicands with repeated factors (step SQ)" begin

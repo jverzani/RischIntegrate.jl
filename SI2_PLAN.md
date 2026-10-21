@@ -343,7 +343,13 @@ algorithm is needed yet.
    p₁ + p₂ + 2s√(p₁p₂) = a + s|b|√c. The integrand is rewritten and integrated with ordinary radicals.
    The answer is valid on the interval around a sample point where b keeps its sign.
    E.g. √(x + √(x²−1)), √(x + 2√(x−1)).
-2. Not denestable (e.g. Rubi's 1/((1+x⁴)√(√(1+x⁴) − x²)), where a² − c = −1). y₂ = √(y₁ − x²) and
+2. Done for u₁² of degree ≤ 2 with ℚ(i) residues, tests green (2026-10-21; `nested.jl`). The pieces
+   are f₀ + f₁√c + 2 Re ∫ g u₁ with g = (f₂ + a f₃/b)/2 − i s f₃/(2b). The u₁ part is an Euler
+   substitution over ℚ(i) and a rational integral over ℚ(i) (verified exactly by `derivative_of`).
+   t is written back as an element τ of ℚ(i)(x)⟨1, y₁, y₂, y₁y₂⟩, and the real parts are exact (log|W|²,
+   atan(W_im/W_re)). Rubi's problem works. Not yet: residues outside ℚ(i) (e.g. ∫√(√(1+x⁴) − x²)),
+   u₁² of higher degree, e = +s² or e = s²c (cyclic).
+   Original note: not denestable (e.g. Rubi's 1/((1+x⁴)√(√(1+x⁴) − x²)), where a² − c = −1). y₂ = √(y₁ − x²) and
    y₂·y₂′ = √(x⁴ − y₁²) = i, so ℚ(i)(x, y₂) is Galois over ℚ(i)(x) with group V₄. The projections live in
    ℚ(i)(x)(y₁), ℚ(i)(x)(y₂ + i/y₂), ℚ(i)(x)(y₂ − i/y₂), and (y₂ ± i/y₂)² = ±2i − 2x² (genus 0). This
    needs radicands with constants in ℚ(i) (Euler substitutions over ℚ(i)), then real forms.

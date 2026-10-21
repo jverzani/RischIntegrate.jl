@@ -55,6 +55,8 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
         g = denest_rewrite(f, xk, bd)
         g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
+        r = integrate_nested(f, x, xk, bd; verify = verify)    # √(a + b√c) with a² - b²c = -s²
+        r === nothing || return r
     end
     if !isempty(rads)                  # a RootSum is in the substitution variable t: evaluate through x
         F = try
