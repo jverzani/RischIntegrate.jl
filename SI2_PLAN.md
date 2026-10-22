@@ -265,6 +265,15 @@ the last section.
     (the step PQ atans are not jump-corrected).
   * Left: apostol 19 (nested radical, SQ over ℚ(i)), 172 (1/log(t)^(n+1): Γ(−n, −log t), H3 with b > 0).
 
+* Rubi library and Apostol (2026-10-22): Apostol 175/175 on Expr; Rubi's 1,680 problems 1,584 verified
+  (94.3%, scan scripts in the session scratchpad). Steps added along the way: TS2 (trig shifts, opaque
+  cos a), PS (homogeneous scaling, also for radicals), MR (radicals of exp/trig monomials by substitution,
+  Bioche's three involutions together, shift by π/4), PW (perfect powers at a finer monomial), NR (innermost
+  linear radical), PL (powers of a parameter quadratic by linearity), opaque √ of parameter constants,
+  trig/hyperbolic u-substitution, ∫ erf by parts, H3/H4 (₁F₁, ₁F₂, Shi/Chi), up to 6 parameters.
+  Left (Rubi): Li₂/Li₃ of complex arguments (≈ 22, Clausen-type real forms), log with nested radicals,
+  asin of non-linear arguments, complex-valued trig radicals, √(tan²x + 2 tan x + 2).
+
 ## Where we start
 
 Radicals today (`radicals.jl`, `euler_substitutions.jl`) are handled only when the curve has
