@@ -1,6 +1,7 @@
 const T_START = time()
 import RischIntegrate
 using SpecialFunctions, PolyLog   # for evaluating answers with expinti, li2, ...
+const _₁F₁ = RischIntegrate._₁F₁  # (answers with ₁F₁, phase 6 H3)
 const VAR = Dict{Symbol,Any}(v => v for v in (:x, :t, :a, :b, :c, :d, :z, :n))
 const OPTS = (build = (op, args...) -> Expr(:call, nameof(op), args...), lift = identity)
 INTEGRATE(f, x) = RischIntegrate.integrate(f, x; OPTS...)
