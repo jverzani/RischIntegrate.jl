@@ -87,6 +87,14 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         r === nothing || return r
     end
     if any(((_, u),) -> radicand_element(u, xk) === nothing, rads)
+        # radicals of functions of e^(kx), cos kx, sin kx, tan kx: substitute s (step MR)
+        r = try
+            integrate_monomial_radicals(f, x; build = build, lift = lift, verify = verify)
+        catch e
+            e isa RischNotImplemented || rethrow()
+            nothing
+        end
+        r === nothing || return r
         # nested square roots that denest (step DN): rewrite, then integrate the ordinary radicals
         bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
         g = denest_rewrite(f, xk, bd)

@@ -151,7 +151,7 @@ end
 # exp(x)) refines the generator and re-parses; the hints only ever grow. A NewConstants
 # (a constant such as e or log 2 appeared) re-parses over the larger field ℚ(t₁, …, tₖ).
 # `constants` fixes the constant field instead (no constant generators can then be added).
-function build_tower(f, xk::String; constants::Union{Nothing,Type} = nothing, subst = nothing)
+function build_tower(f, xk::String; constants::Union{Nothing,Type} = nothing, subst = nothing, minimize::Bool = true)
     scales = Dict{Int,Int}()
     consts = ConstGen[]
     base = Q                                   # becomes ℚ(i) when trigonometric functions appear
@@ -161,7 +161,7 @@ function build_tower(f, xk::String; constants::Union{Nothing,Type} = nothing, su
         T.subst = subst
         try
             el = parse_tower(f, T)
-            return minimal(T, el)
+            return minimize ? minimal(T, el) : (T, el)     # (minimize = false: levels a parse hook used stay)
         catch e
             if e isa Restart
                 scales[e.seq] = lcm(get(scales, e.seq, 1), e.q)
