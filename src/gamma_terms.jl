@@ -362,3 +362,52 @@ function trig_factors!(t, xk, sign, cs, sq, trig, ssym)
     end
     false
 end
+
+# ∫ c·erf(ax + b) = c (x + b/a) erf(ax + b) + c e^(-(ax+b)²)/(a√π); erfi: c (x + b/a) erfi(ax + b) - c e^((ax+b)²)/(a√π)
+# (by parts). A sum of such terms and terms free of erf; nothing when f has another use of erf.
+function try_erf(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    xk = string(x)
+    haserf(t) = isnode(t) && (opname(operation(t)) in (:erf, :erfi) || any(haserf, arguments(t)))
+    haserf(f) || return nothing
+    b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    terms, rest = Any[], Any[]
+    for (t, sg) in gamma_summands(f)
+        if !haserf(t)
+            push!(rest, sg == 1 ? t : mk(b0, :*, b0.lift(-1), t))
+            continue
+        end
+        facs = Any[]
+        flat(u) = (isnode(u) && opname(operation(u)) === :*) ? foreach(flat, arguments(u)) : push!(facs, u)
+        flat(t)
+        es = [u for u in facs if haserf(u)]
+        length(es) == 1 || return nothing
+        e = es[1]
+        (opname(operation(e)) in (:erf, :erfi) && length(arguments(e)) == 1) || return nothing
+        cs = [u for u in facs if u !== e]
+        any(u -> depends_on(u, xk), cs) && return nothing
+        u = arguments(e)[1]
+        T, ue = try                                     # a x + b, a and b constants (parameters allowed)
+            build_tower(u, xk)
+        catch err
+            (err isa RischNotImplemented || err isa RischError) || rethrow()
+            return nothing
+        end
+        (isempty(T.levels) && isone(ue.den) && degree(ue.num) == 1) || return nothing
+        a, b = ue.num.c[2], ue.num.c[1]
+        bc = Builder(b0.build, b0.lift, b0.x, T.consts)
+        isf = opname(operation(e)) === :erf
+        c = isempty(cs) ? (sg == 1 ? nothing : b0.lift(-1)) : mk(b0, :*, b0.lift(sg), cs...)
+        xb = iszero(b) ? b0.x : mk(b0, :+, b0.x, cterm(bc, b / a))
+        ex = mk(b0, :exp, isf ? mk(b0, :*, b0.lift(-1), mk(b0, :^, u, b0.lift(2))) : mk(b0, :^, u, b0.lift(2)))
+        q = mk(b0, :/, ex, isone(a) ? mk(b0, :sqrt, b0.lift(π)) : mk(b0, :*, cterm(bc, a), mk(b0, :sqrt, b0.lift(π))))
+        tt = mk(b0, :+, mk(b0, :*, xb, e), isf ? q : mk(b0, :*, b0.lift(-1), q))
+        push!(terms, c === nothing ? tt : mk(b0, :*, c, tt))
+    end
+    isempty(terms) && return nothing
+    if !isempty(rest)
+        F = risch_integrate(length(rest) == 1 ? rest[1] : mk(b0, :+, rest...), x; build = build, lift = lift, verify = verify)
+        F isa IntegralWithRootSums && return nothing
+        push!(terms, F)
+    end
+    length(terms) == 1 ? terms[1] : mk(b0, :+, terms...)
+end

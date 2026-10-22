@@ -57,6 +57,8 @@ const EXPR_RETRY = Ref(false)                           # no nested Expr retries
 
 function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = true)
     xk = string(x)
+    g = try_erf(f, x; build = build, lift = lift, verify = verify)   # ∫ erf(ax + b) by parts
+    g === nothing || return g
     # step IT: a factor free of x containing other symbols comes out, ∫ c g dx = c ∫ g dx (keeps the
     # parameter out of the constant field, and lets an iterated integral see c(y)·RootSum(x))
     cg = split_free_factor(f, x, xk, build, lift)
@@ -88,6 +90,13 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     end
     if any(((_, u),) -> has_param(u, xk), rads)        # parameters in a radicand: x = s u + h (step PR)
         r = integrate_param_radicals(f, x, rads; build = build, lift = lift, verify = verify)
+        r === nothing || return r
+        r = try                                          # several radicands, one linear: u = √(linear) (NR)
+            integrate_inner_linear_radical(f, x; build = build, lift = lift, verify = verify)
+        catch e
+            (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+            nothing
+        end
         r === nothing || return r
     end
     if any(((_, u),) -> radicand_element(u, xk) === nothing, rads)

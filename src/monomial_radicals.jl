@@ -357,20 +357,35 @@ function integrate_inner_linear_radical(f, x; build = nothing, lift = nothing, v
     xk = string(x)
     rads = collect_radicals(f, xk)
     nested = [(e, u) for (e, u) in rads if depends_on(u, xk) && !isempty(collect_radicals(u, xk))]
-    isempty(nested) && return nothing
+    # a linear radicand (coefficients may be parameters): (term, a, b, constants)
+    function linear(v)
+        T, ve = try
+            build_tower(v, xk)
+        catch err
+            (err isa RischNotImplemented || err isa RischError) || rethrow()
+            return nothing
+        end
+        (isempty(T.levels) && isone(ve.den) && degree(ve.num) == 1) ? (v, ve.num.c[2], ve.num.c[1], T.consts) : nothing
+    end
     L = nothing
     for (_, u) in nested, (e2, v) in collect_radicals(u, xk)
-        ve = radicand_element(v, xk)
-        (ve !== nothing && isone(ve.den) && degree(ve.num) == 1) || continue
-        L = (v, ve)
-        break
+        L = linear(v)
+        L === nothing || break
+    end
+    if L === nothing && isempty(nested)
+        # several radicands, one linear (√(a + bx)·√(c + dx)): u = √(linear) makes the others rational in u
+        length(unique(string(u) for (_, u) in rads if depends_on(u, xk))) >= 2 || return nothing
+        for (_, u) in rads
+            depends_on(u, xk) || continue
+            L = linear(u)
+            L === nothing || break
+        end
     end
     L === nothing && return nothing
-    Lt, Le = L
+    Lt, a, b0c, lconsts = L
     Q = Int(reduce(lcm, (denominator(e) for (e, u) in rads if string(u) == string(Lt)); init = 1))
     Q > 1 || return nothing
-    a, b0c = Le.num.c[2], Le.num.c[1]
-    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, lconsts)
     upow(k) = k == 1 ? bd.x : mk(bd, :^, bd.x, bd.lift(k))
     xu = mk(bd, :/, mk(bd, :+, upow(Q), cterm(bd, -b0c)), cterm(bd, a))     # x = (u^Q - b)/a
     function sub(t)

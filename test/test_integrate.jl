@@ -1402,6 +1402,21 @@ end
     end
 end
 
+# ∫ erf(ax + b) by parts; several radicands with a linear one: u = √(linear) (step NR)
+@testset "erf by parts; products of linear radicals" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7 + 0im), :(b = 1.3 + 0im),
+                                                       :(c = 0.4 + 0im), :(d = 2.1 + 0im)), e))
+    Main.eval(:(using SpecialFunctions: erf, erfi))
+    for f in (:(erf(x)), :(erf(x + a)), :(3 * erf(2x - 1) + x), :(erfi(x / 2)),
+              :(sqrt(a + b * x) * sqrt(c + d * x)), :(1 / (sqrt(a + x) * sqrt(c + x))), :(sqrt(x + 1) / sqrt(x + 2)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.5, 2.0)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, real(ev(f, complex(x0))); rtol = 1e-5)
+        end
+    end
+end
+
 # asec, acsc: √(1 - 1/u²) is kept (√(u² - 1)/u held for u > 1 only); check both signs
 @testset "asec, acsc for u < -1" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
