@@ -32,6 +32,8 @@ function parse_tower(t, T::Tower)
             if n in SHIFT_TRIG && length(args) == 1 && !has_x(args[1], T.xk) && has_param(args[1], T.xk)
                 return sym_const(T, t)
             end
+            rp = radical_parts(t)                       # √(2h): an opaque constant (as cos a)
+            (rp !== nothing && !has_x(rp[2], T.xk) && has_param(rp[2], T.xk)) && return sym_const(T, t)
             if n in (:sin, :cos, :tan, :cot, :sec, :csc) && length(args) == 1   # Step 7: θ = exp(i·u) over ℚ(i)
                 C = ctype(T)
                 is_complex_field(C) || throw(NeedComplex())

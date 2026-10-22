@@ -1332,6 +1332,21 @@ end
     end
 end
 
+# step PR with √(∓D/A) not in the parameter field: an opaque constant (as √(2h), cos a)
+@testset "parameter radicands with opaque square roots" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    vals = Expr(:block, :(h = 1.3), :(alpha = 0.4), :(epsilon = 0.3), :(k = 0.2), :(a = 1.7), :(e = 0.5))
+    ev(ex, x0) = Core.eval(Main, Expr(:let, Expr(:block, vals.args..., :(r = $x0), :(x = $x0)), ex))
+    for (f, v) in ((:(1 / sqrt(2 * h * r ^ 2 - alpha ^ 2)), :r), (:(1 / (r * sqrt((2 * h * r ^ 2 - alpha ^ 2) - epsilon ^ 2))), :r),
+                   (:(1 / (r * sqrt((2 * h * r ^ 2 - alpha ^ 2) - 2 * k * r))), :r),
+                   (:(r / sqrt((2 * e * r ^ 2 - alpha ^ 2) - 2 * k * r)), :r), (:(exp(x) / sqrt(exp(2x) - a ^ 2)), :x))
+        F = Risch.risch_integrate(f, v; build = build, lift = identity)
+        for x0 in (2.0, 3.5)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, real(ev(f, complex(x0))); rtol = 1e-5)
+        end
+    end
+end
+
 # asec, acsc: √(1 - 1/u²) is kept (√(u² - 1)/u held for u > 1 only); check both signs
 @testset "asec, acsc for u < -1" begin
     build(op, args...) = Expr(:call, nameof(op), args...)

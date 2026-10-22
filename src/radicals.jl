@@ -29,6 +29,8 @@ end
 # all radicals of f: [(exponent, radicand term)]
 function collect_radicals(f, xk::String, out = Tuple{Q,Any}[])
     rp = radical_parts(f)
+    # a radical of a parameter constant (√(2h)) is an opaque constant (`parse_tower`), not a radical of x
+    rp !== nothing && !has_x(rp[2], xk) && has_param(rp[2], xk) && return out
     rp === nothing || push!(out, rp)
     if safe_iscall(f)
         for a in arguments(f)
@@ -216,6 +218,7 @@ function integrate_subst(f, xk::String, ::Type{S}, φ, radval, bt::Builder, veri
         rp = radical_parts(term)
         rp === nothing && return nothing
         e, ut = rp
+        (!has_x(ut, xk) && has_param(ut, xk)) && return nothing     # an opaque constant (`parse_tower`)
         ue = radicand_element(ut, xk)
         ue === nothing && throw(RischNotImplemented("radical of a non-rational expression ($ut)"))
         if is_const_radicand(ue)
