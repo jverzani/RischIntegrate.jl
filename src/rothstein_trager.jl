@@ -181,7 +181,7 @@ function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
     rest = Rsf
     for a in roots
         W = gcd(D, A - scale(a, dD))
-        degree(W) > 0 && push!(logs, (a, W))
+        degree(W) > 0 && !iszero(a) && push!(logs, (a, W))       # (a residue 0 adds no log)
         rest = quo(rest, CXl(C[-a, one(C)]))
     end
     degree(rest) == 0 && return logs, atans, unresolved, quads

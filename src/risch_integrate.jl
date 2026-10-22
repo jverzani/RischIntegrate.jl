@@ -12,7 +12,13 @@ check of the answer by differentiation (every answer is checked by default). Ret
 function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = true)
     check_leaves(f, string(x))                                         # step WR
     try
-        integrate_direct(f, x; build = build, lift = lift, verify = verify)
+        r = integrate_direct(f, x; build = build, lift = lift, verify = verify)
+        # a RootSum over a parameter field: a homogeneous f scales to ℚ (step PS)
+        if r isa IntegralWithRootSums && any(t -> t isa TermRootSum, r.rootsums) && has_param(f, string(x))
+            r2 = integrate_param_scaled(f, x; build = build, lift = lift, verify = verify)
+            r2 === nothing || return r2
+        end
+        r
     catch e
         # the term type has no method for a special function of the answer: through Expr, the special terms
         # evaluated numerically

@@ -129,3 +129,56 @@ function param_value(c, consts)
         nothing
     end
 end
+
+# step PS: f ∈ ℚ(a, …)(x) homogeneous in x and a parameter a: f(a u)·a = aᵏ g(u) with g ∈ ℚ(u)
+# (1/(x³ + a³) = a⁻³/(u³ + 1)). g is integrated over ℚ (real forms with √3, …) and u = x/a put back:
+# ∫ f dx = aᵏ G(x/a). Used instead of a RootSum over ℚ(a, …); nothing when f is not of this kind.
+function integrate_param_scaled(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    xk = string(x)
+    T, el = try
+        build_tower(f, xk)
+    catch err
+        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        return nothing
+    end
+    (isempty(T.levels) && real_param_field(ctype(T))) || return nothing
+    C = ctype(T)
+    for j in eachindex(T.consts)
+        T.consts[j].kind === :sym || continue
+        # the coefficients cᵢ aʲ… of N(a u): each must be r·a^m with one m for all of them
+        function scaled(p)
+            m, qs = nothing, Q[]
+            for (i, c) in enumerate(p.c)
+                if iszero(c)
+                    push!(qs, Q(0))
+                    continue
+                end
+                mono = const_monomial(c)
+                mono === nothing && return nothing
+                r, ks = mono
+                all(((jj, _),) -> jj == j, ks) || return nothing
+                e = (isempty(ks) ? 0 : ks[1][2]) + (i - 1)
+                m === nothing ? (m = e) : (m == e || return nothing)
+                push!(qs, r)
+            end
+            m, QX(qs)
+        end
+        sn, sd = scaled(el.num), scaled(el.den)
+        (sn === nothing || sd === nothing) && continue
+        k = sn[1] - sd[1] + 1
+        b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
+        G = risch_integrate(frac_term(b0, frac(sn[2], sd[2])), x; build = b0.build, lift = b0.lift, verify = verify)
+        G isa IntegralWithRootSums && return nothing
+        at = T.consts[j].term
+        back = mk(b0, :/, b0.x, at)                     # u = x/a
+        function walk_back(t)
+            safe_iscall(t) || return string(t) == xk ? back : t
+            args = arguments(t)
+            isempty(args) && return t
+            b0.build(op_function(t), (walk_back(a) for a in args)...)
+        end
+        Gx = walk_back(G)
+        return iszero(k) ? Gx : mk(b0, :*, isone(k) ? at : mk(b0, :^, at, b0.lift(k)), Gx)
+    end
+    nothing
+end

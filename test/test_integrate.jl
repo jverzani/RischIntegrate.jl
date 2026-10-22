@@ -1242,6 +1242,21 @@ end
     end
 end
 
+# step PS: f homogeneous in x and a parameter: x = a u, integrate over ℚ (real forms with √3, √2, √5)
+@testset "homogeneous in x and a parameter (step PS)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 1.7)), e))
+    for f in (:(1 / (a ^ 3 + x ^ 3)), :(1 / (x ^ 2 * (a ^ 3 + x ^ 3))), :(1 / (a ^ 4 + -1 * x ^ 4)), :(x ^ 2 / (a ^ 4 + x ^ 4)),
+              :(1 / (a ^ 5 + x ^ 5)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        @test !occursin("0 * log", string(F))
+        for x0 in (0.4, 1.3)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
 # asec, acsc: √(1 - 1/u²) is kept (√(u² - 1)/u held for u > 1 only); check both signs
 @testset "asec, acsc for u < -1" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
