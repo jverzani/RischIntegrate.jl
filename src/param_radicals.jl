@@ -94,7 +94,7 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
             mk(b0, :^, cterm(b0, κ), b0.lift(e))
         end
         Re = isone(e * 2) ? mk(b0, :sqrt, Rt) : mk(b0, :^, Rt, b0.lift(e))
-        mk(b0, :*, κe, Re)
+        isone(κ) ? Re : mk(b0, :*, κe, Re)              # (κ = 1: no factor 1^e)
     end
     sone = !(s isa Tuple) && isone(s)
     sx = sone ? b0.x : mk(b0, :*, st, b0.x)
@@ -109,7 +109,10 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     end
     g = mk(b0, :*, walk(f), st)                         # f(s x + h) · s
     G = risch_integrate(g, x; build = b0.build, lift = b0.lift, verify = verify)
-    G isa IntegralWithRootSums && return nothing
+    if G isa IntegralWithRootSums                       # a RootSum over ℚ(a, …): scale by a parameter (step PS)
+        G = integrate_scaled_radicals(g, x; build = b0.build, lift = b0.lift, verify = verify)
+        G === nothing && return nothing
+    end
     xh = iszero(h) ? b0.x : mk(b0, :+, b0.x, mk(b0, :*, b0.lift(-1), ht))
     back = sone ? xh : mk(b0, :/, xh, st)               # x ↦ (x - h)/s
     function walk_back(t)
@@ -198,4 +201,110 @@ function integrate_param_scaled(f, x; build = nothing, lift = nothing, verify::B
         return iszero(k) ? Gx : mk(b0, :*, isone(k) ? at : mk(b0, :^, at, b0.lift(k)), Gx)
     end
     nothing
+end
+
+# step PS for radicals: x = p u with p a parameter, a radicand homogeneous in (x, p), U(p u) = p^m U₀(u) with U₀
+# free of p, written p^(me) U₀^e (p > 0; p^(me) an opaque constant when me ∉ ℤ): ∫ g(x) dx = ∫ g(p u) p du,
+# then u = x/p. Nothing when no parameter gives an answer without a RootSum.
+function integrate_scaled_radicals(g, x; build = nothing, lift = nothing, verify::Bool = true)
+    xk = string(x)
+    bd = Builder(build === nothing ? auto_build(g, x) : build, lift === nothing ? auto_lift(g, x) : lift, x)
+    ps = Dict{String,Any}()
+    collect_params(t) = isnode(t) ? foreach(collect_params, arguments(t)) :
+                        (has_param(t, xk) && (ps[string(t)] = t))
+    collect_params(g)
+    for (pk, p) in ps
+        px = mk(bd, :*, p, bd.x)
+        sx(t) = isnode(t) ? term_rebuild(bd, t, Any[sx(a) for a in arguments(t)]) : (string(t) == xk ? px : t)
+        ok = Ref(true)
+        function rw(t)
+            isnode(t) || return string(t) == xk ? px : t
+            rp = radical_parts(t)
+            if rp !== nothing && depends_on(rp[2], xk)
+                e, u = rp
+                T, el = try
+                    build_tower(sx(u), xk)
+                catch err
+                    (err isa RischNotImplemented || err isa RischError) || rethrow()
+                    ok[] = false
+                    return t
+                end
+                j = findfirst(c -> c.kind === :sym && string(c.term) == pk, T.consts)
+                if !isempty(T.levels) || j === nothing
+                    ok[] = false
+                    return t
+                end
+                hn, hd = hom_in(el.num, j), hom_in(el.den, j)
+                if hn === nothing || hd === nothing
+                    ok[] = false
+                    return t
+                end
+                me = (hn[1] - hd[1]) * e
+                U0 = frac_term(bd, frac(hn[2], hd[2]))
+                r0 = isone(e * 2) ? mk(bd, :sqrt, U0) : mk(bd, :^, U0, bd.lift(e))
+                iszero(me) && return r0
+                return mk(bd, :*, isone(me) ? p : mk(bd, :^, p, bd.lift(me)), r0)
+            end
+            term_rebuild(bd, t, Any[rw(a) for a in arguments(t)])
+        end
+        h = mk(bd, :*, rw(g), p)
+        ok[] || continue
+        # radical-free subterms homogeneous in p: p^k times a rational term free of p (a x + a = a (x + 1))
+        function norm(t)
+            isnode(t) || return t
+            if depends_on(t, xk) && has_param(t, xk) && isempty(collect_radicals(t, xk))
+                T, el = try
+                    build_tower(t, xk)
+                catch err
+                    (err isa RischNotImplemented || err isa RischError) || rethrow()
+                    (nothing, nothing)
+                end
+                if T !== nothing && isempty(T.levels)
+                    j = findfirst(c -> c.kind === :sym && string(c.term) == pk, T.consts)
+                    hn, hd = j === nothing ? (nothing, nothing) : (hom_in(el.num, j), hom_in(el.den, j))
+                    if hn !== nothing && hd !== nothing
+                        k = hn[1] - hd[1]
+                        r = frac_term(bd, frac(hn[2], hd[2]))
+                        return iszero(k) ? r : mk(bd, :*, isone(k) ? p : mk(bd, :^, p, bd.lift(k)), r)
+                    end
+                end
+            end
+            term_rebuild(bd, t, Any[norm(a) for a in arguments(t)])
+        end
+        h = norm(h)
+        # the factors of the product, those free of x in front (step IT takes them out of the integral)
+        facs = Any[]
+        flat(t) = (isnode(t) && opname(operation(t)) === :*) ? foreach(flat, arguments(t)) : push!(facs, t)
+        flat(h)
+        cf, xf = [t for t in facs if !depends_on(t, xk)], [t for t in facs if depends_on(t, xk)]
+        prod_t(l) = isempty(l) ? bd.lift(1) : length(l) == 1 ? l[1] : mk(bd, :*, l...)
+        h = isempty(cf) ? prod_t(xf) : mk(bd, :*, prod_t(cf), prod_t(xf))
+        H = try
+            risch_integrate(h, x; build = build, lift = lift, verify = verify)
+        catch err
+            (err isa RischNotImplemented || err isa NotElementary) || rethrow()
+            continue
+        end
+        H isa IntegralWithRootSums && continue
+        back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(a) for a in arguments(t)]) :
+                  (string(t) == xk ? mk(bd, :/, bd.x, p) : t)
+        return back(H)
+    end
+    nothing
+end
+
+# the coefficients of q as r_i p^m with one m (p the j-th generator): (m, ∑ r_i xⁱ), else nothing
+function hom_in(q, j::Int)
+    m, qs = nothing, Q[]
+    for c in q.c
+        iszero(c) && (push!(qs, Q(0)); continue)
+        mono = const_monomial(c)
+        mono === nothing && return nothing
+        r, ks = mono
+        all(((jj, _),) -> jj == j, ks) || return nothing
+        mm = isempty(ks) ? 0 : ks[1][2]
+        m === nothing ? (m = mm) : (m == mm || return nothing)
+        push!(qs, r)
+    end
+    (m === nothing ? 0 : m), QX(qs)
 end

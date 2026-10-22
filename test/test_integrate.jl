@@ -1389,6 +1389,19 @@ end
     end
 end
 
+# step PR with a RootSum over ℚ(a): scaled by the parameter (x = a u, a^(1/3) an opaque constant)
+@testset "parameter radicands scaled by a parameter" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7), :(c = 1.3)), e))
+    for f in (:(x ^ -1 * (x - a) ^ (1 // 3)), :(x * (c + x) ^ (1 // 3)), :((a + x) ^ (2 // 3) / x ^ 2))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        for x0 in (1.5, 3.0)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, real(ev(f, complex(x0))); rtol = 1e-5)
+        end
+    end
+end
+
 # asec, acsc: √(1 - 1/u²) is kept (√(u² - 1)/u held for u > 1 only); check both signs
 @testset "asec, acsc for u < -1" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
