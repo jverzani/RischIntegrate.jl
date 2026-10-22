@@ -154,7 +154,7 @@ function integrate_built(T::Tower, el, bd::Builder, verify::Bool; pos = nothing)
                   (ctype(T) === Q ? RootSum{Q}(q.rs.poly, q.rs.W, string(bd.x), bd.x) : base_term_rootsum(bd, q.rs)) :
                   TermRootSum(bd, T, q) for q in res.quads if isrs(q)]
         el_part = ElemIntegral(res.v, res.logs, res.atans, Any[q for q in res.quads if !isrs(q)])
-        return IntegralWithRootSums(to_term(bd, T, el_part), rss, string(bd.x))
+        return with_rootsums(bd, to_term(bd, T, el_part), rss)
     end
     F = el                              # an element of K_0 = C(x)
     res = integrate_rational(F)
@@ -171,7 +171,7 @@ function integrate_built(T::Tower, el, bd::Builder, verify::Bool; pos = nothing)
         verify && derivative_of(el_part) + sum(rootsum_derivative(rs) for rs in rss) != F &&
             throw(RischError("internal check failed: derivative of the result (with RootSums) differs from the integrand"))
         out = C === Q ? Any[rs for rs in rss] : Any[base_term_rootsum(bd, rs) for rs in rss]   # step RE
-        return IntegralWithRootSums(to_term(bd, el_part), out, string(bd.x))
+        return with_rootsums(bd, to_term(bd, el_part), out)
     end
     verify && !check_result(res, F) &&
         throw(RischError("internal check failed: derivative of the result differs from the integrand"))
@@ -247,4 +247,12 @@ function risch_integrate(F::IntegralWithRootSums, y; build = nothing, lift = not
     E = risch_integrate(F.elementary, y; build = build, lift = lift, verify = verify)
     E isa IntegralWithRootSums ? IntegralWithRootSums(E.elementary, vcat(E.rootsums, scaled), yk) :
                                  IntegralWithRootSums(E, scaled, yk)
+end
+
+# the elementary part with RootSums; RootSums written out as terms (step PQ) join the elementary part
+function with_rootsums(bd::Builder, E, rss)
+    ts = Any[r for r in rss if !(r isa TermRootSum || r isa RootSum)]
+    rs = Any[r for r in rss if r isa TermRootSum || r isa RootSum]
+    isempty(ts) || (E = mk(bd, :+, E, ts...))
+    isempty(rs) ? E : IntegralWithRootSums(E, rs, string(bd.x))
 end

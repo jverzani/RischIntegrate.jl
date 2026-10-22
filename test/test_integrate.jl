@@ -1188,6 +1188,28 @@ end
     end
 end
 
+# step PL: log of a parameter is a constant generator; step PQ: quadratic residue pairs over a
+# parameter field written out (log or atan); step TW: tan(u/2) over parameter fields
+@testset "parameters: logs, quadratic residues, tan(u/2)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, vals) = Core.eval(Main, Expr(:let, Expr(:block, [Expr(:(=), k, v) for (k, v) in vals]...), e))
+    for (f, avals, xs) in ((:(x ^ n * log(a * x)), (:a => 1.4, :n => 1.7), (0.31, 1.5)),       # apostol 62
+                           (:(log(a * b * x)), (:a => 1.4, :b => 0.6), (0.31, 1.5)),
+                           (:(1 / (a + b * x ^ 2)), (:a => 1.4, :b => 0.6), (-0.31, 1.5)),     # apostol 90
+                           (:(1 / (x ^ 2 + -1a)), (:a => 1.4,), (0.31, 0.57)),
+                           (:(x / (x ^ 2 + x + a)), (:a => 1.4,), (0.31, 1.5)),
+                           (:(exp(x) / (exp(2x) + a)), (:a => 1.4,), (0.31, 1.5)),
+                           (:(1 / (1 + a * cos(x))), (:a => 0.4,), (0.31, 2.5)))           # apostol 141
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        for x0 in xs
+            h = 1e-6
+            d = (ev(F, (avals..., :x => complex(x0 + h))) - ev(F, (avals..., :x => complex(x0 - h)))) / (2h)
+            @test isapprox(real(d), ev(f, (avals..., :x => x0)); rtol = 1e-5)
+        end
+    end
+end
+
 # asec, acsc: √(1 - 1/u²) is kept (√(u² - 1)/u held for u > 1 only); check both signs
 @testset "asec, acsc for u < -1" begin
     build(op, args...) = Expr(:call, nameof(op), args...)

@@ -309,24 +309,50 @@ end
 
 is_monomial(p::UPoly) = count(!iszero, p.c) == 1
 
+# c = r · Π tⱼ^kⱼ (r ∈ ℚ, generators tⱼ of the constant field): (r, [(j, kⱼ)]), else nothing
+const_monomial(c::Q) = (c, Tuple{Int,Int}[])
+const_monomial(c) = (r = crational(c); r === nothing ? nothing : (r, Tuple{Int,Int}[]))
+function const_monomial(c::Frac{<:UPoly})
+    (is_monomial(c.num) && is_monomial(c.den)) || return nothing
+    inner = const_monomial(lc(c.num) / lc(c.den))
+    inner === nothing && return nothing
+    k = degree(c.num) - degree(c.den)
+    iszero(k) ? inner : (inner[1], [inner[2]; (cdepth(typeof(c)), k)])
+end
+
 # log(c) ∈ C for c = r · tₑ^m with r ∈ ℚ, r > 0, m ∈ ℤ, else RischNotImplemented
 function const_log(T::Tower, c)
     C = ctype(T)
     gens = T.consts
     (C === Q || C === QI || C <: Frac) || throw(RischNotImplemented(
         "log of the constant $c over the constant field $C is not implemented"))
-    r, m = crational(c), 0
-    if r === nothing
-        jE = findfirst(g -> g.kind === :exp, gens)
-        c1 = jE == 1 ? const_below(c, 1) : nothing         # c ∈ ℚ(tₑ)?
-        (c1 !== nothing && is_monomial(c1.num) && is_monomial(c1.den)) || throw(RischNotImplemented(
-            "log of the constant $c: only logs of rationals times powers of e are implemented"))
-        r = lc(c1.num)
-        m = degree(c1.num) - degree(c1.den)
-    end
+    # c = r · Π tⱼ^kⱼ: log(tₑ^k) = k/s; log of a parameter a is a generator log(a) of its own (a > 0 is
+    # assumed, as for the parameters in radicands)
+    mono = const_monomial(c)
+    mono === nothing && throw(RischNotImplemented(
+        "log of the constant $c: only logs of rationals times powers of e and of parameters are implemented"))
+    r, ks = mono
     r > 0 || throw(RischNotImplemented("log of the negative constant $r is complex"))
-    val = m == 0 ? zero(C) : cfromQ(C, m * gens[1].arg)       # log(tₑ^m) = m/s
+    val = zero(C)
     missing_ = ConstGen[]
+    for (j, k) in ks
+        g = gens[j]
+        if g.kind === :exp
+            val = val + cfromQ(C, k * g.arg)
+        elseif g.kind === :sym
+            gl = ConstGen(:symlog, Q(0), g.term)
+            jl = findfirst(==(gl), gens)
+            if jl === nothing
+                count(c -> c.kind in (:sym, :symlog), gens) + length(missing_) < MAX_PARAMS || throw(RischNotImplemented(
+                    "more than $MAX_PARAMS symbolic parameters and their logs"))
+                push!(missing_, gl)
+            else
+                val = val + k * tgen(C, jl)
+            end
+        else
+            throw(RischNotImplemented("log of the constant $c: a log of $(g.kind) constant $(g.arg)"))
+        end
+    end
     for (n, sgn) in ((numerator(r), 1), (denominator(r), -1))
         for (p, k) in factorint(n)
             p < big(10)^12 || throw(RischNotImplemented(

@@ -26,7 +26,7 @@ end
 csign(c::Q, gens) = Int(sign(c))
 function csign(c, gens)
     iszero(c) && return 0
-    any(g -> g.kind === :sym, gens) && return nothing     # a parameter: no sign (step SY)
+    any(g -> g.kind in (:sym, :symlog), gens) && return nothing     # a parameter: no sign (step SY)
     v = setprecision(() -> cbig(c, gens), BigFloat, 256)
     abs(v) < big(10)^-40 ? nothing : Int(sign(v))
 end

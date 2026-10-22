@@ -12,12 +12,12 @@ end
 # log(arg), arg ∈ ℚ. The field type only knows "k indeterminates"; what they stand for is
 # this list, kept by the tower (`T.consts`) and by the Builder (for output).
 struct ConstGen
-    kind::Symbol          # :exp, :log, :expi, or :sym (a symbolic parameter, step SY)
+    kind::Symbol          # :exp, :log, :expi, :sym (a symbolic parameter, step SY) or :symlog (its log)
     arg::Q
     term::Any             # :sym: the user's symbol (printed back as itself), else nothing
 end
 ConstGen(kind::Symbol, arg::Q) = ConstGen(kind, arg, nothing)
-symname(g::ConstGen) = g.kind === :sym ? string(g.term) : ""
+symname(g::ConstGen) = g.kind in (:sym, :symlog) ? string(g.term) : ""
 Base.:(==)(a::ConstGen, b::ConstGen) = a.kind === b.kind && a.arg == b.arg && symname(a) == symname(b)
 Base.hash(g::ConstGen, h::UInt) = hash(symname(g), hash(g.arg, hash(g.kind, h)))
 
@@ -119,6 +119,7 @@ constgen_term(b::Builder, g::ConstGen) =
     g.kind === :exp ? mk(b, :exp, cterm(b, g.arg)) :
     g.kind === :log ? mk(b, :log, cterm(b, g.arg)) :
     g.kind === :sym ? g.term :
+    g.kind === :symlog ? mk(b, :log, g.term) :
     throw(RischError("unknown constant generator kind $(g.kind)"))
 function cpoly_term(b::Builder, p::UPoly, t)
     iszero(p) && return b.lift(0)
