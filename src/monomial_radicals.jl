@@ -11,6 +11,37 @@
 # ---------------------------------------------------------------------------
 
 function integrate_monomial_radicals(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    r = mr_direct(f, x; build = build, lift = lift, verify = verify)
+    r === nothing || return r
+    # radicands invariant under Bioche's involutions about π/4 (sin 2x = cos 2y): f(y + π/4), then y = x - π/4
+    xk = string(x)
+    has_trig(t) = isnode(t) && (opname(operation(t)) in (:sin, :cos, :tan, :cot, :sec, :csc) || any(has_trig, arguments(t)))
+    has_trig(f) || return nothing
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    q4 = mk(bd, :/, bd.lift(π), bd.lift(4))
+    # x ↦ x + c; a trig function of a linear argument a x + b becomes one of (a x + b) + a c, a sum that
+    # `expand_trig_shifts` expands
+    function shift(t, by)
+        isnode(t) || return string(t) == xk ? mk(bd, :+, bd.x, by) : t
+        args = arguments(t)
+        if opname(operation(t)) in SHIFT_TRIG && length(args) == 1
+            u = radicand_element(args[1], xk)
+            if u !== nothing && isone(u.den) && degree(u.num) == 1
+                a = u.num.c[2]
+                return term_rebuild(bd, t, Any[mk(bd, :+, args[1], isone(a) ? by : mk(bd, :*, cterm(bd, a), by))])
+            end
+        end
+        term_rebuild(bd, t, Any[shift(a, by) for a in args])
+    end
+    g = shift(f, q4)
+    g2 = expand_trig_shifts(g, x, xk, build, lift)
+    g2 === nothing && return nothing
+    r = mr_direct(g2, x; build = build, lift = lift, verify = verify)
+    r === nothing && return nothing
+    shift(r, mk(bd, :*, bd.lift(-1), q4))
+end
+
+function mr_direct(f, x; build = nothing, lift = nothing, verify::Bool = true)
     xk = string(x)
     radt = Dict{String,Any}()                           # radical subterms with a non-rational radicand
     function findrads(t)
@@ -26,8 +57,12 @@ function integrate_monomial_radicals(f, x; build = nothing, lift = nothing, veri
     findrads(f)
     isempty(radt) && return nothing
     Us = Dict{String,Any}()                             # radicand elements, from the last parse
-    hook(t, T) = haskey(radt, string(t)) ?
-        (Us[string(t)] = parse_tower(radical_parts(t)[2], T); sym_const(T, t)) : nothing
+    function hook(t, T)
+        haskey(radt, string(t)) && (Us[string(t)] = parse_tower(radical_parts(t)[2], T); return sym_const(T, t))
+        rp = isnode(t) ? radical_parts(t) : nothing     # a constant radical (√2 from a shift): opaque
+        (rp !== nothing && !depends_on(rp[2], xk)) && return sym_const(T, t)
+        nothing
+    end
     T, el = try
         build_tower(f, xk; subst = hook, minimize = false)
     catch e
@@ -63,55 +98,50 @@ function integrate_monomial_radicals(f, x; build = nothing, lift = nothing, veri
     li(c) = lconst(T, c, 1)
     two = cfromQ(C, Q(2))
     ca = a.num.c[2]                                     # θ = e^(ca·x)
+    ev1(h) = foldr((c, acc) -> acc * θel + li(c), h.num.c; init = zero(θel)) /
+             foldr((c, acc) -> acc * θel + li(c), h.den.c; init = zero(θel))
+    pieces = Any[]                                      # (kind, g, tos, sel, piece of R)
     if !cx
         k = crational(ca)
         k === nothing && return nothing
-        kind = :exp
-        g = R * frac(P(C[one(C)]), scale(cfromQ(C, k), θp))         # dx = ds/(k s)
-        tos(u) = u
-        sel = θel
+        push!(pieces, (:exp, R * frac(P(C[one(C)]), scale(cfromQ(C, k), θp)), u -> u, θel, R))   # dx = ds/(k s)
     else
         I = cimag(C)
         kr = to_real(ca * inv(I))
         k = kr === nothing ? nothing : kr isa Q ? kr : crational(kr)
         k === nothing && return nothing
         U_ok(f) = all(u -> f(u) == u, values(Uθ))
-        if θinv(R, one(C)) == -R && U_ok(u -> θinv(u, one(C)))                # s = cos kx
-            kind = :cos
-            g = sym_to_s(R * frac(scale(-2 * I, θp), θp^2 - one(P)))
-            tos = u -> sym_to_s(u)
-            sel = (θel + one1 / θel) * li(inv(two))
-        elseif θinv(R, -one(C)) == -R && U_ok(u -> θinv(u, -one(C)))          # s = sin kx
-            kind = :sin
-            g = sym_to_s(θscale(R * frac(scale(two, θp), θp^2 + one(P)), I))
-            tos = u -> sym_to_s(θscale(u, I))
-            sel = (θel - one1 / θel) * li(inv(2 * I))
-        elseif θscale(R, -one(C)) == R && U_ok(u -> θscale(u, -one(C)))       # s = tan kx
-            kind = :tan
-            g = tan_to_s(R)
-            onep = frac(P(C[one(C), zero(C), one(C)]))
-            tos = u -> (v = tan_to_s(u); v === nothing ? nothing : v * onep)
-            sel = li(-I) * (θel * θel - one1) / (θel * θel + one1)
+        cosk(Rp) = (:cos, sym_to_s(Rp * frac(scale(-2 * I, θp), θp^2 - one(P))), u -> sym_to_s(u),
+                    (θel + one1 / θel) * li(inv(two)), Rp)
+        sink(Rp) = (:sin, sym_to_s(θscale(Rp * frac(scale(two, θp), θp^2 + one(P)), I)), u -> sym_to_s(θscale(u, I)),
+                    (θel - one1 / θel) * li(inv(2 * I)), Rp)
+        onep = frac(P(C[one(C), zero(C), one(C)]))
+        tank(Rp) = (:tan, tan_to_s(Rp), u -> (v = tan_to_s(u); v === nothing ? nothing : v * onep),
+                    li(-I) * (θel * θel - one1) / (θel * θel + one1), Rp)
+        okc, oks, okt = U_ok(u -> θinv(u, one(C))), U_ok(u -> θinv(u, -one(C))), U_ok(u -> θscale(u, -one(C)))
+        if θinv(R, one(C)) == -R && okc                 # s = cos kx
+            push!(pieces, cosk(R))
+        elseif θinv(R, -one(C)) == -R && oks            # s = sin kx
+            push!(pieces, sink(R))
+        elseif θscale(R, -one(C)) == R && okt           # s = tan kx
+            push!(pieces, tank(R))
+        elseif okc && oks && okt
+            # Bioche's three involutions together: R dx = (cos piece) + (sin piece) + (tan piece), each
+            # invariant for its substitution (the radicands are invariant under all three)
+            h = inv(two)
+            Rc = (R - θinv(R, one(C))) * kconst(h)
+            rest = R - Rc
+            Rs = (rest - θinv(rest, -one(C))) * kconst(h)
+            Rt = rest - Rs
+            iszero(Rc) || push!(pieces, cosk(Rc))
+            iszero(Rs) || push!(pieces, sink(Rs))
+            iszero(Rt) || push!(pieces, tank(Rt))
         else
             return nothing
         end
-        g === nothing && return nothing
-        g = g * kconst(inv(cfromQ(C, k)))               # dx = du/k
+        pieces = Any[(kd, g === nothing ? nothing : g * kconst(inv(cfromQ(C, k))), tos, sel, Rp)
+                     for (kd, g, tos, sel, Rp) in pieces]            # dx = du/k
     end
-    Usx = Dict{String,Any}()
-    for (kk, u) in Uθ
-        v = tos(u)
-        v === nothing && return nothing
-        Usx[kk] = v
-    end
-    # exact checks: g(s(θ))·s′ = R and Ũⱼ(s(θ)) = Uⱼ
-    gs(p) = foldr((c, acc) -> acc * sel + li(c), p.c; init = zero(sel))
-    sub(h) = gs(h.num) / gs(h.den)
-    sub(g) * D(T, 1, sel) == liftto(T, el, 1) || throw(RischError("internal check failed: monomial substitution"))
-    for (kk, v) in Usx
-        sub(v) == liftto(T, Us[kk], 1) || throw(RischError("internal check failed: radicand in the substitution variable"))
-    end
-    # real coefficients
     RC = cx ? real_ctype(C) : C
     function real_frac(h)
         cx || return h
@@ -119,10 +149,38 @@ function integrate_monomial_radicals(f, x; build = nothing, lift = nothing, veri
         (any(isnothing, n) || any(isnothing, d)) && return nothing
         frac(UPoly{RC}(RC[n...]), UPoly{RC}(RC[d...]))
     end
-    gr = real_frac(g)
-    gr === nothing && return nothing
-    # the radicals as terms in s (the variable x stands for s), as generators of the constant field
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
+    ut = isone(k) ? bd.x : mk(bd, :*, cterm(bd, k), bd.x)
+    total = Any[]
+    for (kind, g, tos, sel, Rp) in pieces
+        g === nothing && return nothing
+        Usx = Dict{String,Any}()
+        for (kk, u) in Uθ
+            v = tos(u)
+            v === nothing && return nothing
+            Usx[kk] = v
+        end
+        # exact checks: g(s(θ))·s′ = (the piece of) R and Ũⱼ(s(θ)) = Uⱼ
+        gs(p) = foldr((c, acc) -> acc * sel + li(c), p.c; init = zero(sel))
+        sub(h) = gs(h.num) / gs(h.den)
+        sub(g) * D(T, 1, sel) == ev1(Rp) || throw(RischError("internal check failed: monomial substitution"))
+        for (kk, v) in Usx
+            sub(v) == liftto(T, Us[kk], 1) || throw(RischError("internal check failed: radicand in the substitution variable"))
+        end
+        gr = real_frac(g)
+        gr === nothing && return nothing
+        H = mr_piece(f, x, bd, T, radt, Usx, real_frac, RC, kind, gr; build = build, lift = lift, verify = verify)
+        H === nothing && return nothing
+        st = mk(bd, kind, ut)
+        back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? st : t)
+        push!(total, back(H))
+    end
+    length(total) == 1 ? total[1] : mk(bd, :+, total...)
+end
+
+# ∫ g(s) ds for one substitution of step MR: the radicals as terms in s (x stands for s), as generators of the
+# constant field; nothing when the integral leaves a RootSum
+function mr_piece(f, x, bd, T, radt, Usx, real_frac, RC, kind, gr; build, lift, verify)
     consts = copy(T.consts)
     for (kk, t) in radt
         j = findfirst(c -> c.kind === :sym && string(c.term) == kk, consts)
@@ -163,13 +221,8 @@ function integrate_monomial_radicals(f, x; build = nothing, lift = nothing, veri
                                               st === nothing ? rt : mk(bd, :*, st, rt))
     end
     bs = Builder(bd.build, bd.lift, x, consts)
-    G = frac_term(bs, gr)
-    H = risch_integrate(G, x; build = build, lift = lift, verify = verify)
-    H isa IntegralWithRootSums && return nothing
-    ut = isone(k) ? bd.x : mk(bd, :*, cterm(bd, k), bd.x)
-    st = mk(bd, kind, ut)
-    back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? st : t)
-    back(H)
+    H = risch_integrate(frac_term(bs, gr), x; build = build, lift = lift, verify = verify)
+    H isa IntegralWithRootSums ? nothing : H
 end
 
 # the order of s in h ∈ C(s): h = sᵐ·(unit at s = 0)

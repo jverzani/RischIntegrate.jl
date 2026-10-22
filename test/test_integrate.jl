@@ -1361,6 +1361,20 @@ end
     end
 end
 
+# step MR: Bioche's three substitutions together (a piece for each), after the shift x = y + π/4 that turns
+# sin 2x into cos 2y
+@testset "√(sin 2x): split by Bioche's involutions, shifted by π/4" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for f in (:(sin(x) / sqrt(sin(2x))), :(cos(x) / sqrt(sin(2x))), :(sqrt(sin(2x)) * sin(x)),
+              :((cos(x) - sin(x)) * sqrt(sin(2x))), :(sin(x) ^ 7 / sin(2x) ^ (7 // 2)), :(1 / (sin(x) * sin(2x) ^ (3 // 2))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 0.7)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
 # asec, acsc: √(1 - 1/u²) is kept (√(u² - 1)/u held for u > 1 only); check both signs
 @testset "asec, acsc for u < -1" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
