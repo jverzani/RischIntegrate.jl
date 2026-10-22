@@ -1257,6 +1257,48 @@ end
     end
 end
 
+# step MR: radicals of functions of e^(kx), cos, sin, tan of kx, removed by a substitution
+@testset "radicals of exp and trig monomials (step MR)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 1.7)), e))
+    for f in (:(exp(x) * sqrt(9 - exp(2x))), :(exp(x / 2) / sqrt(exp(x) - 1)), :(exp(x) / sqrt(exp(2x) + a ^ 2)),
+              :(tan(x) / sqrt(1 + sec(x) ^ 3)), :(sin(2x) / sqrt(9 - cos(x) ^ 4)), :(cos(x) ^ 2 / sqrt(cos(x) ^ 4 + cos(x) ^ 2 + 1)),
+              :(sinh(x) / (4 * cosh(x) ^ 2 - 9) ^ (5 // 2)), :((5 * cos(x) ^ 2 + sin(x) ^ 2) ^ (5 // 2) * cos(x)),
+              :(sin(x) / (5 * cos(x) ^ 2 - 2 * sin(x) ^ 2) ^ (7 // 2)), :(sqrt(1 + tanh(4x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 0.9)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, real(ev(f, complex(x0))); rtol = 1e-5)
+        end
+    end
+end
+
+# term types that simplify what is built (SymJ distributes numbers over sums): the u-substitution maps
+# u to the variable on the generators, not by finding u in the printed constant (apostol 55)
+@testset "u-substitution independent of the term type's simplification" begin
+    function distributing(op, args...)
+        if op === (*) && length(args) == 2 && args[1] isa Number && args[2] isa Expr &&
+           args[2].head === :call && args[2].args[1] === :+
+            return Expr(:call, :+, (Expr(:call, :*, args[1], t) for t in args[2].args[2:end])...)
+        end
+        Expr(:call, nameof(op), args...)
+    end
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    f = :(sqrt(1 + 3 * cos(x) ^ 2) * sin(2x))
+    F = Risch.try_usub(f, :x; build = distributing, lift = identity, verify = true)
+    @test F !== nothing
+    for x0 in (0.31, 0.57)
+        @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+    end
+end
+
+# callable term types: constants built with `maketerm`, kept exact (not the `u(value, :)` placeholder)
+@testset "exact constants for callable term types" begin
+    SimpleExpressions.@symbolic x
+    F = Risch.integrate(exp(-x ^ 2), x)
+    @test occursin("sqrt(π)", string(F))
+    @test !occursin("sqrt(1)", string(F))
+end
+
 # asec, acsc: √(1 - 1/u²) is kept (√(u² - 1)/u held for u > 1 only); check both signs
 @testset "asec, acsc for u < -1" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
