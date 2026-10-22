@@ -177,3 +177,120 @@ function s_valuation(h::Frac)
     v(p) = (i = findfirst(c -> !iszero(c), p.c); i === nothing ? 0 : i - 1)
     v(h.num) - v(h.den)
 end
+
+# ---------------------------------------------------------------------------
+# Step PW: radicands that are perfect powers at a finer monomial. U = U(θ) with θ = e^(ckx) (or e^(ikx)) is,
+# with θ = φ^q, U = r^q d W(φ)^q (1 + cos x = 2 cos²(x/2), 1 + sin x = (cos(x/2) + sin(x/2))², eˣ = (e^(x/2))²),
+# W real, r ∈ ℚ or ℚ(i), d ≥ 1 squarefree (q = 2). W is built in the tower of φ and W^q = U checked there.
+# f is integrated with U^(p/q) ↦ (√d W)^p, giving G. For q even and p odd, U^(p/q) = ±(√d W)^p with a sign
+# constant where W keeps its sign: the answer G·U^(1/q)/(√d W) (Rubi's convention: -2cos x/√(1 + sin x)).
+# One radicand only (all its exponents of one parity when q is even).
+# ---------------------------------------------------------------------------
+function integrate_power_radicands(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    xk = string(x)
+    rads = Any[]
+    function findrads(t)
+        isnode(t) || return
+        rp = radical_parts(t)
+        if rp !== nothing && depends_on(rp[2], xk) && radicand_element(rp[2], xk) === nothing
+            push!(rads, (t, rp...))
+            return
+        end
+        foreach(findrads, arguments(t))
+    end
+    findrads(f)
+    isempty(rads) && return nothing
+    ut = rads[1][3]
+    all(r -> string(r[3]) == string(ut), rads) || return nothing
+    q = Int(lcm([denominator(r[2]) for r in rads]))
+    ps = [Int(numerator(r[2] * q)) for r in rads]       # U^(p/q)
+    iseven(q) && !(all(isodd, ps) || all(iseven, ps)) && return nothing
+    T, U = try
+        build_tower(ut, xk)
+    catch e
+        (e isa RischNotImplemented || e isa NeedComplex) && return nothing
+        rethrow()
+    end
+    (length(T.levels) == 1 && T.levels[1].kind === :exp && levelof(T, U) == 1) || return nothing
+    C = ctype(T)
+    (C === Q || C === QI) || return nothing
+    cs(p) = (v = [const_value(T, c) for c in p.c]; any(isnothing, v) ? nothing : UPoly{C}(C[c for c in v]))
+    N, Dn = cs(U.num), cs(U.den)
+    (N === nothing || Dn === nothing) && return nothing
+    a = T.levels[1].arg                                 # θ = exp(ca x)
+    (isone(a.den) && degree(a.num) == 1 && iszero(a.num.c[1])) || return nothing
+    ca = a.num.c[2]
+    kr = C === QI ? to_real(ca * inv(cimag(C))) : ca
+    kr isa Q || return nothing
+    # U(φ^q) = c P^q / Q^q
+    up(p) = UPoly{C}(vcat((c -> vcat(c, fill(zero(C), q - 1))).(p.c)...))     # p(φ^q)
+    function qpower(p)
+        sf = squarefree(p)
+        all(((_, m),) -> m % q == 0, sf) || return nothing
+        P = one(p)
+        for (g, m) in sf
+            P = P * g^(m ÷ q)
+        end
+        lc(p), P
+    end
+    pn, pd = qpower(up(N)), qpower(up(Dn))
+    (pn === nothing || pd === nothing) && return nothing
+    c = pn[1] / pd[1]
+    # c = r^q d
+    r, d = nothing, 1
+    if q == 2
+        r = csqrt(c)
+        if r === nothing
+            if C === Q
+                s0, d0 = sqfree_split(numerator(c) * denominator(c))
+                d0 > 1 || return nothing
+                r, d = Q(s0) / denominator(c), Int(d0)
+            else
+                sp = qi_split_sqrt(c)
+                sp === nothing && return nothing
+                d, r = sp
+            end
+        end
+    elseif C === Q && c > 0
+        rn, rd = round(BigInt, numerator(c)^(1 / q)), round(BigInt, denominator(c)^(1 / q))
+        (rn^q == numerator(c) && rd^q == denominator(c)) || return nothing
+        r = Q(rn, rd)
+    else
+        return nothing
+    end
+    # the tower of φ, from the term exp(ca/q x) (or sin of it) of the user's type
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    kq = kr / q
+    arg = isone(kq) ? bd.x : mk(bd, :*, cterm(bd, kq), bd.x)
+    T2, φt = try
+        build_tower(mk(bd, C === QI ? :sin : :exp, arg), xk; minimize = false)
+    catch e
+        (e isa RischNotImplemented || e isa NeedComplex) && return nothing
+        rethrow()
+    end
+    length(T2.levels) == 1 || return nothing
+    C2 = ctype(T2)
+    C2 === C || return nothing
+    K0 = T2.Ts[1]
+    φ = frac(xpoly(K0))
+    li(c) = lconst(T2, c, 1)
+    ev(p) = foldr((cc, acc) -> acc * φ + li(cc), p.c; init = zero(φ))
+    W = li(r) * ev(pn[2]) / ev(pd[2])
+    Uφ = ev(up(N)) / ev(up(Dn))
+    # (√d W)^q = U, d = 1 unless q = 2; a mismatch also catches a tower level other than e^(ca x/q)
+    W^q * li(cfromQ(C, Q(d))) == Uφ || return nothing
+    kinds = sigma_kinds(T2)
+    if C === QI
+        tconj(T2, kinds, W, 1) == W || return nothing  # W real
+    end
+    Wt = C === QI ? real_term(bd, T2, kinds, W) : tower_to_term(bd, T2, W)
+    d == 1 || (Wt = mk(bd, :*, mk(bd, :sqrt, bd.lift(d)), Wt))
+    pw(p) = p == 1 ? Wt : mk(bd, :^, Wt, bd.lift(p))
+    pmap = Dict(string(t) => pw(p) for ((t, _, _), p) in zip(rads, ps))
+    sub(t) = haskey(pmap, string(t)) ? pmap[string(t)] : isnode(t) ? term_rebuild(bd, t, Any[sub(s) for s in arguments(t)]) : t
+    G = risch_integrate(sub(f), x; build = build, lift = lift, verify = verify)
+    G isa IntegralWithRootSums && return nothing
+    (iseven(q) && isodd(ps[1])) || return G
+    root = q == 2 ? mk(bd, :sqrt, ut) : mk(bd, :^, ut, bd.lift(1 // q))
+    mk(bd, :*, G, mk(bd, :/, root, Wt))
+end

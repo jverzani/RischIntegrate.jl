@@ -99,6 +99,13 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
             nothing
         end
         r === nothing || return r
+        r = try                                          # perfect powers at a finer monomial (step PW)
+            integrate_power_radicands(f, x; build = build, lift = lift, verify = verify)
+        catch e
+            e isa RischNotImplemented || rethrow()
+            nothing
+        end
+        r === nothing || return r
         # nested square roots that denest (step DN): rewrite, then integrate the ordinary radicals
         bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
         g = denest_rewrite(f, xk, bd)

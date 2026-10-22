@@ -1347,6 +1347,20 @@ end
     end
 end
 
+# step PW: radicands that are perfect powers at a finer monomial (1 + sin x = (cos(x/2) + sin(x/2))², eˣ)
+@testset "perfect-power radicands at half angles (step PW)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for f in (:((1 + sin(x)) ^ (1 // 2)), :((1 - cos(x)) ^ (1 // 2)), :(sqrt(1 + sin(2x))), :(1 / sqrt(1 + cos(2x))),
+              :(1 / (1 - cos(3x)) ^ (3 // 2)), :(cos(x / 3) ^ 3 / sqrt(exp(x))), :((sin(x / 2) + cos(x / 2)) / exp(x) ^ (1 // 3)),
+              :(x * sqrt(1 + cos(x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 1.1, 2.5, -0.7)               # (on both sides of sign changes of the half-angle root)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, real(ev(f, complex(x0))); rtol = 1e-5)
+        end
+    end
+end
+
 # asec, acsc: √(1 - 1/u²) is kept (√(u² - 1)/u held for u > 1 only); check both signs
 @testset "asec, acsc for u < -1" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
