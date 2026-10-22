@@ -59,8 +59,16 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     Rt = frac_term(b0, Ru)
     function radval(e)                                  # κ^e R(x)^e as a term
         k = 2 * e
-        κe = (σ !== nothing && isone(denominator(k))) ? mk(b0, :^, cterm(b0, σ), b0.lift(Int(numerator(k)))) :
-             mk(b0, :^, cterm(b0, κ), b0.lift(e))
+        # κ^(k/2) = |σ|^k: for odd k, |σ| = √(σ²) (the sign of σ depends on the order of the parameters)
+        κe = if σ !== nothing && isone(denominator(k))
+            kk = Int(numerator(k))
+            sr = crational(σ)
+            aσ = sr !== nothing ? cterm(b0, abs(sr)) : iseven(kk) ? cterm(b0, σ) :
+                 mk(b0, :sqrt, mk(b0, :^, cterm(b0, σ), b0.lift(2)))
+            kk == 1 ? aσ : mk(b0, :^, aσ, b0.lift(kk))
+        else
+            mk(b0, :^, cterm(b0, κ), b0.lift(e))
+        end
         Re = isone(e * 2) ? mk(b0, :sqrt, Rt) : mk(b0, :^, Rt, b0.lift(e))
         mk(b0, :*, κe, Re)
     end
