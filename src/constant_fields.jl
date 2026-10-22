@@ -242,7 +242,10 @@ cimag(::Type{Frac{UPoly{B}}}) where {B} = kconst(cimag(B))
 cimag(::Type{T}) where {T} = throw(RischNotImplemented("the constant field $T does not contain i"))
 is_complex_field(::Type{C}) where {C} = C === QI || C <: QSB{<:Any,QI} || (C <: Frac && cbase(C) === QI)
 const MAX_CONSTS = 8
-const MAX_PARAMS = 4          # symbolic parameters (steps SY, PF): see the cap in `parse_tower`
+const MAX_PARAMS = 6          # symbolic parameters (steps SY, PF): see the cap in `parse_tower`
+# RootSums over more constant generators than this are refused: their log part (Lazard-Rioboo-Trager over
+# ℚ(t₁, …, t₅)) did not finish in minutes for a general quartic, while other integrals with 5, 6 parameters are fast
+const MAX_ROOTSUM_GENS = 4
 
 # the value of c at depth `d` of the nested constant field, if c lies in that subfield
 function const_below(c, d::Int)

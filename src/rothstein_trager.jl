@@ -165,6 +165,25 @@ function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
             return vcat(p1[1], p2[1]), vcat(p1[2], p2[2]), vcat(p1[3], p2[3]), vcat(p1[4], p2[4])
         end
     end
+    # D ∈ ℚ[x] over a parameter field: split by its factors over ℚ, so that each residue polynomial has
+    # degree of a factor (a rational root gives its residue at once; a resultant over ℚ(a, b, …) of the
+    # whole D would have roots it cannot find)
+    if C <: Frac && !iszero(A) && degree(D) >= 2
+        qs = [crational(c) for c in D.c]
+        if all(!isnothing, qs)
+            fs = factor_Q(UPoly{Q}(Q[q for q in qs]))
+            if length(fs) > 1
+                G = UPoly{C}(C[cfromQ(C, c) for c in fs[1].c])
+                H, r = divrem(D, G)
+                iszero(r) || throw(RischError("log_part: a factor over ℚ does not divide D"))
+                sH, uG, g = gcdex(H, G)
+                isone(g) || throw(RischError("log_part: factors over ℚ are not coprime"))
+                p1 = log_part(rem(A * sH, G), G)
+                p2 = log_part(rem(A * uG, H), monic(H))
+                return vcat(p1[1], p2[1]), vcat(p1[2], p2[2]), vcat(p1[3], p2[3]), vcat(p1[4], p2[4])
+            end
+        end
+    end
     CXl = UPoly{C}
     CXFl = Frac{UPoly{C}}
     logs = Tuple{C,CXl}[]
@@ -173,6 +192,9 @@ function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
     quads = Any[]
     iszero(A) && return logs, atans, unresolved, quads
     dD = deriv(D)
+    # (the resultant over more than MAX_ROOTSUM_GENS parameters does not finish for a quartic)
+    C <: Frac && cdepth(C) > MAX_ROOTSUM_GENS && degree(D) > 2 && throw(RischNotImplemented(
+        "residues of a denominator of degree $(degree(D)) over more than $MAX_ROOTSUM_GENS symbolic constants"))
     Rz = residue_resultant(D, A, dD)                 # R(z) = res_x(D, A - z D')
     iszero(Rz) && throw(RischError("zero resultant in the residue computation"))
     degree(Rz) <= 0 && return logs, atans, unresolved, quads

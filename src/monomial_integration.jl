@@ -245,6 +245,9 @@ function residue_logs(T::Tower, i::Int, A::UPoly, D::UPoly)
     end
     K = T.Ts[i]
     dD = Dp(T, i, D)
+    CT0 = ctype(T)
+    CT0 <: Frac && cdepth(CT0) > MAX_ROOTSUM_GENS && degree(D) > 2 && throw(RischNotImplemented(
+        "residues of a denominator of degree $(degree(D)) over more than $MAX_ROOTSUM_GENS symbolic constants"))
     Rz = residue_resultant(D, A, dD)
     iszero(Rz) && throw(RischError("zero resultant in the residue computation"))
     CT = ctype(T)

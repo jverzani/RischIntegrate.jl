@@ -213,6 +213,8 @@ function lrt_logs(m::UPoly{K}, D::UPoly{K}, A::UPoly{K}, dD::UPoly{K}) where {K}
 end
 
 function root_sums(rest::UPoly{C}, R::UPoly{C}, D::UPoly{C}, var::String; arg = nothing) where {C}
+    cdepth(C) > MAX_ROOTSUM_GENS && degree(rest) > 2 && throw(RischNotImplemented(
+        "a RootSum over more than $MAX_ROOTSUM_GENS symbolic constants (parameters)"))
     P = UPoly{C}
     dD = deriv(D)
     n = max(length(R.c), length(dD.c))
