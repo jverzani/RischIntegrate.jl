@@ -247,7 +247,8 @@ function run_tests(x, evalat, name)
         @test_throws Risch.NotElementary Risch.risch_integrate(sqrt(x^3 + 1) + sqrt(x^3 + 2) + sqrt(x^3 + 3), x)  # phase 3a
         @test_throws Risch.NotElementary Risch.risch_integrate(1 / sqrt(x^3 + 1), x)  # elliptic (SI2 phase 1)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(log(x)), x)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x + sqrt(x + 1)), x)  # nested
+        F = Risch.risch_integrate(sqrt(x + sqrt(x + 1)), x)   # nested: u = √(x + 1) (step NR)
+        @test antiderivative_ok(F, sqrt(x + sqrt(x + 1)), 2.0, evalat)
     end
 
     @testset "$name: radicands that are odd powers (step RP)" begin
@@ -1371,6 +1372,19 @@ end
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)
         for x0 in (0.3, 0.7)
             @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
+# step NR: an innermost radical of a linear radicand removed by u = (ax + b)^(1/Q)
+@testset "nested radicals over a linear radicand (step NR)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for f in (:(sqrt(1 + x) / (x + sqrt(1 + sqrt(1 + x)))), :(1 / (x - sqrt(1 + sqrt(1 + x)))),
+              :(x / (x + sqrt(1 - sqrt(1 + x)))), :(sqrt(1 + (2x + 1) ^ (1 // 3))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.31, 2.0)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, real(ev(f, complex(x0))); rtol = 1e-5)
         end
     end
 end

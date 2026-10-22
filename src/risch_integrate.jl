@@ -99,6 +99,13 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
             nothing
         end
         r === nothing || return r
+        r = try                                          # an innermost radical of a linear radicand (step NR)
+            integrate_inner_linear_radical(f, x; build = build, lift = lift, verify = verify)
+        catch e
+            (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+            nothing
+        end
+        r === nothing || return r
         r = try                                          # perfect powers at a finer monomial (step PW)
             integrate_power_radicands(f, x; build = build, lift = lift, verify = verify)
         catch e

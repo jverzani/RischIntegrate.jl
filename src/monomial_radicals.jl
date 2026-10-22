@@ -347,3 +347,44 @@ function integrate_power_radicands(f, x; build = nothing, lift = nothing, verify
     root = q == 2 ? mk(bd, :sqrt, ut) : mk(bd, :^, ut, bd.lift(1 // q))
     mk(bd, :*, G, mk(bd, :/, root, Wt))
 end
+
+# ---------------------------------------------------------------------------
+# Step NR: nested radicals with an innermost radical of a linear radicand L = a x + b (√(1 + √(1 + x))):
+# u = L^(1/Q), Q the lcm of the indices of L's radicals, x = (u^Q - b)/a, dx = Q u^(Q-1)/a du; L^(p/q) ↦ u^(pQ/q).
+# The outer radicals then have radicands rational in u, integrated as usual; u = L^(1/Q) is put back.
+# ---------------------------------------------------------------------------
+function integrate_inner_linear_radical(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    xk = string(x)
+    rads = collect_radicals(f, xk)
+    nested = [(e, u) for (e, u) in rads if depends_on(u, xk) && !isempty(collect_radicals(u, xk))]
+    isempty(nested) && return nothing
+    L = nothing
+    for (_, u) in nested, (e2, v) in collect_radicals(u, xk)
+        ve = radicand_element(v, xk)
+        (ve !== nothing && isone(ve.den) && degree(ve.num) == 1) || continue
+        L = (v, ve)
+        break
+    end
+    L === nothing && return nothing
+    Lt, Le = L
+    Q = Int(reduce(lcm, (denominator(e) for (e, u) in rads if string(u) == string(Lt)); init = 1))
+    Q > 1 || return nothing
+    a, b0c = Le.num.c[2], Le.num.c[1]
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    upow(k) = k == 1 ? bd.x : mk(bd, :^, bd.x, bd.lift(k))
+    xu = mk(bd, :/, mk(bd, :+, upow(Q), cterm(bd, -b0c)), cterm(bd, a))     # x = (u^Q - b)/a
+    function sub(t)
+        if isnode(t)
+            rp = radical_parts(t)
+            (rp !== nothing && string(rp[2]) == string(Lt)) && return upow(Int(rp[1] * Q))
+            return term_rebuild(bd, t, Any[sub(s) for s in arguments(t)])
+        end
+        string(t) == xk ? xu : t
+    end
+    g = mk(bd, :*, sub(f), mk(bd, :/, mk(bd, :*, bd.lift(Q), upow(Q - 1)), cterm(bd, a)))
+    G = risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    G isa IntegralWithRootSums && return nothing
+    root = Q == 2 ? mk(bd, :sqrt, Lt) : mk(bd, :^, Lt, bd.lift(1 // Q))
+    back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? root : t)
+    back(G)
+end
