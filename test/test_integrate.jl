@@ -1228,6 +1228,20 @@ end
     @test isapprox((ev(F, 0.5 + 1e-6) - ev(F, 0.5 - 1e-6)) / 2e-6, ev(:((1 + x ^ (1 // 4)) ^ (1 // 3) / sqrt(x)), 0.5); rtol = 1e-5)
 end
 
+# coth, sech, csch; shifts sin(x + a) (cos a, sin a opaque constants) and sin(x + π/6) (exact values)
+@testset "hyperbolic reciprocals, trig shifts (step TS2)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7)), e))
+    for f in (:(coth(x)), :(sech(x)), :(csch(x) ^ 3), :(x * coth(x) ^ 2), :(exp(x) * sech(exp(x))),
+              :(sin(x + a) * cos(x)), :(sinh(x + a) * exp(x)), :(tan(x + a)), :(sin(x + π / 6) * cos(x)),
+              :(cos(x - π / 3) / sin(x)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.4, 1.3)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
 # asec, acsc: √(1 - 1/u²) is kept (√(u² - 1)/u held for u > 1 only); check both signs
 @testset "asec, acsc for u < -1" begin
     build(op, args...) = Expr(:call, nameof(op), args...)

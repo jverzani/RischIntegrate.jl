@@ -28,6 +28,10 @@ function parse_tower(t, T::Tower)
         args = arguments(t)
         if !isempty(args)
             n = opname(operation(t))
+            # step TS2: a trigonometric or hyperbolic function of a parameter term (cos a) is an opaque constant
+            if n in SHIFT_TRIG && length(args) == 1 && !has_x(args[1], T.xk) && has_param(args[1], T.xk)
+                return sym_const(T, t)
+            end
             if n in (:sin, :cos, :tan, :cot, :sec, :csc) && length(args) == 1   # Step 7: θ = exp(i·u) over ℚ(i)
                 C = ctype(T)
                 is_complex_field(C) || throw(NeedComplex())
@@ -73,7 +77,7 @@ function parse_tower(t, T::Tower)
                 return make_exp(T, a[1])
             elseif n === :log && length(a) == 1
                 return make_log(T, a[1])
-            elseif n in (:sinh, :cosh, :tanh) && length(a) == 1
+            elseif n in (:sinh, :cosh, :tanh, :coth, :sech, :csch) && length(a) == 1
                 e1 = make_exp(T, a[1])
                 e2 = make_exp(T, -a[1])
                 p, m = unify(T, e1, e2)
@@ -82,7 +86,10 @@ function parse_tower(t, T::Tower)
                 c = (p + m) * half
                 n === :sinh && return s
                 n === :cosh && return c
-                return s / c
+                n === :tanh && return s / c
+                n === :coth && return c / s
+                n === :sech && return inv(c)
+                return inv(s)                                   # csch
             elseif n === :^ && length(a) == 2
                 base, ex = a
                 k = const_value(T, ex)

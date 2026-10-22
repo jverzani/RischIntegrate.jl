@@ -54,7 +54,7 @@ function const_int(f::CXF)
     isone(denominator(c)) ? Int(numerator(c)) : nothing
 end
 
-const NONRATIONAL = (:exp, :log, :sin, :cos, :tan, :cot, :sec, :csc, :atan, :sinh, :cosh, :tanh, :abs, :sqrt, :cbrt)
+const NONRATIONAL = (:exp, :log, :sin, :cos, :tan, :cot, :sec, :csc, :atan, :sinh, :cosh, :tanh, :coth, :sech, :csch, :abs, :sqrt, :cbrt)
 
 function parse_rational(t, xk::String)::CXF
     if safe_iscall(t)
