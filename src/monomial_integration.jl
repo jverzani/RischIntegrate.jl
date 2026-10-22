@@ -599,7 +599,10 @@ function to_term(b::Builder, T::Tower, res::ElemIntegral)
         l = mk(b, :atan, frac_term(b, u))
         push!(ts, isone(c) ? l : mk(b, :*, cterm(b, c), l))
     end
-    for q in res.quads
+    shc, used = shi_chi_terms(b, T, res.quads)          # Ei(w), Ei(-w) pairs as Shi, Chi (H4)
+    append!(ts, shc)
+    for (qi, q) in enumerate(res.quads)
+        qi in used && continue
         if q isa TowerQuadLog
             r = mk(b, :sqrt, b.lift(q.d))
             Ut, Vt = tower_to_term(b, T, q.U), tower_to_term(b, T, q.V)

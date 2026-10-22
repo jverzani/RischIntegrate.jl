@@ -59,7 +59,7 @@ include("monomial_radicals.jl")
 include("kummer_logs.jl")
 include("real_log_arguments.jl")
 
-export integrate
+export integrate, sinhint, coshint
 
 """
     integrate(ex, x, ys...; build = nothing, lift = nothing)

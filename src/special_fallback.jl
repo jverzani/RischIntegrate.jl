@@ -5,8 +5,9 @@
 # numerically in an `IntegralWithRootSums` (as the ₂F₁ and Γ terms), and the other terms are rebuilt in the
 # user's term type.
 # ---------------------------------------------------------------------------
-const SPECIAL_FNS = (expinti, sinint, cosint, erf, erfi, li2, gamma)
-const SPECIAL_NAMES = (:expinti, :sinint, :cosint, :erf, :erfi, :li2, :gamma, :Ei, :Si, :Ci)
+const SPECIAL_FNS = (expinti, sinint, cosint, sinhint, coshint, erf, erfi, li2, gamma)
+const SPECIAL_NAMES = (:expinti, :sinint, :cosint, :sinhint, :coshint, :erf, :erfi, :li2, :gamma, :Ei, :Si, :Ci,
+                       :_₁F₁, :pFq)
 
 """
     ExprTerm

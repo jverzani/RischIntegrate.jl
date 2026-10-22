@@ -290,10 +290,11 @@ function try_trig_power(f, x; build = nothing, lift = nothing, verify::Bool = tr
     xk = string(x)
     b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     nums, rest = Any[], Any[]
+    syms = Any[]                                        # symbolic exponents: an Expr pFq term
     for (t, sg) in gamma_summands(f)
-        cs, sq, trig = Any[], Ref(Q(0)), Any[]
-        ok = trig_factors!(t, xk, 1, cs, sq, trig)
-        if !ok || length(trig) != 1 || isone(denominator(sq[]))
+        cs, sq, trig, ssym = Any[], Ref(Q(0)), Any[], Any[]
+        ok = trig_factors!(t, xk, 1, cs, sq, trig, ssym)
+        if !ok || length(trig) != 1 || (isempty(ssym) && isone(denominator(sq[])))
             push!(rest, sg == 1 ? t : mk(b0, :*, b0.lift(-1), t))
             continue
         end
@@ -306,33 +307,51 @@ function try_trig_power(f, x; build = nothing, lift = nothing, verify::Bool = tr
             bq = -bq
             issin && (c = mk(b0, :*, b0.lift(-1), c))
         end
-        push!(nums, TrigPowerTerm(c, sq[], bq, issin, xk))
+        if isempty(ssym)
+            push!(nums, TrigPowerTerm(c, sq[], bq, issin, xk))
+        else
+            b0.x isa Symbol || return nothing           # (other term types: through Expr, `special_fallback`)
+            sts = Any[e == 1 ? u : mk(b0, :*, b0.lift(-1), u) for (u, e) in ssym]
+            push!(sts, cterm(b0, sq[] + (issin ? 2 : 1)))
+            et = mk(b0, :+, sts...)                     # s + 1 (cos) or s + 2 (sin)
+            half = mk(b0, :/, et, b0.lift(2))
+            z = mk(b0, :*, cterm(b0, -bq^2 / 4), mk(b0, :^, b0.x, b0.lift(2)))
+            pf = Expr(:call, :pFq, Expr(:tuple, half), Expr(:tuple, issin ? 3 // 2 : 1 // 2, mk(b0, :+, half, b0.lift(1))), z)
+            fs = Any[mk(b0, :/, mk(b0, :^, b0.x, et), et), pf]
+            string(c) == "1" || pushfirst!(fs, c)
+            issin && !isone(bq) && insert!(fs, 1, cterm(b0, bq))
+            push!(syms, mk(b0, :*, fs...))
+        end
     end
-    isempty(nums) && return nothing
-    E = b0.lift(0)
+    (isempty(nums) && isempty(syms)) && return nothing
+    E = isempty(syms) ? b0.lift(0) : length(syms) == 1 ? syms[1] : mk(b0, :+, syms...)
     if !isempty(rest)
         F = risch_integrate(length(rest) == 1 ? rest[1] : mk(b0, :+, rest...), x; build = build, lift = lift, verify = verify)
-        F isa IntegralWithRootSums ? (append!(nums, F.rootsums); E = F.elementary) : (E = F)
+        F isa IntegralWithRootSums ? (append!(nums, F.rootsums); E = mk(b0, :+, E, F.elementary)) : (E = mk(b0, :+, E, F))
     end
-    IntegralWithRootSums(E, nums, xk)
+    isempty(nums) ? E : IntegralWithRootSums(E, nums, xk)
 end
 # factors of a product: constants (cs), x^s (sq), sin/cos(b x) with b ∈ ℚ (trig); false if another factor
-function trig_factors!(t, xk, sign, cs, sq, trig)
+function trig_factors!(t, xk, sign, cs, sq, trig, ssym)
     has_x(t, xk) || (push!(cs, (t, sign)); return true)
     string(t) == xk && (sq[] += sign; return true)
     safe_iscall(t) || return false
     args = arguments(t)
     n = opname(operation(t))
-    n === :* && return all(a -> trig_factors!(a, xk, sign, cs, sq, trig), args)
+    n === :* && return all(a -> trig_factors!(a, xk, sign, cs, sq, trig, ssym), args)
     if n === :/ && length(args) == 2
-        return trig_factors!(args[1], xk, sign, cs, sq, trig) && trig_factors!(args[2], xk, -sign, cs, sq, trig)
+        return trig_factors!(args[1], xk, sign, cs, sq, trig, ssym) && trig_factors!(args[2], xk, -sign, cs, sq, trig, ssym)
     end
     rp = radical_parts(t)
     (rp !== nothing && string(rp[2]) == xk) && (sq[] += sign * rp[1]; return true)
     if n === :^ && length(args) == 2 && string(args[1]) == xk
         e = leaf_rational(args[2])
-        e === nothing && return false
-        sq[] += sign * Q(e)
+        if e === nothing
+            has_x(args[2], xk) && return false
+            push!(ssym, (args[2], sign))                # a symbolic exponent
+        else
+            sq[] += sign * Q(e)
+        end
         return true
     end
     if n in (:sin, :cos) && length(args) == 1 && sign == 1

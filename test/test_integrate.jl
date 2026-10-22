@@ -1315,6 +1315,16 @@ end
                 @test isapprox(real(d(x0)), ev(f, x0); rtol = 1e-6)
             end
         end
+        # symbolic exponents with sin, cos (Expr pFq terms); Shi, Chi
+        Main.eval(:(using HypergeometricFunctions: pFq; using RischIntegrate: sinhint, coshint))
+        for f in (:(x ^ n * sin(x)), :(cos(2x) / x ^ n), :(x ^ n * cos(x) + x * sin(x)),
+                  :(sinh(x) / x), :(cosh(3x) / x + sinh(x) / x), :(sinh(2x) / x ^ 2))
+            F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+            for x0 in (0.5, 2.0)
+                @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+            end
+        end
+        @test string(Risch.risch_integrate(:(sinh(x) / x), :x; build = build, lift = identity)) == "sinhint(x)"
         @test string(Risch.risch_integrate(:(sin(x) / x), :x; build = build, lift = identity)) == "sinint(x)"
         @test occursin("2 * cosint(2x)", string(Risch.risch_integrate(:(sin(2x) / x ^ 2), :x; build = build, lift = identity)))
     finally

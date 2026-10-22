@@ -171,6 +171,44 @@ function special_log(T::Tower, i::Int, R::UPoly, Dsf::UPoly)
     SpecialTerm(:Ei, cv, -(kc * bc), lconst(T, kc, i) * w, Q(0), d)
 end
 
+"""
+    sinhint(x), coshint(x)
+
+The hyperbolic sine and cosine integrals Shi(x) = (Ei(x) - Ei(-x))/2 and (Ei(x) + Ei(-x))/2 (Chi(x) for
+x > 0; for x < 0 the real antiderivative of cosh(x)/x, an even function): antiderivatives of sinh(x)/x and
+cosh(x)/x. SpecialFunctions.jl has neither; RischIntegrate uses them in answers (H4).
+"""
+sinhint(x::Real) = (expinti(x) - expinti(-x)) / 2
+coshint(x::Real) = (expinti(x) + expinti(-x)) / 2
+OPS[:Shi] = sinhint
+OPS[:Chi] = coshint
+
+# c₁ Ei(w) + c₂ Ei(-w) (SpecialTerms without e^p) as (c₁ + c₂) Chi(w) + (c₁ - c₂) Shi(w), when the term type
+# builds sinhint and coshint calls: the terms, and the indices of the quads used (empty when none)
+function shi_chi_terms(b::Builder, T::Tower, quads)
+    ts, used = Any[], Set{Int}()
+    for i in eachindex(quads), j in eachindex(quads)
+        (i < j && !(i in used) && !(j in used)) || continue
+        q1, q2 = quads[i], quads[j]
+        (q1 isa SpecialTerm && q2 isa SpecialTerm && q1.fn === :Ei && q2.fn === :Ei && iszero(q1.p) && iszero(q2.p)) || continue
+        levelof(T, q1.z) == levelof(T, q2.z) && q1.z == -q2.z || continue
+        w = lead_rational(q1.z) < 0 ? q2.z : q1.z          # the argument with a positive leading coefficient
+        c1, c2 = w == q1.z ? (q1.c, q2.c) : (q2.c, q1.c)
+        wt = tower_to_term(b, T, w)
+        sh, ch = try
+            mk(b, :Shi, wt), mk(b, :Chi, wt)
+        catch
+            continue
+        end
+        (sh isa Number || ch isa Number) && continue
+        for (c, t) in ((c1 + c2, ch), (c1 - c2, sh))
+            iszero(c) || push!(ts, isone(c) ? t : mk(b, :*, cterm(b, c), t))
+        end
+        push!(used, i, j)
+    end
+    ts, used
+end
+
 # the term with a given coefficient term `ct` (real fields); zt converts a tower element
 function special_out(b::Builder, q::SpecialTerm, ct, zt)
     if q.fn === :Ei
