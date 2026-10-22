@@ -255,6 +255,16 @@ the last section.
   * Faster divisor arithmetic for large multiples (Cantor's algorithm / Mumford representation).
   * #J for genus ≥ 3 (counts over 𝔽_{pᵏ}, k ≤ g).
 
+* Parameters (2026-10-21), driven by the Apostol benchmark (Expr: 173 of 175 verified; Giac's own 171):
+  * Step PR (`param_radicals.jl`): radicands with parameters, x = s·u + h making them κ·R(u) with R
+    parameter-free; s oriented positive for a < b < …, √κ = |σ|.
+  * Step PL: log of a parameter a is a constant generator (`:symlog`), log(ax) = log a + log x.
+  * Step PQ (`param_quad_term`): RootSums over irreducible quadratics over ℚ(a, …) written out as
+    m₀ log N + 2σ atan(P₀/(σV)) (or the log form), the sign of δ taken at a = 1, b = 2, ….
+  * Step TW: tan(u/2) in the Bioche step over parameter fields (1/(1 + a cos x)); valid on (−π, π)
+    (the step PQ atans are not jump-corrected).
+  * Left: apostol 19 (nested radical, SQ over ℚ(i)), 172 (1/log(t)^(n+1): Γ(−n, −log t), H3 with b > 0).
+
 ## Where we start
 
 Radicals today (`radicals.jl`, `euler_substitutions.jl`) are handled only when the curve has
