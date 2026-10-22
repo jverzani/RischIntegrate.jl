@@ -6,6 +6,8 @@
 # can build one (Expr, …), else a `GammaTerm` evaluated numerically (numeric s only), as for ₂F₁.
 # ---------------------------------------------------------------------------
 using SpecialFunctions: gamma
+using HypergeometricFunctions: _₁F₁
+OPS[:_₁F₁] = _₁F₁                                       # (evaluating answers with a ₁F₁ term)
 
 """
     GammaTerm
@@ -124,7 +126,7 @@ function try_gamma(f, x; build = nothing, lift = nothing, verify::Bool = true)
         end
         (isone(L.den) && degree(L.num) == 1) || return nothing
         d, b = L.num.c[1], L.num.c[2]
-        b < 0 || return nothing
+        iszero(b) && return nothing                     # (b > 0: ₁F₁, below)
         cf = [(e == 1 ? u : mk(b0, :/, b0.lift(1), u)) for (u, e) in cs]
         sg == 1 || pushfirst!(cf, b0.lift(-1))
         c = isempty(cf) ? nothing : length(cf) == 1 ? cf[1] : mk(b0, :*, cf...)
@@ -139,6 +141,11 @@ function try_gamma(f, x; build = nothing, lift = nothing, verify::Bool = true)
     terms, nums = Any[], Any[]
     arg(b) = isone(-b) ? b0.x : mk(b0, :*, cterm(b0, -b), b0.x)
     for (c, s, b, d) in gts
+        if b > 0                                        # e^d x^(s+1)/(s+1) ₁F₁(s+1; s+2; bx)
+            r = terms_or_nums(b0, c, cterm(b0, s + 1), b, d, KummerTerm(c === nothing ? b0.lift(1) : c, s, b, d, xk))
+            push!(r[1] === terms_marker ? terms : nums, r[2])
+            continue
+        end
         g = try
             b0.build(gamma, cterm(b0, s + 1), arg(b))
         catch
@@ -154,6 +161,12 @@ function try_gamma(f, x; build = nothing, lift = nothing, verify::Bool = true)
         sts = Any[e == 1 ? u : mk(b0, :*, b0.lift(-1), u) for (u, e) in ssym]
         iszero(s + 1) || push!(sts, cterm(b0, s + 1))
         s1 = length(sts) == 1 ? sts[1] : mk(b0, :+, sts...)       # s + 1
+        if b > 0                                        # a symbolic ₁F₁ only
+            kt = terms_or_nums(b0, c, s1, b, d, nothing)
+            kt === nothing && return nothing
+            push!(terms, kt[2])
+            continue
+        end
         g = try
             b0.build(gamma, s1, arg(b))
         catch
@@ -169,8 +182,75 @@ function try_gamma(f, x; build = nothing, lift = nothing, verify::Bool = true)
     isempty(nums) ? E : IntegralWithRootSums(E, nums, xk)
 end
 
+# b > 0: (terms or nums, c e^d x^(s+1)/(s+1) ₁F₁(s+1; s+2; bx)) with s1 = s + 1 a term; the symbolic
+# ₁F₁ when the term type builds one, else the numeric term `num` (nothing: no answer)
+function terms_or_nums(b0::Builder, c, s1, b::Q, d::Q, num)
+    xs = b0.x
+    g = try
+        b0.build(_₁F₁, s1, mk(b0, :+, s1, b0.lift(1)), isone(b) ? xs : mk(b0, :*, cterm(b0, b), xs))
+    catch
+        nothing
+    end
+    if g === nothing || g isa Number
+        num === nothing && return nothing
+        return (nums_marker, num)
+    end
+    fs = Any[f for f in (c, iszero(d) ? nothing : mk(b0, :exp, cterm(b0, d)),
+                         mk(b0, :/, mk(b0, :^, xs, s1), s1), g) if f !== nothing]
+    (terms_marker, mk(b0, :*, fs...))
+end
+const terms_marker, nums_marker = :terms, :nums
+
+"""
+    KummerTerm
+
+`c e^d x^(s+1)/(s+1) ₁F₁(s+1; s+2; b x)`, an antiderivative of `c xˢ e^(bx + d)` (b > 0, x > 0), evaluated
+numerically through the `IntegralWithRootSums` it belongs to (term types without a ₁F₁ term).
+"""
+struct KummerTerm
+    c::Any
+    s::Q
+    b::Q
+    d::Q
+    var::String
+end
+function Base.show(io::IO, g::KummerTerm)
+    fr(r) = isone(denominator(r)) ? string(numerator(r)) : "$(numerator(r))/$(denominator(r))"
+    print(io, string(g.c) == "1" ? "" : "($(g.c))*", iszero(g.d) ? "" : "exp($(fr(g.d)))*",
+          g.var, "^(", fr(g.s + 1), ")/(", fr(g.s + 1), ")*₁F₁(", fr(g.s + 1), ", ", fr(g.s + 2), "; ",
+          isone(g.b) ? "" : fr(g.b) * "*", g.var, ")")
+end
+function kummer_value(g::KummerTerm, a::Number)
+    c = term_value(g.c, g.var, a)
+    s1 = Float64(g.s + 1)
+    x = float(real(a))
+    c * exp(Float64(g.d)) * x^s1 / s1 * _₁F₁(s1, s1 + 1, Float64(g.b) * x)
+end
+rs_value(g::KummerTerm, xk::String, a) = kummer_value(g, a)
+rs_value_continuous(g::KummerTerm, xk::String, a::Real) = kummer_value(g, a)
+depends_on(g::KummerTerm, yk::String) = g.var == yk
+
 # -c e^d (-b)^(-s-1) Γ (factors that are 1 left out)
 function gamma_product(b0::Builder, c, pw, d::Q, g)
     fs = Any[f for f in (c, pw, iszero(d) ? nothing : mk(b0, :exp, cterm(b0, d)), g) if f !== nothing]
     mk(b0, :*, b0.lift(-1), fs...)
+end
+
+# H3 through x = eᵘ: f(x) with log x (∫ 1/log(x)^(n+1) = ∫ e^u u^(-n-1) du), g(u) = f(eᵘ)·eᵘ with log x ↦ u
+# (u printed as x), integrated by `try_gamma`, and u = log x put back. Nothing when f has no log x or g is
+# not of the gamma kind.
+function try_gamma_log(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    xk = string(x)
+    islogx(t) = isnode(t) && opname(operation(t)) === :log && length(arguments(t)) == 1 && string(arguments(t)[1]) == xk
+    haslog(t) = islogx(t) || (isnode(t) && any(haslog, arguments(t)))
+    haslog(f) || return nothing
+    b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    ex = mk(b0, :exp, b0.x)
+    sub(t) = islogx(t) ? b0.x : isnode(t) ? term_rebuild(b0, t, Any[sub(a) for a in arguments(t)]) : (string(t) == xk ? ex : t)
+    G = try_gamma(mk(b0, :*, sub(f), ex), x; build = build, lift = lift, verify = verify)
+    G === nothing && return nothing
+    lx = mk(b0, :log, b0.x)
+    back(t) = isnode(t) ? term_rebuild(b0, t, Any[back(a) for a in arguments(t)]) : (string(t) == xk ? lx : t)
+    G isa IntegralWithRootSums && return nothing        # (numeric terms are in u)
+    back(G)
 end

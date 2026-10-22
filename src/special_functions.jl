@@ -192,6 +192,34 @@ lead_rational(c::QI) = iszero(c.re) ? c.im : c.re
 lead_rational(c::QSB) = lead_rational(iszero(c.a) ? c.b : c.a)
 lead_rational(c::Frac) = iszero(c) ? Q(0) : lead_rational(lc(c.num))
 
+# Re(c e^p F(z)), F = Ei, as [(fn, w, pr, q, a, b)] meaning e^pr (a cos q + b sin q) fn(w), fn ∈ (:Ei, :Ci, :Si),
+# p = pr + i ps, q = |ps| (a, b ∈ C real), so that the terms of conjugate pairs with the same function,
+# argument and factor can be added before printing; nothing for erf/erfi (`special_out_real` prints them)
+function special_parts_real(T::Tower, kinds, q::SpecialTerm)
+    q.fn === :Ei || return nothing
+    C = ctype(T)
+    gens = T.consts
+    half = inv(cfromQ(C, Q(2)))
+    I = cimag(C)
+    rpart(c) = (c + cconj_g(gens, c)) * half
+    ipart(c) = (c - cconj_g(gens, c)) * inv(I + I)
+    cr, ci, pr, ps = rpart(q.c), ipart(q.c), rpart(q.p), ipart(q.p)
+    σ = lead_rational(ps) < 0 ? -1 : 1
+    qa = σ == 1 ? ps : -ps
+    # κ = e^pr (cr + i ci)(cos ps + i sin ps), sin ps = σ sin q:  κr = e^pr (cr cos q - σ ci sin q),
+    # κi = e^pr (ci cos q + σ cr sin q)
+    κr, κi = (cr, -σ * ci), (ci, σ * cr)
+    lvl = levelof(T, q.z)
+    sz = tconj(T, kinds, q.z, lvl)
+    sz == q.z && return Any[(:Ei, q.z, pr, qa, κr...)]
+    sz == -q.z || return nothing
+    w = q.z * lconst(T, -I, lvl)
+    flip = lead_rational(w) < 0
+    flip && (w = -w)
+    si = flip ? κi : (-κi[1], -κi[2])                   # Re(κ (Ci + i Si)) = κr Ci - κi Si
+    Any[(:Ci, w, pr, qa, κr...), (:Si, w, pr, qa, si...)]
+end
+
 # Re(c e^p F(z)) over ℚ(i): Ei of a real z, or Ei(i w) ~ Ci(w) + i Si(w) for real w
 function special_out_real(b::Builder, T::Tower, kinds, q::SpecialTerm)
     C = ctype(T)
