@@ -31,6 +31,8 @@ function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = t
             g === nothing || return g
             g = try_gamma_log(f, x; build = build, lift = lift, verify = verify)
             g === nothing || return g
+            g = try_trig_power(f, x; build = build, lift = lift, verify = verify)   # xˢ sin, cos (H4)
+            g === nothing || return g
         end
         r = try_usub(f, x; build = build, lift = lift, verify = verify)    # step US
         r === nothing || return r

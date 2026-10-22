@@ -400,7 +400,12 @@ log parts stay elementary.
     * other shapes, e.g. P(x)·xˢ e^(bx) with P a polynomial: it works term by term only if written as a sum.
 * H2, general remainders on hyperelliptic curves of genus 1: reduce to Legendre/Carlson forms (F, E, Π)
   through the roots of a (needs algebraic numbers), or Appell-type functions. Larger.
-* H4, exponential/trigonometric integrals beyond the Risch Ei/Si/Ci answers (requested 2026-10-21): planned.
+* H3 extended (2026-10-22): b > 0 by x^(s+1)/(s+1) ₁F₁(s+1; s+2; bx) (symbolic `_₁F₁` or a numeric
+  `KummerTerm`); integrands with log x through x = eᵘ (∫ 1/log(x)^(n+1), apostol 172).
+* H4, part done (2026-10-22): ∫ xˢ sin(bx), xˢ cos(bx) (s ∉ ℤ rational) by real ₁F₂ forms (numeric
+  `TrigPowerTerm`); Ci/Si/Ei terms of conjugate pairs added before printing (sin x/x = Si(x)).
+  Left: symbolic s with sin/cos; Shi/Chi as names (Ei forms are given); erf-type output collection.
+* H4, exponential/trigonometric integrals beyond the Risch Ei/Si/Ci answers (requested 2026-10-21):
   * Generalised exponential integral: ∫ xˢ e^(bx) for b > 0 and the E_n family (`expint(n, z)` in
     SpecialFunctions), e.g. ∫ e^(−x)/xⁿ = −E_n(x) x^(1−n)… relations with Γ(1−n, x); ∫ e^(bx)/xⁿ for symbolic n.
   * Sine/cosine integrals with powers and shifts: ∫ sin(ax + c)/xⁿ, ∫ cos(ax²)/x, ∫ sin(x)/(x + a),

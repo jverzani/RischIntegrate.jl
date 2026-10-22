@@ -1299,6 +1299,29 @@ end
     @test !occursin("sqrt(1)", string(F))
 end
 
+# H3 (b > 0, ₁F₁; x = eᵘ for log x) and H4 (xˢ sin, cos by ₁F₂); like Si/Ci terms added
+@testset "₁F₁, ₁F₂ answers; collected Si/Ci (phase 6 H3, H4)" begin
+    Risch.HYP_ANSWERS[] = true
+    try
+        build(op, args...) = Expr(:call, nameof(op), args...)
+        ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(n = 0.7)), e))
+        Main.eval(:(using HypergeometricFunctions: _₁F₁))
+        for f in (:(1 / log(x) ^ (n + 1)), :(x ^ n * exp(2x)), :(exp(x) / x ^ n), :(x ^ (1 // 3) * exp(3x)),
+                  :(x ^ (1 // 2) * sin(x)), :(cos(2x) / x ^ (1 // 3)), :(3 * x ^ (5 // 2) * cos(x) + x * exp(x)))
+            F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+            d(x0) = F isa Risch.IntegralWithRootSums ? (F(x0 + 1e-6) - F(x0 - 1e-6)) / 2e-6 :
+                    (ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6
+            for x0 in (1.5, 4.0)
+                @test isapprox(real(d(x0)), ev(f, x0); rtol = 1e-6)
+            end
+        end
+        @test string(Risch.risch_integrate(:(sin(x) / x), :x; build = build, lift = identity)) == "sinint(x)"
+        @test occursin("2 * cosint(2x)", string(Risch.risch_integrate(:(sin(2x) / x ^ 2), :x; build = build, lift = identity)))
+    finally
+        Risch.HYP_ANSWERS[] = false
+    end
+end
+
 # asec, acsc: √(1 - 1/u²) is kept (√(u² - 1)/u held for u > 1 only); check both signs
 @testset "asec, acsc for u < -1" begin
     build(op, args...) = Expr(:call, nameof(op), args...)

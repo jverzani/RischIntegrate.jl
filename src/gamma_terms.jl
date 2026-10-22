@@ -6,7 +6,7 @@
 # can build one (Expr, …), else a `GammaTerm` evaluated numerically (numeric s only), as for ₂F₁.
 # ---------------------------------------------------------------------------
 using SpecialFunctions: gamma
-using HypergeometricFunctions: _₁F₁
+using HypergeometricFunctions: _₁F₁, pFq
 OPS[:_₁F₁] = _₁F₁                                       # (evaluating answers with a ₁F₁ term)
 
 """
@@ -253,4 +253,93 @@ function try_gamma_log(f, x; build = nothing, lift = nothing, verify::Bool = tru
     back(t) = isnode(t) ? term_rebuild(b0, t, Any[back(a) for a in arguments(t)]) : (string(t) == xk ? lx : t)
     G isa IntegralWithRootSums && return nothing        # (numeric terms are in u)
     back(G)
+end
+
+# H4: ∫ c xˢ cos(bx), ∫ c xˢ sin(bx) for s ∉ ℤ rational (x > 0), by the series termwise:
+#   ∫ xˢ cos(bx) = x^(s+1)/(s+1) ₁F₂((s+1)/2; 1/2, (s+3)/2; -b²x²/4)
+#   ∫ xˢ sin(bx) = b x^(s+2)/(s+2) ₁F₂((s+2)/2; 3/2, (s+4)/2; -b²x²/4)
+# Real forms (no complex Γ). The terms are `TrigPowerTerm`s, evaluated numerically.
+struct TrigPowerTerm
+    c::Any
+    s::Q
+    b::Q
+    issin::Bool
+    var::String
+end
+function Base.show(io::IO, g::TrigPowerTerm)
+    fr(r) = isone(denominator(r)) ? string(numerator(r)) : "$(numerator(r))/$(denominator(r))"
+    e = g.s + (g.issin ? 2 : 1)
+    a = e / 2
+    print(io, string(g.c) == "1" ? "" : "($(g.c))*", (g.issin && !isone(g.b)) ? "($(fr(g.b)))*" : "", g.var, "^(", fr(e), ")/(", fr(e),
+          ")*₁F₂(", fr(a), "; ", g.issin ? "3/2" : "1/2", ", ", fr(a + 1), "; -", fr(g.b^2 / 4), "*", g.var, "^2)")
+end
+function trigpower_value(g::TrigPowerTerm, a::Number)
+    c = term_value(g.c, g.var, a)
+    x = float(real(a))
+    e = Float64(g.s) + (g.issin ? 2 : 1)
+    b = Float64(g.b)
+    z = -b^2 * x^2 / 4
+    v = x^e / e * pFq((e / 2,), (g.issin ? 1.5 : 0.5, e / 2 + 1), z)
+    c * (g.issin ? b * v : v)
+end
+rs_value(g::TrigPowerTerm, xk::String, a) = trigpower_value(g, a)
+rs_value_continuous(g::TrigPowerTerm, xk::String, a::Real) = trigpower_value(g, a)
+depends_on(g::TrigPowerTerm, yk::String) = g.var == yk
+
+function try_trig_power(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    xk = string(x)
+    b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    nums, rest = Any[], Any[]
+    for (t, sg) in gamma_summands(f)
+        cs, sq, trig = Any[], Ref(Q(0)), Any[]
+        ok = trig_factors!(t, xk, 1, cs, sq, trig)
+        if !ok || length(trig) != 1 || isone(denominator(sq[]))
+            push!(rest, sg == 1 ? t : mk(b0, :*, b0.lift(-1), t))
+            continue
+        end
+        issin, bq = trig[1]
+        cf = Any[e == 1 ? u : mk(b0, :/, b0.lift(1), u) for (u, e) in cs]
+        sg == 1 || pushfirst!(cf, b0.lift(-1))
+        c = isempty(cf) ? b0.lift(1) : length(cf) == 1 ? cf[1] : mk(b0, :*, cf...)
+        # sin(-bx) = -sin(bx), cos(-bx) = cos(bx)
+        if bq < 0
+            bq = -bq
+            issin && (c = mk(b0, :*, b0.lift(-1), c))
+        end
+        push!(nums, TrigPowerTerm(c, sq[], bq, issin, xk))
+    end
+    isempty(nums) && return nothing
+    E = b0.lift(0)
+    if !isempty(rest)
+        F = risch_integrate(length(rest) == 1 ? rest[1] : mk(b0, :+, rest...), x; build = build, lift = lift, verify = verify)
+        F isa IntegralWithRootSums ? (append!(nums, F.rootsums); E = F.elementary) : (E = F)
+    end
+    IntegralWithRootSums(E, nums, xk)
+end
+# factors of a product: constants (cs), x^s (sq), sin/cos(b x) with b ∈ ℚ (trig); false if another factor
+function trig_factors!(t, xk, sign, cs, sq, trig)
+    has_x(t, xk) || (push!(cs, (t, sign)); return true)
+    string(t) == xk && (sq[] += sign; return true)
+    safe_iscall(t) || return false
+    args = arguments(t)
+    n = opname(operation(t))
+    n === :* && return all(a -> trig_factors!(a, xk, sign, cs, sq, trig), args)
+    if n === :/ && length(args) == 2
+        return trig_factors!(args[1], xk, sign, cs, sq, trig) && trig_factors!(args[2], xk, -sign, cs, sq, trig)
+    end
+    rp = radical_parts(t)
+    (rp !== nothing && string(rp[2]) == xk) && (sq[] += sign * rp[1]; return true)
+    if n === :^ && length(args) == 2 && string(args[1]) == xk
+        e = leaf_rational(args[2])
+        e === nothing && return false
+        sq[] += sign * Q(e)
+        return true
+    end
+    if n in (:sin, :cos) && length(args) == 1 && sign == 1
+        u = try parse_rational(args[1], xk) catch; nothing end
+        (u !== nothing && isone(u.den) && degree(u.num) == 1 && iszero(u.num.c[1])) || return false
+        push!(trig, (n === :sin, u.num.c[2]))
+        return true
+    end
+    false
 end
