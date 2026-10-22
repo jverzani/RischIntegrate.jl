@@ -1417,6 +1417,29 @@ end
     end
 end
 
+# u = sech x, cos x, … with the other functions of the same argument in U (tanh² = 1 - U²); step PL: a power
+# of one parameter quadratic by linearity after x = s u + h
+@testset "trig/hyperbolic u-substitution; parameter quadratic powers (step PL)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for f in (:(tanh(x) ^ 5 * sech(x) ^ (3 // 4)), :(sin(x) ^ 3 * cos(x) ^ (1 // 3)), :(tan(x) ^ 3 * sec(x) ^ (5 // 2)),
+              :(sinh(x) ^ 3 / cosh(x) ^ (1 // 2)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 0.9)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, real(ev(f, complex(x0))); rtol = 1e-5)
+        end
+    end
+    for vals in ((:a => 1.3, :b => 0.4, :c => 0.9, :b1 => 0.7, :c1 => 1.1), (:a => 0.3, :b => 1.4, :c => 0.9, :b1 => 0.7, :c1 => 1.1))
+        evp(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, [Expr(:(=), k, complex(v)) for (k, v) in vals]..., :(x = $x0)), e))
+        for f in (:((b1 + c1 * x) / (a + 2 * b * x + c * x ^ 2) ^ 4), :(x ^ 2 / (x + a) ^ 3), :(1 / (a * x ^ 2 + b) ^ 3))
+            F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+            for x0 in (0.31, 2.0)
+                @test isapprox(real(evp(F, x0 + 1e-6) - evp(F, x0 - 1e-6)) / 2e-6, real(evp(f, x0)); rtol = 1e-5)
+            end
+        end
+    end
+end
+
 # asec, acsc: √(1 - 1/u²) is kept (√(u² - 1)/u held for u > 1 only); check both signs
 @testset "asec, acsc for u < -1" begin
     build(op, args...) = Expr(:call, nameof(op), args...)

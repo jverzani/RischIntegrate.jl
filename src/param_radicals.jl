@@ -308,3 +308,71 @@ function hom_in(q, j::Int)
     end
     (m === nothing ? 0 : m), QX(qs)
 end
+
+# ---------------------------------------------------------------------------
+# Step PL: rational functions over a parameter field whose denominator is a power of one quadratic (or
+# linear) polynomial with parameters, (b₁ + c₁x)/(a + 2bx + cx²)⁴: Hermite reduction over ℚ(a, b, c, b₁, c₁)
+# swells (×10 per power). With x = s u + h (as in step PR), Q(su + h) = κ Q₀(u), Q₀ ∈ ℚ[u]; the numerator is
+# Σ nᵢ sⁱ uⁱ with nᵢ constants, sⁱ = r^⌊i/2⌋ s^(i mod 2) (s² = r ∈ the field; s itself may be an opaque
+# √r). By linearity ∫ f dx = s κ⁻ᵏ Σ nᵢ sⁱ ∫ uⁱ/Q₀(u)ᵏ du, each integral over ℚ; then u = (x - h)/s.
+# ---------------------------------------------------------------------------
+function integrate_param_linear(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    xk = string(x)
+    T, el = try
+        build_tower(f, xk)
+    catch err
+        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        return nothing
+    end
+    (isempty(T.levels) && real_param_field(ctype(T))) || return nothing
+    C = ctype(T)
+    Dn = el.den
+    sf = squarefree(Dn)
+    (length(sf) == 1 && sf[1][2] >= 2) || return nothing
+    Qf, k = sf[1]
+    lcD = lc(Dn)                                       # Dn = lcD Qf^k (Qf monic)
+    co(p, i) = i <= length(p.c) ? p.c[i] : zero(C)
+    pos(c) = (r = crational(c); r !== nothing ? r > 0 : (v = param_value(c, T.consts); v !== nothing && v > 0))
+    if degree(Qf) == 1                                  # Qf = x - x₀: u = x - x₀, Q₀ = u
+        s, r, h, κ, Q0 = one(C), one(C), -co(Qf, 1), one(C), QX(Q[0, 1])
+    elseif degree(Qf) == 2
+        B, Cc = co(Qf, 2), co(Qf, 1)                    # x² + Bx + Cc = (x + B/2)² + D
+        h = -B * cfromQ(C, Q(1, 2))
+        D = Cc - B * B * cfromQ(C, Q(1, 4))
+        iszero(D) && return nothing
+        sgn = pos(D) ? 1 : -1                           # D (u² + 1) or -D (u² - 1) with s² = |D|
+        r = cfromQ(C, Q(sgn)) * D
+        s = csqrt(r)
+        s === nothing && (s = (:sqrt, r))
+        κ, Q0 = r, QX(Q[sgn, 0, 1])
+    else
+        return nothing
+    end
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
+    st = s isa Tuple ? mk(bd, :sqrt, cterm(bd, s[2])) : cterm(bd, s)
+    # numerator N(s u + h) = Σᵢ nᵢ sⁱ uⁱ: Taylor coefficients at h
+    N = el.num
+    terms = Any[]                                       # s^(i+1): r^((i+1)/2) for odd i, r^(i/2) s for even i
+    for i in 0:degree(N)
+        # nᵢ = N⁽ⁱ⁾(h)/i!
+        Ni = N
+        for _ in 1:i
+            Ni = deriv(Ni)
+        end
+        ni = foldr((c, acc) -> acc * h + c, Ni.c; init = zero(C)) / cfromQ(C, Q(factorial(big(i))))
+        iszero(ni) && continue
+        coef = ni * r^(i ÷ 2) / (lcD * κ^k)             # × s^(i mod 2) × s (dx = s du)
+        coef = isodd(i) ? coef * r : coef
+        G = risch_integrate(frac_term(bd, frac(QX([j == i ? Q(1) : Q(0) for j in 0:i]), Q0^k)), x;
+                            build = build, lift = lift, verify = verify)
+        G isa IntegralWithRootSums && return nothing
+        ct = cterm(bd, coef)
+        push!(terms, isodd(i) ? mk(bd, :*, ct, G) : mk(bd, :*, ct, st, G))
+    end
+    isempty(terms) && return bd.lift(0)
+    tot = length(terms) == 1 ? terms[1] : mk(bd, :+, terms...)
+    xh = iszero(h) ? bd.x : mk(bd, :+, bd.x, cterm(bd, -h))
+    back = (s isa Tuple || !isone(s)) ? mk(bd, :/, xh, st) : xh
+    bk(t) = isnode(t) ? term_rebuild(bd, t, Any[bk(a) for a in arguments(t)]) : (string(t) == xk ? back : t)
+    bk(tot)
+end

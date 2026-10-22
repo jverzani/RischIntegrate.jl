@@ -11,10 +11,28 @@
 # ---------------------------------------------------------------------------
 
 function integrate_monomial_radicals(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    # first the cheap derivative-divides test with a radicand as u (tanh⁵x sech^(3/4)x, u = sech x): the
+    # substitution s = eˣ would give a 4th root of a degree-7 polynomial
+    xk = string(x)
+    bd0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    if USUB_DEPTH[] < 2
+        for (_, u) in unique(r -> string(r[2]), collect_radicals(f, xk))
+            (isnode(u) && depends_on(u, xk) && radicand_element(u, xk) === nothing) || continue
+            USUB_DEPTH[] += 1
+            r = try
+                integrate_usub(f, x, u, bd0; build = build, lift = lift, verify = verify)
+            catch e
+                (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+                nothing
+            finally
+                USUB_DEPTH[] -= 1
+            end
+            r === nothing || return r
+        end
+    end
     r = mr_direct(f, x; build = build, lift = lift, verify = verify)
     r === nothing || return r
     # radicands invariant under Bioche's involutions about π/4 (sin 2x = cos 2y): f(y + π/4), then y = x - π/4
-    xk = string(x)
     has_trig(t) = isnode(t) && (opname(operation(t)) in (:sin, :cos, :tan, :cot, :sec, :csc) || any(has_trig, arguments(t)))
     has_trig(f) || return nothing
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)

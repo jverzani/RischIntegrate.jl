@@ -76,6 +76,10 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     arcs = collect_arcs(f, xk)                  # asin / acos: substitution u = sin t / cos t (step AS)
     isempty(arcs) || return integrate_arcsin(f, x, arcs; build = build, lift = lift, verify = verify)
     rads = collect_radicals(f, xk)
+    if isempty(rads) && has_param(f, xk)               # a power of one parameter quadratic: linearity (step PL)
+        r = integrate_param_linear(f, x; build = build, lift = lift, verify = verify)
+        r === nothing || return r
+    end
     if !isempty(rads)
         # only powers of √(1 - u²), u linear: the substitution u = sin t first (gives asin(u)), step AS
         a1 = unit_circle_radicand(f, x, rads, xk; build = build, lift = lift)

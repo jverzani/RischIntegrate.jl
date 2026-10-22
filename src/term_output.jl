@@ -31,6 +31,7 @@ Builder(build, lift, x) = Builder(build, lift, x, ConstGen[])
 const OPS = Dict{Symbol,Function}(:+ => +, :* => *, :/ => /, :^ => ^, :exp => exp,
                                   :log => log, :atan => atan, :sqrt => sqrt,
                                   :sin => sin, :cos => cos, :tan => tan, :cot => cot, :sec => sec, :csc => csc,
+                                  :sinh => sinh, :cosh => cosh, :tanh => tanh, :coth => coth, :sech => sech, :csch => csch,
                                   :asin => asin, :acos => acos, :acot => acot, :acsc => acsc, :asec => asec,
                                   # SpecialFunctions (Step 8a): Ei, Si, Ci, erf, erfi
                                   :Ei => expinti, :Si => sinint, :Ci => cosint, :erf => erf, :erfi => erfi,
