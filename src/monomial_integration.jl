@@ -379,8 +379,13 @@ function integrate_log_poly(T::Tower, i::Int, p::UPoly)
         c = zero(ctype(T))
         if !iszero(tgt)
             cv = dconst_value(T, tgt / Lθ)
-            cv === nothing && throw(NotElementary(
-                "the integral of the coefficient of log^$n involves logarithms other than log(u)"))
+            if cv === nothing                           # tgt - c·u'/u may still be a derivative b' with b ∈ K
+                cb = log_ratio_match(T, i - 1, tgt, Lθ)  # (log(e²ˣ + 1) - x = log(cosh x) + log 2)
+                cb === nothing && throw(NotElementary(
+                    "the integral of the coefficient of log^$n involves logarithms other than log(u)"))
+                cv, bv = cb
+                rv = rv + bv
+            end
             c = cv
         end
         coeffs = fill(zero(K), n + 2)
@@ -402,6 +407,24 @@ function integrate_log_poly(T::Tower, i::Int, p::UPoly)
         append!(quads, r0.quads)
     end
     q, logs, atans, quads
+end
+
+# c ∈ C and b ∈ K with tgt = c·L + b' (tgt, L log derivatives in K = Kⱼ), or nothing: the candidates for
+# c are the ratios of the log coefficients of ∫ tgt and ∫ L; c is right when ∫ (tgt - c L) has no logs
+function log_ratio_match(T::Tower, j::Int, tgt, L)
+    rt, rl = integrate_el(T, j, tgt), integrate_el(T, j, L)
+    (isempty(rt.atans) && isempty(rt.quads) && isempty(rl.atans) && isempty(rl.quads)) || return nothing
+    for (ct, _) in rt.logs, (cl, _) in rl.logs
+        c = ct / cl
+        rr = try
+            integrate_el(T, j, tgt - lconst(T, c, j) * L)
+        catch e
+            (e isa NotElementary || e isa RischNotImplemented) || rethrow()
+            continue
+        end
+        (isempty(rr.logs) && isempty(rr.atans) && isempty(rr.quads)) && return (c, rr.v)
+    end
+    nothing
 end
 
 function integrate_el(T::Tower, i::Int, f)::ElemIntegral

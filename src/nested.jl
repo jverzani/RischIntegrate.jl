@@ -124,7 +124,7 @@ function integrate_nested(f, x, xk::String, b0::Builder; verify::Bool = true)
     (isempty(cs) || any(isnothing, cs) || any(c -> c != cs[1], cs)) && return nothing
     c = cs[1]
     ab = try
-        parse_hyp(ut0, xk, c, (ue, ei) -> ue == c ? Int(2 * ei) : nothing)
+        parse_hyp(ut0, xk, c, (ue, ei) -> (ue == c && isinteger(2 * ei)) ? Int(2 * ei) : nothing)
     catch err
         err isa RischNotImplemented || rethrow()
         return nothing
@@ -133,7 +133,7 @@ function integrate_nested(f, x, xk::String, b0::Builder; verify::Bool = true)
     iszero(b) && return nothing
     s = csqrt(b * b * c - a * a)                        # e = a² - b²c = -s²
     s === nothing && return nothing
-    outer = ut -> (r = try parse_hyp(ut, xk, c, (ue, ei) -> ue == c ? Int(2 * ei) : nothing) catch; nothing end;
+    outer = ut -> (r = try parse_hyp(ut, xk, c, (ue, ei) -> (ue == c && isinteger(2 * ei)) ? Int(2 * ei) : nothing) catch; nothing end;
                    r !== nothing && r.p == a && r.q == b)
     abc = (a, b, c)
     el = parse_nest(f, xk, abc, c, outer)

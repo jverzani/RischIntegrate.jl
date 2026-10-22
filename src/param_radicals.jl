@@ -55,8 +55,11 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     # orientation: s > 0 when the parameters increase in alphabetical order (a < b, as such problems are
     # written); s and -s both give antiderivatives where the radicand is positive, but they differ across
     # the branch cuts elsewhere
-    sv = param_value(s, T.consts)
-    (sv !== nothing && sv < 0) && (s = -s)
+    # (the quadratic case only: R(u) = 1 ± u² is even, so u ↦ -u keeps it)
+    if isone(Dn) && degree(N) == 2
+        sv = param_value(s, T.consts)
+        (sv !== nothing && sv < 0) && (s = -s)
+    end
     b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
     st, ht = cterm(b0, s), cterm(b0, h)
     σ = csqrt(κ)

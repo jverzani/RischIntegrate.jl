@@ -1178,6 +1178,8 @@ end
                            (:(sqrt((x + -1a) * (b + -1x))), (:a => 0.2, :b => 0.9), (0.31, 0.57)),  # 104
                            (:(1 / sqrt((x + -1a) * (b + -1x))), (:a => 0.2, :b => 0.9), (0.31, 0.57)),  # 105
                            (:(sqrt((x + -1b) * (a + -1x))), (:a => 0.9, :b => 0.2), (0.31, 0.57)),  # √κ = |σ|
+                           (:(sqrt((x + -1a) / (x + a))), (:a => 2.2,), (3.1, 5.0)),   # no u ↦ -u for u/(u - 1)
+                           (:(atan(sqrt((x + -1a) / (x + a)))), (:a => 2.2,), (3.1, 5.0)),
                            (:(x / sqrt(a * x + b)), (:a => 2.0, :b => 1.0), (0.31, 1.5)))
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)
         for x0 in xs
@@ -1208,6 +1210,22 @@ end
             @test isapprox(real(d), ev(f, (avals..., :x => x0)); rtol = 1e-5)
         end
     end
+end
+
+# limited integration: Σ cⱼ wⱼ'/wⱼ - c u'/u may be a derivative in K (∫ tanh x = log(e²ˣ + 1) - x)
+@testset "log coefficient up to a derivative" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for f in (:(tanh(x) * log(cosh(x))), :(tanh(x) * log(cosh(x)) ^ 2))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.4, 1.3)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+    @test_throws Risch.NotElementary Risch.risch_integrate(:(tanh(x) * log(sinh(x))), :x; build = build, lift = identity)
+    # nested radicals: an inner radical that is not a square root falls through (was an InexactError)
+    F = Risch.risch_integrate(:((1 + x ^ (1 // 4)) ^ (1 // 3) / sqrt(x)), :x; build = build, lift = identity)
+    @test isapprox((ev(F, 0.5 + 1e-6) - ev(F, 0.5 - 1e-6)) / 2e-6, ev(:((1 + x ^ (1 // 4)) ^ (1 // 3) / sqrt(x)), 0.5); rtol = 1e-5)
 end
 
 # asec, acsc: √(1 - 1/u²) is kept (√(u² - 1)/u held for u > 1 only); check both signs
