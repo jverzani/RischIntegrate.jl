@@ -390,6 +390,16 @@ log parts stay elementary.
     * other shapes, e.g. P(x)·xˢ e^(bx) with P a polynomial: it works term by term only if written as a sum.
 * H2, general remainders on hyperelliptic curves of genus 1: reduce to Legendre/Carlson forms (F, E, Π)
   through the roots of a (needs algebraic numbers), or Appell-type functions. Larger.
+* H4, exponential/trigonometric integrals beyond the Risch Ei/Si/Ci answers (requested 2026-10-21): planned.
+  * Generalised exponential integral: ∫ xˢ e^(bx) for b > 0 and the E_n family (`expint(n, z)` in
+    SpecialFunctions), e.g. ∫ e^(−x)/xⁿ = −E_n(x) x^(1−n)… relations with Γ(1−n, x); ∫ e^(bx)/xⁿ for symbolic n.
+  * Sine/cosine integrals with powers and shifts: ∫ sin(ax + c)/xⁿ, ∫ cos(ax²)/x, ∫ sin(x)/(x + a),
+    ∫ xˢ sin(bx) via Γ(s+1, ±ibx) (real and imaginary parts), sinh/cosh analogues (Shi, Chi).
+  * As H3: tried after a `NotElementary` decision, symbolic `expint`/`sinint`/`cosint` when the term type
+    has them, else numeric terms (the special-function fallback below).
+* Special-function fallback (done 2026-10-21, `special_fallback.jl`): term types without expinti, li2, Si,
+  … methods (SymEngine, Giac terms) integrate through Expr; the special-function terms become `ExprTerm`s,
+  evaluated numerically in an `IntegralWithRootSums`. Apostol 156–174 for SymEngine and Giac.
 
 ## Phase 4: general algebraic curves (optional, large)
 

@@ -930,11 +930,12 @@ function run_tests(x, evalat, name)
     end
 
     @testset "$name: decided non-elementary" begin
-        if name == "SymEngine"      # dilogarithm: SymEngine has no li2 method yet (stand-in below)
-            @test_throws MethodError Risch.risch_integrate(log(x) / (x + 1), x)
-        else                        # SimpleExpressions ≥ 1.3.2: li2 from its PolyLog extension
-            @test occursin("li2", string(Risch.risch_integrate(log(x) / (x + 1), x)))
-        end
+        # dilogarithm: SimpleExpressions ≥ 1.3.2 has li2 (PolyLog extension); SymEngine has none, so the li2 term
+        # is kept as an Expr and evaluated numerically (special-function fallback)
+        F = Risch.risch_integrate(log(x) / (x + 1), x)
+        @test occursin("li2", string(F))
+        name == "SymEngine" && @test F isa Risch.IntegralWithRootSums &&
+                                     isapprox((F(2.0 + 1e-6) - F(2.0 - 1e-6)) / 2e-6, log(2.0) / 3; rtol = 1e-5)
         @test_throws Risch.NotElementary Risch.risch_integrate(1 / (x + log(x)), x)
         @test_throws Risch.NotElementary Risch.risch_integrate(x^x, x)
         # tower is [exp(x), log(x)]: top monomial log, normal denominator, non-constant residue

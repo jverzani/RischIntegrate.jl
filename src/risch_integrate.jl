@@ -14,16 +14,36 @@ function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = t
     try
         integrate_direct(f, x; build = build, lift = lift, verify = verify)
     catch e
+        # the term type has no method for a special function of the answer: through Expr, the special terms
+        # evaluated numerically
+        if e isa MethodError && any(fn -> e.f === fn, SPECIAL_FNS) && !(f isa Expr)
+            return integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
+        end
         (e isa RischNotImplemented || e isa NotElementary) || rethrow()
         if e isa NotElementary && HYP_ANSWERS[]           # xˢ e^(bx+d): incomplete gamma (phase 6, H3)
             g = try_gamma(f, x; build = build, lift = lift, verify = verify)
             g === nothing || return g
         end
         r = try_usub(f, x; build = build, lift = lift, verify = verify)    # step US
-        r === nothing && throw(e)
-        r
+        r === nothing || return r
+        # a u-substitution may have failed only for want of a special function in the term type: once
+        # through Expr, keeping the answer when it has special terms
+        if !(f isa Expr) && !EXPR_RETRY[]
+            EXPR_RETRY[] = true
+            r2 = try
+                integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
+            catch e2
+                (e2 isa RischNotImplemented || e2 isa NotElementary) || rethrow()
+                nothing
+            finally
+                EXPR_RETRY[] = false
+            end
+            (r2 isa IntegralWithRootSums && any(t -> t isa ExprTerm, r2.rootsums)) && return r2
+        end
+        throw(e)
     end
 end
+const EXPR_RETRY = Ref(false)                           # no nested Expr retries
 
 function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = true)
     xk = string(x)

@@ -92,7 +92,8 @@ function run_tests(x, evalat, name)
                   (r isa MethodError && !tt_special_ok(x))
         else
             for a in (0.7, 1.6, 2.4)
-                @test isapprox(fd(t -> evalat(r, t), a), evalat(x * sin(x) * log(x), a); rtol = 1e-5, atol = 1e-8)
+                ev = r isa Risch.IntegralWithRootSums ? (t -> real(r(t))) : (t -> evalat(r, t))   # Si kept numerically
+                @test isapprox(fd(ev, a), evalat(x * sin(x) * log(x), a); rtol = 1e-5, atol = 1e-8)
             end
         end
         # exp(i log 2) = 2^i is not of the form e^(a + bi); SimpleExpressions turns log(2) into a float,

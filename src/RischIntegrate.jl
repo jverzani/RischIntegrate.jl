@@ -54,6 +54,7 @@ include("nested.jl")
 include("hypergeometric.jl")
 include("gamma_terms.jl")
 include("param_radicals.jl")
+include("special_fallback.jl")
 include("kummer_logs.jl")
 include("real_log_arguments.jl")
 
