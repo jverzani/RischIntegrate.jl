@@ -1188,6 +1188,18 @@ end
     end
 end
 
+# asec, acsc: √(1 - 1/u²) is kept (√(u² - 1)/u held for u > 1 only); check both signs
+@testset "asec, acsc for u < -1" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for g in (:(asec(x)), :(acsc(x)), :(x * asec(x)), :(asec(2x + 1)))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        for x0 in (-3.5, -2.0, 2.0, 3.0)
+            @test isapprox(real((ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6), ev(g, x0); rtol = 1e-5)
+        end
+    end
+end
+
 # Expr terms. Giac.jl writes log as `ln`: the operation name ln is read as log (shown here with
 # Expr terms); an Expr has the call 1 // 3 for a rational number; an Expr answer of an inner
 # integration (u-substitution) has Symbol operations such as :expinti

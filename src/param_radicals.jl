@@ -52,6 +52,11 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     end
     sh === nothing && return nothing
     s, h, κ, Ru = sh
+    # orientation: s > 0 when the parameters increase in alphabetical order (a < b, as such problems are
+    # written); s and -s both give antiderivatives where the radicand is positive, but they differ across
+    # the branch cuts elsewhere
+    sv = param_value(s, T.consts)
+    (sv !== nothing && sv < 0) && (s = -s)
     b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
     st, ht = cterm(b0, s), cterm(b0, h)
     σ = csqrt(κ)
@@ -99,3 +104,25 @@ end
 # a symbol other than the integration variable (a parameter) in t
 has_param(t, xk::String) = safe_iscall(t) && !isempty(arguments(t)) ? any(a -> has_param(a, xk), arguments(t)) :
                            (string(t) != xk && leaf_rational(t) === nothing && !is_e_const(t) && !(string(t) in ("pi", "π")))
+
+# the value of a parameter constant with the k-th parameter (alphabetically) set to k, or nothing
+function param_value(c, consts)
+    names = sort([string(g.term) for g in consts if g.kind === :sym])
+    eb = Builder((op, args...) -> Expr(:call, nameof(op), args...), identity, :x, consts)
+    function ev(e)
+        if e isa Expr && e.head === :call
+            return op_function(e)(map(ev, e.args[2:end])...)
+        end
+        k = findfirst(==(string(e)), names)            # (before Number: SymEngine's symbols are Numbers)
+        k === nothing || return float(k)
+        r = leaf_rational(e)
+        r === nothing && throw(RischError("no value for $e"))
+        float(r)
+    end
+    try
+        v = ev(cterm(eb, c))
+        v isa Real && isfinite(v) ? v : nothing
+    catch
+        nothing
+    end
+end
