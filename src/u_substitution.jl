@@ -128,7 +128,11 @@ function integrate_usub(f, x, u, bd::Builder; build, lift, verify::Bool)
     end
     pw(k) = k == 1 ? bd.x : mk(bd, :^, bd.x, bd.lift(k))
     to_x(t) = (k = upow(t); k !== nothing ? pw(k) : isnode(t) ? term_rebuild(bd, t, Any[to_x(s) for s in arguments(t)]) : t)
-    G = to_x(cterm(Builder(bd.build, bd.lift, bd.x, T.consts), c))
+    # G = c with u ↦ x, done on the generators before c is printed: u's generator prints as x, an opaque
+    # function of u (a subterm of f) as that subterm with u ↦ x. Matching u in the printed c instead would
+    # depend on how the term type simplifies what is built (SymJ distributes constants over sums).
+    consts = ConstGen[g.kind === :sym ? ConstGen(:sym, g.arg, to_x(g.term)) : g for g in T.consts]
+    G = cterm(Builder(bd.build, bd.lift, bd.x, consts), c)
     H = risch_integrate(G, x; build = build, lift = lift, verify = verify)
     H isa IntegralWithRootSums && return nothing
     back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? u : t)
