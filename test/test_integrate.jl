@@ -1455,6 +1455,21 @@ end
     end
 end
 
+# step DL over a parameter field: a dilogarithm for a pole that depends on parameters (Rubi 1597)
+@testset "dilogarithms with parameter poles" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    Main.eval(:(const li2 = $(Risch.li2)))
+    for (f, vals) in ((:(log(x) / (a + b * x)), (:a => 1.3, :b => 0.7)), (:(log(x) / (a + b * x)), (:a => 0.3, :b => 2.7)),
+                      (:(log(1 + x) / (x + a)), (:a => 2.5,)), (:(log(x) / (x - a)), (:a => 0.6,)))
+        ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, [Expr(:(=), k, v) for (k, v) in vals]..., :(x = $x0)), e))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("li2", string(F))
+        for x0 in (0.4, 1.7)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
 # asec, acsc: √(1 - 1/u²) is kept (√(u² - 1)/u held for u > 1 only); check both signs
 @testset "asec, acsc for u < -1" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
