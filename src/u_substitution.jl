@@ -17,6 +17,7 @@ depends_on(t, xk::String) = isnode(t) ? any(a -> depends_on(a, xk), arguments(t)
 
 # the derivative of the term t in x by the chain rule, `nothing` if t is free of x
 function term_deriv(bd::Builder, t, xk::String)
+    @nospecialize t
     depends_on(t, xk) || return nothing
     isnode(t) || return bd.lift(1)
     n, a = opname(operation(t)), arguments(t)
@@ -125,6 +126,7 @@ function usub_candidates(f, xk::String)
 end
 
 function integrate_usub(f, x, u, bd::Builder; build, lift, verify::Bool)
+    @nospecialize f x
     xk = string(x)
     du = term_deriv(bd, u, xk)
     r = integrate_usub_trig(f, x, u, du, bd; build = build, lift = lift, verify = verify)   # u = sech v, …
@@ -152,6 +154,7 @@ end
 
 # the first substitution that works, or nothing
 function try_usub(f, x; build, lift, verify::Bool)
+    @nospecialize f x
     USUB_DEPTH[] < 2 || return nothing
     xk = string(x)
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
@@ -191,6 +194,7 @@ const CS_OF_U = Dict(
     :tanh => ((0, -1), (1, -1), (1, 0, -1)), :coth => ((1, -1), (0, -1), (-1, 0, 1)))
 
 function integrate_usub_trig(f, x, u, du, bd::Builder; build, lift, verify::Bool)
+    @nospecialize f x
     xk = string(x)
     (isnode(u) && length(arguments(u)) == 1) || return nothing
     h = opname(operation(u))

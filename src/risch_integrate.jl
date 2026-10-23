@@ -10,6 +10,7 @@ check of the answer by differentiation (every answer is checked by default). Ret
 [`IntegralWithRootSums`](@ref); throws [`NotElementary`](@ref) or [`RischNotImplemented`](@ref).
 """
 function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     check_leaves(f, string(x))                                         # step WR
     try
         r = integrate_direct(f, x; build = build, lift = lift, verify = verify)
@@ -56,6 +57,7 @@ end
 const EXPR_RETRY = Ref(false)                           # no nested Expr retries
 
 function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     xk = string(x)
     g = try_erf(f, x; build = build, lift = lift, verify = verify)   # ∫ erf(ax + b) by parts
     g === nothing || return g
@@ -264,6 +266,7 @@ has_symbol(t) = safe_iscall(t) && !isempty(arguments(t)) ? any(has_symbol, argum
 # f = c·g with c ≠ 1 the product of the factors of f (numerator and denominator of a top-level
 # product or quotient) that are free of x but contain a symbol: (c, g, builder), or nothing
 function split_free_factor(f, x, xk::String, build, lift)
+    @nospecialize f x
     (safe_iscall(f) && !isempty(arguments(f))) || return nothing
     n = opname(operation(f))
     n in (:*, :/) || return nothing
@@ -336,6 +339,7 @@ end
 # Returns the rewritten term, or nothing when there is no such shift.
 const SHIFT_TRIG = (:sin, :cos, :tan, :cot, :sec, :csc, :sinh, :cosh, :tanh, :coth, :sech, :csch)
 function expand_trig_shifts(f, x, xk::String, build, lift)
+    @nospecialize f x
     has_shift(t) = safe_iscall(t) && !isempty(arguments(t)) &&
         ((opname(operation(t)) in SHIFT_TRIG && length(arguments(t)) == 1 && shift_split(arguments(t)[1], xk) !== nothing) ||
          any(has_shift, arguments(t)))

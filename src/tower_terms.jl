@@ -20,6 +20,7 @@ const ALGEBRAIC = (:sqrt, :cbrt)
 const TRIG = (:sin, :cos, :tan, :cot, :sec, :csc, :atan, :abs)
 
 function parse_tower(t, T::Tower)
+    @nospecialize t
     if T.subst !== nothing                     # Step 10: x ↦ φ(t), radicals ↦ powers of t
         r = T.subst(t, T)
         r === nothing || return r
@@ -154,6 +155,7 @@ end
 # (a constant such as e or log 2 appeared) re-parses over the larger field ℚ(t₁, …, tₖ).
 # `constants` fixes the constant field instead (no constant generators can then be added).
 function build_tower(f, xk::String; constants::Union{Nothing,Type} = nothing, subst = nothing, minimize::Bool = true)
+    @nospecialize f
     scales = Dict{Int,Int}()
     consts = ConstGen[]
     base = Q                                   # becomes ℚ(i) when trigonometric functions appear
@@ -238,6 +240,7 @@ Differentiate `f` with the tower derivation (parse -> D -> term). Mainly a test 
 the Stage 2 machinery: the result must agree with the ordinary derivative.
 """
 function tower_derivative(f, x; build = nothing, lift = nothing)
+    @nospecialize f x
     T, el = build_tower(f, string(x))
     d = D(T, el)
     b = Builder(build === nothing ? auto_build(f, x) : build,

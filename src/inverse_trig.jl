@@ -15,6 +15,7 @@
 # √K rational (completing the square: K = γ - β²/(4α), α < 0): (arcs list [(:asin, u term,
 # asin(u) term)], √K) for an asin substitution, else nothing
 function unit_circle_radicand(f, x, rads, xk::String; build = nothing, lift = nothing)
+    @nospecialize f x
     all(r -> denominator(r[1]) == 2, rads) || return nothing
     q = radicand_element(rads[1][2], xk)
     (q !== nothing && isone(q.den) && degree(q.num) == 2) || return nothing
@@ -35,6 +36,7 @@ has_op(f, n::Symbol) = safe_iscall(f) && !isempty(arguments(f)) &&
                        (opname(operation(f)) === n || any(a -> has_op(a, n), arguments(f)))
 # step AC: acot(u) ↦ atan(1/u) (Julia's definition, all u ≠ 0)
 function rewrite_acot(f, x, build, lift)
+    @nospecialize f x
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     function rw(t)
         safe_iscall(t) && !isempty(arguments(t)) || return t
@@ -66,6 +68,7 @@ end
 
 function integrate_arcsin(f, x, arcs; sK::Q = Q(1), radicand = nothing, build = nothing, lift = nothing,
                           verify::Bool = true)
+    @nospecialize f x
     xk = string(x)
     kind = arcs[1][1]
     all(a -> a[1] === kind, arcs) || throw(RischNotImplemented(

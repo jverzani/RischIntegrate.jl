@@ -63,6 +63,7 @@ to_K0(T::Tower, φ::Frac{UPoly{Q}}) = (C = ctype(T); P = UPoly{C};
 to_K0(T::Tower{C}, φ::Frac{UPoly{C}}) where {C} = φ
 
 function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     xk = string(x)
     groups = Any[]                                      # [radicand element, term, lcm of indices]
     cvs = Q[]                                           # radicands of constant radicals (10e)
@@ -297,6 +298,7 @@ end
 # step SQ, u = c·s² with other (constant) radicals: on each branch √u = ±s√c, so with F± = ∫ f|_{√u = ±s√c},
 # ∫ f = (F₊ + F₋)/2 + σ (F₊ - F₋)/2, σ = sign(s) = (√u/s)/√c (locally constant)
 function integrate_square_branches(f, x, xk::String, uo, uterm, sp::UPoly{Q}, w::UPoly{Q}, b0::Builder, verify::Bool)
+    @nospecialize f x
     c = w.c[1]
     rc = rat_sqrt(c)
     sqc = rc === nothing ? mk(b0, :sqrt, cterm(b0, c)) : cterm(b0, rc)
