@@ -1,6 +1,6 @@
 name = "RischIntegrate"
 uuid = "c180fd1b-065d-41df-ac4d-d8d9562c1957"
-version = "1.0.0"
+version = "1.1.0"
 authors = ["jverzani <jverzani@gmail.com> and contributors"]
 
 [deps]
@@ -16,4 +16,4 @@ PolyLog = "2"
 PrecompileTools = "1"
 SpecialFunctions = "2"
 TermInterface = "2"
-julia = "1.10"
+julia = "1.12"

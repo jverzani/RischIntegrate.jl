@@ -140,16 +140,17 @@ Solved (verified) out of 175. Times are on one machine and only comparable withi
 | Date | Julia | RischIntegrate | symengine | expr | simpleexpressions | symbolicutils | giac | si_risch | giac_own |
 |---|---|---|---|---|---|---|---|---|---|
 | 2026-10-17 | 1.13.0 | `85c487f` | 150 (147) | 163 (162) | 163 (162) | 162 (161) | 148 (147) | 97 (97) | 172 (171) |
+| 2026-10-22 | 1.13.0 | `0d180a6` | 175 (170) | 175 (175) | 174 (174) | 174 (174) | 172 (170) | 97 (97) | 172 (171) |
 
-Notes:
+Notes (2026-10-22 run):
 
-- `symengine`: 13 errors are `MethodError`s for `expinti` and `li2`, which
-  SymEngine has no methods for. Problems 83 and 84 (∫ asec x, ∫ acsc x) show as
-  differing but are right: at the check points 0.31 and 0.57, outside |x| ≥ 1,
-  SymEngine's `asec` is the conjugate of Julia's branch.
-- `giac`: as for SymEngine, 13 `MethodError`s for `expinti` and `li2`. Giac
-  rewrites `asec(x)` and `acsc(x)` as `acos(1/x)` and `asin(1/x)`, which
-  RischIntegrate does not support (problems 83, 84).
+- `symengine`: problems 83 and 84 (∫ asec x, ∫ acsc x) show as differing but are
+  right: at the check points 0.31 and 0.57, outside |x| ≥ 1, SymEngine's `asec` is
+  the conjugate of Julia's branch. 159, 162 and 172 have special-function terms
+  (Ei, ₁F₁) with a parameter, kept as `Expr` terms: solved, not checked.
+- `giac`: Giac rewrites `asec(x)` and `acsc(x)` as `acos(1/x)` and `asin(1/x)`,
+  which RischIntegrate does not support (83, 84); 172's ₁F₁ needs a symbolic
+  `_₁F₁` term (as for `simpleexpressions`).
 - `giac_own`: 172 (171) verified; 172's `igamma` evaluates to `undef`.
 - The Giac `EVAL` rounds the values to 12 digits before substituting: Giac
   misreads a 17-digit float such as 0.5700099999999999, giving `undef` or a

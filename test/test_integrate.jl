@@ -1306,7 +1306,7 @@ end
     try
         build(op, args...) = Expr(:call, nameof(op), args...)
         ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(n = 0.7)), e))
-        Main.eval(:(using HypergeometricFunctions: _₁F₁))
+        Main.eval(:(const _₁F₁ = $(Risch._₁F₁)))      # (from RischIntegrate: not a test dependency)
         for f in (:(1 / log(x) ^ (n + 1)), :(x ^ n * exp(2x)), :(exp(x) / x ^ n), :(x ^ (1 // 3) * exp(3x)),
                   :(x ^ (1 // 2) * sin(x)), :(cos(2x) / x ^ (1 // 3)), :(3 * x ^ (5 // 2) * cos(x) + x * exp(x)))
             F = Risch.risch_integrate(f, :x; build = build, lift = identity)
@@ -1317,7 +1317,7 @@ end
             end
         end
         # symbolic exponents with sin, cos (Expr pFq terms); Shi, Chi
-        Main.eval(:(using HypergeometricFunctions: pFq; using RischIntegrate: sinhint, coshint))
+        Main.eval(:(const pFq = $(Risch.pFq); const sinhint = $(Risch.sinhint); const coshint = $(Risch.coshint)))
         for f in (:(x ^ n * sin(x)), :(cos(2x) / x ^ n), :(x ^ n * cos(x) + x * sin(x)),
                   :(sinh(x) / x), :(cosh(3x) / x + sinh(x) / x), :(sinh(2x) / x ^ 2))
             F = Risch.risch_integrate(f, :x; build = build, lift = identity)
