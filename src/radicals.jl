@@ -26,11 +26,16 @@ function radical_parts(t)
     nothing
 end
 
+# a radical of this radicand is an opaque constant (a `:sym` generator): free of x, with a parameter (√(2h)),
+# or any constant radical inside step PR for rational radicands (√7, √(7/2): `OPAQUE_CONST_RADICALS`)
+const OPAQUE_CONST_RADICALS = Ref(false)
+opaque_radical(u, xk::String) = !has_x(u, xk) && (OPAQUE_CONST_RADICALS[] || has_param(u, xk))
+
 # all radicals of f: [(exponent, radicand term)]
 function collect_radicals(f, xk::String, out = Tuple{Q,Any}[])
     rp = radical_parts(f)
     # a radical of a parameter constant (√(2h)) is an opaque constant (`parse_tower`), not a radical of x
-    rp !== nothing && !has_x(rp[2], xk) && has_param(rp[2], xk) && return out
+    rp !== nothing && opaque_radical(rp[2], xk) && return out
     rp === nothing || push!(out, rp)
     if safe_iscall(f)
         for a in arguments(f)
@@ -218,7 +223,7 @@ function integrate_subst(f, xk::String, ::Type{S}, φ, radval, bt::Builder, veri
         rp = radical_parts(term)
         rp === nothing && return nothing
         e, ut = rp
-        (!has_x(ut, xk) && has_param(ut, xk)) && return nothing     # an opaque constant (`parse_tower`)
+        opaque_radical(ut, xk) && return nothing         # an opaque constant (`parse_tower`)
         ue = radicand_element(ut, xk)
         ue === nothing && throw(RischNotImplemented("radical of a non-rational expression ($ut)"))
         if is_const_radicand(ue)

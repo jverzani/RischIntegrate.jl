@@ -11,10 +11,10 @@
 # hold for the parameter values where σ (or κ) is positive, the usual convention of symbolic integrators.
 # ---------------------------------------------------------------------------
 
-function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, verify::Bool = true)
+function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, verify::Bool = true, rational::Bool = false)
     xk = string(x)
-    any(((_, u),) -> has_param(u, xk), rads) || return nothing
-    ut0 = first(u for (_, u) in rads if has_param(u, xk))
+    rational || any(((_, u),) -> has_param(u, xk), rads) || return nothing
+    ut0 = rational ? rads[1][2] : first(u for (_, u) in rads if has_param(u, xk))
     # every radical must have this radicand (or a radicand free of parameters is not mixed in)
     all(((_, u),) -> string(u) == string(ut0), rads) || return nothing
     T, el = try

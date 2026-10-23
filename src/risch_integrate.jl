@@ -92,6 +92,33 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
             end
         end
     end
+    if !OPAQUE_CONST_RADICALS[] && length(rads) >= 1 && all(((e, u),) -> denominator(e) == 2 && string(u) == string(rads[1][2]), rads)
+        # one quadratic radicand K - |α| (x - h)² over ℚ whose scaling to K(1 - u²) is irrational (7 - 2x²:
+        # s = √(7/2)): step PR with the constant radicals opaque, so that the asin route applies to the
+        # integrand in u
+        q = radicand_element(rads[1][2], xk)
+        irrational_scale = q !== nothing && isone(q.den) && degree(q.num) == 2 && begin
+            γ, β, α = q.num.c
+            K = γ - β^2 / (4α)
+            # (the asin family only, α < 0 < K: for α > 0 the Euler substitutions keep real log arguments, step EL)
+            α < 0 && K > 0 && (rat_sqrt(K) === nothing || rat_sqrt(-K / α) === nothing)
+        end
+        # (P(x)·(radical)^k only: other poles give log parts with √K, √(K/|α|) as opaque constants, where
+        # √K² = K is not seen; those keep the usual route)
+        irrational_scale && (irrational_scale = poly_times_radicals(f, xk, rads[1][2]))
+        if irrational_scale
+            OPAQUE_CONST_RADICALS[] = true
+            r = try
+                integrate_param_radicals(f, x, rads; build = build, lift = lift, verify = verify, rational = true)
+            catch e
+                (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+                nothing
+            finally
+                OPAQUE_CONST_RADICALS[] = false
+            end
+            r === nothing || return r
+        end
+    end
     if any(((_, u),) -> has_param(u, xk), rads)        # parameters in a radicand: x = s u + h (step PR)
         r = integrate_param_radicals(f, x, rads; build = build, lift = lift, verify = verify)
         r === nothing || return r
@@ -378,4 +405,17 @@ function exact_cos_sin(b::Builder, k::Int)
     t((r, sv)) = iszero(r) ? b.lift(0) : isone(sv) ? cterm(b, Q(r)) :
                  isone(r) ? mk(b, :sqrt, b.lift(sv)) : mk(b, :*, cterm(b, Q(r)), mk(b, :sqrt, b.lift(sv)))
     t(cq), t(sq)
+end
+
+# f is a polynomial in x with coefficients involving the radicals of radicand ut only (no other poles)
+function poly_times_radicals(f, xk::String, ut)
+    us = string(ut)
+    hook(t, T) = (rp = isnode(t) ? radical_parts(t) : nothing; (rp !== nothing && string(rp[2]) == us) ? sym_const(T, t) : nothing)
+    T, el = try
+        build_tower(f, xk; subst = hook)
+    catch e
+        (e isa RischNotImplemented || e isa RischError) || rethrow()
+        return false
+    end
+    isempty(T.levels) && degree(el.den) == 0
 end

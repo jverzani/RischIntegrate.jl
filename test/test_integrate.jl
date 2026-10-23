@@ -1440,6 +1440,21 @@ end
     end
 end
 
+# √(K - |α| x²) with √K or the scale irrational (7 - 2x², 3 - x²): step PR with opaque constant radicals,
+# asin answers (was refused, or a long Euler substitution)
+@testset "√(7 - 2x²): asin with irrational scales" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for f in (:(sqrt(7 - 2 * x ^ 2)), :(1 / sqrt(7 - 2 * x ^ 2)), :(sqrt(3 - x ^ 2)), :(x ^ 2 / sqrt(7 - 2 * x ^ 2)),
+              :(sqrt(5 + 4x - 3 * x ^ 2)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("asin", string(F))
+        for x0 in (0.4, 1.1)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
 # asec, acsc: √(1 - 1/u²) is kept (√(u² - 1)/u held for u > 1 only); check both signs
 @testset "asec, acsc for u < -1" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
