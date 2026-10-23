@@ -3,7 +3,8 @@
 # (∫ x tan x, ∫ x sin³x/cos³x). In the ℚ(i) tower, θ = e^(ikx), f = x R(θ) + S(θ); S is integrated as usual.
 # G = ∫ R = v + Σ c log W(θ) (Risch). Each W is lc·Π (θ - r)^m with roots r = 0 or on the unit circle in ℚ(i)
 # (±1, ±i), r = e^(iψ), φ = kx - ψ; then log(θ - r) = log(-r) + log(1 - θ/r) and, on 0 < φ < 2π,
-#   log(1 - e^(iφ)) = log|2 sin(φ/2)| + i (φ - π)/2,   log(-r) = i arg(-r),   log θ = i k x.
+#   log(1 - e^(iφ)) = log|2 sin(φ/2)| + i (φ - π)/2,   log(-r) = i arg(-r),   log θ = i k x,
+# with log|2 sin(φ/2)| printed as ½ log(2 - 2 cos φ).
 # G is printed in this real form (Re v + Σ Re(c ·)), which differentiates to R wherever it is smooth, and
 #   ∫ log|2 sin(φ/2)| dx = -Cl₂(φ)/k,   ∫ (φ - π)/2 dx = (φ - π)²/(4k),
 # so ∫ x R = x G - ∫ G holds wherever G is smooth (the same printed G on both sides).
@@ -134,8 +135,10 @@ function try_x_trig(f, x; build = nothing, lift = nothing, verify::Bool = true)
             φt = iszero(ψ) ? kxt : mk(bd, :+, kxt, mk(bd, :*, cterm(bd, -ψ), πt))
             # Re(c log(θ - r)) = cr log|2 sin(φ/2)| - ci (arg(-r) + (φ - π)/2)
             if !iszero(cr)
-                ls = mk(bd, :log, mk(bd, :^, mk(bd, :*, bd.lift(2), mk(bd, :sin, mk(bd, :/, φt, bd.lift(2)))), bd.lift(2)))
-                push!(Gts, sc(cr * m / 2, ls))                                 # ½ log (2 sin(φ/2))²
+                # (2 sin(φ/2))² = 2 - 2 cos φ, cos φ = cos(kx - ψπ) = ±cos kx or ±sin kx
+                cs = mk(bd, iseven(Int(2ψ)) ? :cos : :sin, kxt)
+                ls = mk(bd, :log, mk(bd, :+, bd.lift(2), mk(bd, :*, bd.lift(ψ < 1 ? -2 : 2), cs)))
+                push!(Gts, sc(cr * m / 2, ls))                                 # ½ log (2 - 2 cos φ)
                 push!(IGts, sc(-cr * m / k, mk(bd, :Cl2, φt)))                 # ∫: -Cl₂(φ)/k
             end
             if !iszero(ci)
