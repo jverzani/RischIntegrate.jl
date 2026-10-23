@@ -11,6 +11,7 @@
 # ---------------------------------------------------------------------------
 
 function integrate_monomial_radicals(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     # first the cheap derivative-divides test with a radicand as u (tanh⁵x sech^(3/4)x, u = sech x): the
     # substitution s = eˣ would give a 4th root of a degree-7 polynomial
     xk = string(x)
@@ -60,6 +61,7 @@ function integrate_monomial_radicals(f, x; build = nothing, lift = nothing, veri
 end
 
 function mr_direct(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     xk = string(x)
     radt = Dict{String,Any}()                           # radical subterms with a non-rational radicand
     function findrads(t)
@@ -199,6 +201,7 @@ end
 # ∫ g(s) ds for one substitution of step MR: the radicals as terms in s (x stands for s), as generators of the
 # constant field; nothing when the integral leaves a RootSum
 function mr_piece(f, x, bd, T, radt, Usx, real_frac, RC, kind, gr; build, lift, verify)
+    @nospecialize f x
     consts = copy(T.consts)
     for (kk, t) in radt
         j = findfirst(c -> c.kind === :sym && string(c.term) == kk, consts)
@@ -258,6 +261,7 @@ end
 # One radicand only (all its exponents of one parity when q is even).
 # ---------------------------------------------------------------------------
 function integrate_power_radicands(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     xk = string(x)
     rads = Any[]
     function findrads(t)
@@ -372,6 +376,7 @@ end
 # The outer radicals then have radicands rational in u, integrated as usual; u = L^(1/Q) is put back.
 # ---------------------------------------------------------------------------
 function integrate_inner_linear_radical(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     xk = string(x)
     rads = collect_radicals(f, xk)
     nested = [(e, u) for (e, u) in rads if depends_on(u, xk) && !isempty(collect_radicals(u, xk))]

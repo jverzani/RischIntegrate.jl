@@ -274,6 +274,30 @@ the last section.
   Left (Rubi): Li₂/Li₃ of complex arguments (≈ 22, Clausen-type real forms), log with nested radicals,
   asin of non-linear arguments, complex-valued trig radicals, √(tan²x + 2 tan x + 2).
 
+## Next (after v1.1.0, 2026-10-23)
+
+From the v1.1.0 summary and a CAS coverage and performance report (SymJ, Giac):
+
+1. Gap: ∫ √(7 − 2x²) and ∫ 1/√(7 − 2x²) are refused ("residues of degree > 2 over the constant field
+   ℚ(√7)…"), while √(7 − x²) works. The same family has poor output: ∫ √(7 − x²), ∫ √(3 − x²) come back as
+   long Euler-substitution expressions instead of the asin form. Remedy: the step PR substitution for
+   rational radicands too, x = s u with s = √(7/2) a constant radical (as the opaque √ of parameters), which
+   reaches the asin route (`unit_circle_radicand`) for a·(1 − u²) and the asinh/log route for a·(1 + u²).
+2. Performance:
+   * First-use compilation: some integrands still compile on first use (∫ 1/(5 + 2 sin x − cos x) 1.6 s,
+     ∫ √(3 − x²) 1.3 s), and on Julia 1.10 the first SymbolicUtils call took > 240 s (the reason for
+     julia ≥ 1.12). `@nospecialize` on the term arguments of the integration entry points
+     (`risch_integrate`, `integrate_direct`, the step functions that call back into them) so the call
+     graph is inferred once, not per term type; a PrecompileTools workload over the main routes.
+   * Steady-state speed: once compiled, Giac's own integrate is about 7× faster on the same problems
+     (123 against 815 ms with SymJ terms). Profile the main routes (tower construction, nested `Frac`
+     arithmetic over ℚ(t₁, …), the exact derivative checks) for the hot spots.
+3. Polylogarithms: Li₂/Li₃ of complex arguments with real (Clausen-type) forms (≈ 22 Rubi problems:
+   x tan x, atan(x) log(x)/x, x³ tan⁴ x, …); ∫ log(x)/(a + bx) by a parameter scaling before step DL.
+4. One-of-a-kind Rubi refusals: log with nested radicals, asin of non-linear arguments, complex-valued
+   trig radicals, √(tan² x + 2 tan x + 2), 1/√(a^(2x) − 1).
+5. Output: `sqrt(a^2)`, repeated √ of parameter sums, the half-angle forms of the √(sin 2x) answers.
+
 ## Where we start
 
 Radicals today (`radicals.jl`, `euler_substitutions.jl`) are handled only when the curve has

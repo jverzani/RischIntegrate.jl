@@ -11,10 +11,11 @@
 # hold for the parameter values where σ (or κ) is positive, the usual convention of symbolic integrators.
 # ---------------------------------------------------------------------------
 
-function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, verify::Bool = true)
+function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, verify::Bool = true, rational::Bool = false)
+    @nospecialize f x
     xk = string(x)
-    any(((_, u),) -> has_param(u, xk), rads) || return nothing
-    ut0 = first(u for (_, u) in rads if has_param(u, xk))
+    rational || any(((_, u),) -> has_param(u, xk), rads) || return nothing
+    ut0 = rational ? rads[1][2] : first(u for (_, u) in rads if has_param(u, xk))
     # every radical must have this radicand (or a radicand free of parameters is not mixed in)
     all(((_, u),) -> string(u) == string(ut0), rads) || return nothing
     T, el = try
@@ -154,6 +155,7 @@ end
 # (1/(x³ + a³) = a⁻³/(u³ + 1)). g is integrated over ℚ (real forms with √3, …) and u = x/a put back:
 # ∫ f dx = aᵏ G(x/a). Used instead of a RootSum over ℚ(a, …); nothing when f is not of this kind.
 function integrate_param_scaled(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     xk = string(x)
     T, el = try
         build_tower(f, xk)
@@ -207,6 +209,7 @@ end
 # free of p, written p^(me) U₀^e (p > 0; p^(me) an opaque constant when me ∉ ℤ): ∫ g(x) dx = ∫ g(p u) p du,
 # then u = x/p. Nothing when no parameter gives an answer without a RootSum.
 function integrate_scaled_radicals(g, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize g x
     xk = string(x)
     bd = Builder(build === nothing ? auto_build(g, x) : build, lift === nothing ? auto_lift(g, x) : lift, x)
     ps = Dict{String,Any}()
@@ -317,6 +320,7 @@ end
 # √r). By linearity ∫ f dx = s κ⁻ᵏ Σ nᵢ sⁱ ∫ uⁱ/Q₀(u)ᵏ du, each integral over ℚ; then u = (x - h)/s.
 # ---------------------------------------------------------------------------
 function integrate_param_linear(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     xk = string(x)
     T, el = try
         build_tower(f, xk)

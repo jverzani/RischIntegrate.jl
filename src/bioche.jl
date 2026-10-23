@@ -71,6 +71,7 @@ function atan_infinity_sign(p::Frac, sg = c -> Int(real_sign(c)))
 end
 
 function bioche(f, x; build = nothing, lift = nothing)
+    @nospecialize f x
     xk = string(x)
     T, el = try
         build_tower(f, xk)

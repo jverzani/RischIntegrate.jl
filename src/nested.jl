@@ -115,6 +115,7 @@ end
 
 # ∫ f dx for f with nested radicals √(a + b√c), a² - b²c = -s²; nothing when not of this shape
 function integrate_nested(f, x, xk::String, b0::Builder; verify::Bool = true)
+    @nospecialize f x
     rads = collect_radicals(f, xk)
     nested = [(e, u) for (e, u) in rads if radicand_element(u, xk) === nothing]
     isempty(nested) && return nothing

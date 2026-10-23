@@ -56,6 +56,7 @@ has_special(ex) = ex isa Expr && ex.head === :call && (ex.args[1] in SPECIAL_NAM
 
 # ∫ f dx through Expr, when f's term type has no method for a special function of the answer
 function integrate_special_fallback(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     xk = string(x)
     leaves = Dict{String,Any}()                         # the user's leaves (x, parameters) by name
     collect_leaves!(leaves, f)

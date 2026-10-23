@@ -178,6 +178,7 @@ function ep_to_term(b::Builder, G::EP)
 end
 
 function integrate_trig(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     F = parse_ep(f, string(x))
     G = ep_integrate(F)
     verify && ep_deriv(G) != F && throw(RischError("internal check failed (trigonometric integral)"))

@@ -84,6 +84,7 @@ end
 
 # ∫ f for radicals of the two radicands of `groups` (both square roots); pmap: radicand powers (RP)
 function integrate_biquadratic(f, x, xk::String, groups, b0::Builder, verify::Bool, pmap)
+    @nospecialize f x
     (a, aterm, _), (b, bterm, _) = groups
     radval = function (ue, e)
         k = 2 * e

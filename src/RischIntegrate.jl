@@ -72,7 +72,7 @@ turns a Julia number into a term. By default operations are called as functions 
 SymbolicUtils terms, constants such as `sqrt(2)` are built with `TermInterface.maketerm`). See the
 README for SymbolicUtils.jl and Symbolics.jl.
 """
-integrate(ex, x; kw...) = risch_integrate(ex, x; kw...)
+integrate(@nospecialize(ex), @nospecialize(x); kw...) = risch_integrate(ex, x; kw...)
 
 function integrate(ex, a, bs...; kw...)
     f = integrate(ex, a; kw...)

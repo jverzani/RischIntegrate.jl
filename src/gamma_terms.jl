@@ -104,6 +104,7 @@ end
 
 # ∫ f dx with incomplete gamma terms, or nothing
 function try_gamma(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     xk = string(x)
     b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     rest, gts, syms = Any[], Any[], Any[]
@@ -240,6 +241,7 @@ end
 # (u printed as x), integrated by `try_gamma`, and u = log x put back. Nothing when f has no log x or g is
 # not of the gamma kind.
 function try_gamma_log(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     xk = string(x)
     islogx(t) = isnode(t) && opname(operation(t)) === :log && length(arguments(t)) == 1 && string(arguments(t)[1]) == xk
     haslog(t) = islogx(t) || (isnode(t) && any(haslog, arguments(t)))
@@ -287,6 +289,7 @@ rs_value_continuous(g::TrigPowerTerm, xk::String, a::Real) = trigpower_value(g, 
 depends_on(g::TrigPowerTerm, yk::String) = g.var == yk
 
 function try_trig_power(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     xk = string(x)
     b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     nums, rest = Any[], Any[]
@@ -366,6 +369,7 @@ end
 # ∫ c·erf(ax + b) = c (x + b/a) erf(ax + b) + c e^(-(ax+b)²)/(a√π); erfi: c (x + b/a) erfi(ax + b) - c e^((ax+b)²)/(a√π)
 # (by parts). A sum of such terms and terms free of erf; nothing when f has another use of erf.
 function try_erf(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     xk = string(x)
     haserf(t) = isnode(t) && (opname(operation(t)) in (:erf, :erfi) || any(haserf, arguments(t)))
     haserf(f) || return nothing

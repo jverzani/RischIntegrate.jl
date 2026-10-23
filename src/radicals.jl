@@ -26,11 +26,16 @@ function radical_parts(t)
     nothing
 end
 
+# a radical of this radicand is an opaque constant (a `:sym` generator): free of x, with a parameter (√(2h)),
+# or any constant radical inside step PR for rational radicands (√7, √(7/2): `OPAQUE_CONST_RADICALS`)
+const OPAQUE_CONST_RADICALS = Ref(false)
+opaque_radical(u, xk::String) = !has_x(u, xk) && (OPAQUE_CONST_RADICALS[] || has_param(u, xk))
+
 # all radicals of f: [(exponent, radicand term)]
 function collect_radicals(f, xk::String, out = Tuple{Q,Any}[])
     rp = radical_parts(f)
     # a radical of a parameter constant (√(2h)) is an opaque constant (`parse_tower`), not a radical of x
-    rp !== nothing && !has_x(rp[2], xk) && has_param(rp[2], xk) && return out
+    rp !== nothing && opaque_radical(rp[2], xk) && return out
     rp === nothing || push!(out, rp)
     if safe_iscall(f)
         for a in arguments(f)
@@ -58,6 +63,7 @@ to_K0(T::Tower, φ::Frac{UPoly{Q}}) = (C = ctype(T); P = UPoly{C};
 to_K0(T::Tower{C}, φ::Frac{UPoly{C}}) where {C} = φ
 
 function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     xk = string(x)
     groups = Any[]                                      # [radicand element, term, lcm of indices]
     cvs = Q[]                                           # radicands of constant radicals (10e)
@@ -218,7 +224,7 @@ function integrate_subst(f, xk::String, ::Type{S}, φ, radval, bt::Builder, veri
         rp = radical_parts(term)
         rp === nothing && return nothing
         e, ut = rp
-        (!has_x(ut, xk) && has_param(ut, xk)) && return nothing     # an opaque constant (`parse_tower`)
+        opaque_radical(ut, xk) && return nothing         # an opaque constant (`parse_tower`)
         ue = radicand_element(ut, xk)
         ue === nothing && throw(RischNotImplemented("radical of a non-rational expression ($ut)"))
         if is_const_radicand(ue)
@@ -292,6 +298,7 @@ end
 # step SQ, u = c·s² with other (constant) radicals: on each branch √u = ±s√c, so with F± = ∫ f|_{√u = ±s√c},
 # ∫ f = (F₊ + F₋)/2 + σ (F₊ - F₋)/2, σ = sign(s) = (√u/s)/√c (locally constant)
 function integrate_square_branches(f, x, xk::String, uo, uterm, sp::UPoly{Q}, w::UPoly{Q}, b0::Builder, verify::Bool)
+    @nospecialize f x
     c = w.c[1]
     rc = rat_sqrt(c)
     sqc = rc === nothing ? mk(b0, :sqrt, cterm(b0, c)) : cterm(b0, rc)

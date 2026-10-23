@@ -259,6 +259,7 @@ function kum_component(bs::Vector{QX}, r::Vector{Q}, g::QXF, θterm; needlog::Bo
 end
 
 function integrate_kummer(f, x, rads; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     xk = string(x)
     b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     us = Any[]

@@ -10,6 +10,7 @@ check of the answer by differentiation (every answer is checked by default). Ret
 [`IntegralWithRootSums`](@ref); throws [`NotElementary`](@ref) or [`RischNotImplemented`](@ref).
 """
 function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     check_leaves(f, string(x))                                         # step WR
     try
         r = integrate_direct(f, x; build = build, lift = lift, verify = verify)
@@ -56,6 +57,7 @@ end
 const EXPR_RETRY = Ref(false)                           # no nested Expr retries
 
 function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
     xk = string(x)
     g = try_erf(f, x; build = build, lift = lift, verify = verify)   # ∫ erf(ax + b) by parts
     g === nothing || return g
@@ -90,6 +92,33 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
             catch e
                 e isa RischNotImplemented || rethrow()
             end
+        end
+    end
+    if !OPAQUE_CONST_RADICALS[] && length(rads) >= 1 && all(((e, u),) -> denominator(e) == 2 && string(u) == string(rads[1][2]), rads)
+        # one quadratic radicand K - |α| (x - h)² over ℚ whose scaling to K(1 - u²) is irrational (7 - 2x²:
+        # s = √(7/2)): step PR with the constant radicals opaque, so that the asin route applies to the
+        # integrand in u
+        q = radicand_element(rads[1][2], xk)
+        irrational_scale = q !== nothing && isone(q.den) && degree(q.num) == 2 && begin
+            γ, β, α = q.num.c
+            K = γ - β^2 / (4α)
+            # (the asin family only, α < 0 < K: for α > 0 the Euler substitutions keep real log arguments, step EL)
+            α < 0 && K > 0 && (rat_sqrt(K) === nothing || rat_sqrt(-K / α) === nothing)
+        end
+        # (P(x)·(radical)^k only: other poles give log parts with √K, √(K/|α|) as opaque constants, where
+        # √K² = K is not seen; those keep the usual route)
+        irrational_scale && (irrational_scale = poly_times_radicals(f, xk, rads[1][2]))
+        if irrational_scale
+            OPAQUE_CONST_RADICALS[] = true
+            r = try
+                integrate_param_radicals(f, x, rads; build = build, lift = lift, verify = verify, rational = true)
+            catch e
+                (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+                nothing
+            finally
+                OPAQUE_CONST_RADICALS[] = false
+            end
+            r === nothing || return r
         end
     end
     if any(((_, u),) -> has_param(u, xk), rads)        # parameters in a radicand: x = s u + h (step PR)
@@ -237,6 +266,7 @@ has_symbol(t) = safe_iscall(t) && !isempty(arguments(t)) ? any(has_symbol, argum
 # f = c·g with c ≠ 1 the product of the factors of f (numerator and denominator of a top-level
 # product or quotient) that are free of x but contain a symbol: (c, g, builder), or nothing
 function split_free_factor(f, x, xk::String, build, lift)
+    @nospecialize f x
     (safe_iscall(f) && !isempty(arguments(f))) || return nothing
     n = opname(operation(f))
     n in (:*, :/) || return nothing
@@ -309,6 +339,7 @@ end
 # Returns the rewritten term, or nothing when there is no such shift.
 const SHIFT_TRIG = (:sin, :cos, :tan, :cot, :sec, :csc, :sinh, :cosh, :tanh, :coth, :sech, :csch)
 function expand_trig_shifts(f, x, xk::String, build, lift)
+    @nospecialize f x
     has_shift(t) = safe_iscall(t) && !isempty(arguments(t)) &&
         ((opname(operation(t)) in SHIFT_TRIG && length(arguments(t)) == 1 && shift_split(arguments(t)[1], xk) !== nothing) ||
          any(has_shift, arguments(t)))
@@ -378,4 +409,17 @@ function exact_cos_sin(b::Builder, k::Int)
     t((r, sv)) = iszero(r) ? b.lift(0) : isone(sv) ? cterm(b, Q(r)) :
                  isone(r) ? mk(b, :sqrt, b.lift(sv)) : mk(b, :*, cterm(b, Q(r)), mk(b, :sqrt, b.lift(sv)))
     t(cq), t(sq)
+end
+
+# f is a polynomial in x with coefficients involving the radicals of radicand ut only (no other poles)
+function poly_times_radicals(f, xk::String, ut)
+    us = string(ut)
+    hook(t, T) = (rp = isnode(t) ? radical_parts(t) : nothing; (rp !== nothing && string(rp[2]) == us) ? sym_const(T, t) : nothing)
+    T, el = try
+        build_tower(f, xk; subst = hook)
+    catch e
+        (e isa RischNotImplemented || e isa RischError) || rethrow()
+        return false
+    end
+    isempty(T.levels) && degree(el.den) == 0
 end
