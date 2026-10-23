@@ -350,11 +350,35 @@ function to_term_real(b::Builder, T::Tower, L::Int, res::ElemIntegral, f; pos = 
     pos === nothing || (pieces = real_log_signs(T, pieces, pos))   # step EC: real log arguments
     tot = tot + emit!(T, kinds, pieces)
     isempty(res.atans) || throw(RischError("unexpected atan terms over ℚ(i)"))
+    merged = Any[]                                      # (fn, w, coefficient): like terms added
     for q in res.quads
         q isa SpecialTerm || continue
         d = liftto(T, q.deriv, L)                       # Re of the term differentiates to (d + σd)/2
         tot = tot + (d + tconj(T, kinds, d, L)) * lconst(T, inv(cfromQ(C, Q(2))), L)
-        push!(ts, special_out_real(b, T, kinds, q))
+        parts = special_parts_real(T, kinds, q)
+        if parts === nothing
+            push!(ts, special_out_real(b, T, kinds, q))
+            continue
+        end
+        for (fn, w, pr, qa, ca, cb) in parts
+            j = findfirst(m -> m[1] === fn && m[3] == pr && m[4] == qa && levelof(T, m[2]) == levelof(T, w) && m[2] == w, merged)
+            j === nothing ? push!(merged, Any[fn, w, pr, qa, ca, cb]) : (merged[j][5] += ca; merged[j][6] += cb)
+        end
+    end
+    for (fn, w, pr, qa, ca, cb) in merged                # e^pr (a cos q + b sin q) fn(w)
+        cs = Any[]
+        if iszero(qa)
+            iszero(ca) || push!(cs, isone(ca) ? nothing : cterm(b, ca))
+        else
+            sc(c, t) = isone(c) ? t : mk(b, :*, cterm(b, c), t)
+            iszero(ca) || push!(cs, sc(ca, mk(b, :cos, cterm(b, qa))))
+            iszero(cb) || push!(cs, sc(cb, mk(b, :sin, cterm(b, qa))))
+        end
+        isempty(cs) && continue
+        t = mk(b, fn, real_term(b, T, kinds, w))
+        k = length(cs) == 1 ? cs[1] : mk(b, :+, cs...)
+        iszero(pr) || (k = k === nothing ? mk(b, :exp, cterm(b, pr)) : mk(b, :*, mk(b, :exp, cterm(b, pr)), k))
+        push!(ts, k === nothing ? t : mk(b, :*, k, t))
     end
     for q in res.quads
         q isa SpecialTerm && continue

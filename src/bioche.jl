@@ -80,7 +80,7 @@ function bioche(f, x; build = nothing, lift = nothing)
     end
     C = ctype(T)
     # C = ℚ(i), or ℚ(i)(t₁, …) with real generators e^a, log p (step TE)
-    (C === QI || (C <: Frac && cbase(C) === QI && all(g -> g.kind in (:exp, :log, :sym), T.consts))) || return nothing
+    (C === QI || (C <: Frac && cbase(C) === QI && all(g -> g.kind in (:exp, :log, :sym, :symlog), T.consts))) || return nothing
     (length(T.levels) == 1 && T.levels[1].kind === :exp) || return nothing
     RC = real_ctype(C)
     I = cimag(C)
@@ -113,6 +113,10 @@ function bioche(f, x; build = nothing, lift = nothing)
         kind = :tan
         g = tan_to_s(R)
         sel = li(-I) * (θel * θel - one1) / (θel * θel + one1)
+    elseif any(g -> g.kind === :sym, T.consts)           # step TW: s = tan(u/2), θ = (1 + is)/(1 - is),
+        kind = :half                                     # du/ds = 2/(1 + s²) (over parameter fields, where
+        g = half_to_s(R)                                 # the ℚ(i) route has no quadratic residues)
+        sel = li(-I) * (θel - one1) / (θel + one1)
     else
         return nothing
     end
@@ -127,8 +131,11 @@ function bioche(f, x; build = nothing, lift = nothing)
         throw(RischError("internal check failed: Bioche substitution"))
     # real poles of f (poles of g in the range of s) → the general route (real forms with |w|²)
     sg(c) = csign(c, T.consts)
-    rng = kind === :tan ? (nothing, nothing) : (-1, 1)
-    real_root_count(gq.den, rng..., sg) == 0 || return nothing
+    rng = kind in (:tan, :half) ? (nothing, nothing) : (-1, 1)
+    nreal = real_root_count(gq.den, rng..., sg)
+    # (tan(u/2) with parameters: the sign conditions are not decided; the answer holds on (-π, π) where
+    # the parameters leave g without real poles, e.g. |a| < 1 for 1/(1 + a cos u))
+    (nreal == 0 || (kind === :half && nreal === nothing)) || return nothing
     res = integrate_rational(gq)
     # residues of degree > 2 (step TR): a RootSum in s = cos u or sin u (over ℚ, real and continuous
     # since g has no pole in [-1, 1]); for s = tan u see step TT below
@@ -165,7 +172,8 @@ function bioche(f, x; build = nothing, lift = nothing)
     res = RationalIntegral(res.rational, logs, res.atans, Any[], quads)
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
     ut = isone(k) ? bd.x : mk(bd, :*, cterm(bd, k), bd.x)
-    st = mk(bd, kind, ut)
+    kind === :half && (ut = mk(bd, :*, cterm(bd, k / 2), bd.x))   # s = tan(ku/2): u/2 plays the role of u
+    st = mk(bd, kind === :half ? :tan : kind, ut)
     bs = Builder(bd.build, bd.lift, st, T.consts)       # prints s as sin(kx), cos(kx), tan(kx)
     if !isempty(unres)
         rss = Any[]
@@ -176,7 +184,14 @@ function bioche(f, x; build = nothing, lift = nothing)
             throw(RischError("internal check failed: derivative of the result (with RootSums) differs from the integrand"))
         if kind !== :tan
             rss = RC === Q ? rss : Any[base_term_rootsum(bs, rs) for rs in rss]
-            return IntegralWithRootSums(to_term(bs, res), rss, xk)
+            E = to_term(bs, res)
+            if kind === :half                            # jumps of the atans at u = π (not of the step PQ terms)
+                corr = tan_jump_terms(bd, bs, res, sg)
+                corr === nothing && return nothing
+                isempty(corr) || (E = mk(bd, :+, E, mk(bd, :*, length(corr) == 1 ? corr[1] : mk(bd, :+, corr...),
+                                                       mk(bd, :+, ut, mk(bd, :*, bd.lift(-1), mk(bd, :atan, mk(bd, :tan, ut)))))))
+            end
+            return with_rootsums(bd, E, rss)
         end
         # step TT: W(α, tan u) = cos(u)^(-n) W̃(α), W̃ = Σ w_k sin^k(u) cos^(n-k)(u), bounded and nonzero on
         # the real line (W monic: W̃ = ±1 where cos u = 0). So Σ α log W = Σ α log W̃ - (Σα) n log cos u,
@@ -217,7 +232,7 @@ function bioche(f, x; build = nothing, lift = nothing)
     end
     check_result(res, gq) || throw(RischError("internal check failed: derivative of the result differs from the integrand"))
     term = to_term(bs, res)
-    kind === :tan || return term
+    kind in (:tan, :half) || return term
     corr = tan_jump_terms(bd, bs, res, sg)
     corr === nothing && return nothing
     isempty(corr) && return term
@@ -251,4 +266,16 @@ function tan_jump_terms(bd::Builder, bs::Builder, res::RationalIntegral, sg = c 
         end
     end
     corr
+end
+
+# step TW: R(θ) with θ = (1 + is)/(1 - is), times 2/(1 + s²), as an element of C(s)
+function half_to_s(R::Frac{UPoly{C}}) where {C}
+    I = cimag(C)
+    P = UPoly{C}
+    a, b = P(C[one(C), I]), P(C[one(C), -I])             # θ = a/b
+    hom(p) = sum((scale(c, a^(k - 1) * b^(degree(p) - k + 1)) for (k, c) in enumerate(p.c) if !iszero(c)); init = zero(P))
+    dn, dd = degree(R.num), degree(R.den)
+    N, Dn = hom(R.num), hom(R.den)                      # R(θ) = N/Dn · b^(dd - dn)
+    N, Dn = dd >= dn ? (N * b^(dd - dn), Dn) : (N, Dn * b^(dn - dd))
+    frac(scale(cfromQ(C, Q(2)), N), Dn * P(C[one(C), zero(C), one(C)]))
 end

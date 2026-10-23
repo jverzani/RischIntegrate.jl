@@ -113,8 +113,8 @@ function integrate_arcsin(f, x, arcs; sK::Q = Q(1), radicand = nothing, build = 
     sP = xpoly(Q)
     rr = P(Q[1, 0, -1])                                 # 1 - u²
     # √(1 - u²) in the answer: the integrand's own radical √q / √K when there is one;
-    # recip (s = 1/u): √(1 - 1/u²) = √(u² - 1)/u (u > 0)
-    rterm = recip ? mk(bd, :/, mk(bd, :sqrt, poly_term(bu, P(Q[-1, 0, 1]))), arcs[1][2]) :
+    # recip (s = 1/u): √(1 - 1/u²) itself (√(u² - 1)/u would hold for u > 1 only)
+    rterm = recip ? mk(bd, :sqrt, frac_term(bu, frac(P(Q[-1, 0, 1]), P(Q[0, 0, 1])))) :
             radicand === nothing ? mk(bd, :sqrt, poly_term(bu, rr)) :
             isone(sK) ? mk(bd, :sqrt, radicand) : mk(bd, :/, mk(bd, :sqrt, radicand), cterm(bd, sK))
     # a polynomial in s as a term: recip: s = 1/u, A(1/u) = (reversed A)(u)/u^deg A

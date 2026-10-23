@@ -58,6 +58,15 @@ function term_deriv(bd::Builder, t, xk::String)
         n === :cos && return neg(mul(mk(bd, :sin, a[1]), d[1]))
         n === :tan && return mul(mk(bd, :+, bd.lift(1), mk(bd, :^, t, bd.lift(2))), d[1])
         n === :atan && return mk(bd, :/, d[1], mk(bd, :+, bd.lift(1), mk(bd, :^, a[1], bd.lift(2))))
+        n === :sec && return mul(t, mk(bd, :tan, a[1]), d[1])
+        n === :csc && return neg(mul(t, mk(bd, :cot, a[1]), d[1]))
+        n === :cot && return neg(mul(mk(bd, :+, bd.lift(1), mk(bd, :^, t, bd.lift(2))), d[1]))
+        n === :sinh && return mul(mk(bd, :cosh, a[1]), d[1])
+        n === :cosh && return mul(mk(bd, :sinh, a[1]), d[1])
+        n === :tanh && return mul(mk(bd, :+, bd.lift(1), neg(mk(bd, :^, t, bd.lift(2)))), d[1])
+        n === :coth && return mul(mk(bd, :+, bd.lift(1), neg(mk(bd, :^, t, bd.lift(2)))), d[1])
+        n === :sech && return neg(mul(t, mk(bd, :tanh, a[1]), d[1]))
+        n === :csch && return neg(mul(t, mk(bd, :coth, a[1]), d[1]))
     end
     throw(RischNotImplemented("no derivative rule for `$n` (u-substitution)"))
 end
@@ -118,6 +127,8 @@ end
 function integrate_usub(f, x, u, bd::Builder; build, lift, verify::Bool)
     xk = string(x)
     du = term_deriv(bd, u, xk)
+    r = integrate_usub_trig(f, x, u, du, bd; build = build, lift = lift, verify = verify)   # u = sech v, …
+    r === nothing || return r
     hook, upow = usub_hook(u, xk)
     T, el = build_tower(mk(bd, :/, f, du), xk; subst = hook)
     (levelof(T, el) == 0 && isone(el.den) && degree(el.num) == 0) || return nothing
@@ -128,7 +139,11 @@ function integrate_usub(f, x, u, bd::Builder; build, lift, verify::Bool)
     end
     pw(k) = k == 1 ? bd.x : mk(bd, :^, bd.x, bd.lift(k))
     to_x(t) = (k = upow(t); k !== nothing ? pw(k) : isnode(t) ? term_rebuild(bd, t, Any[to_x(s) for s in arguments(t)]) : t)
-    G = to_x(cterm(Builder(bd.build, bd.lift, bd.x, T.consts), c))
+    # G = c with u ↦ x, done on the generators before c is printed: u's generator prints as x, an opaque
+    # function of u (a subterm of f) as that subterm with u ↦ x. Matching u in the printed c instead would
+    # depend on how the term type simplifies what is built (SymJ distributes constants over sums).
+    consts = ConstGen[g.kind === :sym ? ConstGen(:sym, g.arg, to_x(g.term)) : g for g in T.consts]
+    G = cterm(Builder(bd.build, bd.lift, bd.x, consts), c)
     H = risch_integrate(G, x; build = build, lift = lift, verify = verify)
     H isa IntegralWithRootSums && return nothing
     back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? u : t)
@@ -155,4 +170,70 @@ function try_usub(f, x; build, lift, verify::Bool)
         USUB_DEPTH[] -= 1
     end
     nothing
+end
+
+# ---------------------------------------------------------------------------
+# u-substitution for u = h(v), h a trigonometric or hyperbolic function: f/u′ = c·C^A·S^B with C, S = cos v, sin v
+# (cosh v, sinh v), each factor a power (rational exponents allowed) of one of the six functions of v. With
+# U = u, C and S are U^p P(U)^(r/2) (sech: C = U⁻¹, S = (1 - U²)^(1/2) U⁻¹); the square-root factor P^(1/2) must
+# enter with an integer total power (so no sign of √P is assumed), U to any rational power (U > 0 where
+# a fractional power of u is in the integrand already). Then f dx = c U^α P(U)^β dU.
+# ---------------------------------------------------------------------------
+const TRIG_CS = Dict(:sin => (0, 1), :cos => (1, 0), :tan => (-1, 1), :cot => (1, -1), :sec => (-1, 0), :csc => (0, -1))
+const HYP_CS = Dict(:sinh => (0, 1), :cosh => (1, 0), :tanh => (-1, 1), :coth => (1, -1), :sech => (-1, 0), :csch => (0, -1))
+# h ↦ (C = U^c1 P^(c2/2), S = U^s1 P^(s2/2)) with P(U) as coefficients (U⁰, U¹, U²)
+const CS_OF_U = Dict(
+    :cos => ((1, 0), (0, 1), (1, 0, -1)), :sin => ((0, 1), (1, 0), (1, 0, -1)),
+    :sec => ((-1, 0), (-1, 1), (-1, 0, 1)), :csc => ((-1, 1), (-1, 0), (-1, 0, 1)),
+    :tan => ((0, -1), (1, -1), (1, 0, 1)), :cot => ((1, -1), (0, -1), (1, 0, 1)),
+    :cosh => ((1, 0), (0, 1), (-1, 0, 1)), :sinh => ((0, 1), (1, 0), (1, 0, 1)),
+    :sech => ((-1, 0), (-1, 1), (1, 0, -1)), :csch => ((-1, 1), (-1, 0), (1, 0, 1)),
+    :tanh => ((0, -1), (1, -1), (1, 0, -1)), :coth => ((1, -1), (0, -1), (-1, 0, 1)))
+
+function integrate_usub_trig(f, x, u, du, bd::Builder; build, lift, verify::Bool)
+    xk = string(x)
+    (isnode(u) && length(arguments(u)) == 1) || return nothing
+    h = opname(operation(u))
+    haskey(CS_OF_U, h) || return nothing
+    family = haskey(TRIG_CS, h) ? TRIG_CS : HYP_CS
+    vs = string(arguments(u)[1])
+    A, B = Ref(Q(0)), Ref(Q(0))
+    cs = Any[]
+    function collect!(t, e::Q)
+        if !depends_on(t, xk)
+            push!(cs, isone(e) ? t : mk(bd, :^, t, bd.lift(e)))
+            return true
+        end
+        isnode(t) || return false
+        n, args = opname(operation(t)), arguments(t)
+        n === :* && return all(a -> collect!(a, e), args)
+        (n === :/ && length(args) == 2) && return collect!(args[1], e) && collect!(args[2], -e)
+        if n === :^ && length(args) == 2
+            k = leaf_rational(args[2])
+            k === nothing && return false
+            return collect!(args[1], e * Q(k))
+        end
+        n === :sqrt && return collect!(args[1], e / 2)
+        if haskey(family, n) && length(args) == 1 && string(args[1]) == vs
+            a, b = family[n]
+            A[] += e * a
+            B[] += e * b
+            return true
+        end
+        false
+    end
+    collect!(f, Q(1)) && collect!(du, Q(-1)) || return nothing
+    (c1, c2), (s1, s2), pc = CS_OF_U[h]
+    α = A[] * c1 + B[] * s1                             # C^A S^B = U^α P^(β/2)
+    β = A[] * c2 + B[] * s2
+    (isone(denominator(β)) && iseven(numerator(β))) || return nothing
+    Pt = mk(bd, :+, bd.lift(pc[1]), mk(bd, :*, bd.lift(pc[3]), mk(bd, :^, bd.x, bd.lift(2))))
+    fs = Any[cs...]
+    iszero(α) || push!(fs, isone(α) ? bd.x : mk(bd, :^, bd.x, bd.lift(α)))
+    iszero(β) || push!(fs, mk(bd, :^, Pt, bd.lift(Int(numerator(β)) ÷ 2)))
+    G = isempty(fs) ? bd.lift(1) : length(fs) == 1 ? fs[1] : mk(bd, :*, fs...)
+    H = risch_integrate(G, x; build = build, lift = lift, verify = verify)
+    H isa IntegralWithRootSums && return nothing
+    back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? u : t)
+    back(H)
 end

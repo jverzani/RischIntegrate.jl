@@ -12,12 +12,12 @@ end
 # log(arg), arg ∈ ℚ. The field type only knows "k indeterminates"; what they stand for is
 # this list, kept by the tower (`T.consts`) and by the Builder (for output).
 struct ConstGen
-    kind::Symbol          # :exp, :log, :expi, or :sym (a symbolic parameter, step SY)
+    kind::Symbol          # :exp, :log, :expi, :sym (a symbolic parameter, step SY) or :symlog (its log)
     arg::Q
     term::Any             # :sym: the user's symbol (printed back as itself), else nothing
 end
 ConstGen(kind::Symbol, arg::Q) = ConstGen(kind, arg, nothing)
-symname(g::ConstGen) = g.kind === :sym ? string(g.term) : ""
+symname(g::ConstGen) = g.kind in (:sym, :symlog) ? string(g.term) : ""
 Base.:(==)(a::ConstGen, b::ConstGen) = a.kind === b.kind && a.arg == b.arg && symname(a) == symname(b)
 Base.hash(g::ConstGen, h::UInt) = hash(symname(g), hash(g.arg, hash(g.kind, h)))
 
@@ -31,6 +31,7 @@ Builder(build, lift, x) = Builder(build, lift, x, ConstGen[])
 const OPS = Dict{Symbol,Function}(:+ => +, :* => *, :/ => /, :^ => ^, :exp => exp,
                                   :log => log, :atan => atan, :sqrt => sqrt,
                                   :sin => sin, :cos => cos, :tan => tan, :cot => cot, :sec => sec, :csc => csc,
+                                  :sinh => sinh, :cosh => cosh, :tanh => tanh, :coth => coth, :sech => sech, :csch => csch,
                                   :asin => asin, :acos => acos, :acot => acot, :acsc => acsc, :asec => asec,
                                   # SpecialFunctions (Step 8a): Ei, Si, Ci, erf, erfi
                                   :Ei => expinti, :Si => sinint, :Ci => cosint, :erf => erf, :erfi => erfi,
@@ -119,6 +120,7 @@ constgen_term(b::Builder, g::ConstGen) =
     g.kind === :exp ? mk(b, :exp, cterm(b, g.arg)) :
     g.kind === :log ? mk(b, :log, cterm(b, g.arg)) :
     g.kind === :sym ? g.term :
+    g.kind === :symlog ? mk(b, :log, g.term) :
     throw(RischError("unknown constant generator kind $(g.kind)"))
 function cpoly_term(b::Builder, p::UPoly, t)
     iszero(p) && return b.lift(0)
@@ -138,24 +140,46 @@ end
 
 default_build(op, args...) = op(args...)
 
-# Constants such as sqrt(3) must stay symbolic. SimpleExpressions-like types defer
-# evaluation only when a symbolic variable is involved, so a constant-only call
-# `op(args...)` is built by substituting into `op(x, args[2:end]...)` (the
-# documented `u(value, :)` substitution); other types simply apply the operation.
-function placeholder_call(x, op, args)
-    isempty(args) && return nothing
-    try
-        u = op(x, args[2:end]...)
-        u isa Function || return nothing
-        r = u(args[1], :)
-        r isa Function ? r : nothing
-    catch
-        nothing
+# Constants such as sqrt(3) must stay symbolic. Callable term types (SimpleExpressions, SymJ) defer
+# evaluation only when a symbolic variable is involved, so a call on constants only is built with
+# TermInterface's `maketerm` for the variable's type, trying both conventions for `head` (as
+# GruntzLimit does); a power n^(p/2) or n^(p/3) is built from sqrt or cbrt, which such types keep
+# exact where they may fold a numeric power to a float. Failing that, the operation is evaluated
+# (the result is then a plain number). `@nospecialize`: compiled once, not per argument types.
+function maketerm_call(T, op, args)
+    @nospecialize
+    for TT in unique(Any[T, Base.typename(T).wrapper])
+        for attempt in (() -> maketerm(TT, op, Any[args...], nothing),
+                        () -> maketerm(TT, :call, Any[op; args...], nothing))
+            try
+                r = attempt()
+                r isa Function && return r
+            catch
+            end
+        end
     end
+    nothing
 end
 function deferred_call(x, op, args)
-    r = placeholder_call(x, op, args)
+    @nospecialize
+    mt(o, a) = maketerm_call(typeof(x), o, a)
+    if op in EXACT_OPS && all(a -> a isa Number, args)    # an integer value (sqrt(1), log(1)) as an integer
+        v = op(args...)
+        v isa AbstractFloat && isinteger(v) && abs(v) < 2^53 && return Int(v)
+    end
+    if op === (^) && length(args) == 2
+        r = root_power(mt, args[1], args[2])
+        r === nothing || return r
+    end
+    r = mt(op, args)
     r === nothing ? op(args...) : r
+end
+# n^e for a number n and e = p/2 or p/3, from sqrt(n) or cbrt(n) built by `mt`; nothing otherwise
+function root_power(mt, n, e)
+    @nospecialize
+    (n isa Number && e isa Rational && denominator(e) in (2, 3)) || return nothing
+    root = mt(denominator(e) == 2 ? sqrt : cbrt, Any[n])
+    root === nothing ? nothing : isone(numerator(e)) ? root : root^numerator(e)
 end
 function auto_build(f, x)
     typeof(x) <: Function || return x isa Number ? default_build : (op, args...) -> exact_call(x, op, args)

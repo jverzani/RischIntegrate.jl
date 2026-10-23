@@ -171,6 +171,44 @@ function special_log(T::Tower, i::Int, R::UPoly, Dsf::UPoly)
     SpecialTerm(:Ei, cv, -(kc * bc), lconst(T, kc, i) * w, Q(0), d)
 end
 
+"""
+    sinhint(x), coshint(x)
+
+The hyperbolic sine and cosine integrals Shi(x) = (Ei(x) - Ei(-x))/2 and (Ei(x) + Ei(-x))/2 (Chi(x) for
+x > 0; for x < 0 the real antiderivative of cosh(x)/x, an even function): antiderivatives of sinh(x)/x and
+cosh(x)/x. SpecialFunctions.jl has neither; RischIntegrate uses them in answers (H4).
+"""
+sinhint(x::Real) = (expinti(x) - expinti(-x)) / 2
+coshint(x::Real) = (expinti(x) + expinti(-x)) / 2
+OPS[:Shi] = sinhint
+OPS[:Chi] = coshint
+
+# c₁ Ei(w) + c₂ Ei(-w) (SpecialTerms without e^p) as (c₁ + c₂) Chi(w) + (c₁ - c₂) Shi(w), when the term type
+# builds sinhint and coshint calls: the terms, and the indices of the quads used (empty when none)
+function shi_chi_terms(b::Builder, T::Tower, quads)
+    ts, used = Any[], Set{Int}()
+    for i in eachindex(quads), j in eachindex(quads)
+        (i < j && !(i in used) && !(j in used)) || continue
+        q1, q2 = quads[i], quads[j]
+        (q1 isa SpecialTerm && q2 isa SpecialTerm && q1.fn === :Ei && q2.fn === :Ei && iszero(q1.p) && iszero(q2.p)) || continue
+        levelof(T, q1.z) == levelof(T, q2.z) && q1.z == -q2.z || continue
+        w = lead_rational(q1.z) < 0 ? q2.z : q1.z          # the argument with a positive leading coefficient
+        c1, c2 = w == q1.z ? (q1.c, q2.c) : (q2.c, q1.c)
+        wt = tower_to_term(b, T, w)
+        sh, ch = try
+            mk(b, :Shi, wt), mk(b, :Chi, wt)
+        catch
+            continue
+        end
+        (sh isa Number || ch isa Number) && continue
+        for (c, t) in ((c1 + c2, ch), (c1 - c2, sh))
+            iszero(c) || push!(ts, isone(c) ? t : mk(b, :*, cterm(b, c), t))
+        end
+        push!(used, i, j)
+    end
+    ts, used
+end
+
 # the term with a given coefficient term `ct` (real fields); zt converts a tower element
 function special_out(b::Builder, q::SpecialTerm, ct, zt)
     if q.fn === :Ei
@@ -191,6 +229,34 @@ lead_rational(c::Q) = c
 lead_rational(c::QI) = iszero(c.re) ? c.im : c.re
 lead_rational(c::QSB) = lead_rational(iszero(c.a) ? c.b : c.a)
 lead_rational(c::Frac) = iszero(c) ? Q(0) : lead_rational(lc(c.num))
+
+# Re(c e^p F(z)), F = Ei, as [(fn, w, pr, q, a, b)] meaning e^pr (a cos q + b sin q) fn(w), fn ∈ (:Ei, :Ci, :Si),
+# p = pr + i ps, q = |ps| (a, b ∈ C real), so that the terms of conjugate pairs with the same function,
+# argument and factor can be added before printing; nothing for erf/erfi (`special_out_real` prints them)
+function special_parts_real(T::Tower, kinds, q::SpecialTerm)
+    q.fn === :Ei || return nothing
+    C = ctype(T)
+    gens = T.consts
+    half = inv(cfromQ(C, Q(2)))
+    I = cimag(C)
+    rpart(c) = (c + cconj_g(gens, c)) * half
+    ipart(c) = (c - cconj_g(gens, c)) * inv(I + I)
+    cr, ci, pr, ps = rpart(q.c), ipart(q.c), rpart(q.p), ipart(q.p)
+    σ = lead_rational(ps) < 0 ? -1 : 1
+    qa = σ == 1 ? ps : -ps
+    # κ = e^pr (cr + i ci)(cos ps + i sin ps), sin ps = σ sin q:  κr = e^pr (cr cos q - σ ci sin q),
+    # κi = e^pr (ci cos q + σ cr sin q)
+    κr, κi = (cr, -σ * ci), (ci, σ * cr)
+    lvl = levelof(T, q.z)
+    sz = tconj(T, kinds, q.z, lvl)
+    sz == q.z && return Any[(:Ei, q.z, pr, qa, κr...)]
+    sz == -q.z || return nothing
+    w = q.z * lconst(T, -I, lvl)
+    flip = lead_rational(w) < 0
+    flip && (w = -w)
+    si = flip ? κi : (-κi[1], -κi[2])                   # Re(κ (Ci + i Si)) = κr Ci - κi Si
+    Any[(:Ci, w, pr, qa, κr...), (:Si, w, pr, qa, si...)]
+end
 
 # Re(c e^p F(z)) over ℚ(i): Ei of a real z, or Ei(i w) ~ Ci(w) + i Si(w) for real w
 function special_out_real(b::Builder, T::Tower, kinds, q::SpecialTerm)

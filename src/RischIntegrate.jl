@@ -37,6 +37,8 @@ include("special_functions.jl")
 include("real_form.jl")
 include("radicals.jl")
 include("euler_substitutions.jl")
+include("hyperelliptic.jl")
+include("kummer.jl")
 include("rootsum.jl")
 include("tower_real_forms.jl")
 include("tower_rootsums.jl")
@@ -46,9 +48,18 @@ include("sturm.jl")
 include("inverse_trig.jl")
 include("u_substitution.jl")
 include("risch_integrate.jl")
+include("biquadratic.jl")
+include("denest.jl")
+include("nested.jl")
+include("hypergeometric.jl")
+include("gamma_terms.jl")
+include("param_radicals.jl")
+include("special_fallback.jl")
+include("monomial_radicals.jl")
+include("kummer_logs.jl")
 include("real_log_arguments.jl")
 
-export integrate
+export integrate, sinhint, coshint
 
 """
     integrate(ex, x, ys...; build = nothing, lift = nothing)

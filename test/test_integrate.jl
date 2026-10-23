@@ -4,6 +4,7 @@ import SymEngine
 import SpecialFunctions
 using RischIntegrate
 import RischIntegrate as Risch
+Risch.HYP_ANSWERS[] = false     # the decision tests expect NotElementary (₂F₁ answers: their own testset)
 
 fd(f, a; h = 1e-6) = (f(a + h) - f(a - h)) / (2h)
 
@@ -241,10 +242,13 @@ function run_tests(x, evalat, name)
                 @test antiderivative_ok(F, f, a, evalat)
             end
         end
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) + sqrt(x + 1) + sqrt(x + 2), x)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / sqrt(x^3 + 1), x)  # elliptic
+        F = Risch.risch_integrate(sqrt(x) + sqrt(x + 1) + sqrt(x + 2), x)    # x = t², then two roots (step BQ)
+        @test antiderivative_ok(F, sqrt(x) + sqrt(x + 1) + sqrt(x + 2), 2.0, evalat)
+        @test_throws Risch.NotElementary Risch.risch_integrate(sqrt(x^3 + 1) + sqrt(x^3 + 2) + sqrt(x^3 + 3), x)  # phase 3a
+        @test_throws Risch.NotElementary Risch.risch_integrate(1 / sqrt(x^3 + 1), x)  # elliptic (SI2 phase 1)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(log(x)), x)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x + sqrt(x + 1)), x)  # nested
+        F = Risch.risch_integrate(sqrt(x + sqrt(x + 1)), x)   # nested: u = √(x + 1) (step NR)
+        @test antiderivative_ok(F, sqrt(x + sqrt(x + 1)), 2.0, evalat)
     end
 
     @testset "$name: radicands that are odd powers (step RP)" begin
@@ -258,7 +262,454 @@ function run_tests(x, evalat, name)
                 @test antiderivative_ok(F, f, a, evalat)
             end
         end
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x^6 + 1), x)
+        @test_throws Risch.NotElementary Risch.risch_integrate(sqrt(x^6 + 1), x)      # genus 2 (SI2 phase 1)
+    end
+
+    @testset "$name: non-elementary remainders as ₂F₁ terms (phase 6, H1)" begin
+        # ∫ xᵐ(α + βxⁿ)^q = α^q x^(m+1)/(m+1) ₂F₁(-q, (m+1)/n; (m+1)/n + 1; -βxⁿ/α) for the residue-free
+        # remainder of a binomial radicand (α > 0); the elementary parts stay as they are
+        Risch.HYP_ANSWERS[] = true
+        try
+            val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, complex(a)))
+            for (f, pts) in ((1 / sqrt(x^3 + 1), (0.5, 2.0)), (sqrt(x^3 + 1), (0.5, 2.0)),
+                             (1 / (x^2 * sqrt(x^3 + 1)), (0.5, 2.0)), (1 / sqrt(1 - x^3), (0.3, -2.0)),
+                             (sqrt(x^6 + 1), (0.5, 1.5)), (x / (x^4 + 1)^(1 // 3), (0.5, 2.0)),
+                             ((x^2 + 1)^(1 // 3), (0.5, 2.0)),
+                             (1 / (x^3 + 1)^(1 // 3) + x^2 / sqrt(x^4 + 1), (0.5, 2.0)))   # log part + ₂F₁
+                F = Risch.risch_integrate(f, x)
+                @test F isa Risch.IntegralWithRootSums
+                for a in pts
+                    @test isapprox(fd(t -> val(F, t), a), real(evalat(f, a)); rtol = 1e-6)
+                end
+            end
+            @test occursin("₂F₁(1/2, 1/3; 4/3; -x^3)", string(Risch.risch_integrate(1 / sqrt(x^3 + 1), x)))
+            # incomplete gamma (H3): ∫ xˢ e^(bx+d) = -e^d (-b)^(-s-1) Γ(s+1, -bx), b < 0, s ∉ ℤ (half-integers: erf)
+            for (f, pts) in ((x^(1 // 3) * exp(-x), (0.5, 2.0)), (exp(-2x) / x^(1 // 3), (0.5, 2.0)),
+                             (x^(5 // 4) * exp(1 - x), (0.5, 2.0)), (3x^(1 // 3) * exp(-x) + x^2 * exp(-x), (0.5, 2.0)))
+                F = Risch.risch_integrate(f, x)
+                for a in pts
+                    @test isapprox(fd(t -> val(F, t), a), real(evalat(f, a)); rtol = 1e-6)
+                end
+            end
+            # α < 0 (the argument would cross the branch cut on the domain), or not a binomial: still decided
+            @test_throws Risch.NotElementary Risch.risch_integrate(1 / sqrt(x^3 - 1), x)
+            @test_throws Risch.NotElementary Risch.risch_integrate(1 / sqrt(x^3 + x + 1), x)
+        finally
+            Risch.HYP_ANSWERS[] = false
+        end
+    end
+
+    @testset "$name: denesting square roots (step DN)" begin
+        # √(a + b√c) = √((a+d)/2) + sign(b)·√((a-d)/2) when a² - b²c = d² in ℚ(x); valid on the interval of a
+        # sample point
+        for (f, pts) in ((sqrt(x + sqrt(x^2 - 1)), (1.5, 3.0)), (1 / sqrt(x + sqrt(x^2 - 1)), (1.5, 3.0)),
+                         (x / sqrt(x + sqrt(x^2 - 1))^3, (1.5, 3.0)),
+                         (sqrt(x + 2sqrt(x - 1)), (2.5, 4.0)), (sqrt(x - 2sqrt(x - 1)), (2.5, 4.0)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        # not denestable, a² - b²c = -s²: biquadratic over ℚ(i) (u₁ = y₂ + i s/y₂, u₁² = 2a + 2is), Euler
+        # substitution over ℚ(i), exact real parts
+        for (f, pts) in ((1 / ((1 + x^4) * sqrt(sqrt(1 + x^4) - x^2)), (0.5, 1.5, -0.7)),     # Rubi
+                         (sqrt(sqrt(1 + x^4) + x^2) / (1 + x^4), (0.5, 1.5)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test isapprox(fd(t -> real(evalat(F, complex(t))), a), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
+        # residues outside ℚ(i) in the conjugate piece: not yet
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(sqrt(1 + x^4) - x^2), x)
+    end
+
+    @testset "$name: radicals of radicands with repeated factors (step SQ)" begin
+        # u = s² w, w squarefree: Y = √u/s with Y² = w on every interval (whatever the sign of s); the
+        # answers are checked on both sides of the zeros of s
+        for (f, pts) in ((1 / sqrt(x^3 - 5x^2 + 3x + 9), (-0.5, 1.0, 2.0, 4.0, 6.0)),   # (x - 3)²(x + 1), Rubi
+                         (1 / sqrt(x^3 - 5x^2 + 3x + 9)^3, (-0.5, 1.0, 4.0, 6.0)),
+                         (sqrt(x^3 - 5x^2 + 3x + 9), (-0.5, 1.0, 4.0, 6.0)),
+                         (x / sqrt((x - 1)^2 * (x^2 + 1)), (-2.0, 0.5, 2.0, 3.0)),    # Euler, w quadratic
+                         (sqrt(x^5 + x^4), (-0.5, 1.0, 2.0)),                         # x⁴(x + 1)
+                         (sqrt(x^2 + 2x + 1), (-3.0, 1.0)),                           # |x + 1|: w constant
+                         (sqrt(2 * (x - 1)^2) / (x + 1), (-0.5, 0.0, 2.0)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        for f in (1 / sqrt((x + 2)^2 * (x^3 + 1)), 1 / (x * sqrt(x^2 * (x^3 + 1))))   # w = x³ + 1: genus 1
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+        # index n ≥ 3: u = sⁿ (x - a)ʲ (x - b)ᵏ with n | j + k is genus 0, u^(1/n) = s (x - b)^((j+k)/n) v^(j/n),
+        # v = (x - a)/(x - b) (step 10a); t is printed through u^(1/n)
+        for (f, pts) in ((1 / ((x - 1)^2 * (x + 1))^(1 // 3), (1.5, 3.0, -0.5)),          # Rubi
+                         (((x - 1)^2 * (x + 1))^(1 // 3) / x^2, (1.5, 3.0, -0.5)),
+                         (1 / (x^3 - 5x^2 + 3x + 9)^(1 // 3), (-0.5, 2.0, 5.0)),
+                         (1 / (x^3 - 5x^2 + 3x + 9)^(4 // 3), (-0.5, 2.0, 5.0)),
+                         (x * ((x + 2)^3 * (x - 1))^(1 // 4), (1.5, 3.0)),
+                         (((x + 1)^2 * (x - 2)^4)^(1 // 3), (2.5, 4.0, 0.5)),
+                         ((x^2 - 2x + 1)^(1 // 5) / (1 - x), (0.31, 0.57, 2.0)))   # apostol 21: both sides of 1
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test isapprox(fd(t -> real(evalat(F, complex(t))), a), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
+    end
+
+    @testset "$name: products of radicals of any index: Hermite reduction (SI2 phase 3a)" begin
+        for (f, pts) in (((3x^8 - 2x^5 - x^2 * (3x^3 - 1)^(2 // 3)) / (3x^3 - 1)^(3 // 4), (1.0, 2.0)),   # Rubi
+                         (1 / (x^3 + 1)^(4 // 3), (0.5, 2.0)),                     # x/(x³+1)^(1/3)
+                         (1 / (x^4 + 1)^(5 // 4), (0.5, 2.0)),
+                         (x^2 / (x^3 + 1)^(1 // 3), (0.5, 2.0)),
+                         (((x + 1)^(1 // 3) + (x + 2)^(1 // 4)) / ((x + 1)^(1 // 3) * (x + 2)^(1 // 4)), (0.5, 2.0)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test isapprox(fd(t -> real(evalat(F, complex(t))), a), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
+        # Chebyshev: ∫ xᵐ(1 + 2xⁿ)ᵖ is elementary iff (m+1)/n or (m+1)/n + p is an integer (p ∉ ℤ): every
+        # case is decided (with the log part of phase 3b)
+        val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, complex(a)))
+        for n in (3, 4), m in (0, 1, 2), p in (1 // 3, -2 // 3, 1 // 4, -3 // 4)
+            f = x^m * (1 + 2x^n)^p
+            if isinteger((m + 1) // n) || isinteger((m + 1) // n + p)
+                F = Risch.risch_integrate(f, x)
+                @test isapprox(fd(t -> val(F, t), 1.7), real(evalat(f, 1.7)); rtol = 1e-5)
+            else
+                @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+            end
+        end
+    end
+
+    @testset "$name: the log part for one radical of index q ≥ 3 (SI2 phase 3b)" begin
+        # residues r·μ_q with rᵠ in one class tᵠσ; v vanishing at one place of each orbit; the answer is a
+        # RootSum over αᵠ = 1 or over zᵠ = σ
+        val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, complex(a)))
+        for (f, pts) in ((1 / (x^3 + 1)^(1 // 3), (0.5, 2.0)),                          # residues at ∞
+                         ((x^3 - 1) / (x^3 + 2)^(1 // 3), (0.5, 2.0)),                  # Rubi
+                         (1 / ((x^3 - 1) * (x^3 + 2)^(1 // 3)), (2.0, 3.0)),            # Rubi: finite residues
+                         ((3 + 4x^4)^(1 // 4) / x^2, (0.5, 2.0)),                       # Rubi: ℚ(4^(1/4)) = ℚ(√2)
+                         (x^2 * (3 + 4x^4)^(5 // 4), (0.5, 2.0)),                       # Rubi
+                         (1 / ((x^4 + 1) * (x^4 + 2)^(1 // 4)), (0.5, 2.0)),            # Rubi: class -1, α⁴ + 1
+                         ((x^4 + 1)^(3 // 4) / (x^4 + 2)^2, (0.5, 2.0)),                # Rubi
+                         (1 / ((x^3 + 3x^2 + 3x) * (x^3 + 3x^2 + 3x + 3)^(1 // 3)), (0.5, 2.0)),   # Rubi
+                         (1 / (x * (2x^7 - 27)^(2 // 3)), (2.0, 3.0)),                   # Rubi: ∞ ramified, v = y + 3
+                         ((x^7 + 1)^(2 // 3) / x^8, (0.5, 2.0)),                         # Rubi
+                         (1 / (x * (x^5 + 1)^(1 // 3)), (0.5, 2.0)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test isapprox(fd(t -> val(F, t), a), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
+    end
+
+    @testset "$name: real forms (log + atan) of the phase-3b log parts" begin
+        # Σ_r r log v(r) over r^q = σ (or α^q = 1): real roots give (r/2) log(v²), conjugate pairs
+        # μ cos θ log(Re² + Im²) - 2μ sin θ atan(Im/Re); cos, sin in square roots for q = 3, 4, 6 (and 8, 12)
+        for (f, pts) in ((1 / (x^3 + 1)^(1 // 3), (0.5, 2.0, -0.5)),
+                         (1 / ((x^3 - 1) * (x^3 + 2)^(1 // 3)), (2.0, 3.0)),
+                         ((3 + 4x^4)^(1 // 4) / x^2, (0.5, 2.0)),
+                         (1 / ((x^4 + 1) * (x^4 + 2)^(1 // 4)), (0.5, 2.0)),          # roots of z⁴ = -1
+                         (1 / (x * (x^6 + 1)^(1 // 6)), (0.5, 2.0)),
+                         (1 / (x * (x + 1)^(1 // 3) * (x - 1)^(2 // 3)), (2.0, 3.0)))
+            F = Risch.risch_integrate(f, x)
+            @test !(F isa Risch.IntegralWithRootSums)
+            for a in pts
+                @test antiderivative_ok(F, f, a, evalat)                       # real-valued at real points
+            end
+        end
+        # q = 5: cos(2π/5) needs nested radicals: the RootSum stays
+        @test Risch.risch_integrate(1 / (x * (x^5 + 1)^(1 // 5)), x) isa Risch.IntegralWithRootSums
+    end
+
+    @testset "$name: several residue classes, residues of both signs (SI2 phase 3b)" begin
+        # classes σᵢ with σᵢ/σⱼ not q-th powers in ℚ(ζ_q) are independent: each class on its own
+        val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, complex(a)))
+        for (f, pts) in ((1 / ((x^3 - 1) * (x^3 + 2)^(1 // 3)) + (x^3 - 1) / (x^3 + 2)^(1 // 3), (2.0, 3.0)),   # 9 and 1
+                         (1 / ((x^3 - 1) * (x^3 + 2)^(1 // 3)) + 1 / (x * (x^3 + 2)^(1 // 3)), (2.0, 3.0)),      # 9 and 4
+                         (1 / (x^3 + 1)^(1 // 3) + 1 / (x * (x^3 + 1)^(1 // 3)), (0.5, 2.0)))   # one class, both signs
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test isapprox(fd(t -> val(F, t), a), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
+        # one class of infinite order is enough
+        @test_throws Risch.NotElementary Risch.risch_integrate(1 / (x^3 + 1)^(1 // 3) + 1 / ((x - 2) * (x^3 + 1)^(1 // 3)), x)
+        # q = 4 with classes -1 and 8: (-4)^(1/4) ∈ ℚ(i), they may be dependent: no decision
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x^4 + 1) * (x^4 + 2)^(1 // 4)) +
+                                                                     1 / (x * (x^4 + 2)^(1 // 4)), x)
+    end
+
+    @testset "$name: several radicands in one component (SI2 phase 3b)" begin
+        # θ = Π bₖ^rₖ: the integral basis ωⱼ = Π bₖ^{j rₖ} replaces y^k (KumCurve)
+        val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, complex(a)))
+        for (f, pts) in ((1 / (x * (x + 1)^(1 // 3) * (x - 1)^(2 // 3)), (2.0, 3.0)),     # genus 0
+                         (1 / ((x + 1)^(1 // 3) * (x - 1)^(2 // 3)), (2.0, 3.0)),
+                         (x / ((x + 2)^(1 // 3) * (x - 1)^(2 // 3) * (x + 3)), (2.0, 3.0)),
+                         (1 / ((x + 1)^(1 // 4) * (x - 1)^(3 // 4)), (2.0, 3.0)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test isapprox(fd(t -> val(F, t), a), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
+        for f in (1 / ((x^2 + 1)^(1 // 3) * (x - 1)^(2 // 3)), 1 / (x * (x^2 + 1)^(1 // 3) * (x - 1)^(1 // 3)))
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+        # genus 0, search over L off (Nmax = 0): the decision finds order 1 and constructs (q = 3: prime path,
+        # q = 4: T_G); the rest reduces exactly
+        b0 = Risch.Builder(Risch.auto_build(x, x), Risch.auto_lift(x, x), x)
+        Q, QX = Risch.Q, Risch.UPoly{Risch.Q}
+        bs = [QX(Q[1, 1]), QX(Q[-1, 1])]
+        for (rs, g) in (([Q(1, 3), Q(2, 3)], Risch.frac(QX(Q[1]), QX(Q[0, -1, 0, 1]))),
+                        ([Q(1, 4), Q(3, 4)], Risch.frac(QX(Q[1]), QX(Q[-1, 0, 1]))))
+            _, _, P, R, D = Risch.kum_component(bs, rs, g, "θ"; needlog = true)
+            C = Risch.KumCurve(bs, rs)
+            lp = Risch.kum_log_part(C, P, R, D, "θ", b0, "x"; Nmax = 0)
+            @test lp isa Tuple
+            lp isa Tuple && @test !(Risch.kum_component(bs, rs, Risch.frac(P, C.A) + Risch.frac(R, C.A * D) - lp[1],
+                                                         "θ") isa Exception)
+        end
+    end
+
+    @testset "$name: deciding the log part for an index q ≥ 3 (SI2 phase 3b)" begin
+        # q prime: Δ torsion iff its χ-part is iff elementary; the order N₁ of Δ mod one prime, then N₁Δ̄
+        # at another prime (different orders: infinite order), or one exact test at N₁ over L
+        for f in (1 / ((x - 2) * (x^3 + 1)^(1 // 3)), 1 / ((x - 1) * (x^3 + 2)^(1 // 3)),
+                  1 / ((x - 1) * (x^4 + 1)^(1 // 3)), 1 / ((x - 2) * (x^5 + 1)^(1 // 5)))
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+        # q composite: T = Π_{ℓ|q}(1 - τ^(q/ℓ)) removes the parts of order < q; orders of T·Δ mod p ≡ 1 mod q
+        @test Risch.kum_T(4) == [1, 0, -1, 0] && Risch.kum_T(6) == [1, 0, -1, -1, 0, 1]
+        for f in (1 / ((x - 1) * (x^4 + 2)^(1 // 4)), 1 / ((x - 2) * (x^4 + 1)^(1 // 4)),
+                  x / ((x - 1) * (x^4 + 3)^(3 // 4)), 1 / ((x - 2) * (x^6 + 1)^(1 // 6)), 1 / ((x - 1) * (x^3 + 2)^(1 // 6)))
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+        # consistency: with the search over L switched off (Nmax = 0), torsion cases are still found from
+        # the order mod p, never declared non-elementary
+        b0 = Risch.Builder(Risch.auto_build(x, x), Risch.auto_lift(x, x), x)
+        Q, QX = Risch.Q, Risch.UPoly{Risch.Q}
+        for (b, p, q, g) in ((QX(Q[1, 0, 0, 1]), 2, 3, Risch.frac(QX(Q[1]), QX(Q[0, 1, 0, 0, 1]))),
+                             (QX(Q[1, 0, 0, 1]), 2, 3, Risch.frac(QX(Q[1]), QX(Q[1, 0, 0, 1]))),
+                             (QX(Q[1, 0, 0, 0, 0, 1]), 2, 3, Risch.frac(QX(Q[1]), QX(Q[0, 1, 0, 0, 0, 0, 1]))),
+                             (QX(Q[-27, 0, 0, 0, 0, 0, 0, 2]), 1, 3, Risch.frac(QX(Q[1]), QX(Q[0, -27, 0, 0, 0, 0, 0, 0, 2]))))
+            c = Risch.kum_component([b], [Q(p, q)], g, "θ"; needlog = true)
+            @test c isa Tuple
+            _, _, P, R, D = c
+            @test Risch.kum_log_part(b, p, q, P, R, D, "θ", b0, "x"; Nmax = 0) isa Tuple
+        end
+        # composite q, Nmax = 0: the log part is constructed from N·T_G·Δ over L (T_G the Galois trace of T,
+        # Θ = χ(T_G) = q here) and what is left reduces exactly (phase 3a)
+        @test Risch.kum_TG(6) == [2, 1, -1, -2, -1, 1] && Risch.kum_Theta(Risch.kum_TG(6), 6) == 6
+        for (b, p, q, g) in ((QX(Q[1, 0, 0, 0, 1]), 3, 4, Risch.frac(QX(Q[1]), QX(Q[0, 1, 0, 0, 0, 1]))),
+                             (QX(Q[1, 0, 0, 0, 1]), 3, 4, Risch.frac(QX(Q[1]), QX(Q[1, 0, 0, 0, 1]))),
+                             (QX(Q[1, 0, 0, 0, 0, 0, 1]), 5, 6, Risch.frac(QX(Q[1]), QX(Q[0, 1, 0, 0, 0, 0, 0, 1]))),
+                             (QX(Q[3, 0, 0, 0, 4]), 1, 4, Risch.frac(QX(Q[1]), QX(Q[0, 0, 1]))))
+            _, _, P, R, D = Risch.kum_component([b], [Q(p, q)], g, "θ"; needlog = true)
+            lp = Risch.kum_log_part(b, p, q, P, R, D, "θ", b0, "x"; Nmax = 0)
+            @test lp isa Tuple
+            lp isa Tuple && @test !(Risch.kum_component([b], [Q(p, q)], Risch.frac(P, b) + Risch.frac(R, b * D) - lp[1],
+                                                         "θ") isa Exception)
+        end
+    end
+
+    @testset "$name: two square roots: the biquadratic splitting (step BQ)" begin
+        # f = f₀ + f₁√a + f₂√b + f₃√a√b: each Galois projection on its own (Liouville), √a√b as √(ab)
+        ya, yb = sqrt(1 + x^3), sqrt(1 - 2x + x^5)
+        for (f, pts) in (((-2ya + 5x^4 * ya - 3x^2 * yb) / (2ya * yb), (0.2, 1.3, 2.0)),   # Rubi: √(x⁵-2x+1) - √(x³+1)
+                         (1 / (x * sqrt(x^3 + 1)) + x / sqrt(x^4 + 1), (0.5, 2.0)),
+                         (1 / (sqrt(x + 1) * sqrt(x^3 + 1)), (0.5, 2.0)),                  # √(ab) = (x+1)√(x²-x+1)
+                         ((sqrt(x^3 + 1) + sqrt(x^3 + 2)) / (x * sqrt(x^3 + 1) * sqrt(x^3 + 2)), (0.5, 2.0)),
+                         (x^2 / (sqrt(x^3 + 1) * sqrt(x^3 + 2)), (0.5, 2.0)),             # ab of genus 2: Pell
+                         (sqrt(x^3 + x) * sqrt(x^3 + 2x) / x^2, (0.5, 2.0)))              # ab = x²(…): step SQ
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test isapprox(fd(t -> real(evalat(F, complex(t))), a), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
+        for f in (sqrt(x^3 + 1) * sqrt(x^4 + 1),                        # √(ab), genus 3
+                  1 / (sqrt(x^3 + 1) + sqrt(x^3 + 2)))                   # = √(x³+2) - √(x³+1)
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+    end
+
+    @testset "$name: Hermite reduction on y² = a, genus ≥ 1 (SI2 phase 1)" begin
+        fs = (3x^2 / (2 * sqrt(x^3 + 1)),                       # √(x³+1)
+              (x^3 - 2) / sqrt((x^3 + 1)^3),                    # -2x/√(x³+1)
+              (x^3 - x) / (2 * x^2 * sqrt(x^3 + x)),            # √(x³+x)/x: a pole at a ramified place
+              (5x^4 + 1) / sqrt(x^5 + x + 1)^3 * (x^5 + x + 1) / 2,   # √(x⁵+x+1), genus 2
+              x^2 + 1 / (x^2 + 1) + 3x^2 / (2 * sqrt(x^3 + 1)))     # with a rational part
+        for f in fs
+            F = Risch.risch_integrate(f, x)
+            for a in (0.5, 1.3, 2.6)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        for f in (1 / sqrt(x^3 + 1),                            # first kind
+                  x / sqrt(x^3 + 1),                            # second kind
+                  sqrt(x^3 + 1), 1 / sqrt(x^3 + 1)^3, 1 / (x^2 * sqrt(x^3 + 1)),
+                  x * sqrt(x^3 + 1)^3, 1 / sqrt(x^4 + 1), x^2 / sqrt(x^4 + 1))
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+    end
+
+    @testset "$name: residues at infinity, polynomial Pell equation (SI2 phase 2)" begin
+        fs = (x / sqrt(x^4 + 1),                                # log(x² + √(x⁴+1))/2
+              x * sqrt(x^4 + 1),                                # with an algebraic part
+              (2x + 1) / sqrt(x^4 + 2x^3 + x^2 + 1),            # log(x² + x + √…)
+              x^2 / sqrt(x^6 + 1),                              # genus 2
+              (6x^5 + 2x) / sqrt((x^6 + x^2)^2 - 4),            # genus 5
+              x / sqrt(x^4 + 10x^2 - 96x - 71))                 # Trager: a unit of degree 8
+        for f in fs
+            F = Risch.risch_integrate(f, x)
+            for a in (6.0, 7.5, 9.0)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        # genus 1: ∞₊ - ∞₋ of infinite order (Mazur's bound)
+        for f in (x^2 / sqrt(x^4 + x^3 + 1), x / sqrt(x^4 + x + 1), (x + 1) / sqrt(x^4 + 1))
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+    end
+
+    @testset "$name: rational residues at finite places, torsion divisors (SI2 phase 2)" begin
+        y = sqrt(x^4 + x^3 + 3x^2 + 2x + 1)                     # (x² + x + 1)² - x³: v = x² + x + 1 + y, N(v) = x³
+        y6 = sqrt(x^6 + 2x^3 - 3x + 1)                          # (x³ + 1)² - 3x, genus 2
+        dlv = (2x + 1 + (4x^3 + 3x^2 + 6x + 2) / (2y)) / (x^2 + x + 1 + y)
+        fs = (1 / (x * sqrt(x^3 + 1)),                          # log((x³ + 2 - 2√…)/x³)/3, N = 3
+              sqrt(x^3 + 1) / x,                                # with an algebraic part
+              (3x^3 + 2) / (x * sqrt(x^3 + 1)^3),
+              (x^2 + 1) / (x * sqrt(x^4 + 1)),                  # finite and infinite residues
+              1 / (x * sqrt(x^4 + 1)),
+              1 / (x * sqrt(x^5 + 1)),                          # genus 2, N = 5
+              1 / (x * sqrt(x^6 + 1)),
+              dlv, dlv - 1 / x,                                 # residues 3/2 at a finite place, -1/2 at ∞₊
+              (3x^2 + (6x^5 + 6x^2 - 3) / (2y6)) / (x^3 + 1 + y6))
+        for f in fs
+            F = Risch.risch_integrate(f, x)
+            for a in (2.0, 3.5, 5.0)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        # genus 1: the divisor has infinite order (Mazur's bound)
+        for f in (1 / (x * sqrt(x^4 + x + 1)), x * dlv + 7 / (x * y),
+                  1 / ((x + 1) * sqrt(x^3 + 1)))                # (x + 1) | a: no residues after reduction
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+    end
+
+    @testset "$name: quadratic irrational residues ±s√d (SI2 phase 2)" begin
+        fs = (1 / (x * sqrt(x^3 + 2)),                          # (√2/6) log(…): residues ±1/√2
+              1 / (x * sqrt(x^3 - 2)),                          # imaginary residues: -(√2/6) atan(…)
+              1 / (x * sqrt(x^5 - 3)),                          # genus 2, atan
+              x / sqrt(2x^4 + 1),                               # ∞ a place of degree 2: (√2/4) log(x² + √(2x⁴+1)/√2)
+              1 / (x * sqrt(x^6 + 2)) + x^2 / sqrt(x^6 + 2))    # two classes, √2 and ℚ
+        for f in fs
+            F = Risch.risch_integrate(f, x)
+            for a in (2.0, 3.5, 5.0)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        # genus 1, infinite order over ℚ(√d) (Kamienny–Kenku–Momose: N ≤ 18)
+        for f in (1 / ((x - 1) * sqrt(x^4 + x + 1)),            # ℚ√3
+                  1 / ((x - 1) * sqrt(x^3 + 1)),                # ℚ√2
+                  1 / ((x + 2) * sqrt(x^3 + 1)),                # ℚ√-7
+                  1 / (x * sqrt(x^3 + 2)) + 1 / ((x + 1) * sqrt(x^3 + 2)),   # the ℚ class fails
+                  1 / ((x - 2) * sqrt(x^3 + 1)))                # (2, 3) is torsion, ∫1/√(x³+1) is left
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+    end
+
+    @testset "$name: torsion orders mod p; genus 2; residues of degree 4 (SI2 phase 2)" begin
+        # genus 2: the orders of the divisor modulo two primes differ
+        for f in (x^2 / sqrt(x^6 + x + 1),                      # ∞₊ - ∞₋
+                  1 / ((x - 1) * sqrt(x^5 + 1)),                # residues ±1/√2
+                  1 / ((x + 1) * sqrt(x^5 + 3)))
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+        # residues of degree 4, ℚ-independent: P₁ - σP₁ over a quartic field has infinite order
+        for f in (1 / ((x^2 + 1) * sqrt(x^3 + 1)), 1 / ((x^2 - 2) * sqrt(x^3 + 1)))
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
+        # torsion found mod p, then one exact test
+        for f in (1 / (x * sqrt(x^5 + 1)), x / sqrt(x^4 + 10x^2 - 96x - 71))
+            F = Risch.risch_integrate(f, x)
+            for a in (6.0, 7.5)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        # residues of degree > 4: not yet
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x^3 + 2) * sqrt(x^3 + 1)), x)
+    end
+
+    @testset "$name: the log part for residues of degree 4: RootSums over a quartic field (SI2 phase 2)" begin
+        # P₁ = (1 + √2, (1 + √2)√6) is 4-torsion on y² = 3(x³ - x) (the twist of the 4-torsion point
+        # (1 + √2, (1 + √2)√2) of y² = x³ - x), so N(P₁ - σP₁) is principal for N = 2; residues (√2 ∓ 1)/(4√3)
+        val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, complex(a)))
+        for f in (1 / ((x^2 - 2x - 1) * sqrt(3x^3 - 3x)) + 1 / (4 * sqrt(3x^3 - 3x)),   # L = ℚ(√2, √3)
+                  1 / ((x^2 - 2x - 1) * sqrt(x^3 - x)) + 1 / (4 * sqrt(x^3 - x)))      # L = ℚ(√2): r₁ ∈ ℚ(α₁)
+            F = Risch.risch_integrate(f, x)          # r₁ = (√6 - √3)/12 is multiquadratic: logs with √3, √6 (classes)
+            for a in (1.7, 2.6, 4.1)
+                h = 1e-5
+                @test isapprox((val(F, a + h) - val(F, a - h)) / (2h), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
+        # the same log part, but ∫ -dx/(4√(3x³ - 3x)) is left (first kind)
+        @test_throws Risch.NotElementary Risch.risch_integrate(1 / ((x^2 - 2x - 1) * sqrt(3x^3 - 3x)), x)
+        # the RootSum construction over L = ℚ[z]/(M) (used when the residues are not multiquadratic), called
+        # directly on this example: subtracting its derivative leaves exactly -1/4
+        Q, QX = Risch.Q, Risch.UPoly{Risch.Q}
+        a, Fq, R1 = QX(Q[0, -3, 0, 3]), QX(Q[-1, -2, 1]), QX(Q[1])
+        hq = rem(R1 * R1 * Risch.hyp_invmod(Risch.deriv(Fq)^2 * a, Fq), Fq)
+        lp = Risch.hyp_quartic_decision(a, R1, Fq, Fq, hq, "u")
+        @test lp isa Vector && lp[1][1] === :rootsum && Risch.frac(R1, Fq) - lp[1][5] == Risch.kconst(Q(-1, 4))
+    end
+
+    @testset "$name: dependent residues: multiquadratic residues split into classes (SI2 phase 2)" begin
+        # r² = A + B√e with A² - eB² a square: r = √p₁ + (B/2p₁)√p₁√e lies in two classes d₁, d₂; residues of
+        # different factors in the same class are pooled (one divisor per class)
+        y = sqrt(x^3 - x)
+        fs = (1 / ((x^2 - 2x - 1) * y) + 1 / (4y),                              # r = (√2 - 1)/4: classes 1, 2
+              1 / ((x^2 - 2x - 1) * y) + 1 / ((x^2 + 2x - 1) * y) + 1 / (2y),  # two factors sharing classes 1, 2
+              1 / ((x^2 - 2x - 1) * y) + 3 / ((x^2 + 2x - 1) * y) + 1 / y,
+              (x + 1) / ((x^2 - 2x - 1) * y) + 1 / (2y),
+              # Rubi's library
+              x^3 / ((x^4 - 1) * sqrt(2x^8 + 1)),
+              (1 - x^2) / ((1 + x^2) * sqrt(1 + x^4)),
+              (1 + x^2) / ((1 - x^2) * sqrt(1 + x^2 + x^4)))
+        for f in fs
+            F = Risch.risch_integrate(f, x)
+            for a in (1.7, 2.6, 4.1)
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
+        @test_throws Risch.NotElementary Risch.risch_integrate(1 / ((x^2 - 2x - 1) * y) + 1 / ((x^2 + 2x - 1) * y), x)
+        f = x / sqrt(1 - x^4)                                                   # residues at ∞ in ℚ√-1: -atan(√(1-x⁴)/x²)/2
+        F = Risch.risch_integrate(f, x)
+        for a in (-0.7, 0.3, 0.8)
+            @test antiderivative_ok(F, f, a, evalat)
+        end
+    end
+
+    @testset "$name: degree-4 residues mixed with other residues (SI2 phase 2)" begin
+        # the residue span is a direct sum (Kummer: square classes of K₁ = ℚ(√d, √e) certified mod p),
+        # so each group is decided on its own
+        val(F, a) = F isa Risch.IntegralWithRootSums ? F(a) : real(evalat(F, complex(a)))
+        y = sqrt(3x^3 - 3x)
+        f = 1 / ((x^2 - 2x - 1) * y) + 1 / ((x^2 + 2x - 1) * y) + 1 / (2y)    # two quartic pairs: two RootSums
+        F = Risch.risch_integrate(f, x)
+        for a in (1.7, 2.6, 4.1)
+            h = 1e-5
+            @test isapprox((val(F, a + h) - val(F, a - h)) / (2h), real(evalat(f, a)); rtol = 1e-5)
+        end
+        g4 = 1 / ((x^2 - 2x - 1) * y) + 1 / (4y)                              # elementary on its own
+        for f in (g4 + 1 / ((x - 2) * y),                                      # + a class ℚ√2 of infinite order
+                  g4 + 1 / ((x - 3) * y),
+                  1 / ((x^2 - 2x - 1) * (x^2 + 2x - 1) * y),                   # both pairs torsion, ∫ dx/(8y) left
+                  1 / ((x^2 + 1) * (x - 2) * sqrt(x^3 + 1)),                   # quartic pair + rational residues
+                  1 / ((x^2 + 1) * (x^2 - 2) * sqrt(x^3 + 1)))                 # two quartic pairs
+            @test_throws Risch.NotElementary Risch.risch_integrate(f, x)
+        end
     end
 
     @testset "$name: real log arguments in 10a answers (step RL)" begin
@@ -345,8 +796,8 @@ function run_tests(x, evalat, name)
                 @test antiderivative_ok(F, f, a, evalat)
             end
         end
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate((x^2 + 1)^(1//3), x)   # index 3
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt((x^2 + 1) / (x + 1)), x)
+        @test_throws Risch.NotElementary Risch.risch_integrate((x^2 + 1)^(1//3), x)   # index 3 (phase 3a; Chebyshev)
+        @test_throws Risch.NotElementary Risch.risch_integrate(sqrt((x^2 + 1) / (x + 1)), x)   # genus 1 (phase 3a)
     end
 
     @testset "$name: square roots of quadratics over ℚ(√d) (step 10c)" begin
@@ -399,8 +850,8 @@ function run_tests(x, evalat, name)
         end
         @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) * sqrt(x) * sqrt(x + 1), x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) * sqrt(-x - 1), x)   # never real
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) * sqrt(x^2 + 1), x)  # genus 1
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) * cbrt(x + 1), x)
+        @test_throws Risch.NotElementary Risch.risch_integrate(sqrt(x) * sqrt(x^2 + 1), x)  # genus 1 (step BQ)
+        @test_throws Risch.NotElementary Risch.risch_integrate(sqrt(x) * cbrt(x + 1), x)   # phase 3a; Chebyshev
     end
 
     # SimpleExpressions evaluates sqrt(2) eagerly to a Float64: symbolic constant radicals
@@ -480,11 +931,12 @@ function run_tests(x, evalat, name)
     end
 
     @testset "$name: decided non-elementary" begin
-        if name == "SymEngine"      # dilogarithm: SymEngine has no li2 method yet (stand-in below)
-            @test_throws MethodError Risch.risch_integrate(log(x) / (x + 1), x)
-        else                        # SimpleExpressions ≥ 1.3.2: li2 from its PolyLog extension
-            @test occursin("li2", string(Risch.risch_integrate(log(x) / (x + 1), x)))
-        end
+        # dilogarithm: SimpleExpressions ≥ 1.3.2 has li2 (PolyLog extension); SymEngine has none, so the li2 term
+        # is kept as an Expr and evaluated numerically (special-function fallback)
+        F = Risch.risch_integrate(log(x) / (x + 1), x)
+        @test occursin("li2", string(F))
+        name == "SymEngine" && @test F isa Risch.IntegralWithRootSums &&
+                                     isapprox((F(2.0 + 1e-6) - F(2.0 - 1e-6)) / 2e-6, log(2.0) / 3; rtol = 1e-5)
         @test_throws Risch.NotElementary Risch.risch_integrate(1 / (x + log(x)), x)
         @test_throws Risch.NotElementary Risch.risch_integrate(x^x, x)
         # tower is [exp(x), log(x)]: top monomial log, normal denominator, non-constant residue
@@ -713,6 +1165,290 @@ let
         G = Risch.risch_integrate(1 / (x^3 + x + 1), x)                               # definite: F(b) - F(a)
         simp(g, a, b; n = 2000) = (hh = (b - a) / n; hh / 3 * (g(a) + g(b) + sum((isodd(k) ? 4 : 2) * g(a + k * hh) for k in 1:(n - 1))))
         @test isapprox(G(x => 2.0) - G(x => 0.0), simp(t -> 1 / (t^3 + t + 1), 0.0, 2.0); atol = 1e-10)
+    end
+end
+
+# step PR: parameters in a radicand, removed by x = s u + h (Expr terms; checked numerically at sample
+# parameter values)
+@testset "parameters in radicands (step PR)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, vals) = Core.eval(Main, Expr(:let, Expr(:block, [Expr(:(=), k, v) for (k, v) in vals]...), e))
+    for (f, avals, xs) in ((:((a ^ 2 + -1 * x ^ 2) ^ (5 // 2)), (:a => 2.0,), (0.31, 1.5)),        # apostol 39
+                           (:(1 / sqrt(a ^ 2 + -1 * x ^ 2)), (:a => 2.0,), (0.31, 1.5)),           # 87
+                           (:(((a + x) / (a + -1x)) ^ (1 // 2)), (:a => 2.0,), (0.31, 1.5)),        # 103
+                           (:(sqrt((x + -1a) * (b + -1x))), (:a => 0.2, :b => 0.9), (0.31, 0.57)),  # 104
+                           (:(1 / sqrt((x + -1a) * (b + -1x))), (:a => 0.2, :b => 0.9), (0.31, 0.57)),  # 105
+                           (:(sqrt((x + -1b) * (a + -1x))), (:a => 0.9, :b => 0.2), (0.31, 0.57)),  # √κ = |σ|
+                           (:(sqrt((x + -1a) / (x + a))), (:a => 2.2,), (3.1, 5.0)),   # no u ↦ -u for u/(u - 1)
+                           (:(atan(sqrt((x + -1a) / (x + a)))), (:a => 2.2,), (3.1, 5.0)),
+                           (:(x / sqrt(a * x + b)), (:a => 2.0, :b => 1.0), (0.31, 1.5)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in xs
+            h = 1e-6
+            d = (ev(F, (avals..., :x => complex(x0 + h))) - ev(F, (avals..., :x => complex(x0 - h)))) / (2h)
+            @test isapprox(real(d), ev(f, (avals..., :x => x0)); rtol = 1e-5)
+        end
+    end
+end
+
+# step PL: log of a parameter is a constant generator; step PQ: quadratic residue pairs over a
+# parameter field written out (log or atan); step TW: tan(u/2) over parameter fields
+@testset "parameters: logs, quadratic residues, tan(u/2)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, vals) = Core.eval(Main, Expr(:let, Expr(:block, [Expr(:(=), k, v) for (k, v) in vals]...), e))
+    for (f, avals, xs) in ((:(x ^ n * log(a * x)), (:a => 1.4, :n => 1.7), (0.31, 1.5)),       # apostol 62
+                           (:(log(a * b * x)), (:a => 1.4, :b => 0.6), (0.31, 1.5)),
+                           (:(1 / (a + b * x ^ 2)), (:a => 1.4, :b => 0.6), (-0.31, 1.5)),     # apostol 90
+                           (:(1 / (x ^ 2 + -1a)), (:a => 1.4,), (0.31, 0.57)),
+                           (:(x / (x ^ 2 + x + a)), (:a => 1.4,), (0.31, 1.5)),
+                           (:(exp(x) / (exp(2x) + a)), (:a => 1.4,), (0.31, 1.5)),
+                           (:(1 / (1 + a * cos(x))), (:a => 0.4,), (0.31, 2.5)))           # apostol 141
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        for x0 in xs
+            h = 1e-6
+            d = (ev(F, (avals..., :x => complex(x0 + h))) - ev(F, (avals..., :x => complex(x0 - h)))) / (2h)
+            @test isapprox(real(d), ev(f, (avals..., :x => x0)); rtol = 1e-5)
+        end
+    end
+end
+
+# limited integration: Σ cⱼ wⱼ'/wⱼ - c u'/u may be a derivative in K (∫ tanh x = log(e²ˣ + 1) - x)
+@testset "log coefficient up to a derivative" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for f in (:(tanh(x) * log(cosh(x))), :(tanh(x) * log(cosh(x)) ^ 2))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.4, 1.3)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+    @test_throws Risch.NotElementary Risch.risch_integrate(:(tanh(x) * log(sinh(x))), :x; build = build, lift = identity)
+    # nested radicals: an inner radical that is not a square root falls through (was an InexactError)
+    F = Risch.risch_integrate(:((1 + x ^ (1 // 4)) ^ (1 // 3) / sqrt(x)), :x; build = build, lift = identity)
+    @test isapprox((ev(F, 0.5 + 1e-6) - ev(F, 0.5 - 1e-6)) / 2e-6, ev(:((1 + x ^ (1 // 4)) ^ (1 // 3) / sqrt(x)), 0.5); rtol = 1e-5)
+end
+
+# coth, sech, csch; shifts sin(x + a) (cos a, sin a opaque constants) and sin(x + π/6) (exact values)
+@testset "hyperbolic reciprocals, trig shifts (step TS2)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7)), e))
+    for f in (:(coth(x)), :(sech(x)), :(csch(x) ^ 3), :(x * coth(x) ^ 2), :(exp(x) * sech(exp(x))),
+              :(sin(x + a) * cos(x)), :(sinh(x + a) * exp(x)), :(tan(x + a)), :(sin(x + π / 6) * cos(x)),
+              :(cos(x - π / 3) / sin(x)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.4, 1.3)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
+# step PS: f homogeneous in x and a parameter: x = a u, integrate over ℚ (real forms with √3, √2, √5)
+@testset "homogeneous in x and a parameter (step PS)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 1.7)), e))
+    for f in (:(1 / (a ^ 3 + x ^ 3)), :(1 / (x ^ 2 * (a ^ 3 + x ^ 3))), :(1 / (a ^ 4 + -1 * x ^ 4)), :(x ^ 2 / (a ^ 4 + x ^ 4)),
+              :(1 / (a ^ 5 + x ^ 5)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        @test !occursin("0 * log", string(F))
+        for x0 in (0.4, 1.3)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
+# step MR: radicals of functions of e^(kx), cos, sin, tan of kx, removed by a substitution
+@testset "radicals of exp and trig monomials (step MR)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 1.7)), e))
+    for f in (:(exp(x) * sqrt(9 - exp(2x))), :(exp(x / 2) / sqrt(exp(x) - 1)), :(exp(x) / sqrt(exp(2x) + a ^ 2)),
+              :(tan(x) / sqrt(1 + sec(x) ^ 3)), :(sin(2x) / sqrt(9 - cos(x) ^ 4)), :(cos(x) ^ 2 / sqrt(cos(x) ^ 4 + cos(x) ^ 2 + 1)),
+              :(sinh(x) / (4 * cosh(x) ^ 2 - 9) ^ (5 // 2)), :((5 * cos(x) ^ 2 + sin(x) ^ 2) ^ (5 // 2) * cos(x)),
+              :(sin(x) / (5 * cos(x) ^ 2 - 2 * sin(x) ^ 2) ^ (7 // 2)), :(sqrt(1 + tanh(4x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 0.9)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, real(ev(f, complex(x0))); rtol = 1e-5)
+        end
+    end
+end
+
+# term types that simplify what is built (SymJ distributes numbers over sums): the u-substitution maps
+# u to the variable on the generators, not by finding u in the printed constant (apostol 55)
+@testset "u-substitution independent of the term type's simplification" begin
+    function distributing(op, args...)
+        if op === (*) && length(args) == 2 && args[1] isa Number && args[2] isa Expr &&
+           args[2].head === :call && args[2].args[1] === :+
+            return Expr(:call, :+, (Expr(:call, :*, args[1], t) for t in args[2].args[2:end])...)
+        end
+        Expr(:call, nameof(op), args...)
+    end
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    f = :(sqrt(1 + 3 * cos(x) ^ 2) * sin(2x))
+    F = Risch.try_usub(f, :x; build = distributing, lift = identity, verify = true)
+    @test F !== nothing
+    for x0 in (0.31, 0.57)
+        @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+    end
+end
+
+# callable term types: constants built with `maketerm`, kept exact (not the `u(value, :)` placeholder)
+@testset "exact constants for callable term types" begin
+    SimpleExpressions.@symbolic x
+    F = Risch.integrate(exp(-x ^ 2), x)
+    @test occursin("sqrt(π)", string(F))
+    @test !occursin("sqrt(1)", string(F))
+end
+
+# H3 (b > 0, ₁F₁; x = eᵘ for log x) and H4 (xˢ sin, cos by ₁F₂); like Si/Ci terms added
+@testset "₁F₁, ₁F₂ answers; collected Si/Ci (phase 6 H3, H4)" begin
+    Risch.HYP_ANSWERS[] = true
+    try
+        build(op, args...) = Expr(:call, nameof(op), args...)
+        ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(n = 0.7)), e))
+        Main.eval(:(const _₁F₁ = $(Risch._₁F₁)))      # (from RischIntegrate: not a test dependency)
+        for f in (:(1 / log(x) ^ (n + 1)), :(x ^ n * exp(2x)), :(exp(x) / x ^ n), :(x ^ (1 // 3) * exp(3x)),
+                  :(x ^ (1 // 2) * sin(x)), :(cos(2x) / x ^ (1 // 3)), :(3 * x ^ (5 // 2) * cos(x) + x * exp(x)))
+            F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+            d(x0) = F isa Risch.IntegralWithRootSums ? (F(x0 + 1e-6) - F(x0 - 1e-6)) / 2e-6 :
+                    (ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6
+            for x0 in (1.5, 4.0)
+                @test isapprox(real(d(x0)), ev(f, x0); rtol = 1e-6)
+            end
+        end
+        # symbolic exponents with sin, cos (Expr pFq terms); Shi, Chi
+        Main.eval(:(const pFq = $(Risch.pFq); const sinhint = $(Risch.sinhint); const coshint = $(Risch.coshint)))
+        for f in (:(x ^ n * sin(x)), :(cos(2x) / x ^ n), :(x ^ n * cos(x) + x * sin(x)),
+                  :(sinh(x) / x), :(cosh(3x) / x + sinh(x) / x), :(sinh(2x) / x ^ 2))
+            F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+            for x0 in (0.5, 2.0)
+                @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+            end
+        end
+        @test string(Risch.risch_integrate(:(sinh(x) / x), :x; build = build, lift = identity)) == "sinhint(x)"
+        @test string(Risch.risch_integrate(:(sin(x) / x), :x; build = build, lift = identity)) == "sinint(x)"
+        @test occursin("2 * cosint(2x)", string(Risch.risch_integrate(:(sin(2x) / x ^ 2), :x; build = build, lift = identity)))
+    finally
+        Risch.HYP_ANSWERS[] = false
+    end
+end
+
+# step PR with √(∓D/A) not in the parameter field: an opaque constant (as √(2h), cos a)
+@testset "parameter radicands with opaque square roots" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    vals = Expr(:block, :(h = 1.3), :(alpha = 0.4), :(epsilon = 0.3), :(k = 0.2), :(a = 1.7), :(e = 0.5))
+    ev(ex, x0) = Core.eval(Main, Expr(:let, Expr(:block, vals.args..., :(r = $x0), :(x = $x0)), ex))
+    for (f, v) in ((:(1 / sqrt(2 * h * r ^ 2 - alpha ^ 2)), :r), (:(1 / (r * sqrt((2 * h * r ^ 2 - alpha ^ 2) - epsilon ^ 2))), :r),
+                   (:(1 / (r * sqrt((2 * h * r ^ 2 - alpha ^ 2) - 2 * k * r))), :r),
+                   (:(r / sqrt((2 * e * r ^ 2 - alpha ^ 2) - 2 * k * r)), :r), (:(exp(x) / sqrt(exp(2x) - a ^ 2)), :x))
+        F = Risch.risch_integrate(f, v; build = build, lift = identity)
+        for x0 in (2.0, 3.5)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, real(ev(f, complex(x0))); rtol = 1e-5)
+        end
+    end
+end
+
+# step PW: radicands that are perfect powers at a finer monomial (1 + sin x = (cos(x/2) + sin(x/2))², eˣ)
+@testset "perfect-power radicands at half angles (step PW)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for f in (:((1 + sin(x)) ^ (1 // 2)), :((1 - cos(x)) ^ (1 // 2)), :(sqrt(1 + sin(2x))), :(1 / sqrt(1 + cos(2x))),
+              :(1 / (1 - cos(3x)) ^ (3 // 2)), :(cos(x / 3) ^ 3 / sqrt(exp(x))), :((sin(x / 2) + cos(x / 2)) / exp(x) ^ (1 // 3)),
+              :(x * sqrt(1 + cos(x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 1.1, 2.5, -0.7)               # (on both sides of sign changes of the half-angle root)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, real(ev(f, complex(x0))); rtol = 1e-5)
+        end
+    end
+end
+
+# step MR: Bioche's three substitutions together (a piece for each), after the shift x = y + π/4 that turns
+# sin 2x into cos 2y
+@testset "√(sin 2x): split by Bioche's involutions, shifted by π/4" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for f in (:(sin(x) / sqrt(sin(2x))), :(cos(x) / sqrt(sin(2x))), :(sqrt(sin(2x)) * sin(x)),
+              :((cos(x) - sin(x)) * sqrt(sin(2x))), :(sin(x) ^ 7 / sin(2x) ^ (7 // 2)), :(1 / (sin(x) * sin(2x) ^ (3 // 2))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 0.7)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
+# step NR: an innermost radical of a linear radicand removed by u = (ax + b)^(1/Q)
+@testset "nested radicals over a linear radicand (step NR)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for f in (:(sqrt(1 + x) / (x + sqrt(1 + sqrt(1 + x)))), :(1 / (x - sqrt(1 + sqrt(1 + x)))),
+              :(x / (x + sqrt(1 - sqrt(1 + x)))), :(sqrt(1 + (2x + 1) ^ (1 // 3))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.31, 2.0)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, real(ev(f, complex(x0))); rtol = 1e-5)
+        end
+    end
+end
+
+# step PR with a RootSum over ℚ(a): scaled by the parameter (x = a u, a^(1/3) an opaque constant)
+@testset "parameter radicands scaled by a parameter" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7), :(c = 1.3)), e))
+    for f in (:(x ^ -1 * (x - a) ^ (1 // 3)), :(x * (c + x) ^ (1 // 3)), :((a + x) ^ (2 // 3) / x ^ 2))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        for x0 in (1.5, 3.0)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, real(ev(f, complex(x0))); rtol = 1e-5)
+        end
+    end
+end
+
+# ∫ erf(ax + b) by parts; several radicands with a linear one: u = √(linear) (step NR)
+@testset "erf by parts; products of linear radicals" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7 + 0im), :(b = 1.3 + 0im),
+                                                       :(c = 0.4 + 0im), :(d = 2.1 + 0im)), e))
+    Main.eval(:(using SpecialFunctions: erf, erfi))
+    for f in (:(erf(x)), :(erf(x + a)), :(3 * erf(2x - 1) + x), :(erfi(x / 2)),
+              :(sqrt(a + b * x) * sqrt(c + d * x)), :(1 / (sqrt(a + x) * sqrt(c + x))), :(sqrt(x + 1) / sqrt(x + 2)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.5, 2.0)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, real(ev(f, complex(x0))); rtol = 1e-5)
+        end
+    end
+end
+
+# u = sech x, cos x, … with the other functions of the same argument in U (tanh² = 1 - U²); step PL: a power
+# of one parameter quadratic by linearity after x = s u + h
+@testset "trig/hyperbolic u-substitution; parameter quadratic powers (step PL)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for f in (:(tanh(x) ^ 5 * sech(x) ^ (3 // 4)), :(sin(x) ^ 3 * cos(x) ^ (1 // 3)), :(tan(x) ^ 3 * sec(x) ^ (5 // 2)),
+              :(sinh(x) ^ 3 / cosh(x) ^ (1 // 2)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 0.9)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, real(ev(f, complex(x0))); rtol = 1e-5)
+        end
+    end
+    for vals in ((:a => 1.3, :b => 0.4, :c => 0.9, :b1 => 0.7, :c1 => 1.1), (:a => 0.3, :b => 1.4, :c => 0.9, :b1 => 0.7, :c1 => 1.1))
+        evp(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, [Expr(:(=), k, complex(v)) for (k, v) in vals]..., :(x = $x0)), e))
+        for f in (:((b1 + c1 * x) / (a + 2 * b * x + c * x ^ 2) ^ 4), :(x ^ 2 / (x + a) ^ 3), :(1 / (a * x ^ 2 + b) ^ 3))
+            F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+            for x0 in (0.31, 2.0)
+                @test isapprox(real(evp(F, x0 + 1e-6) - evp(F, x0 - 1e-6)) / 2e-6, real(evp(f, x0)); rtol = 1e-5)
+            end
+        end
+    end
+end
+
+# asec, acsc: √(1 - 1/u²) is kept (√(u² - 1)/u held for u > 1 only); check both signs
+@testset "asec, acsc for u < -1" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for g in (:(asec(x)), :(acsc(x)), :(x * asec(x)), :(asec(2x + 1)))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        for x0 in (-3.5, -2.0, 2.0, 3.0)
+            @test isapprox(real((ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6), ev(g, x0); rtol = 1e-5)
+        end
     end
 end
 

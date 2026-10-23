@@ -245,6 +245,9 @@ function residue_logs(T::Tower, i::Int, A::UPoly, D::UPoly)
     end
     K = T.Ts[i]
     dD = Dp(T, i, D)
+    CT0 = ctype(T)
+    CT0 <: Frac && cdepth(CT0) > MAX_ROOTSUM_GENS && degree(D) > 2 && throw(RischNotImplemented(
+        "residues of a denominator of degree $(degree(D)) over more than $MAX_ROOTSUM_GENS symbolic constants"))
     Rz = residue_resultant(D, A, dD)
     iszero(Rz) && throw(RischError("zero resultant in the residue computation"))
     CT = ctype(T)
@@ -379,8 +382,13 @@ function integrate_log_poly(T::Tower, i::Int, p::UPoly)
         c = zero(ctype(T))
         if !iszero(tgt)
             cv = dconst_value(T, tgt / Lθ)
-            cv === nothing && throw(NotElementary(
-                "the integral of the coefficient of log^$n involves logarithms other than log(u)"))
+            if cv === nothing                           # tgt - c·u'/u may still be a derivative b' with b ∈ K
+                cb = log_ratio_match(T, i - 1, tgt, Lθ)  # (log(e²ˣ + 1) - x = log(cosh x) + log 2)
+                cb === nothing && throw(NotElementary(
+                    "the integral of the coefficient of log^$n involves logarithms other than log(u)"))
+                cv, bv = cb
+                rv = rv + bv
+            end
             c = cv
         end
         coeffs = fill(zero(K), n + 2)
@@ -402,6 +410,24 @@ function integrate_log_poly(T::Tower, i::Int, p::UPoly)
         append!(quads, r0.quads)
     end
     q, logs, atans, quads
+end
+
+# c ∈ C and b ∈ K with tgt = c·L + b' (tgt, L log derivatives in K = Kⱼ), or nothing: the candidates for
+# c are the ratios of the log coefficients of ∫ tgt and ∫ L; c is right when ∫ (tgt - c L) has no logs
+function log_ratio_match(T::Tower, j::Int, tgt, L)
+    rt, rl = integrate_el(T, j, tgt), integrate_el(T, j, L)
+    (isempty(rt.atans) && isempty(rt.quads) && isempty(rl.atans) && isempty(rl.quads)) || return nothing
+    for (ct, _) in rt.logs, (cl, _) in rl.logs
+        c = ct / cl
+        rr = try
+            integrate_el(T, j, tgt - lconst(T, c, j) * L)
+        catch e
+            (e isa NotElementary || e isa RischNotImplemented) || rethrow()
+            continue
+        end
+        (isempty(rr.logs) && isempty(rr.atans) && isempty(rr.quads)) && return (c, rr.v)
+    end
+    nothing
 end
 
 function integrate_el(T::Tower, i::Int, f)::ElemIntegral
@@ -576,7 +602,10 @@ function to_term(b::Builder, T::Tower, res::ElemIntegral)
         l = mk(b, :atan, frac_term(b, u))
         push!(ts, isone(c) ? l : mk(b, :*, cterm(b, c), l))
     end
-    for q in res.quads
+    shc, used = shi_chi_terms(b, T, res.quads)          # Ei(w), Ei(-w) pairs as Shi, Chi (H4)
+    append!(ts, shc)
+    for (qi, q) in enumerate(res.quads)
+        qi in used && continue
         if q isa TowerQuadLog
             r = mk(b, :sqrt, b.lift(q.d))
             Ut, Vt = tower_to_term(b, T, q.U), tower_to_term(b, T, q.V)

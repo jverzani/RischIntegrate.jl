@@ -19,6 +19,8 @@ end
 rootsum_corr(q::TowerRootSum) = (length(q.W) - 1) * (-q.mq.c[end - 1])
 
 function tower_root_sums(T::Tower{C}, i::Int, A::UPoly{K}, D::UPoly{K}, dD::UPoly{K}, rest::UPoly{C}) where {C,K}
+    cdepth(C) > MAX_ROOTSUM_GENS && degree(rest) > 2 && throw(RischNotImplemented(
+        "a RootSum over more than $MAX_ROOTSUM_GENS symbolic constants (parameters)"))
     P = UPoly{K}
     mK = P(K[lconst(T, c, i - 1) for c in monic(rest).c])
     n = max(length(A.c), length(dD.c))
@@ -107,6 +109,11 @@ TermRootSum(poly, coeffs, var) = TermRootSum(poly, coeffs, var, nothing)
 # in x over C, printed with `poly_term`; the polynomial's coefficients are terms too
 function base_term_rootsum(b::Builder, rs::RootSum{C}) where {C}
     xp = xpoly(C)
+    if real_param_field(C) && degree(rs.poly) == 2         # step PQ
+        Uz = [sum((j <= length(rs.W[k].c) ? scale(rs.W[k].c[j], xp^(k - 1)) : zero(UPoly{C})) for k in eachindex(rs.W))
+              for j in 1:2]
+        return param_quad_term(b, rs.poly, Uz[1], Uz[2], (c, e) -> scale(c, e), e -> poly_term(b, e))
+    end
     cs = Any[]
     for j in 1:degree(rs.poly)
         p = sum((j <= length(rs.W[k].c) ? scale(rs.W[k].c[j], xp^(k - 1)) : zero(UPoly{C})) for k in eachindex(rs.W))
@@ -116,6 +123,13 @@ function base_term_rootsum(b::Builder, rs::RootSum{C}) where {C}
 end
 function TermRootSum(b::Builder, T::Tower, q::TowerRootSum)
     C = ctype(T)
+    if real_param_field(C) && degree(q.mq) == 2           # step PQ
+        K = T.Ts[q.i]
+        P = UPoly{K}
+        Uz = [P(K[j <= length(q.W[k].c) ? q.W[k].c[j] : zero(K) for k in eachindex(q.W)]) for j in 1:2]
+        return param_quad_term(b, q.mq, Uz[1], Uz[2], (c, e) -> scale(lconst(T, c, q.i - 1), e),
+                               e -> tower_to_term(b, T, frac(e)))
+    end
     pt = (C === Q || C === QI) ? nothing : Any[cterm(b, c) for c in q.mq.c]
     K = T.Ts[q.i]
     P = UPoly{K}
@@ -153,3 +167,54 @@ function complex_term_rootsum(b::Builder, T::Tower, kinds, q)
     end
     TermRootSum(mq, cs, string(b.x))
 end
+
+# step PQ: a RootSum over m(z) = z² + p z + q irreducible over a real parameter field C = ℚ(a, …), with
+# W(α) = U + αV, written out. With α = m₀ ± w, m₀ = -p/2, w² = δ = m₀² - q, P₀ = U + m₀V:
+#   Σ α log(U + αV) = m₀ log(U² - pUV + qV²) + w log((P₀ + wV)/(P₀ - wV))
+#                   = m₀ log(…) - 2σ atan(σV/P₀)            (δ = -σ²)
+# σ ∈ C when -δ is a square; else σ = √(-δ) or √δ as a term, the sign of δ taken at the parameter values
+# of `param_value` (a = 1, b = 2, …; either form is an antiderivative, real for its sign of δ).
+# U, V are polynomials (in x, or in θ over K); sc(c, P) scales by c ∈ C, tt(P) gives the term.
+function param_quad_term(b::Builder, mq::UPoly{C}, U, V, sc, tt) where {C}
+    q, p = monic(mq).c[1], monic(mq).c[2]
+    m0 = -p * cfromQ(C, Q(1, 2))
+    δ = m0 * m0 - q
+    P0 = U + sc(m0, V)
+    ts = Any[]
+    if !iszero(m0)
+        N = U * U - sc(p, U * V) + sc(q, V * V)
+        push!(ts, mk(b, :*, cterm(b, m0), mk(b, :log, tt(N))))
+    end
+    # -2σ atan(σV/P₀), or 2σ atan(P₀/(σV)) (the same derivative), continuous when V is a constant
+    vconst = degree(V) <= 0
+    σ = csqrt(-δ)
+    dv = σ === nothing ? param_value(δ, b.consts) : nothing
+    if σ === nothing && dv !== nothing && dv > 0
+        st = csqrt_term(b, δ)
+        sV = mk(b, :*, st, tt(V))
+        push!(ts, mk(b, :*, st, mk(b, :log, mk(b, :/, mk(b, :+, tt(P0), sV),
+                                                   mk(b, :+, tt(P0), mk(b, :*, b.lift(-1), sV))))))
+    else
+        st = σ !== nothing ? cterm(b, σ) : csqrt_term(b, -δ)
+        sV = σ !== nothing ? tt(sc(σ, V)) : mk(b, :*, st, tt(V))
+        push!(ts, vconst ? mk(b, :*, b.lift(2), st, mk(b, :atan, mk(b, :/, tt(P0), sV))) :
+                           mk(b, :*, b.lift(-2), st, mk(b, :atan, mk(b, :/, sV, tt(P0)))))
+    end
+    length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
+end
+real_param_field(::Type{C}) where {C} = C <: Frac && rational_tfield(C) && cbase(C) === Q
+
+# √c for c ∈ C = B(t) as a term, with a square numerator or denominator (in t) taken out
+function csqrt_term(b::Builder, c::Frac{<:UPoly})
+    n, d = frac(c.num), frac(c.den)
+    sn, sd = csqrt(n), csqrt(d)
+    if sn === nothing && sd === nothing && (csqrt(-n) !== nothing || csqrt(-d) !== nothing)
+        n, d = -n, -d                                    # c = (-n)/(-d)
+        sn, sd = csqrt(n), csqrt(d)
+    end
+    nt = sn === nothing ? mk(b, :sqrt, cterm(b, n)) : cterm(b, sn)
+    sd === nothing && sn !== nothing && return mk(b, :/, nt, mk(b, :sqrt, cterm(b, d)))
+    sd === nothing && return mk(b, :sqrt, cterm(b, c))
+    isone(sd) ? nt : mk(b, :/, nt, cterm(b, sd))
+end
+csqrt_term(b::Builder, c) = mk(b, :sqrt, cterm(b, c))

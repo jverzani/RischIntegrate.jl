@@ -146,16 +146,33 @@ end
 ```
 
 and [`RischNotImplemented`](@ref RischIntegrate.RischNotImplemented) when the integrand lies outside the cases implemented, for
-example square roots of polynomials of degree greater than 2, which need the algebraic case of
-the Risch algorithm:
+example a square root of a logarithm:
 
 ```@example symbolicutils
 try
-    integrate(sqrt(x^3 + 1), x)
+    integrate(sqrt(log(x)), x)
 catch e
     sprint(showerror, e)
 end
 ```
+
+## Non-elementary algebraic integrals: ₂F₁
+
+For a radical of a binomial `α + βxⁿ` (`α > 0`), the part of a non-elementary integral that is left after
+the algebraic and logarithmic parts is written with Gauss's hypergeometric function
+(`HypergeometricFunctions._₂F₁`), as Rubi does:
+`∫ xᵐ(α + βxⁿ)^q dx = α^q x^(m+1)/(m+1) ₂F₁(-q, (m+1)/n; (m+1)/n + 1; -βxⁿ/α)`. The answer is an
+`IntegralWithRootSums` (the ₂F₁ terms are evaluated numerically):
+
+```@example symengine
+F = integrate(sqrt(x^3 + 1), x)
+```
+
+```@example symengine
+F(2.0) - F(1.0)
+```
+
+Set `RischIntegrate.HYP_ANSWERS[] = false` to get [`NotElementary`](@ref RischIntegrate.NotElementary) instead.
 
 ## RootSums
 
