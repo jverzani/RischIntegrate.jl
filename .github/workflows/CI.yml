@@ -47,9 +47,12 @@ jobs:
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
         with:
-          coverage: true # This generates coverage reports automatically
+          # coverage instrumentation is slow (and recompiles the package): one job only
+          coverage: ${{ matrix.version == '1.13' && matrix.os == 'ubuntu-latest' }}
       - uses: julia-actions/julia-processcoverage@v1
+        if: matrix.version == '1.13' && matrix.os == 'ubuntu-latest'
       - uses: codecov/codecov-action@v6
+        if: matrix.version == '1.13' && matrix.os == 'ubuntu-latest'
         with:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
