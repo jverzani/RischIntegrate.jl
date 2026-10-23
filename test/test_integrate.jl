@@ -1002,7 +1002,7 @@ function run_tests(x, evalat, name)
                 @test antiderivative_ok(F, f, a, evalat)
             end
         end
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(atan(x) / x, x)
+        @test occursin("clausen2", string(Risch.risch_integrate(atan(x) / x, x)))   # step AT
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(atan(x) * log(x), x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(atan(1 / x) + atan(x), x)
     end
@@ -1484,6 +1484,26 @@ end
         end
     end
     @test isapprox(Risch.clausen2(π / 3), 1.0149416064096536; rtol = 1e-12)
+end
+
+# step AT: atan(u) by the substitution u = tan t, then step CL (Rubi 1653, 1655, 1656, 1659)
+@testset "atan(u) by u = tan t (step AT)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for f in (:(x ^ 3 * atan(x) / (1 + x ^ 2)), :(x ^ 3 * atan(x) / (1 + x ^ 2) ^ 2), :(x ^ 5 * atan(x) / (1 + x ^ 2) ^ 2),
+              :(atan(x) * (1 + x ^ 2) ^ 2 / x ^ 5), :(atan(x) / x), :(atan(2x + 1) / (2x + 1)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("clausen2", string(F))
+        for x0 in (0.3, 1.1, 2.0, -0.7, -4.0, 9.0)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+    # a term type without clausen2: the special-function fallback through Expr (steps CL and AT)
+    SymEngine.@vars x
+    for f in (x * tan(x), x * atan(x) / (1 + x ^ 2))
+        F = integrate(f, x)
+        @test F isa Risch.IntegralWithRootSums && occursin("clausen2", string(F))
+    end
 end
 
 # asec, acsc: √(1 - 1/u²) is kept (√(u² - 1)/u held for u > 1 only); check both signs

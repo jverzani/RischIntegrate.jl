@@ -255,3 +255,114 @@ function tidy_terms(bd::Builder, t, xk::String)
     end
     tidy(t)
 end
+
+# ---------------------------------------------------------------------------
+# Step AT: atan by the substitution u = tan t, after the usual route has failed (∫ x atan(x)/(1 + x²),
+# ∫ atan(x)/x: Clausen forms by step CL). All atan(u) in f share one linear u = a x + b; with x playing
+# the role of t:
+#   x ↦ (tan x - b)/a,  atan(u) ↦ x,  √(1 + u²) ↦ 1/cos x,  dx ↦ 1/(a cos² x) dx,
+# valid for all real u (t ∈ (-π/2, π/2), cos t > 0). The answer is mapped back with x ↦ atan(u) and
+# cos kt + i sin kt = (1 + i u)^k / (1 + u²)^(k/2) for k ∈ ℤ, tan(t/2) = u/(1 + √(1 + u²)).
+# ---------------------------------------------------------------------------
+const ATAN_SUBST = Ref(false)                           # no nested substitutions
+
+function collect_atans(f, out = Any[])
+    if safe_iscall(f)
+        args = arguments(f)
+        opname(operation(f)) === :atan && length(args) == 1 && push!(out, f)
+        foreach(a -> collect_atans(a, out), args)
+    end
+    out
+end
+
+function try_atan_subst(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    ATAN_SUBST[] && return nothing
+    xk = string(x)
+    ats = collect_atans(f)
+    isempty(ats) && return nothing
+    any(n -> has_op(f, n), (:acot, :asin, :acos, :asec, :acsc)) && return nothing   # (relations need π)
+    u = radicand_element(arguments(ats[1])[1], xk)
+    (u !== nothing && isone(u.den) && degree(u.num) == 1) || return nothing
+    all(t -> radicand_element(arguments(t)[1], xk) == u, ats) || return nothing
+    a, b = u.num.c[2], u.num.c[1]
+    one_plus_u2 = frac(UPoly{Q}(Q[1])) + u * u
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    ct = mk(bd, :cos, bd.x)
+    xt = mk(bd, :/, mk(bd, :+, mk(bd, :tan, bd.x), cterm(bd, -b)), cterm(bd, a))
+    function sub(t)
+        if safe_iscall(t) && !isempty(arguments(t))
+            opname(operation(t)) === :atan && return bd.x
+            rp = radical_parts(t)
+            if rp !== nothing && denominator(rp[1]) == 2
+                q = radicand_element(rp[2], xk)
+                if q !== nothing && isone(q.den) && degree(q.num) == 2
+                    K = q.num.c[1]                      # q = K (1 + u²) with √K rational
+                    sK = K > 0 ? rat_sqrt(K) : nothing
+                    if sK !== nothing && q == frac(UPoly{Q}(Q[K])) * one_plus_u2
+                        e = Int(numerator(rp[1]))       # (K (1 + u²))^(e/2) = (√K)^e / cos^e t
+                        re = mk(bd, :/, cterm(bd, sK^e), e == 1 ? ct : mk(bd, :^, ct, bd.lift(e)))
+                        return re
+                    end
+                end
+            end
+            return term_rebuild(bd, t, Any[sub(s) for s in arguments(t)])
+        end
+        string(t) == xk ? xt : t
+    end
+    g = mk(bd, :/, sub(f), mk(bd, :*, cterm(bd, a), mk(bd, :^, ct, bd.lift(2))))
+    ATAN_SUBST[] = true
+    G = try
+        risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        nothing
+    finally
+        ATAN_SUBST[] = false
+    end
+    (G === nothing || G isa IntegralWithRootSums) && return nothing
+    # map back
+    arcterm = ats[1]
+    bu = Builder(bd.build, bd.lift, arguments(ats[1])[1])     # rational functions of u printed with the u term
+    P = UPoly{Q}
+    w = P(Q[1, 0, 1])                                   # 1 + u²
+    rterm = mk(bd, :sqrt, poly_term(bu, w))             # √(1 + u²)
+    function cis(k::Int)                                # (1 + i u)^|k| = A + i B
+        A, B = one(P), zero(P)
+        for _ in 1:abs(k)
+            A, B = A - xpoly(Q) * B, B + xpoly(Q) * A
+        end
+        A, k < 0 ? -B : B
+    end
+    # A / (1 + u²)^(k/2)
+    function over(A, k::Int)
+        iszero(A) && return bd.lift(0)
+        k = abs(k)
+        r = frac_term(bu, frac(A, w^(k ÷ 2)))
+        isodd(k) ? mk(bd, :/, r, rterm) : r
+    end
+    function back(t)
+        if safe_iscall(t) && !isempty(arguments(t))
+            n = opname(operation(t))
+            args = arguments(t)
+            if n in (:sin, :cos, :tan) && length(args) == 1
+                e = radicand_element(args[1], xk)
+                if e !== nothing && isone(e.den) && degree(e.num) == 1 && iszero(e.num.c[1])
+                    c = e.num.c[2]
+                    if isone(denominator(c))
+                        k = Int(numerator(c))
+                        A, B = cis(k)
+                        n === :cos && return over(A, k)
+                        n === :sin && return over(B, k)
+                        return frac_term(bu, frac(B, A))
+                    elseif c == 1 // 2 && n === :tan    # tan(t/2) = u/(1 + √(1 + u²))
+                        return mk(bd, :/, arguments(ats[1])[1], mk(bd, :+, bd.lift(1), rterm))
+                    end
+                end
+            end
+            return term_rebuild(bd, t, Any[back(s) for s in args])
+        end
+        string(t) == xk ? arcterm : t
+    end
+    tidy_terms(bd, back(G), xk)
+end

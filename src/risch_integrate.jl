@@ -27,10 +27,16 @@ function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = t
             return integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
         end
         (e isa RischNotImplemented || e isa NotElementary) || rethrow()
-        if e isa NotElementary                            # x·R(sin, cos): Clausen's function (step CL)
-            g = try_x_trig(f, x; build = build, lift = lift, verify = verify)
-            g === nothing || return g
+        g = try
+            # x·R(sin, cos): Clausen's function (step CL); atan(u): u = tan t (step AT)
+            g1 = e isa NotElementary ? try_x_trig(f, x; build = build, lift = lift, verify = verify) : nothing
+            g1 === nothing ? try_atan_subst(f, x; build = build, lift = lift, verify = verify) : g1
+        catch e2
+            # (raised here, inside the catch, these miss the special-function fallback above)
+            (e2 isa MethodError && any(fn -> e2.f === fn, SPECIAL_FNS) && !(f isa Expr)) || rethrow()
+            integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
         end
+        g === nothing || return g
         if e isa NotElementary && HYP_ANSWERS[]           # xˢ e^(bx+d): incomplete gamma (phase 6, H3)
             g = try_gamma(f, x; build = build, lift = lift, verify = verify)
             g === nothing || return g
