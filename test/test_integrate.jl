@@ -4,6 +4,7 @@ import SymEngine
 import SpecialFunctions
 using RischIntegrate
 import RischIntegrate as Risch
+@isdefined(ALL_TYPES) || (const ALL_TYPES = true)             # (set in runtests.jl)
 Risch.HYP_ANSWERS[] = false     # the decision tests expect NotElementary (₂F₁ answers: their own testset)
 
 fd(f, a; h = 1e-6) = (f(a + h) - f(a - h)) / (2h)
@@ -1077,7 +1078,7 @@ end
 simple_x = let; SimpleExpressions.@symbolic x; x; end
 sym_x = let; SymEngine.@vars x; x; end
 run_tests(simple_x, (e, a) -> e isa Function ? e(a) : e, "SimpleExpressions")
-run_tests(sym_x, (e, a) -> (z = SymEngine.N(SymEngine.subs(e, sym_x => a));
+ALL_TYPES && run_tests(sym_x, (e, a) -> (z = SymEngine.N(SymEngine.subs(e, sym_x => a));
                             z isa Complex ? ComplexF64(z) : Float64(z)), "SymEngine")
 
 # step SY: symbolic parameters as indeterminates of the constant field (answers for generic values).
@@ -1112,7 +1113,7 @@ let
 end
 let
     SymEngine.@vars x p q r s1 s2
-    sy_tests(x, p, q, r, s1, s2, (e, a) -> real(ComplexF64(SymEngine.N(SymEngine.subs(e, x => a, p => 0.2)))), "SymEngine")
+    ALL_TYPES && sy_tests(x, p, q, r, s1, s2, (e, a) -> real(ComplexF64(SymEngine.N(SymEngine.subs(e, x => a, p => 0.2)))), "SymEngine")
 end
 
 # step DL: dilogarithms (PolyLog.li2). The symbolic packages need a method for li2: SimpleExpressions
@@ -1140,7 +1141,7 @@ function dl_tests(x, name)
     end
 end
 dl_tests(simple_x, "SimpleExpressions")
-dl_tests(sym_x, "SymEngine")
+ALL_TYPES && dl_tests(sym_x, "SymEngine")
 
 # step IT: iterated integrals ∫∫ … dx dy with RootSums (y·RootSum, c(y)·RootSum), definite F(x => b)
 let

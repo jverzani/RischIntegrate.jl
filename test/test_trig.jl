@@ -4,6 +4,7 @@ import SymEngine
 import SpecialFunctions
 using RischIntegrate
 import RischIntegrate as Risch
+@isdefined(ALL_TYPES) || (const ALL_TYPES = true)             # (set in runtests.jl)
 
 fd(f, a; h = 1e-6) = (f(a + h) - f(a - h)) / (2h)
 
@@ -212,4 +213,4 @@ function trig_sym_eval(e, a)
     w = ComplexF64(z)
     abs(imag(w)) <= 1e-10 * max(1.0, abs(w)) ? real(w) : w
 end
-run_tests(sym_x, trig_sym_eval, "SymEngine")
+ALL_TYPES && run_tests(sym_x, trig_sym_eval, "SymEngine")
