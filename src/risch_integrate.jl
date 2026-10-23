@@ -27,6 +27,10 @@ function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = t
             return integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
         end
         (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        if e isa NotElementary                            # x·R(sin, cos): Clausen's function (step CL)
+            g = try_x_trig(f, x; build = build, lift = lift, verify = verify)
+            g === nothing || return g
+        end
         if e isa NotElementary && HYP_ANSWERS[]           # xˢ e^(bx+d): incomplete gamma (phase 6, H3)
             g = try_gamma(f, x; build = build, lift = lift, verify = verify)
             g === nothing || return g
