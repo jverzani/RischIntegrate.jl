@@ -54,12 +54,13 @@ include("nested.jl")
 include("hypergeometric.jl")
 include("gamma_terms.jl")
 include("param_radicals.jl")
+include("clausen.jl")
 include("special_fallback.jl")
 include("monomial_radicals.jl")
 include("kummer_logs.jl")
 include("real_log_arguments.jl")
 
-export integrate, sinhint, coshint
+export integrate, sinhint, coshint, clausen2
 
 """
     integrate(ex, x, ys...; build = nothing, lift = nothing)

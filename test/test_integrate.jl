@@ -1470,6 +1470,22 @@ end
     end
 end
 
+# step CL: ∫ x·R(sin, cos) by parts with Clausen's function (Rubi 216, 1486, 1487)
+@testset "x·trig by parts: Clausen's function (step CL)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    Main.eval(:(const clausen2 = $(Risch.clausen2)))
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for f in (:(x * tan(x)), :(x * sin(x) ^ 3 / cos(x)), :(x * sin(x) ^ 3 / cos(x) ^ 3), :(1 + x * tan(x) + tan(x) ^ 2),
+              :(x / sin(x)), :(x * cot(2x)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("clausen2", string(F))
+        for x0 in (0.3, 1.1, 2.0, -0.7, 4.0)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+    @test isapprox(Risch.clausen2(π / 3), 1.0149416064096536; rtol = 1e-12)
+end
+
 # asec, acsc: √(1 - 1/u²) is kept (√(u² - 1)/u held for u > 1 only); check both signs
 @testset "asec, acsc for u < -1" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
