@@ -129,8 +129,10 @@ results and edit it before publishing.
 The package README has a badge comparing the number of apostol problems
 verified by `symbolicutils` (RischIntegrate, SymbolicUtils) and `si_risch`
 (SymbolicIntegration's `RischMethod`, Symbolics). It links to the page through
-htmlpreview.github.io, from `main`, so the page must be committed and pushed
-there. It is a static badge: after a run that changes these numbers, update
+rawcdn.githack.com at a commit hash (githack caches each URL permanently, so a
+branch name would keep showing the first version it saw). After a run, commit and
+push the page, then put that commit's hash in the link.
+It is a static badge: after a run that changes these numbers, update
 them in the badge URL and its alt text.
 
 ## Results so far

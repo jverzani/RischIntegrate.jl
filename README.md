@@ -2,7 +2,7 @@
 
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://jverzani.github.io/RischIntegrate.jl/dev/)
 [![Build Status](https://github.com/jverzani/RischIntegrate.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/jverzani/RischIntegrate.jl/actions/workflows/CI.yml?query=branch%3Amain)
-[![Apostol, verified of 175: RischIntegrate 174, SymbolicIntegration Risch 97](https://img.shields.io/badge/apostol%2C%20verified%20of%20175-RischIntegrate%20174%20%C2%B7%20SymbolicIntegration%20Risch%2097-2f8a4c)](https://htmlpreview.github.io/?https://github.com/jverzani/RischIntegrate.jl/blob/main/benchmark/apostol/results/apostol_comparison.html)
+[![Apostol, verified of 175: RischIntegrate 174, SymbolicIntegration Risch 97](https://img.shields.io/badge/apostol%2C%20verified%20of%20175-RischIntegrate%20174%20%C2%B7%20SymbolicIntegration%20Risch%2097-2f8a4c)](https://rawcdn.githack.com/jverzani/RischIntegrate.jl/bed5aa02a6d98a833ac6bcbfd986f3ab3c104b01/benchmark/apostol/results/apostol_comparison.html)
 
 
 This is
@@ -39,6 +39,6 @@ Symbolics.jl, SimpleExpressions.jl and `Expr`, non-elementary integrals and Root
 The apostol badge compares RischIntegrate, with SymbolicUtils terms, to the Risch method of
 SymbolicIntegration.jl, with Symbolics terms: the number of the 175 problems of
 `test/test_apostol.jl` (from Apostol's *Calculus*, as collected by SymbolicIntegration.jl) each
-integrates with an answer that checks out numerically. The [comparison](https://htmlpreview.github.io/?https://github.com/jverzani/RischIntegrate.jl/blob/main/benchmark/apostol/results/apostol_comparison.html) also has
+integrates with an answer that checks out numerically. The [comparison](https://rawcdn.githack.com/jverzani/RischIntegrate.jl/bed5aa02a6d98a833ac6bcbfd986f3ab3c104b01/benchmark/apostol/results/apostol_comparison.html) also has
 RischIntegrate with SymEngine, `Expr`, SimpleExpressions and Giac.jl terms, and Giac's own
 `integrate` for reference; see `benchmark/apostol/README.md` to rerun it.
