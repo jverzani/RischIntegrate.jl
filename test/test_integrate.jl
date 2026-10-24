@@ -1544,6 +1544,25 @@ end
     @test F isa Risch.IntegralWithRootSums && occursin("repolylog(2", string(F))
 end
 
+# step CL with roots off the axes, u = e^(iβ) ∈ ℚ(i): φ = kx - β, β = atan(im/re) (+ π); with step AT, atan(u)/(x + c)
+@testset "xᵖ·trig by parts: roots off the axes (step CL)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    Main.eval(:(const clausen = $(Risch.clausen)))
+    Main.eval(:(const clausen2 = $(Risch.clausen2)))
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    fd(F, x0, h = 1e-3) = (-ev(F, x0 + 2h) + 8ev(F, x0 + h) - 8ev(F, x0 - h) + ev(F, x0 - 2h)) / (12h)
+    for f in (:(x / (4 + 5cos(x))), :(x ^ 2 / (4 + 5cos(x))), :(atan(x) / (x + 2)), :(atan(x - 1) / (x + 1)),
+              :(atan(2x) / (x + 3)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("atan(", string(F)) && occursin("clausen2(", string(F))
+        for x0 in (0.3, 1.2, 2.3, -0.9, 7.1)
+            @test isapprox(fd(F, x0), ev(f, x0); rtol = 1e-6, atol = 1e-9)
+        end
+    end
+    # in θ first: ∫ x tan x keeps its form in sin x
+    @test occursin("sin(x)", string(Risch.risch_integrate(:(x * tan(x)), :x; build = build, lift = identity)))
+end
+
 # step AT: atan(u) by the substitution u = tan t, then step CL (Rubi 1653, 1655, 1656, 1659)
 @testset "atan(u) by u = tan t (step AT)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
