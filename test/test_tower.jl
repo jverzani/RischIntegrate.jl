@@ -3,6 +3,7 @@ import SimpleExpressions
 import SymEngine
 using RischIntegrate
 import RischIntegrate as Risch
+@isdefined(ALL_TYPES) || (const ALL_TYPES = true)             # (set in runtests.jl)
 
 fd(f, a; h = 1e-6) = (f(a + h) - f(a - h)) / (2h)
 
@@ -112,4 +113,4 @@ end
 simple_x = let; SimpleExpressions.@symbolic x; x; end
 sym_x = let; SymEngine.@vars x; x; end
 run_tests(simple_x, (e, a) -> e isa Function ? e(a) : e, "SimpleExpressions")
-run_tests(sym_x, (e, a) -> Float64(SymEngine.N(SymEngine.subs(e, sym_x => a))), "SymEngine")
+ALL_TYPES && run_tests(sym_x, (e, a) -> Float64(SymEngine.N(SymEngine.subs(e, sym_x => a))), "SymEngine")

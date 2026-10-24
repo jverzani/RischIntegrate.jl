@@ -3,6 +3,7 @@ import SimpleExpressions
 import SymEngine
 using RischIntegrate
 import RischIntegrate as Risch
+@isdefined(ALL_TYPES) || (const ALL_TYPES = true)             # (set in runtests.jl)
 
 # --- exact, package-independent checks of the algebra (no symbolic package needed)
 const Q = Rational{BigInt}
@@ -368,4 +369,4 @@ function risch_sym_eval(e, a)
     w = ComplexF64(z)
     abs(imag(w)) <= 1e-10 * max(1.0, abs(w)) ? real(w) : w
 end
-run_tests(sym_x, risch_sym_eval, "SymEngine")
+ALL_TYPES && run_tests(sym_x, risch_sym_eval, "SymEngine")
