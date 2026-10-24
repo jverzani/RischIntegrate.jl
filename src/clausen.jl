@@ -75,10 +75,11 @@ const MAX_X_POWER = 6
 function try_x_trig(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     g = x_trig(f, x, build, lift, verify, false)
-    g === nothing ? x_trig(f, x, build, lift, verify, true) : g
+    h = x_trig(f, x, build, lift, verify, true)         # nothing unless f is a function of θ^g, g > 1
+    (g === nothing || (h !== nothing && length(string(h)) < length(string(g)))) ? h : g
 end
 
-# in_power: integrate a function of θ^g in y = g x (tried second: in θ the answers keep their usual form)
+# in_power: integrate a function of θ^g in y = g x (the shorter answer is kept: ∫ x tan x in cos 2x)
 function x_trig(f, x, build, lift, verify::Bool, in_power::Bool)
     @nospecialize f x
     xk = string(x)
