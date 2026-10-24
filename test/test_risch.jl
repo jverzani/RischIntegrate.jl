@@ -1,9 +1,7 @@
 using Test
-import SimpleExpressions
 import SymEngine
 using RischIntegrate
 import RischIntegrate as Risch
-@isdefined(ALL_TYPES) || (const ALL_TYPES = true)             # (set in runtests.jl)
 
 # --- exact, package-independent checks of the algebra (no symbolic package needed)
 const Q = Rational{BigInt}
@@ -68,7 +66,7 @@ struct WrLeaf
 end
 Base.show(io::IO, w::WrLeaf) = print(io, w.s)
 @testset "opaque leaves and rational leaves (step WR)" begin
-    xs = let; SimpleExpressions.@symbolic x; x; end
+    xs = let; SymEngine.@vars x; x; end
     @test_throws Risch.RischNotImplemented Risch.risch_integrate(WrLeaf("1 / (1 + x)"), xs)
     @test_throws Risch.RischNotImplemented Risch.risch_integrate(WrLeaf("exp(x)*x"), xs)
     @test !Risch.mentions_var("x1 + max(y, 2)", "x")
@@ -358,9 +356,7 @@ function run_tests(x, evalat, name)
     end
 end
 
-simple_x = let; SimpleExpressions.@symbolic x; x; end
 sym_x = let; SymEngine.@vars x; x; end
-run_tests(simple_x, (e, a) -> e isa Function ? e(a) : e, "SimpleExpressions")
 # SymEngine may evaluate a real answer (atan, log with sqrt(2) inside) with a roundoff-size
 # imaginary part; drop only that (as `trig_sym_eval` in test_trig.jl)
 function risch_sym_eval(e, a)
@@ -369,4 +365,4 @@ function risch_sym_eval(e, a)
     w = ComplexF64(z)
     abs(imag(w)) <= 1e-10 * max(1.0, abs(w)) ? real(w) : w
 end
-ALL_TYPES && run_tests(sym_x, risch_sym_eval, "SymEngine")
+run_tests(sym_x, risch_sym_eval, "SymEngine")

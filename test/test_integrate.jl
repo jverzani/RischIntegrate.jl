@@ -1,10 +1,8 @@
 using Test
-import SimpleExpressions
 import SymEngine
 import SpecialFunctions
 using RischIntegrate
 import RischIntegrate as Risch
-@isdefined(ALL_TYPES) || (const ALL_TYPES = true)             # (set in runtests.jl)
 Risch.HYP_ANSWERS[] = false     # the decision tests expect NotElementary (₂F₁ answers: their own testset)
 
 fd(f, a; h = 1e-6) = (f(a + h) - f(a - h)) / (2h)
@@ -714,8 +712,8 @@ function run_tests(x, evalat, name)
     end
 
     @testset "$name: real log arguments in 10a answers (step RL)" begin
-        # t = u^(1/n) > 0: log(-w) where w < 0 on (0, ∞), log(w²)/2 where w changes sign there;
-        # SimpleExpressions evaluates in real arithmetic, so a negative log argument would throw
+        # t = u^(1/n) > 0: log(-w) where w < 0 on (0, ∞), log(w²)/2 where w changes sign there
+        # (the log arguments stay positive at real points)
         for (f, pts) in ((1 / sqrt((x + 1) / (x + 2)), (0.5, 2.0, -3.0, -5.0)),
                          (1 / sqrt(((x + 1) / (x + 2))^3), (0.5, 2.0, -3.0)),
                          (sqrt(x) / (x - 1), (0.3, 0.6, 2.0, 5.0)),
@@ -732,7 +730,7 @@ function run_tests(x, evalat, name)
 
     @testset "$name: real log arguments in Euler substitutions (step EL)" begin
         # real points: ψ(t) = √Q > 0 (10b) or both roots positive (10d); points on every component
-        # of the domain, evaluated in real arithmetic by SimpleExpressions
+        # of the domain
         for (f, pts) in ((1 / (x * sqrt(x^2 + 1)), (0.5, 2.0, -0.5, -2.0)),
                          (sqrt(x^2 + 4x + 3) / (x + 1), (1.0, -4.0)),
                          (1 / (x * sqrt(x^2 + x + 1)), (1.0, -1.0)),
@@ -855,8 +853,7 @@ function run_tests(x, evalat, name)
         @test_throws Risch.NotElementary Risch.risch_integrate(sqrt(x) * cbrt(x + 1), x)   # phase 3a; Chebyshev
     end
 
-    # SimpleExpressions evaluates sqrt(2) eagerly to a Float64: symbolic constant radicals
-    # exist only in SymEngine
+    # symbolic constant radicals (SymEngine)
     x isa SymEngine.Basic && @testset "$name: square roots of rational constants (step 10e)" begin
         s2, s3 = sqrt(SymEngine.Basic(2)), sqrt(SymEngine.Basic(3))
         right = (1.3, 1.9, 2.6)
@@ -932,7 +929,7 @@ function run_tests(x, evalat, name)
     end
 
     @testset "$name: decided non-elementary" begin
-        # dilogarithm: SimpleExpressions ≥ 1.3.2 has li2 (PolyLog extension); SymEngine has none, so the li2 term
+        # dilogarithm: SymEngine has no li2 (until the stand-in below), so the li2 term
         # is kept as an Expr and evaluated numerically (special-function fallback)
         F = Risch.risch_integrate(log(x) / (x + 1), x)
         @test occursin("li2", string(F))
@@ -951,8 +948,7 @@ function run_tests(x, evalat, name)
     @testset "$name: quadratic residues inside towers (Stage 5b)" begin
         pts = (1.9, 2.6, 3.3)
         # (integrand, test points): for d > 0 the answer has log((U + √d V)/(U - √d V)), whose
-        # argument is negative between the roots of U² - dV²; SimpleExpressions evaluates in
-        # Float64, where log of a negative number throws, so those cases use points outside.
+        # argument is negative between the roots of U² - dV², so those cases use points outside.
         cases = ((1 / (x * (log(x)^2 + 1)), pts),              # atan(log x)
                  (1 / (exp(x) + exp(-x)), pts),                # atan(exp x)
                  (1 / (x * (log(x)^2 + 2)), pts),              # atan(log(x)/√2)/√2
@@ -1075,10 +1071,8 @@ function run_tests(x, evalat, name)
     end
 end
 
-simple_x = let; SimpleExpressions.@symbolic x; x; end
 sym_x = let; SymEngine.@vars x; x; end
-run_tests(simple_x, (e, a) -> e isa Function ? e(a) : e, "SimpleExpressions")
-ALL_TYPES && run_tests(sym_x, (e, a) -> (z = SymEngine.N(SymEngine.subs(e, sym_x => a));
+run_tests(sym_x, (e, a) -> (z = SymEngine.N(SymEngine.subs(e, sym_x => a));
                             z isa Complex ? ComplexF64(z) : Float64(z)), "SymEngine")
 
 # step SY: symbolic parameters as indeterminates of the constant field (answers for generic values).
@@ -1107,17 +1101,11 @@ function sy_tests(x, p, q, r, s1, s2, ev, name)
     end
 end
 let
-    SimpleExpressions.@symbolic x p
-    q, r, s1, s2 = let; SimpleExpressions.@symbolic_variables q r s1 s2; (q, r, s1, s2); end   # cap tests
-    sy_tests(x, p, q, r, s1, s2, (e, a) -> e isa Function ? e(a, 0.2) : e, "SimpleExpressions")
-end
-let
     SymEngine.@vars x p q r s1 s2
-    ALL_TYPES && sy_tests(x, p, q, r, s1, s2, (e, a) -> real(ComplexF64(SymEngine.N(SymEngine.subs(e, x => a, p => 0.2)))), "SymEngine")
+    sy_tests(x, p, q, r, s1, s2, (e, a) -> real(ComplexF64(SymEngine.N(SymEngine.subs(e, x => a, p => 0.2)))), "SymEngine")
 end
 
-# step DL: dilogarithms (PolyLog.li2). The symbolic packages need a method for li2: SimpleExpressions
-# (≥ 1.3.2) has it in its PolyLog extension; for SymEngine this stand-in is what a package extension
+# step DL: dilogarithms (PolyLog.li2). SymEngine needs a method for li2: this stand-in is what a package extension
 # would provide (defined here, after the tests above that expect the MethodError of li2(term)).
 import PolyLog
 const DL_SYMLI2 = SymEngine.SymFunction(:li2)
@@ -1140,8 +1128,7 @@ function dl_tests(x, name)
         @test_throws Risch.NotElementary Risch.risch_integrate(log(1 + x) / (1 + x^2), x)
     end
 end
-dl_tests(simple_x, "SimpleExpressions")
-ALL_TYPES && dl_tests(sym_x, "SymEngine")
+dl_tests(sym_x, "SymEngine")
 
 # step IT: iterated integrals ∫∫ … dx dy with RootSums (y·RootSum, c(y)·RootSum), definite F(x => b)
 let
@@ -1293,11 +1280,12 @@ end
     end
 end
 
-# callable term types: constants built with `maketerm`, kept exact (not the `u(value, :)` placeholder)
-@testset "exact constants for callable term types" begin
-    SimpleExpressions.@symbolic x
+# constants built with `maketerm`, kept exact (not the `u(value, :)` placeholder; callable term types such
+# as SymJ fell back to floats with it)
+@testset "exact constants built with maketerm" begin
+    SymEngine.@vars x
     F = Risch.integrate(exp(-x ^ 2), x)
-    @test occursin("sqrt(π)", string(F))
+    @test occursin(r"sqrt\((π|pi)\)", string(F))
     @test !occursin("sqrt(1)", string(F))
 end
 
