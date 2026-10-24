@@ -1717,6 +1717,27 @@ end
     end
 end
 
+# parameters in quartic radicals by u = x² (x²: also when only x⁴ is a subterm; f/u′ a rational function of x²),
+# and step PR for A x² + B x + C with A < 0 at the parameter values even when the radicand has no real values
+# there (Rubi 475, 477, 478, 1094)
+@testset "parameter radicals: u = x², A < 0 (steps US, PR)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    subst(ex, d) = ex isa Symbol ? get(d, ex, ex) : ex isa Expr ? Expr(ex.head, (subst(a, d) for a in ex.args)...) : ex
+    vals = Dict{Symbol,Any}(:e => 2.0, :k => 0.5, :alpha => 0.7, :h => 1.5, :epsilon => 0.4, :a => 1.3, :b => 0.3)
+    ev(e, v, x0) = (vals[v] = x0; Core.eval(Main, subst(e, vals)))
+    for (f, v, pts) in ((:(1 / sqrt(e * r - 1 - k * r ^ 2)), :r, (1.0, 1.6)),
+                        (:(r / sqrt(2 * e * r ^ 2 - alpha ^ 2 - 2 * k * r ^ 4)), :r, (1.0, 1.3)),
+                        (:(1 / (r * sqrt(2 * h * r ^ 2 - alpha ^ 2 - 2 * k * r ^ 4))), :r, (0.6, 1.3)),
+                        (:(1 / (r * sqrt(2 * h * r ^ 2 - alpha ^ 2 - epsilon ^ 2 - 2 * k * r ^ 4))), :r, (0.6, 1.3)),
+                        (:(x / sqrt(a ^ 4 - x ^ 4)), :x, (0.3, 1.1)), (:(1 / (r * sqrt(b - r ^ 2))), :r, (0.2, 0.4)),
+                        (:(x ^ 3 / (1 + x ^ 8)), :x, (0.3, 1.1)))
+        F = Risch.risch_integrate(f, v; build = build, lift = identity)
+        for x0 in pts
+            @test isapprox((ev(F, v, x0 + 1e-6) - ev(F, v, x0 - 1e-6)) / 2e-6, ev(f, v, x0); rtol = 1e-6)
+        end
+    end
+end
+
 # step AT: atan(u) by the substitution u = tan t, then step CL (Rubi 1653, 1655, 1656, 1659)
 @testset "atan(u) by u = tan t (step AT)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)

@@ -59,6 +59,13 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
                 break
             end
         end
+        # no real values at those parameter values ((e x - 1 - k x²) at e = 1, k = 2): with A < 0 there, the form
+        # that has real values for other parameters is D(1 - u²), s = √(-D/A) (D > 0 taken, as Rubi does)
+        if sh === nothing && pos(-A)
+            s2 = -D / A                                 # (not `r`: the closure `pos` assigns an `r`)
+            σs = csqrt(s2)
+            sh = (σs === nothing ? (:sqrt, s2) : σs, h, D, frac(QX(Q[1, 0, -1])))
+        end
     elseif degree(N) == 1 && degree(Dn) == 1           # (n₁x + n₀)/(d₁x + d₀)
         xN, xD = -co(N, 1) / co(N, 2), -co(Dn, 1) / co(Dn, 2)
         κ0 = co(N, 2) / co(Dn, 2)                       # κ u/(u - 1), or (-κ) u/(1 - u) when only -κ is a square
