@@ -1027,7 +1027,11 @@ function run_tests(x, evalat, name)
                        (acos(x), "acos"))
             @test occursin(s, string(Risch.risch_integrate(f, x)))
         end
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(asin(x) * acos(x), x)   # needs π
+        let F = Risch.risch_integrate(asin(x) * acos(x), x)   # by parts (step AP): Q = ∫ acos, then ∫ Q/√(1 - x²)
+            for a in (-0.8, 0.3, 0.9)
+                @test antiderivative_ok(F, asin(x) * acos(x), a, evalat)
+            end
+        end
     end
 
     # step AC: acot(u) = atan(1/u); acsc(u) = asin(1/u), asec(u) = acos(1/u) by the reciprocal
@@ -1640,6 +1644,24 @@ end
     SymEngine.@vars x
     F = integrate(log(1 + x) / (1 + x ^ 2), x)
     @test F isa Risch.IntegralWithRootSums && occursin("impolylog(2", string(F))
+end
+
+# step AP: ∫ A·L by parts, L = asin, log, atan, … of an algebraic argument, A free of L with an elementary
+# integral Q: ∫ A L = Q L - ∫ Q L′ (Rubi 230, 234, 235, 236, 240, 1021, 1669, 1673)
+@testset "A·L by parts, L = asin, log, … (step AP)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for (f, pts) in ((:(log(x + sqrt(1 + x ^ 2)) / (1 - x ^ 2) ^ (3 // 2)), (0.3, 0.7)),
+                     (:(asin(x) / (1 + x ^ 2) ^ (3 // 2)), (-0.4, 0.3, 0.7)),
+                     (:(log(x + sqrt(x ^ 2 - 1)) / (1 + x ^ 2) ^ (3 // 2)), (1.3, 2.7)),
+                     (:(x ^ 3 * (asin(x) / sqrt(1 - x ^ 4))), (0.3, 0.7)), (:(x ^ 3 * asin(x ^ 2)), (-0.5, 0.3, 0.7)),
+                     (:(asin(sqrt(1 - x ^ 2)) / sqrt(1 - x ^ 2)), (0.3, 0.7)), (:(asin(tanh(x)) * exp(x)), (0.3, -0.7)),
+                     (:(sin(x) * atan(sqrt(sec(x) - 1))), (0.3, 1.2)), (:(acot(x) / x ^ 2), (0.3, 1.2)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in pts
+            @test isapprox(real(ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
 end
 
 # step AT: atan(u) by the substitution u = tan t, then step CL (Rubi 1653, 1655, 1656, 1659)

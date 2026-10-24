@@ -374,46 +374,55 @@ function try_atan_subst(f, x; build = nothing, lift = nothing, verify::Bool = tr
 end
 
 # ---------------------------------------------------------------------------
-# Step AP: ∫ P(x) atan(g) by parts, P a polynomial, after the usual route and step AT have failed
-# (∫ atan(2 tan x), Rubi 206): with Q = ∫ P,
-#   ∫ P atan(g) = Q atan(g) - ∫ Q g′/(1 + g²),
-# the integral on the right by the usual route (for g rational in sin, cos: step CL).
+# Step AP: ∫ A·L by parts, L = atan(g), asin(g), …, log(g) (a function with an algebraic derivative) and A free
+# of L, after the usual route and steps CL, LP and AT have failed (∫ atan(2 tan x), Rubi 206;
+# ∫ asin(x)/(1 + x²)^(3/2), Rubi 235): when Q = ∫ A is elementary,
+#   ∫ A L = Q L - ∫ Q L′,
+# both integrals by the usual route (for g rational in sin, cos: step CL).
 # ---------------------------------------------------------------------------
-const ATAN_PARTS = Ref(false)                           # no nested integration by parts
+const PARTS = Ref(false)                                # no nested integration by parts
+const PARTS_FNS = (:atan, :acot, :asin, :acos, :asec, :acsc, :asinh, :acosh, :atanh, :log)
 
-function try_atan_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
+function try_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
-    ATAN_PARTS[] && return nothing
+    PARTS[] && return nothing
     xk = string(x)
-    # f = atan(g) or a product of one atan(g) and factors free of atan
-    fs = safe_iscall(f) && opname(operation(f)) === :* ? arguments(f) : Any[f]
-    ia = findall(t -> safe_iscall(t) && opname(operation(t)) === :atan && length(arguments(t)) == 1, fs)
-    length(ia) == 1 || return nothing
-    at = fs[ia[1]]
-    rest = Any[fs[j] for j in eachindex(fs) if j != ia[1]]
-    any(t -> !isempty(collect_atans(t)), rest) && return nothing
-    g = arguments(at)[1]
-    depends_on(g, xk) || return nothing
+    # f = c·L·A: one factor L (to the first power), the others free of L
+    fs = product_factors!(Any[], f, 1)
+    isL(t, e) = e == 1 && safe_iscall(t) && opname(operation(t)) in PARTS_FNS && length(arguments(t)) == 1 &&
+                depends_on(arguments(t)[1], xk)
+    ia = findall(((t, e),) -> isL(t, e), fs)
+    isempty(ia) && return nothing
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
-    P = if isempty(rest)
-        UPoly{Q}(Q[1])
-    else
-        p = radicand_element(length(rest) == 1 ? rest[1] : mk(bd, :*, rest...), xk)
-        (p !== nothing && isone(p.den)) || return nothing
-        UPoly{Q}(p.num.c ./ p.den.c[1])
+    for j in ia                                         # (several candidates: each in turn)
+        L = fs[j][1]
+        Ls = string(L)
+        rest = [fs[m] for m in eachindex(fs) if m != j]
+        any(((t, _),) -> occursin(Ls, string(t)), rest) && continue
+        A = isempty(rest) ? bd.lift(1) :
+            mk(bd, :*, (e == 1 ? t : mk(bd, :^, t, bd.lift(e)) for (t, e) in rest)...)
+        G = with_parts() do
+            Qt = isempty(rest) ? bd.x : risch_integrate(A, x; build = build, lift = lift, verify = verify)
+            Qt isa IntegralWithRootSums && return nothing
+            dL = term_deriv(bd, L, xk)
+            H = risch_integrate(mk(bd, :*, Qt, dL), x; build = build, lift = lift, verify = verify)
+            H isa IntegralWithRootSums && return nothing
+            mk(bd, :+, mk(bd, :*, Qt, L), mk(bd, :*, bd.lift(-1), H))
+        end
+        G === nothing || return G
     end
-    Qp = UPoly{Q}(Q[0; [c / j for (j, c) in enumerate(P.c)]])
-    dg = term_deriv(bd, g, xk)
-    h = mk(bd, :/, mk(bd, :*, poly_term(bd, Qp), dg), mk(bd, :+, bd.lift(1), mk(bd, :^, g, bd.lift(2))))
-    ATAN_PARTS[] = true
-    G = try
-        risch_integrate(h, x; build = build, lift = lift, verify = verify)
+    nothing
+end
+
+# run g() with PARTS set; nothing if it is not elementary or not implemented
+function with_parts(g)
+    PARTS[] = true
+    try
+        g()
     catch e
         (e isa RischNotImplemented || e isa NotElementary) || rethrow()
         nothing
     finally
-        ATAN_PARTS[] = false
+        PARTS[] = false
     end
-    (G === nothing || G isa IntegralWithRootSums) && return nothing
-    mk(bd, :+, mk(bd, :*, poly_term(bd, Qp), at), mk(bd, :*, bd.lift(-1), G))
 end
