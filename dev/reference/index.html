@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Reference — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=eea440a8">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=d9da0fc4">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Reference — RischIntegrate.jl">
   <meta property="og:title" content="Reference — RischIntegrate.jl">
@@ -54,15 +54,7 @@
 <div class="md-docstring" id="RischIntegrate.integrate">
 <div class="md-docstring-header">
 <h4 class="md-docstring-binding"><code>RischIntegrate.integrate</code></h4>
-<a class="md-docstring-source" href="https://github.com/jverzani/RischIntegrate.jl/blob/893e6365456a3927f658c034182641a4eeb29751/src/RischIntegrate.jl#L67-L77" title="View source">source</a>
-</div>
-<div class="md-docstring-content">
-<div class="md-code-block">
-<button class="md-copy-btn" title="Copy to clipboard" aria-label="Copy code"><span class="md-copy-icon">⧉</span><span class="md-copy-feedback">Copied!</span></button>
-<pre><code class="language-julia">integrate(ex, x, ys...; build = nothing, lift = nothing)</code></pre>
-</div>
-<p>Indefinite integral of a symbolic expression over variable x. Iterative integrals are possible.</p>
-<p>The keywords control how the answer is rebuilt as a term: <code class="md-code-inline">build(op, args...)</code> makes the term for the operation <code class="md-code-inline">op</code> (a function such as <code class="md-code-inline">+</code>, <code class="md-code-inline">sqrt</code> or <code class="md-code-inline">log</code>) applied to <code class="md-code-inline">args</code>, and <code class="md-code-inline">lift(n)</code> turns a Julia number into a term. By default operations are called as functions (for SymbolicUtils terms, constants such as <code class="md-code-inline">sqrt(2)</code> are built with <code class="md-code-inline">TermInterface.maketerm</code>). See the README for SymbolicUtils.jl and Symbolics.jl.</p>
+<a class="md-docstring-source" href="https://github.com/jverzani/RischIntegrate.jl/blob/2ecb13cc1712dc27716e0bc1c73123ccbd66625a/src/RischIntegrate.jl#L90-L101" title="View source">source</a>
 </div>
 <div class="md-docstring-content">
 <div class="md-code-block">
@@ -82,7 +74,7 @@ out, simplify(out)</code></pre>
 <div class="md-docstring" id="RischIntegrate.risch_integrate">
 <div class="md-docstring-header">
 <h4 class="md-docstring-binding"><code>RischIntegrate.risch_integrate</code></h4>
-<a class="md-docstring-source" href="https://github.com/jverzani/RischIntegrate.jl/blob/893e6365456a3927f658c034182641a4eeb29751/src/risch_integrate.jl#L4-L11" title="View source">source</a>
+<a class="md-docstring-source" href="https://github.com/jverzani/RischIntegrate.jl/blob/2ecb13cc1712dc27716e0bc1c73123ccbd66625a/src/risch_integrate.jl#L4-L11" title="View source">source</a>
 </div>
 <div class="md-docstring-content">
 <div class="md-code-block">
@@ -95,7 +87,7 @@ out, simplify(out)</code></pre>
 <div class="md-docstring" id="RischIntegrate.IntegralWithRootSums">
 <div class="md-docstring-header">
 <h4 class="md-docstring-binding"><code>RischIntegrate.IntegralWithRootSums</code></h4>
-<a class="md-docstring-source" href="https://github.com/jverzani/RischIntegrate.jl/blob/893e6365456a3927f658c034182641a4eeb29751/src/rootsum.jl#L33-L42" title="View source">source</a>
+<a class="md-docstring-source" href="https://github.com/jverzani/RischIntegrate.jl/blob/2ecb13cc1712dc27716e0bc1c73123ccbd66625a/src/rootsum.jl#L33-L42" title="View source">source</a>
 </div>
 <div class="md-docstring-content">
 <div class="md-code-block">
@@ -108,7 +100,7 @@ out, simplify(out)</code></pre>
 <div class="md-docstring" id="RischIntegrate.RootSum">
 <div class="md-docstring-header">
 <h4 class="md-docstring-binding"><code>RischIntegrate.RootSum</code></h4>
-<a class="md-docstring-source" href="https://github.com/jverzani/RischIntegrate.jl/blob/893e6365456a3927f658c034182641a4eeb29751/src/rootsum.jl#L15-L24" title="View source">source</a>
+<a class="md-docstring-source" href="https://github.com/jverzani/RischIntegrate.jl/blob/2ecb13cc1712dc27716e0bc1c73123ccbd66625a/src/rootsum.jl#L15-L24" title="View source">source</a>
 </div>
 <div class="md-docstring-content">
 <div class="md-code-block">
@@ -121,7 +113,7 @@ out, simplify(out)</code></pre>
 <div class="md-docstring" id="RischIntegrate.TermRootSum">
 <div class="md-docstring-header">
 <h4 class="md-docstring-binding"><code>RischIntegrate.TermRootSum</code></h4>
-<a class="md-docstring-source" href="https://github.com/jverzani/RischIntegrate.jl/blob/893e6365456a3927f658c034182641a4eeb29751/src/tower_rootsums.jl#L93-L99" title="View source">source</a>
+<a class="md-docstring-source" href="https://github.com/jverzani/RischIntegrate.jl/blob/2ecb13cc1712dc27716e0bc1c73123ccbd66625a/src/tower_rootsums.jl#L93-L99" title="View source">source</a>
 </div>
 <div class="md-docstring-content">
 <div class="md-code-block">
@@ -134,7 +126,7 @@ out, simplify(out)</code></pre>
 <div class="md-docstring" id="RischIntegrate.NotElementary">
 <div class="md-docstring-header">
 <h4 class="md-docstring-binding"><code>RischIntegrate.NotElementary</code></h4>
-<a class="md-docstring-source" href="https://github.com/jverzani/RischIntegrate.jl/blob/893e6365456a3927f658c034182641a4eeb29751/src/core.jl#L76-L81" title="View source">source</a>
+<a class="md-docstring-source" href="https://github.com/jverzani/RischIntegrate.jl/blob/2ecb13cc1712dc27716e0bc1c73123ccbd66625a/src/core.jl#L76-L81" title="View source">source</a>
 </div>
 <div class="md-docstring-content">
 <div class="md-code-block">
@@ -147,7 +139,7 @@ out, simplify(out)</code></pre>
 <div class="md-docstring" id="RischIntegrate.RischNotImplemented">
 <div class="md-docstring-header">
 <h4 class="md-docstring-binding"><code>RischIntegrate.RischNotImplemented</code></h4>
-<a class="md-docstring-source" href="https://github.com/jverzani/RischIntegrate.jl/blob/893e6365456a3927f658c034182641a4eeb29751/src/core.jl#L62-L67" title="View source">source</a>
+<a class="md-docstring-source" href="https://github.com/jverzani/RischIntegrate.jl/blob/2ecb13cc1712dc27716e0bc1c73123ccbd66625a/src/core.jl#L62-L67" title="View source">source</a>
 </div>
 <div class="md-docstring-content">
 <div class="md-code-block">
@@ -160,7 +152,7 @@ out, simplify(out)</code></pre>
 <div class="md-docstring" id="RischIntegrate.RischError">
 <div class="md-docstring-header">
 <h4 class="md-docstring-binding"><code>RischIntegrate.RischError</code></h4>
-<a class="md-docstring-source" href="https://github.com/jverzani/RischIntegrate.jl/blob/893e6365456a3927f658c034182641a4eeb29751/src/core.jl#L54-L58" title="View source">source</a>
+<a class="md-docstring-source" href="https://github.com/jverzani/RischIntegrate.jl/blob/2ecb13cc1712dc27716e0bc1c73123ccbd66625a/src/core.jl#L54-L58" title="View source">source</a>
 </div>
 <div class="md-docstring-content">
 <div class="md-code-block">
@@ -187,6 +179,6 @@ out, simplify(out)</code></pre>
   <script>hljs.highlightAll();</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=eea440a8"></script>
+  <script src="../assets/materialdocs.js?v=d9da0fc4"></script>
 </body>
 </html>
