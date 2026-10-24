@@ -63,6 +63,16 @@ function term_deriv(bd::Builder, t, xk::String)
         n === :atan && return mk(bd, :/, d[1], mk(bd, :+, bd.lift(1), mk(bd, :^, a[1], bd.lift(2))))
         sq(s, t) = mk(bd, :sqrt, mk(bd, :+, bd.lift(s), mk(bd, :*, bd.lift(-s), mk(bd, :^, t, bd.lift(2))))) # √(s - s t²)
         n === :acot && return neg(mk(bd, :/, d[1], mk(bd, :+, bd.lift(1), mk(bd, :^, a[1], bd.lift(2)))))
+        # asin(N/D) or asin(c N) with a factor D = 1/c free of x and not rational (a parameter, D > 0):
+        # N′/√(D² - N²), the radical of the integrand (∫ asin(x/a)^(3/2)/√(a² - x²) by u = asin(x/a))
+        if n in (:asin, :acos)
+            ND = param_quotient(bd, a[1], xk)
+            if ND !== nothing
+                N, Dd = ND
+                r = mk(bd, :/, term_deriv(bd, N, xk), mk(bd, :sqrt, bd.build(-, mk(bd, :^, Dd, bd.lift(2)), mk(bd, :^, N, bd.lift(2)))))
+                return n === :asin ? r : neg(r)
+            end
+        end
         n === :asin && return mk(bd, :/, d[1], sq(1, a[1]))
         n === :acos && return neg(mk(bd, :/, d[1], sq(1, a[1])))
         n === :asinh && return mk(bd, :/, d[1], mk(bd, :sqrt, mk(bd, :+, bd.lift(1), mk(bd, :^, a[1], bd.lift(2)))))
@@ -168,7 +178,7 @@ function integrate_usub(f, x, u, bd::Builder; build, lift, verify::Bool)
     r = integrate_usub_trig(f, x, u, du, bd; build = build, lift = lift, verify = verify)   # u = sech v, …
     r === nothing || return r
     hook, upow = usub_hook(u, xk)
-    T, el = build_tower(mk(bd, :/, f, du), xk; subst = hook)
+    T, el = build_tower(cancel_quotient(bd, f, du), xk; subst = hook)
     levelof(T, el) == 0 || return nothing
     # u = xᵏ: a rational function of xᵏ (the bare x's of f/u′, 1/(2x·x) for u = x²) is one of U = xᵏ
     k = usub_xpower(u, xk)
@@ -301,4 +311,43 @@ function usub_xpower(u, xk::String)
     (isnode(u) && opname(operation(u)) === :^ && string(arguments(u)[1]) == xk) || return nothing
     k = leaf_rational(arguments(u)[2])
     (k !== nothing && isone(denominator(k)) && k > 1) ? Int(numerator(k)) : nothing
+end
+
+# t = N/D or t = c·N (D = 1/c) with D free of x and not a rational number: (N, D), else nothing
+function param_quotient(bd::Builder, t, xk::String)
+    isnode(t) || return nothing
+    n, args = opname(operation(t)), arguments(t)
+    if n === :/ && length(args) == 2 && !depends_on(args[2], xk) && depends_on(args[1], xk)
+        return leaf_rational(args[2]) === nothing ? (args[1], args[2]) : nothing
+    end
+    n === :* || return nothing
+    cs = Any[a for a in args if !depends_on(a, xk)]
+    ds = Any[a for a in args if depends_on(a, xk)]
+    (isempty(cs) || isempty(ds) || all(c -> leaf_rational(c) !== nothing, cs)) && return nothing
+    N = length(ds) == 1 ? ds[1] : mk(bd, :*, ds...)
+    c = length(cs) == 1 ? cs[1] : mk(bd, :*, cs...)
+    (N, mk(bd, :/, bd.lift(1), c))
+end
+
+# f/g with the factors common to both (the same printed term) cancelled: a radical of the integrand that is also
+# in u′ (√(a² - x²) for u = asin(x/a)) does not reach the tower, which has no algebraic generators here
+function cancel_quotient(bd::Builder, f, g)
+    fs, gs = product_factors!(Any[], f, 1), product_factors!(Any[], g, 1)
+    ex = Dict{String,Tuple{Any,Int}}()
+    for (t, e) in fs
+        k = string(t)
+        ex[k] = (t, get(ex, k, (t, 0))[2] + e)
+    end
+    for (t, e) in gs
+        k = string(t)
+        ex[k] = (t, get(ex, k, (t, 0))[2] - e)
+    end
+    any(((t, e),) -> any(((s, _),) -> string(s) == string(t), gs), fs) || return mk(bd, :/, f, g)
+    num, den = Any[], Any[]
+    for (t, e) in values(ex)
+        e == 0 && continue
+        push!(e > 0 ? num : den, abs(e) == 1 ? t : mk(bd, :^, t, bd.lift(abs(e))))
+    end
+    pr(v) = isempty(v) ? bd.lift(1) : length(v) == 1 ? v[1] : mk(bd, :*, v...)
+    isempty(den) ? pr(num) : mk(bd, :/, pr(num), pr(den))
 end

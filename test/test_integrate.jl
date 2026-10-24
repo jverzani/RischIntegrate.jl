@@ -1742,6 +1742,21 @@ end
     end
 end
 
+# step US with u = asin(x/a): u′ = 1/√(a² - x²) (a > 0), the integrand's radical, cancelled in f/u′ (Rubi 1110)
+@testset "u = asin(x/a) (step US)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 1.7)), e))
+    for f in (:(asin(x / a) ^ (3 // 2) / sqrt(a ^ 2 - x ^ 2)), :(asin(x / a) ^ 2 / sqrt(a ^ 2 - x ^ 2)),
+              :(acos(x / a) / sqrt(a ^ 2 - x ^ 2)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 1.1)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    SymEngine.@vars x a
+    @test string(integrate(asin(x / a) ^ 2 / sqrt(a ^ 2 - x ^ 2), x)) == "(1/3)*asin(x/a)^3"
+end
+
 # step AT: atan(u) by the substitution u = tan t, then step CL (Rubi 1653, 1655, 1656, 1659)
 @testset "atan(u) by u = tan t (step AT)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
