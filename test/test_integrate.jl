@@ -1524,6 +1524,26 @@ end
     @test F isa Risch.IntegralWithRootSums && occursin("repolylog(2", string(F))
 end
 
+# step AP: ∫ P(x) atan(g) by parts (Rubi 206); step CL for R(θ^g) in y = g x (x/(1 + 3 sin² x))
+@testset "P(x) atan(g) by parts (step AP)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    Main.eval(:(const repolylog = $(Risch.repolylog)))
+    Main.eval(:(const impolylog = $(Risch.impolylog)))
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    fd(F, x0, h = 1e-3) = (-ev(F, x0 + 2h) + 8ev(F, x0 + h) - 8ev(F, x0 - h) + ev(F, x0 - 2h)) / (12h)
+    for f in (:(atan(2tan(x))), :(x * atan(2tan(x))), :(atan(tan(x) / 3)), :(x / (1 + 3sin(x) ^ 2)),
+              :(x / (5 + 4cos(2x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("repolylog(2,", string(F))
+        for x0 in (0.3, 1.2, 2.4, -0.9)
+            @test isapprox(fd(F, x0), ev(f, x0); rtol = 1e-6, atol = 1e-9)
+        end
+    end
+    SymEngine.@vars x
+    F = integrate(atan(2tan(x)), x)
+    @test F isa Risch.IntegralWithRootSums && occursin("repolylog(2", string(F))
+end
+
 # step AT: atan(u) by the substitution u = tan t, then step CL (Rubi 1653, 1655, 1656, 1659)
 @testset "atan(u) by u = tan t (step AT)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)

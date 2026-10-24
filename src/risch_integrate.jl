@@ -28,9 +28,10 @@ function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = t
         end
         (e isa RischNotImplemented || e isa NotElementary) || rethrow()
         g = try
-            # x·R(sin, cos): Clausen's function (step CL); atan(u): u = tan t (step AT)
+            # x·R(sin, cos): Clausen's function (step CL); atan(u): u = tan t (step AT), else by parts (step AP)
             g1 = e isa NotElementary ? try_x_trig(f, x; build = build, lift = lift, verify = verify) : nothing
-            g1 === nothing ? try_atan_subst(f, x; build = build, lift = lift, verify = verify) : g1
+            g1 === nothing && (g1 = try_atan_subst(f, x; build = build, lift = lift, verify = verify))
+            g1 === nothing ? try_atan_parts(f, x; build = build, lift = lift, verify = verify) : g1
         catch e2
             # (raised here, inside the catch, these miss the special-function fallback above)
             (e2 isa MethodError && any(fn -> e2.f === fn, SPECIAL_FNS) && !(f isa Expr)) || rethrow()
