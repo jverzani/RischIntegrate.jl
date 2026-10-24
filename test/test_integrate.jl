@@ -1567,8 +1567,10 @@ end
             @test isapprox(fd(F, x0), ev(f, x0); rtol = 1e-6, atol = 1e-9)
         end
     end
-    # in θ first: ∫ x tan x keeps its form in sin x
-    @test occursin("sin(x)", string(Risch.risch_integrate(:(x * tan(x)), :x; build = build, lift = identity)))
+    # in θ and in θ^g (y = 2x), the shorter kept: ∫ x tan x in cos 2x, two terms
+    let F = string(Risch.risch_integrate(:(x * tan(x)), :x; build = build, lift = identity))
+        @test occursin("cos(2x)", F) && !occursin("sin(x)", F)
+    end
 end
 
 # real form at a trig level: with a pole at Θ = -1 (Θ = 1), Θ = θ^g, a rational function of tan(gw/2) (cot(gw/2))
