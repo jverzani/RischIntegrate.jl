@@ -49,6 +49,8 @@ function term_deriv(bd::Builder, t, xk::String)
             return mul(a[2], t, mk(bd, :/, d[1], a[1]))        # radicals: p b^p b'/b (keeps the radical)
         elseif is_e_const(a[1])
             return mul(t, d[2])
+        elseif d[1] === nothing                                 # b^w, b free of x: b^w log(b) w′
+            return mul(t, mk(bd, :log, a[1]), d[2])
         end
     elseif length(a) == 1
         n === :sqrt && return mk(bd, :/, mul(t, d[1]), mul(bd.lift(2), a[1]))
