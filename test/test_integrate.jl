@@ -1665,6 +1665,44 @@ end
     end
 end
 
+# step HS: ∫ c xᵐ (α + β xⁿ)^q with m or q symbolic as a ₂F₁ term (Rubi 1164, 1171, 1183, 1508, 1513, 1520)
+@testset "xᵐ(α + βxⁿ)^q, symbolic exponents: ₂F₁ (step HS)" begin
+    Risch.HYP_ANSWERS[] = true
+    try
+        build(op, args...) = Expr(:call, nameof(op), args...)
+        Main.eval(:(const _₂F₁ = $(Risch._₂F₁)))
+        subst(ex, d) = ex isa Symbol ? get(d, ex, ex) : ex isa Expr ? Expr(ex.head, (subst(a, d) for a in ex.args)...) : ex
+        vals = Dict{Symbol,Any}(:m => 0.37, :a => 1.3, :q => -0.6, :b => 0.7)
+        ev(e, x0) = (vals[:x] = x0; Core.eval(Main, subst(e, vals)))
+        for f in (:(1 / (x ^ m * (a ^ 3 + x ^ 3))), :(1 / (x ^ m * (a ^ 4 - x ^ 4))), :(x ^ m * (1 + x ^ 2) ^ q),
+                  :(x ^ m / (1 + x)), :(3 * x ^ m * (a + b * x ^ 2) ^ (1 // 2)))
+            F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+            @test occursin("_₂F₁", string(F))
+            for x0 in (0.31, 0.57, 0.9)
+                @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+            end
+        end
+        # m = -1 (after u = eˣ, u = a^(m x)): ₂F₁(1, -q; 1 - q; α/(α + βxⁿ)) or, for β/α < 0, ₂F₁(1, q + 1; q + 2; w)
+        # (Rubi 1508, 1513, 1520)
+        merge!(vals, Dict(:m => 1.37, :n => 0.45, :r => 2.0, :s => 3.0))
+        for (f, pts) in ((:((1 + x ^ 2) ^ q / x), (-0.6, 0.31, 0.9)), (:((2 - x ^ 3) ^ q / x), (0.31, 0.9)),
+                         (:((1 + a ^ (m * x)) ^ n), (-0.6, 0.31, 0.9)), (:((1 - a ^ (m * x)) ^ n), (-0.6, -0.31)),
+                         (:((a + b * exp(n * x)) ^ (r / s)), (-0.6, 0.31, 0.9)))
+            F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+            @test occursin("_₂F₁(1,", string(F))
+            for x0 in pts
+                @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+            end
+        end
+        # SymEngine: through the special-function fallback (a ₂F₁ term of symbols is kept as an Expr)
+        SymEngine.@vars x m a
+        F = integrate(1 / (x ^ m * (a ^ 3 + x ^ 3)), x)
+        @test F isa Risch.IntegralWithRootSums && occursin("_₂F₁", string(F))
+    finally
+        Risch.HYP_ANSWERS[] = false
+    end
+end
+
 # step AT: atan(u) by the substitution u = tan t, then step CL (Rubi 1653, 1655, 1656, 1659)
 @testset "atan(u) by u = tan t (step AT)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)

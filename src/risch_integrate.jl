@@ -41,6 +41,15 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
         end
         g === nothing || return g
+        if e isa NotElementary && HYP_ANSWERS[]           # xᵐ(α + βxⁿ)^q, m or q symbolic: ₂F₁ (step HS)
+            g = try
+                try_binomial_symbolic(f, x; build = build, lift = lift, verify = verify)
+            catch e2
+                (e2 isa MethodError && any(fn -> e2.f === fn, SPECIAL_FNS) && !(f isa Expr)) || rethrow()
+                integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
+            end
+            g === nothing || return g
+        end
         if e isa NotElementary && HYP_ANSWERS[]           # xˢ e^(bx+d): incomplete gamma (phase 6, H3)
             g = try_gamma(f, x; build = build, lift = lift, verify = verify)
             g === nothing || return g
