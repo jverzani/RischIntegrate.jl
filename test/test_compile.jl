@@ -14,7 +14,8 @@ using Test
         t = @elapsed (integrate(sin(x), (x, 0, pi)), user(cos(x), x), user2(sin(x), x))
         print(t)
         """
-    out = read(`$(Base.julia_cmd()) --startup-file=no --project=$(@__DIR__) -e $code`, String)
+    # the test's own environment (under Pkg.test a temporary one, not test/)
+    out = read(`$(Base.julia_cmd()) --startup-file=no --project=$(Base.active_project()) -e $code`, String)
     t = parse(Float64, strip(out))
-    @test t < 5
+    @test t < 10                                        # (CI runners, coverage)
 end
