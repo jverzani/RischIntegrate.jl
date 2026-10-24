@@ -41,9 +41,10 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
         end
         g === nothing || return g
-        if e isa NotElementary && HYP_ANSWERS[]           # xᵐ(α + βxⁿ)^q, m or q symbolic: ₂F₁ (step HS)
+        if e isa NotElementary && HYP_ANSWERS[]           # xᵐ(α + βxⁿ)^q, sinᵖ cosʳ, symbolic exponents: ₂F₁ (step HS)
             g = try
-                try_binomial_symbolic(f, x; build = build, lift = lift, verify = verify)
+                g1 = try_binomial_symbolic(f, x; build = build, lift = lift, verify = verify)
+                g1 === nothing ? try_trig_symbolic(f, x; build = build, lift = lift, verify = verify) : g1
             catch e2
                 (e2 isa MethodError && any(fn -> e2.f === fn, SPECIAL_FNS) && !(f isa Expr)) || rethrow()
                 integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)

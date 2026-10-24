@@ -68,8 +68,8 @@ function try_binomial_symbolic(f, x; build = nothing, lift = nothing, verify::Bo
     @nospecialize f x
     xk = string(x)
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
-    m, q = SymExp(Q(0), Any[]), SymExp(Q(0), Any[])
-    cs, B = Any[], nothing
+    m = SymExp(Q(0), Any[])
+    cs, bases = Any[], Tuple{Any,SymExp}[]              # (base, exponent) of the factors other than x
     for (t, e) in product_factors!(Any[], f, 1)
         if !depends_on(t, xk)
             push!(cs, e == 1 ? t : mk(bd, :^, t, bd.lift(e)))
@@ -81,31 +81,34 @@ function try_binomial_symbolic(f, x; build = nothing, lift = nothing, verify::Bo
         end
         if !safe_iscall(base) && string(base) == xk
             E === nothing ? (m.r += e) : add_exp!(bd, m, E, e)
-        else
-            (B === nothing || string(B) == string(base)) || return nothing
-            B = base
-            E === nothing ? (q.r += e) : add_exp!(bd, q, E, e)
+            continue
         end
+        k = findfirst(((b, _),) -> string(b) == string(base), bases)
+        k === nothing && (push!(bases, (base, SymExp(Q(0), Any[]))); k = length(bases))
+        E === nothing ? (bases[k][2].r += e) : add_exp!(bd, bases[k][2], E, e)
     end
-    (B !== nothing && (symbolic(m) || symbolic(q))) || return nothing
-    parts = binomial_parts(bd, B, xk)
-    parts === nothing && return nothing
-    α, β, n = parts
-    !symbolic(m) && m.r == -1 && return binomial_over_x(bd, f, cs, α, β, n, q)
-    m1 = SymExp(m.r + 1, m.ts)
-    m1t = exp_term(bd, m1)
-    qt = exp_term(bd, q)
-    isunit(t) = (r = leaf_rational(t); r !== nothing && isone(r))
-    a = n == 1 ? m1t : mk(bd, :/, m1t, bd.lift(n))
-    xn = n == 1 ? bd.x : mk(bd, :^, bd.x, bd.lift(n))
-    βxn = isunit(β) ? xn : mk(bd, :*, β, xn)
-    z = mk(bd, :*, bd.lift(-1), isunit(α) ? βxn : mk(bd, :/, βxn, α))
-    F21 = hyp2f1_term(bd, f, exp_term(bd, SymExp(-q.r, Any[mk(bd, :*, bd.lift(-1), t) for t in q.ts])), a,
-                      mk(bd, :+, a, bd.lift(1)), z)
-    fs = Any[t for t in cs if !isunit(t)]
-    isunit(α) || push!(fs, mk(bd, :^, α, qt))
-    push!(fs, mk(bd, :/, mk(bd, :^, bd.x, m1t), m1t), F21)
-    mk(bd, :*, fs...)
+    any(((_, q),) -> symbolic(q), bases) || symbolic(m) || return nothing
+    if length(bases) == 1
+        B, q = bases[1]
+        parts = binomial_parts(bd, B, xk)
+        parts !== nothing && return binomial_answer(bd, f, cs, m, q, parts...)
+    end
+    # (p₀ + p₁x)·(A₀ + A₁x + A₂x²)^q (or without the linear factor), q symbolic: completing the square
+    (iszero(m.r) && !symbolic(m)) || return nothing
+    lin = nothing
+    if length(bases) == 2
+        k = findfirst(((b, q),) -> !symbolic(q) && isone(q.r), bases)
+        k === nothing && return nothing
+        lin = poly_parts(bd, bases[k][1], xk)
+        (lin !== nothing && maximum(keys(lin)) == 1) || return nothing
+        deleteat!(bases, k)
+    end
+    length(bases) == 1 || return nothing
+    B, q = bases[1]
+    symbolic(q) || return nothing
+    A = poly_parts(bd, B, xk)
+    (A !== nothing && maximum(keys(A)) == 2) || return nothing
+    quadratic_answer(bd, f, cs, lin, A, q)
 end
 
 function hyp2f1_term(bd::Builder, f, args...)
@@ -140,4 +143,114 @@ function binomial_over_x(bd::Builder, f, cs, α, β, n::Int, q::SymExp)
         push!(fs, mk(bd, :/, mk(bd, :^, b, qt), n == 1 ? qt : mk(bd, :*, bd.lift(n), qt)), F21)
     end
     mk(bd, :*, fs...)
+end
+
+# the answer c α^q u^(m+1)/(m+1) ₂F₁(-q, (m+1)/n; (m+1)/n + 1; -βuⁿ/α), u = bd.x (x, x + x₀ or sin(kx))
+function binomial_answer(bd::Builder, f, cs, m::SymExp, q::SymExp, α, β, n::Int)
+    !symbolic(m) && m.r == -1 && return binomial_over_x(bd, f, cs, α, β, n, q)
+    m1 = SymExp(m.r + 1, m.ts)
+    m1t = exp_term(bd, m1)
+    qt = exp_term(bd, q)
+    isunit(t) = (r = leaf_rational(t); r !== nothing && isone(r))
+    a = n == 1 ? m1t : mk(bd, :/, m1t, bd.lift(n))
+    xn = n == 1 ? bd.x : mk(bd, :^, bd.x, bd.lift(n))
+    rβ = leaf_rational(β)                               # -βxⁿ, a rational β folded in
+    mβxn = rβ === nothing ? mk(bd, :*, bd.lift(-1), β, xn) : isone(-Q(rβ)) ? xn : mk(bd, :*, cterm(bd, -Q(rβ)), xn)
+    z = isunit(α) ? mβxn : mk(bd, :/, mβxn, α)
+    F21 = hyp2f1_term(bd, f, exp_term(bd, SymExp(-q.r, Any[mk(bd, :*, bd.lift(-1), t) for t in q.ts])), a,
+                      mk(bd, :+, a, bd.lift(1)), z)
+    fs = Any[t for t in cs if !isunit(t)]
+    isunit(α) || push!(fs, mk(bd, :^, α, qt))
+    push!(fs, (!symbolic(m) && iszero(m.r)) ? bd.x : mk(bd, :/, mk(bd, :^, bd.x, m1t), m1t), F21)
+    length(fs) == 1 ? fs[1] : mk(bd, :*, fs...)
+end
+
+# a polynomial in x with coefficients free of x as Dict(power => coefficient term), else nothing
+function poly_parts(bd::Builder, B, xk::String)
+    out = Dict{Int,Any}()
+    add!(k, t) = (out[k] = haskey(out, k) ? mk(bd, :+, out[k], t) : t)
+    function walk(t, sgn)
+        if safe_iscall(t) && opname(operation(t)) === :+
+            return all(a -> walk(a, sgn), arguments(t))
+        elseif safe_iscall(t) && opname(operation(t)) === :- && length(arguments(t)) == 2
+            return walk(arguments(t)[1], sgn) && walk(arguments(t)[2], -sgn)
+        elseif safe_iscall(t) && opname(operation(t)) === :- && length(arguments(t)) == 1
+            return walk(arguments(t)[1], -sgn)
+        end
+        cs, n = Any[], 0
+        for (s, e) in product_factors!(Any[], t, 1)
+            if !depends_on(s, xk)
+                push!(cs, e == 1 ? s : mk(bd, :^, s, bd.lift(e)))
+            elseif !safe_iscall(s) && string(s) == xk && e >= 1
+                n += e
+            else
+                return false
+            end
+        end
+        sgn == -1 && push!(cs, bd.lift(-1))
+        add!(n, isempty(cs) ? bd.lift(1) : length(cs) == 1 ? cs[1] : mk(bd, :*, cs...))
+        true
+    end
+    walk(B, 1) ? out : nothing
+end
+
+# ∫ c (p₀ + p₁x) B^q, B = A₀ + A₁x + A₂x² (lin = nothing: p = 1): with x₀ = A₁/(2A₂), u = x + x₀,
+# α = A₀ - A₁²/(4A₂): p₁/(2A₂) B^(q+1)/(q+1) + (p₀ - p₁x₀) ∫ (α + A₂u²)^q du (Rubi 1226, 1231)
+function quadratic_answer(bd::Builder, f, cs, lin, A, q::SymExp)
+    z = bd.lift(0)
+    A0, A1, A2 = get(A, 0, z), get(A, 1, nothing), A[2]
+    x0 = A1 === nothing ? nothing : mk(bd, :/, A1, mk(bd, :*, bd.lift(2), A2))
+    α = x0 === nothing ? A0 : mk(bd, :+, A0, mk(bd, :*, bd.lift(-1), A1, x0, bd.lift(1 // 2)))
+    u = x0 === nothing ? bd.x : mk(bd, :+, bd.x, x0)
+    bu = Builder(bd.build, bd.lift, u, bd.consts)
+    p0 = lin === nothing ? bd.lift(1) : get(lin, 0, z)
+    p1 = lin === nothing ? nothing : lin[1]
+    c0 = (p1 === nothing || x0 === nothing) ? p0 : mk(bd, :+, p0, mk(bd, :*, bd.lift(-1), p1, x0))
+    ts = Any[binomial_answer(bu, f, Any[cs; c0], SymExp(Q(0), Any[]), q, α, A2, 2)]
+    if p1 !== nothing
+        q1 = exp_term(bd, SymExp(q.r + 1, q.ts))
+        B = mk(bd, :+, A0, (A1 === nothing ? () : (mk(bd, :*, A1, bd.x),))..., mk(bd, :*, A2, mk(bd, :^, bd.x, bd.lift(2))))
+        push!(ts, mk(bd, :*, cs..., p1, mk(bd, :/, mk(bd, :^, B, q1), mk(bd, :*, bd.lift(2), A2, q1))))
+    end
+    length(ts) == 1 ? ts[1] : mk(bd, :+, ts...)
+end
+
+# ∫ c sinᵖ(w) cosʳ(w), w = kx + d, p or r symbolic, by u = sin w (du = k cos w dx):
+#   (1/k) ∫ uᵖ (1 - u²)^((r-1)/2) du · cos^(r-1)(w)/(cos² w)^((r-1)/2)
+# the last factor locally constant (1 when (r-1)/2 is an integer), as in Rubi's cos w/√(cos² w) (Rubi 350, 1371)
+function try_trig_symbolic(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    p, r = SymExp(Q(0), Any[]), SymExp(Q(0), Any[])
+    cs, w = Any[], nothing
+    for (t, e) in product_factors!(Any[], f, 1)
+        if !depends_on(t, xk)
+            push!(cs, e == 1 ? t : mk(bd, :^, t, bd.lift(e)))
+            continue
+        end
+        base, E = t, nothing
+        if safe_iscall(t) && opname(operation(t)) === :^ && length(arguments(t)) == 2 && !depends_on(arguments(t)[2], xk)
+            base, E = arguments(t)
+        end
+        (safe_iscall(base) && opname(operation(base)) in (:sin, :cos) && length(arguments(base)) == 1) || return nothing
+        a = arguments(base)[1]
+        (w === nothing || string(w) == string(a)) || return nothing
+        w = a
+        s = opname(operation(base)) === :sin ? p : r
+        E === nothing ? (s.r += e) : add_exp!(bd, s, E, e)
+    end
+    (w !== nothing && (symbolic(p) || symbolic(r))) || return nothing
+    u = radicand_element(w, xk)
+    (u !== nothing && isone(u.den) && degree(u.num) == 1) || return nothing
+    k = u.num.c[2] / u.den.c[1]
+    sw, cw = mk(bd, :sin, w), mk(bd, :cos, w)
+    h = SymExp((r.r - 1) / 2, Any[mk(bd, :*, bd.lift(1 // 2), t) for t in r.ts])   # (r - 1)/2
+    isone(k) || push!(cs, cterm(bd, inv(k)))
+    if symbolic(h) || !isone(denominator(h.r))                                       # cos^(r-1)/(cos²)^((r-1)/2)
+        push!(cs, mk(bd, :/, mk(bd, :^, cw, exp_term(bd, SymExp(r.r - 1, r.ts))),
+                     mk(bd, :^, mk(bd, :^, cw, bd.lift(2)), exp_term(bd, h))))
+    end
+    bu = Builder(bd.build, bd.lift, sw, bd.consts)
+    binomial_answer(bu, f, cs, p, h, bd.lift(1), bd.lift(-1), 2)
 end
