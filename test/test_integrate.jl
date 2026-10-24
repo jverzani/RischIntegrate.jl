@@ -1475,6 +1475,32 @@ end
     @test isapprox(Risch.clausen2(π / 3), 1.0149416064096536; rtol = 1e-12)
 end
 
+# step CL for xᵖ·R, p ≥ 2: Clausen functions Cl_m (Rubi 392, 393; through step AT, 208)
+@testset "xᵖ·trig by parts: Clausen functions Cl_m (step CL)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    Main.eval(:(const clausen = $(Risch.clausen)))
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    # 5-point stencil: the answers are O(1) where the integrand is small (x³ tan⁶ x at 0.3)
+    fd(F, x0, h = 1e-3) = (-ev(F, x0 + 2h) + 8ev(F, x0 + h) - 8ev(F, x0 - h) + ev(F, x0 - 2h)) / (12h)
+    for f in (:(x ^ 2 * tan(x)), :(x ^ 3 * tan(x)), :(x ^ 2 / sin(x)), :(x ^ 2 * tan(x) ^ 3), :((x ^ 2 + x) * cot(x)),
+              :(x ^ 3 * tan(x) ^ 4), :(x ^ 3 * tan(x) ^ 6),
+              :(atan(x) ^ 2 * sqrt(1 + x ^ 2)), :(atan(x) ^ 2 / x), :(x * atan(x) ^ 2 / (1 + x ^ 2)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("clausen(3,", string(F))
+        for x0 in (0.3, 1.1, 2.0, -0.7, 4.0)
+            @test isapprox(fd(F, x0), ev(f, x0); rtol = 1e-6, atol = 1e-9)
+        end
+    end
+    @test isapprox(Risch.clausen(3, 0.0), 1.2020569031595942; rtol = 1e-12)    # ζ(3)
+    @test isapprox(Risch.clausen(4, π / 2), 0.9889445517411053; rtol = 1e-12)  # Dirichlet β(4)
+    @test isapprox(Risch.clausen(2, 1.3), Risch.clausen2(1.3); rtol = 1e-12)
+    @test isapprox(Risch.clausen(1, 1.3), -log(2sin(0.65)); rtol = 1e-12)
+    # without a method for clausen: the special-function fallback through Expr
+    SymEngine.@vars x
+    F = integrate(x ^ 2 * tan(x), x)
+    @test F isa Risch.IntegralWithRootSums && occursin("clausen(3", string(F))
+end
+
 # step AT: atan(u) by the substitution u = tan t, then step CL (Rubi 1653, 1655, 1656, 1659)
 @testset "atan(u) by u = tan t (step AT)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)

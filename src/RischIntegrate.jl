@@ -10,6 +10,7 @@ module RischIntegrate
 using TermInterface: iscall, operation, arguments, maketerm
 using SpecialFunctions: expinti, sinint, cosint, erf, erfi
 using PolyLog: li2
+import PolyLog
 using PrecompileTools: @setup_workload, @compile_workload
 
 include("core.jl")
@@ -60,7 +61,7 @@ include("monomial_radicals.jl")
 include("kummer_logs.jl")
 include("real_log_arguments.jl")
 
-export integrate, sinhint, coshint, clausen2
+export integrate, sinhint, coshint, clausen2, clausen
 
 """
     integrate(ex, x, ys...; build = nothing, lift = nothing)
