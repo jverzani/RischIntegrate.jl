@@ -146,6 +146,18 @@ function usub_candidates(f, xk::String)
         foreach(walk, arguments(t))
     end
     foreach(walk, isnode(f) ? arguments(f) : Any[])
+    # xᵈ for the divisors d of the powers xⁿ in f (x/√(a⁴ - x⁴): u = x², not a subterm)
+    for t in copy(out)
+        k = usub_xpower(t, xk)
+        k === nothing && continue
+        for d in 2:k-1
+            k % d == 0 || continue
+            v = Expr(:call, :^, Symbol(xk), d)
+            string(v) in seen && continue
+            push!(seen, string(v))
+            push!(out, t isa Expr ? v : arguments(t)[1]^d)
+        end
+    end
     out
 end
 
@@ -157,14 +169,32 @@ function integrate_usub(f, x, u, bd::Builder; build, lift, verify::Bool)
     r === nothing || return r
     hook, upow = usub_hook(u, xk)
     T, el = build_tower(mk(bd, :/, f, du), xk; subst = hook)
-    (levelof(T, el) == 0 && isone(el.den) && degree(el.num) == 0) || return nothing
+    levelof(T, el) == 0 || return nothing
+    # u = xᵏ: a rational function of xᵏ (the bare x's of f/u′, 1/(2x·x) for u = x²) is one of U = xᵏ
+    k = usub_xpower(u, xk)
+    Gx = nothing
+    if !(isone(el.den) && degree(el.num) == 0)
+        (k !== nothing && is_complex_field(ctype(T)) == false) || return nothing
+        ok(p) = all(i -> iszero(p.c[i]) || (i - 1) % k == 0, eachindex(p.c))
+        (ok(el.num) && ok(el.den)) || return nothing
+        cp(p) = typeof(p)(p.c[1:k:end])
+        Gx = frac(cp(el.num), cp(el.den))
+    end
+    pw(k) = k == 1 ? bd.x : mk(bd, :^, bd.x, bd.lift(k))
+    to_x(t) = (k = upow(t); k !== nothing ? pw(k) : isnode(t) ? term_rebuild(bd, t, Any[to_x(s) for s in arguments(t)]) : t)
+    if Gx !== nothing
+        consts = ConstGen[g.kind === :sym ? ConstGen(:sym, g.arg, to_x(g.term)) : g for g in T.consts]
+        G = frac_term(Builder(bd.build, bd.lift, bd.x, consts), Gx)
+        H = risch_integrate(G, x; build = build, lift = lift, verify = verify)
+        H isa IntegralWithRootSums && return nothing
+        backx(t) = isnode(t) ? term_rebuild(bd, t, Any[backx(s) for s in arguments(t)]) : (string(t) == xk ? u : t)
+        return backx(H)
+    end
     c = el.num.c[1]
     if is_complex_field(ctype(T))
         c = to_real(c)
         c === nothing && return nothing
     end
-    pw(k) = k == 1 ? bd.x : mk(bd, :^, bd.x, bd.lift(k))
-    to_x(t) = (k = upow(t); k !== nothing ? pw(k) : isnode(t) ? term_rebuild(bd, t, Any[to_x(s) for s in arguments(t)]) : t)
     # G = c with u ↦ x, done on the generators before c is printed: u's generator prints as x, an opaque
     # function of u (a subterm of f) as that subterm with u ↦ x. Matching u in the printed c instead would
     # depend on how the term type simplifies what is built (SymJ distributes constants over sums).
@@ -264,4 +294,11 @@ function integrate_usub_trig(f, x, u, du, bd::Builder; build, lift, verify::Bool
     H isa IntegralWithRootSums && return nothing
     back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? u : t)
     back(H)
+end
+
+# k when u = xᵏ (k ≥ 2), else nothing
+function usub_xpower(u, xk::String)
+    (isnode(u) && opname(operation(u)) === :^ && string(arguments(u)[1]) == xk) || return nothing
+    k = leaf_rational(arguments(u)[2])
+    (k !== nothing && isone(denominator(k)) && k > 1) ? Int(numerator(k)) : nothing
 end
