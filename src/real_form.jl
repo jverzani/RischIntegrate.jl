@@ -76,7 +76,54 @@ function real_term(b::Builder, T::Tower, kinds, f, i::Int = levelof(T, f))
     if length(B) == 1 && haskey(B, 0)
         return isone(B[0]) ? num : mk(b, :/, num, real_term(b, T, kinds, B[0], i - 1))
     end
-    mk(b, :/, num, real_laurent_term(b, T, kinds, B, i, wt))
+    F = mk(b, :/, num, real_laurent_term(b, T, kinds, B, i, wt))
+    # with a pole at θ = -1 (θ = 1) the answer is singular there anyway: as a rational function of tan(w/2)
+    # (cot(w/2)) it is often much shorter (∫ tan² x = tan x - x); the shortest form is kept
+    # in Θ = θ^g when f is a function of θ^g (∫ tan² x: θ = e^(ix), poles θ = ±i, Θ = -1)
+    g = 0
+    for p in (f.num, f.den), (k, c) in enumerate(p.c)
+        iszero(c) || (g = gcd(g, k - 1))
+    end
+    g = max(g, 1)
+    cg(p) = typeof(p)(p.c[1:g:end])
+    fg = (cg(f.num), cg(f.den))
+    best, len = F, length(string(F))
+    for (θ0, fn) in ((-1, :tan), (1, :cot))
+        iszero(peval(fg[2], θ0 * one(eltype(f.den.c)))) || continue
+        G = tan_form_term(b, T, kinds, fg, g, i, fn)
+        G === nothing && continue
+        l = length(string(G))
+        l < len && ((best, len) = (G, l))
+    end
+    best
+end
+
+# f = n(Θ)/d(Θ), Θ = θ^g = e^(igw), n, d over K_{i-1}, as a rational function of t = tan(gw/2)
+# (Θ = (1 + it)/(1 - it)) or t = cot(gw/2) (Θ = (t + i)/(t - i)) with real coefficients, printed as
+# q(t) + r(t)/d(t); nothing if the coefficients are not real (they are, for σ-invariant f, once d is monic)
+function tan_form_term(b::Builder, T::Tower, kinds, (fnum, fden), g::Int, i::Int, fn::Symbol)
+    K = eltype(fnum.c)
+    P = UPoly{K}
+    C = ctype(T)
+    I = lconst(T, cimag(C), i - 1)
+    o = one(K)
+    nθ, dθ = fn === :tan ? (P(K[o, I]), P(K[o, -I])) : (P(K[I, o]), P(K[-I, o]))
+    m = max(degree(fnum), degree(fden))
+    sub(p) = sum(scale(p.c[k + 1], nθ^k * dθ^(m - k)) for k in 0:degree(p))
+    N, D = sub(fnum), sub(fden)
+    h = gcd(N, D)
+    N, D = quo(N, h), quo(D, h)
+    l = lc(D)
+    N, D = scale_div(N, l), scale_div(D, l)
+    all(c -> tconj(T, kinds, c, i - 1) == c, vcat(N.c, D.c)) || return nothing
+    w2 = liftto(T, T.levels[i].arg, i - 1) * lconst(T, -cimag(C) * cfromQ(C, Q(g, 2)), i - 1)   # g w/2
+    tt = mk(b, fn, real_term(b, T, kinds, w2))
+    q, r = divrem(N, D)
+    pt(p) = real_poly_term(b, T, kinds, p, i, tt)
+    ts = Any[]
+    iszero(q) || push!(ts, pt(q))
+    iszero(r) || push!(ts, degree(D) == 0 ? pt(r) : mk(b, :/, pt(r), pt(D)))
+    isempty(ts) ? b.lift(0) : length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
 end
 
 function real_poly_term(b::Builder, T::Tower, kinds, p::UPoly, i::Int, th)

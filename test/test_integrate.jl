@@ -1571,6 +1571,26 @@ end
     @test occursin("sin(x)", string(Risch.risch_integrate(:(x * tan(x)), :x; build = build, lift = identity)))
 end
 
+# real form at a trig level: with a pole at Θ = -1 (Θ = 1), Θ = θ^g, a rational function of tan(gw/2) (cot(gw/2))
+# when shorter than the Fourier form (∫ tan² x = tan x - x)
+@testset "trig answers in tan, cot (real form)" begin
+    SymEngine.@vars x
+    ev(e, a) = Float64(SymEngine.N(SymEngine.subs(e, x => a)))
+    for (f, has) in ((tan(x)^2, "tan(x)"), (tan(x)^4, "tan(x)^3"), (cot(x)^4, "cot(x)^3"), (sec(x)^2, "tan(x)"),
+                     (1 / sin(x)^2, "cot(x)"), (tan(x) * sec(x)^6, "tan(x)^6"), (x * tan(x)^2, "tan(x)"),
+                     (1 / (1 + cos(x))^2, "tan((1/2)*x)^3"), (cot(x)^3 * csc(x)^4, "cot(x)^6"))
+        F = integrate(f, x)
+        s = string(F)
+        @test occursin(has, s) && !occursin("sin(2*x)", s) && !occursin("cos(4*x)", s)
+        for a in (0.3, 1.1, 2.0)
+            @test isapprox((ev(F, a + 1e-6) - ev(F, a - 1e-6)) / 2e-6, ev(f, a); rtol = 1e-5)
+        end
+    end
+    @test string(integrate(tan(x)^2, x)) == "-x + tan(x)"
+    # inside the asin / atan substitutions, tan and cot of the new variable map back to radicals
+    @test !occursin("cot(", string(integrate(asin(x) / (x^2 * sqrt(1 - x^2)), x)))
+end
+
 # step LP: ∫ logʲ(x) L(w x)/x by parts, L = atan, log(a + b x) or li2 (Rubi 207)
 @testset "logʲ(x)·polylog(w x)/x by parts (step LP)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
