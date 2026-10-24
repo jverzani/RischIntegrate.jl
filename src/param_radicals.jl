@@ -31,15 +31,15 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     kc(c) = frac(P([c]))
     co(p, i) = i <= length(p.c) ? p.c[i] : zero(C)
     sh = nothing                                        # (s, h, κ, R ∈ ℚ(u))
+    # the sign of a parameter constant at the parameter values of `param_value` (a = 1, b = 2, …)
+    pos(c) = (rc = crational(c); rc !== nothing ? rc > 0 : (v = param_value(c, T.consts); v !== nothing && v > 0))
     if isone(Dn) && degree(N) == 2
         A, B, Cc = co(N, 3), co(N, 2), co(N, 1)
         h = -B / (A + A)
         D = Cc - B * B / (4 * A)
         iszero(D) && return nothing
         # s² = -D/A: D(1 - u²), or (-D)(u² - 1) when D < 0; s² = D/A: D(1 + u²). s from the parameter field,
-        # else √(∓D/A) as an opaque constant (`(:sqrt, r)`), the sign positive at the parameter values of
-        # `param_value` (a = 1, b = 2, …)
-        pos(c) = (r = crational(c); r !== nothing ? r > 0 : (v = param_value(c, T.consts); v !== nothing && v > 0))
+        # else √(∓D/A) as an opaque constant (`(:sqrt, r)`), the sign positive at the parameter values
         function quad_form(sg, s)
             sg == 1 && return (s, h, D, frac(QX(Q[1, 0, 1])))
             pos(D) ? (s, h, D, frac(QX(Q[1, 0, -1]))) : (s, h, -D, frac(QX(Q[-1, 0, 1])))
@@ -62,14 +62,17 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
         # no real values at those parameter values ((e x - 1 - k x²) at e = 1, k = 2): with A < 0 there, the form
         # that has real values for other parameters is D(1 - u²), s = √(-D/A) (D > 0 taken, as Rubi does)
         if sh === nothing && pos(-A)
-            s2 = -D / A                                 # (not `r`: the closure `pos` assigns an `r`)
+            s2 = -D / A
             σs = csqrt(s2)
             sh = (σs === nothing ? (:sqrt, s2) : σs, h, D, frac(QX(Q[1, 0, -1])))
         end
     elseif degree(N) == 1 && degree(Dn) == 1           # (n₁x + n₀)/(d₁x + d₀)
         xN, xD = -co(N, 1) / co(N, 2), -co(Dn, 1) / co(Dn, 2)
-        κ0 = co(N, 2) / co(Dn, 2)                       # κ u/(u - 1), or (-κ) u/(1 - u) when only -κ is a square
-        sh = (csqrt(κ0) === nothing && csqrt(-κ0) !== nothing) ?
+        # κ u/(u - 1), or (-κ) u/(1 - u) when only -κ is a square, or, neither a square, when κ < 0 at the
+        # parameter values ((a³ cos² x + b³ sin² x)/cos² x, a < b: then 0 < u < 1)
+        κ0 = co(N, 2) / co(Dn, 2)
+        neg = csqrt(κ0) === nothing && (csqrt(-κ0) !== nothing || !pos(κ0))
+        sh = neg ?
              (xD - xN, xN, -κ0, frac(QX(Q[0, 1]), QX(Q[1, -1]))) :
              (xD - xN, xN, κ0, frac(QX(Q[0, 1]), QX(Q[-1, 1])))
     elseif isone(Dn) && degree(N) == 1                  # n₁x + n₀ = u with s = 1/n₁: κ = 1
