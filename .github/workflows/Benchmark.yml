@@ -1,0 +1,47 @@
+name: Benchmark
+# The apostol benchmark (benchmark/apostol) for RischIntegrate on SymbolicUtils, SymEngine and Expr
+# terms: fails if a problem verified in the committed results is no longer verified. The results are
+# kept as an artifact; the committed results and the report page are updated by hand (run_all.jl).
+on:
+  push:
+    branches:
+      - main
+  pull_request:          # (changes to the benchmark itself)
+    paths:
+      - "benchmark/apostol/**"
+      - ".github/workflows/Benchmark.yml"
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  apostol:
+    name: Apostol benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1.13'
+      - uses: julia-actions/cache@v2
+      - name: Keep the committed results
+        run: cp -r benchmark/apostol/results "$RUNNER_TEMP/baseline"
+      - name: Instantiate env_risch
+        run: julia --project=benchmark/apostol/env_risch -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
+      - name: Run the methods
+        # (a 300 s limit per problem: runners are slower than the machine the committed results come from)
+        run: |
+          for m in symbolicutils symengine expr; do
+            julia benchmark/apostol/supervise.jl $m env_risch 300
+          done
+      - name: Compare with the committed results
+        run: julia benchmark/apostol/check.jl "$RUNNER_TEMP/baseline" benchmark/apostol/results symbolicutils symengine expr
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: apostol-results
+          path: benchmark/apostol/results/

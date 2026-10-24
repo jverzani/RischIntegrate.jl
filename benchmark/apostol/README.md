@@ -120,6 +120,18 @@ must set `T_START`, load the packages, and define
 
 Then add it to the loop in `run_all.jl` and to `METHODS` in `build.jl`.
 
+## On GitHub
+
+The `Benchmark` workflow (`.github/workflows/Benchmark.yml`) runs `symbolicutils`, `symengine` and
+`expr` on each push to main (and on pull requests that change the benchmark), with a 300 s limit
+per problem, then `check.jl` compares the verified problems with the committed results: it fails if a
+problem verified there is no longer verified. The new results are kept as the run's artifact; the
+committed results and the page are still updated by hand with `run_all.jl`.
+
+```sh
+julia check.jl BASELINE_DIR results symbolicutils symengine expr
+```
+
 ## Updating the page
 
 `build.jl` fills in the numbers, grid, times and versions. The "What stands
