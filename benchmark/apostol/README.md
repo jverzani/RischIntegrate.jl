@@ -72,8 +72,11 @@ What is recorded:
   a special function such as `expinti`); SymbolicIntegration returns an
   unevaluated `∫` instead, and Giac an unevaluated `integrate(...)`.
 - **Verified**: a central difference of the answer at `x = 0.31` and `x = 0.57`
-  (every other variable given a fixed value) matches the integrand to 1e-4. Real
-  values are tried first, then complex ones if the real evaluation fails. An
+  (every other variable given a fixed value) matches the integrand to 1e-4. Where
+  the integrand is not real at one of these points (outside its real domain, where
+  the answer may sit on a branch cut), a spare real point where it is real is used
+  instead (`check_points` in `core.jl`); complex values only when there is none, or
+  when the real evaluation of the answer fails. An
   answer with RootSums (`IntegralWithRootSums`) is evaluated at real values only.
 - **Not checked**: solved, but the answer could not be evaluated numerically.
   Such an answer may be wrong.
@@ -160,7 +163,8 @@ Notes (2026-10-22 run):
 
 - `symengine`: problems 83 and 84 (∫ asec x, ∫ acsc x) show as differing but are
   right: at the check points 0.31 and 0.57, outside |x| ≥ 1, SymEngine's `asec` is
-  the conjugate of Julia's branch. 159, 162 and 172 have special-function terms
+  the conjugate of Julia's branch. (Since `check_points` in `core.jl`, they are checked at real points
+  in the domain, and verified.) 159, 162 and 172 have special-function terms
   (Ei, ₁F₁) with a parameter, kept as `Expr` terms: solved, not checked.
 - `giac`: Giac rewrites `asec(x)` and `acsc(x)` as `acos(1/x)` and `asin(1/x)`,
   which RischIntegrate does not support (83, 84); 172's ₁F₁ needs a symbolic
