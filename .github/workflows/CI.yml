@@ -44,9 +44,6 @@ jobs:
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
-        env:
-          # the full suite (each term type) on the coverage job; SimpleExpressions only elsewhere
-          RISCH_TEST_TYPES: ${{ (matrix.version == '1.13' && matrix.os == 'ubuntu-latest') && 'all' || 'one' }}
         with:
           # coverage instrumentation is slow (and recompiles the package): one job only
           coverage: ${{ matrix.version == '1.13' && matrix.os == 'ubuntu-latest' }}

@@ -1,10 +1,8 @@
 using Test
-import SimpleExpressions
 import SymEngine
 import SpecialFunctions
 using RischIntegrate
 import RischIntegrate as Risch
-@isdefined(ALL_TYPES) || (const ALL_TYPES = true)             # (set in runtests.jl)
 
 fd(f, a; h = 1e-6) = (f(a + h) - f(a - h)) / (2h)
 
@@ -97,8 +95,8 @@ function run_tests(x, evalat, name)
                 @test isapprox(fd(ev, a), evalat(x * sin(x) * log(x), a); rtol = 1e-5, atol = 1e-8)
             end
         end
-        # exp(i log 2) = 2^i is not of the form e^(a + bi); SimpleExpressions turns log(2) into a float,
-        # refused as an inexact constant
+        # exp(i log 2) = 2^i is not of the form e^(a + bi); refused (a term type that turns log(2)
+        # into a float gives an inexact constant, also refused)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sin(x) + sin(x + log(2)), x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(sin(x)), x)         # algebraic
     end
@@ -202,9 +200,7 @@ function run_tests(x, evalat, name)
     end
 end
 
-simple_x = let; SimpleExpressions.@symbolic x; x; end
 sym_x = let; SymEngine.@vars x; x; end
-run_tests(simple_x, (e, a) -> e isa Function ? e(a) : e, "SimpleExpressions")
 # SymEngine may evaluate a real expression (e.g. atan of a real argument) with a roundoff-size
 # imaginary part; drop only that. A genuinely complex value stays complex and fails the comparison.
 function trig_sym_eval(e, a)
@@ -213,4 +209,4 @@ function trig_sym_eval(e, a)
     w = ComplexF64(z)
     abs(imag(w)) <= 1e-10 * max(1.0, abs(w)) ? real(w) : w
 end
-ALL_TYPES && run_tests(sym_x, trig_sym_eval, "SymEngine")
+run_tests(sym_x, trig_sym_eval, "SymEngine")

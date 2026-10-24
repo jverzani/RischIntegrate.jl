@@ -2,7 +2,6 @@
 PolyLog = "85e3b03c-9856-11eb-0374-4dc1f8670e7f"
 PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 RischIntegrate = "c180fd1b-065d-41df-ac4d-d8d9562c1957"
-SimpleExpressions = "deba94f7-f32a-40ad-b45e-be020a5ded2f"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 SymEngine = "123dc426-2d89-5057-bbad-38513e3affd8"
 SymbolicUtils = "d1185830-fcd6-423d-90d6-eec64667417b"
@@ -13,5 +12,4 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 RischIntegrate = {path = ".."}
 
 [compat]
-SimpleExpressions = "1.3.2"
 SymbolicUtils = "4"
