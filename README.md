@@ -19,7 +19,8 @@ trigonometric functions and radicands with symbolic parameters), along the lines
 *Symbolic Integration II* would have taken (see `SI2_PLAN.md`), and gives non-elementary answers with
 special functions where they are standard (Ei, Si, Ci, Shi, Chi, erf, Li₂, Γ, ₁F₁, ₂F₁).
 
-The only entry point is `RischIntegrate.integrate`.
+The entry points are `integrate`, for the terms of a symbolic package, and the macro `@integrate`, for Julia
+expressions.
 
 ## Example
 
@@ -31,12 +32,24 @@ integrate(exp(x) / (exp(x) + 1)^2, x) # indefinite, -1/(1 + exp(x))
 integrate(sin(x), (x, 0, pi))         # definite, 2
 ```
 
-Without a symbolic package, the macro `@integrate` integrates Julia expressions:
+Without a symbolic package, the macro `@integrate` integrates Julia expressions; other names are
+parameters, and `$v` puts in the value of a variable `v`:
 
 ```{julia}
-import RischIntegrate: @integrate
+using RischIntegrate
 @integrate(x * exp(x), x)         # (-1 + x) * exp(x)
 @integrate(sin(x), (x, 0, π))     # 2.0
+@integrate(a * x^2, (x, 0, 1))    # an expression in the parameter a
+```
+
+The bounds are evaluated as Julia values, so in an iterated integral over a region that is not a
+rectangle, a bound in the variable of an outer integral must be quoted. Over the triangle
+0 ≤ x ≤ y ≤ 1, the inner bound is `:y`:
+
+```{julia}
+@integrate(x * y, (x, 0, :y), (y, 0, 1))              # 0.125
+@integrate(x + y, (y, :(x^2), :x), (x, 0, 1))         # between y = x² and y = x
+@integrate(x * y, (x, 0, y), (y, 0, 1))               # UndefVarError: y is evaluated, not quoted
 ```
 
 See the [documentation](https://jverzani.github.io/RischIntegrate.jl/dev/) for SymbolicUtils.jl,

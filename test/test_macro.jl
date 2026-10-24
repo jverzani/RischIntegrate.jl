@@ -1,6 +1,6 @@
 using Test
 import RischIntegrate as Risch
-import RischIntegrate: @integrate
+using RischIntegrate                                   # (@integrate is exported)
 
 # @integrate: integrate for Julia expressions, without quoting (as GruntzLimit's @limit)
 @testset "@integrate" begin
@@ -22,6 +22,11 @@ import RischIntegrate: @integrate
     @test H isa Expr && Core.eval(Main, Expr(:let, :(a = 3), H)) ≈ 1
     @test @integrate(sin(x), (x, 0, :b)) isa Expr                                # a symbolic bound
     @test string(@integrate(x * exp(x), x, verify = false)) == string(F)         # keywords passed on
+    # regions that are not rectangles: an inner bound in an outer variable, quoted
+    @test @integrate(x * y, (x, 0, :y), (y, 0, 1)) ≈ 1 / 8
+    @test @integrate(1, (y, :(x ^ 2), :x), (x, 0, 1)) ≈ 1 / 6
+    @test @integrate(x + y, (y, 0, :(1 - x)), (x, 0, 1)) ≈ 1 / 3
+    @test_throws UndefVarError @eval @integrate(x * y, (x, 0, yy), (y, 0, 1))   # (not quoted: evaluated)
     @test_throws Risch.NotElementary @integrate(x ^ x, x)
     @test_throws ArgumentError macroexpand(@__MODULE__, :(@integrate(sin(x), 3)))
     @test_throws ArgumentError macroexpand(@__MODULE__, :(@integrate(sin(x))))

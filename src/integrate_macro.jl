@@ -1,13 +1,13 @@
 # ---------------------------------------------------------------------------
-# A front end for Julia expressions: `@integrate` (not exported), as GruntzLimit's `@limit`
+# A front end for Julia expressions: `@integrate`, as GruntzLimit's `@limit`
 # ---------------------------------------------------------------------------
 expr_build(op, args...) = Expr(:call, nameof(op), args...)
 
 """
-    RischIntegrate.@integrate(f, x)
-    RischIntegrate.@integrate(f, x, y, …)
-    RischIntegrate.@integrate(f, (x, a, b), …)
-    RischIntegrate.@integrate(f, x…, key = value…)
+    @integrate(f, x)
+    @integrate(f, x, y, …)
+    @integrate(f, (x, a, b), …)
+    @integrate(f, x…, key = value…)
 
 The integral of the expression `f`, written without quoting: a convenience front end to
 [`integrate`](@ref) for Julia `Expr`s, so no symbolic package is needed. `f` is taken as an `Expr`
@@ -18,18 +18,20 @@ value of a variable `v`. The bounds `a`, `b` and the keyword values are evaluate
   RischIntegrate.IntegralWithRootSums));
 * `x, y, …`: iterated, ∫ … (∫ f dx) dy …;
 * `(x, a, b)`: definite, F(b) - F(a): a number when it evaluates to one, else an `Expr` (with
-  parameters, or symbolic bounds);
+  parameters, or symbolic bounds). The bounds are evaluated, so a bound in a variable of a later
+  integral is quoted: `(x, 0, :y)`, `(y, :(x^2), :x)`;
 * the keywords are passed on: `build` (default `(op, args...) -> Expr(:call, nameof(op), args...)`),
   `lift` (default `identity`), `verify`.
 
 ```julia
-import RischIntegrate: @integrate
+using RischIntegrate
 @integrate(x * exp(x), x)          # (-1 + x) * exp(x)
 @integrate(sin(x), (x, 0, π))      # 2.0
 @integrate(x^2 * y, x, y)          # (1//3 * x ^ 3) * (1//2 * y ^ 2)
 @integrate(a * x^2, (x, 0, 1))     # a * (1//3 * 1 ^ 3) - a * (1//3 * 0 ^ 3): a parameter, an Expr
 n = 3; @integrate(x^\$n, x)         # 1//4 * x ^ 4
 @integrate(sin(x), (x, 0, :b))     # -1 * cos(b) - -1 * cos(0): a symbolic bound, quoted
+@integrate(x * y, (x, 0, :y), (y, 0, 1))   # 0.125: over the triangle 0 ≤ x ≤ y ≤ 1
 ```
 """
 macro integrate(f, args...)

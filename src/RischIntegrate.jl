@@ -64,7 +64,7 @@ include("kummer_logs.jl")
 include("real_log_arguments.jl")
 include("integrate_macro.jl")
 
-export integrate, sinhint, coshint, clausen2, clausen, repolylog, impolylog
+export integrate, @integrate, sinhint, coshint, clausen2, clausen, repolylog, impolylog
 
 """
     integrate(ex, x, ys...; build = nothing, lift = nothing)
