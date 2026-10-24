@@ -1665,7 +1665,8 @@ end
     end
 end
 
-# step HS: ∫ c xᵐ (α + β xⁿ)^q with m or q symbolic as a ₂F₁ term (Rubi 1164, 1171, 1183, 1508, 1513, 1520)
+# step HS: ∫ c xᵐ (α + β xⁿ)^q with m or q symbolic as a ₂F₁ term (Rubi 350, 1164, 1171, 1183, 1226, 1231, 1371,
+# 1508, 1513, 1520)
 @testset "xᵐ(α + βxⁿ)^q, symbolic exponents: ₂F₁ (step HS)" begin
     Risch.HYP_ANSWERS[] = true
     try
@@ -1690,6 +1691,19 @@ end
                          (:((a + b * exp(n * x)) ^ (r / s)), (-0.6, 0.31, 0.9)))
             F = Risch.risch_integrate(f, :x; build = build, lift = identity)
             @test occursin("_₂F₁(1,", string(F))
+            for x0 in pts
+                @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+            end
+        end
+        # (p₀ + p₁x)(A₀ + A₁x + A₂x²)^q by completing the square (Rubi 1226, 1231); sinᵖ cosʳ by u = sin (350, 1371)
+        merge!(vals, Dict(:a => 2.3, :b => 0.7, :c => 1.4, :b1 => 1.1, :c1 => 0.8, :p => 0.45, :m => 0.37))
+        for (f, pts) in ((:((b1 + c1 * x) * (a + 2 * b * x + c * x ^ 2) ^ n), (-0.6, 0.31, 0.9)),
+                         (:((b1 + c1 * x) / (a + 2 * b * x + c * x ^ 2) ^ n), (-0.6, 0.31, 0.9)),
+                         (:((2 + 3x) * (1 + x ^ 2) ^ q), (-0.6, 0.31, 0.9)),
+                         (:(sin(x) ^ p), (0.31, 1.4, 2.9)), (:(sin(x) ^ (2m) * cos(x) ^ (2m)), (0.31, 0.9, 1.4)),
+                         (:(cos(x) ^ p), (0.31, 1.4)), (:(3 * sin(x) ^ p / cos(x) ^ 2), (0.31, 2.0, 2.9)))
+            F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+            @test occursin("_₂F₁(", string(F))
             for x0 in pts
                 @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
             end
