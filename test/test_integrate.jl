@@ -941,7 +941,8 @@ function run_tests(x, evalat, name)
         @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) / (x + log(x)), x)
         # limited integration (step 9d): ∫ lc needs atan / irrational-residue logs, not c·log x
         @test_throws Risch.NotElementary Risch.risch_integrate(log(x) / (x^2 + 2), x)
-        @test_throws Risch.NotElementary Risch.risch_integrate(log(x) / (x^2 + 1), x)
+        # (poles ±i ∈ ℚ(i): a polylogarithm, as li2 above (step DL))
+        @test occursin("impolylog", string(Risch.risch_integrate(log(x) / (x^2 + 1), x)))
         @test_throws Risch.NotElementary Risch.risch_integrate(log(x)^2 / (x^2 - 2), x)
     end
 
@@ -1000,7 +1001,13 @@ function run_tests(x, evalat, name)
             end
         end
         @test occursin("clausen2", string(Risch.risch_integrate(atan(x) / x, x)))   # step AT
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(atan(x) * log(x), x)
+        # with log over atan in the tower, ∫ log(x)/(1 + x²)·x-terms by step DL (poles ±i)
+        let F = Risch.risch_integrate(atan(x) * log(x), x)     # (repolylog: through Expr, evaluated numerically)
+            @test F isa Risch.IntegralWithRootSums
+            for a in (0.4, 1.1, 2.3)
+                @test isapprox(real(F(a + 1e-6) - F(a - 1e-6)) / 2e-6, atan(a) * log(a); rtol = 1e-5)
+            end
+        end
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(atan(1 / x) + atan(x), x)
     end
 
@@ -1124,8 +1131,9 @@ function dl_tests(x, name)
             end
         end
         @test string(Risch.risch_integrate(log(1 + x) / x, x)) in ("-1 * li2(-1 * x)", "-li2(-x)")
-        # irrational poles: still decided non-elementary
-        @test_throws Risch.NotElementary Risch.risch_integrate(log(1 + x) / (1 + x^2), x)
+        # poles ±i ∈ ℚ(i): Re, Im Li₂ (step DL pairs); irrational poles: still decided non-elementary
+        @test occursin("impolylog", string(Risch.risch_integrate(log(1 + x) / (1 + x^2), x)))
+        @test_throws Risch.NotElementary Risch.risch_integrate(log(1 + x) / (2 + x^2), x)
     end
 end
 dl_tests(sym_x, "SymEngine")
@@ -1586,6 +1594,30 @@ end
     SymEngine.@vars x
     F = integrate(atan(x) * log(x) / x, x)
     @test F isa Risch.IntegralWithRootSums && occursin("impolylog(3", string(F))
+end
+
+# step DL with a pair of poles c, c̄ ∈ ℚ(i): Re, Im Li₂(v/|K| e^(-i arg K)); with u = exp(x), Rubi 200
+@testset "log(a x + b)·r(x) with complex poles (step DL)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    Main.eval(:(const repolylog = $(Risch.repolylog)))
+    Main.eval(:(const impolylog = $(Risch.impolylog)))
+    Main.eval(:(const li2 = $(Risch.li2)))
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    fd(F, x0, h = 1e-4) = (-ev(F, x0 + 2h) + 8ev(F, x0 + h) - 8ev(F, x0 - h) + ev(F, x0 - 2h)) / (12h)
+    for f in (:(log(1 + x) / (1 + x ^ 2)), :(log(x) / (1 + x ^ 2)), :(log(1 + x) / (x * (1 + x ^ 2))),
+              :(log(2x + 1) / (x ^ 2 + 2x + 2)), :(log(3 - x) / (x ^ 2 + 4)), :(log(1 + x) / ((1 + x) * (1 + x ^ 2))),
+              :(log(1 + exp(x)) / (1 + exp(2x))), :(log(1 + exp(2x)) / (1 + exp(4x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("polylog(2,", string(F))
+        for x0 in (0.31, 0.8, 1.7, 2.9)
+            @test isapprox(fd(F, x0), ev(f, x0); rtol = 1e-6, atol = 1e-9)
+        end
+    end
+    # step US: exp(2x) = U² for u = exp(x)
+    @test string(Risch.risch_integrate(:(exp(x) / (1 + exp(2x))), :x; build = build, lift = identity)) == "atan(exp(x))"
+    SymEngine.@vars x
+    F = integrate(log(1 + x) / (1 + x ^ 2), x)
+    @test F isa Risch.IntegralWithRootSums && occursin("impolylog(2", string(F))
 end
 
 # step AT: atan(u) by the substitution u = tan t, then step CL (Rubi 1653, 1655, 1656, 1659)

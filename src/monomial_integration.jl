@@ -575,7 +575,7 @@ function check_tower(T::Tower, L::Int, res::ElemIntegral, f)
             den = q.inverted ? e + u * u : one(u) + e * u * u
             tot = tot + lq(T, q.c * q.e, L) * D(T, L, u) / den
         elseif q isa SpecialTerm || q isa BaseTerms || q isa TowerRootSum || q isa BaseRootSum ||
-               q isa TowerRealForm || q isa DilogTerm
+               q isa TowerRealForm || q isa DilogTerm || q isa DilogPairTerm
             # stored exact derivatives (8a, T1, RT, RF)
             tot = tot + liftto(T, q.deriv, L)
         elseif q isa ExtQuadPair    # a W'/W + σ_d(a W'/W), computed over ℚ(i)(√d), read back in T
@@ -621,6 +621,8 @@ function to_term(b::Builder, T::Tower, res::ElemIntegral)
             push!(ts, to_term(b, q.q))
         elseif q isa DilogTerm
             push!(ts, dilog_term(b, q))
+        elseif q isa DilogPairTerm
+            push!(ts, dilog_pair_term(b, q))
         elseif q isa TowerRealForm
             for (c, w) in q.logs
                 l = mk(b, :log, tower_to_term(b, q.T2, w))

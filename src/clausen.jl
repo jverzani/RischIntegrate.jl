@@ -52,6 +52,10 @@ Im Liₙ(ρ e^{iφ}) for real ρ (principal branch), = Σₖ ρᵏ sin(kφ)/kⁿ
 impolylog(n, x, π/2) = Im Liₙ(i x) is the inverse tangent integral Tiₙ(x) (∫ atan(x) log(x)/x dx).
 """
 impolylog(n::Integer, ρ::Real, φ::Real) = imag(PolyLog.li(n, ρ * cis(φ)))
+# (a whole n as a float: the numeric evaluation of an answer kept as an Expr)
+clausen(n::Real, φ::Real) = clausen(Int(n), φ)
+repolylog(n::Real, ρ::Real, φ::Real) = repolylog(Int(n), ρ, φ)
+impolylog(n::Real, ρ::Real, φ::Real) = impolylog(Int(n), ρ, φ)
 OPS[:ReLi] = repolylog
 OPS[:ImLi] = impolylog
 
