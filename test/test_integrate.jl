@@ -1000,7 +1000,7 @@ function run_tests(x, evalat, name)
                 @test antiderivative_ok(F, f, a, evalat)
             end
         end
-        @test occursin("clausen2", string(Risch.risch_integrate(atan(x) / x, x)))   # step AT
+        @test occursin("impolylog(2", string(Risch.risch_integrate(atan(x) / x, x)))   # step LP: Ti₂(x)
         # with log over atan in the tower, ∫ log(x)/(1 + x²)·x-terms by step DL (poles ±i)
         let F = Risch.risch_integrate(atan(x) * log(x), x)     # (repolylog: through Expr, evaluated numerically)
             @test F isa Risch.IntegralWithRootSums
@@ -1605,7 +1605,8 @@ end
     Main.eval(:(const li2 = $(Risch.li2)))
     ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
     fd(F, x0, h = 1e-4) = (-ev(F, x0 + 2h) + 8ev(F, x0 + h) - 8ev(F, x0 - h) + ev(F, x0 - 2h)) / (12h)
-    for (f, has) in ((:(atan(x) * log(x) / x), "impolylog(3,"), (:(atan(x) * log(x) ^ 2 / x), "impolylog(4,"),
+    for (f, has) in ((:(atan(x) / x), "impolylog(2,"), (:(atan(x) * log(x) / x), "impolylog(3,"),
+                     (:(atan(x) * log(x) ^ 2 / x), "impolylog(4,"),
                      (:(5atan(x / 2) * log(x) / (3x)), "impolylog(3,"), (:(log(x) * log(1 + x) / x), "repolylog(3,"),
                      (:(log(x) ^ 3 * log(2 + x) / x), "repolylog(5,"), (:(li2(x) / x), "repolylog(3,"),
                      (:(log(x) * li2(x / 2) / x), "repolylog(4,"))
@@ -1669,7 +1670,7 @@ end
     build(op, args...) = Expr(:call, nameof(op), args...)
     ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
     for f in (:(x ^ 3 * atan(x) / (1 + x ^ 2)), :(x ^ 3 * atan(x) / (1 + x ^ 2) ^ 2), :(x ^ 5 * atan(x) / (1 + x ^ 2) ^ 2),
-              :(atan(x) * (1 + x ^ 2) ^ 2 / x ^ 5), :(atan(x) / x), :(atan(2x + 1) / (2x + 1)))
+              :(atan(x) * (1 + x ^ 2) ^ 2 / x ^ 5), :(atan(2x + 1) / (2x + 1)))   # (atan(x)/x: step LP, Ti₂)
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)
         @test occursin("clausen2", string(F))
         for x0 in (0.3, 1.1, 2.0, -0.7, -4.0, 9.0)
