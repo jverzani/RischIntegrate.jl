@@ -94,6 +94,17 @@ function try_x_trig(f, x; build = nothing, lift = nothing, verify::Bool = true)
         end
     end
     any(p -> !all(iszero, Rc[p + 1]), 1:MAX_X_POWER) || return nothing
+    # a function of θ^g only (sin²x: θ = e^(ix), roots ±√3 of θ², rational in θ²): integrate in y = g x, θ_y = θ^g;
+    # ∫ xᵖ R(θ^g) dx = g^-(p+1) ∫ yᵖ R(θ_y) dy, and y = g x in the output
+    gθ = 0
+    for cs in (Dc, Rc...), (i, c) in enumerate(cs)
+        iszero(c) || (gθ = gcd(gθ, i - 1))
+    end
+    if gθ > 1
+        Dc = Dc[1:gθ:end]
+        Rc = [cs[1:gθ:end] for cs in Rc]
+    end
+    gθ = max(gθ, 1)
     K0 = T.Ts[1]
     θ = frac(xpoly(K0))
     li(c) = lconst(T, c, 1)
@@ -214,7 +225,7 @@ function try_x_trig(f, x; build = nothing, lift = nothing, verify::Bool = true)
         Gs = antiderivatives(ev(Rc[p + 1]) / Dθ, p + 1)
         Gs === nothing && return nothing
         for j in 0:p
-            coef = Q((-1)^j * factorial(p) ÷ factorial(p - j))
+            coef = Q((-1)^j * factorial(p) ÷ factorial(p - j)) / Q(gθ)^(j + 1)   # g^-(p+1) (g x)^(p-j)
             xp = p - j
             G = Gs[j + 1]
             iszero(G.V) || push!(Vts, (coef, xp, G.V))
@@ -237,14 +248,15 @@ function try_x_trig(f, x; build = nothing, lift = nothing, verify::Bool = true)
                     push!(Ps, CK())
                 end
                 for (key, q) in cd
-                    addck!(Ps[d + xp], key, coef * q)
+                    addck!(Ps[d + xp], key, coef * q * Q(gθ)^(d - 1))
                 end
             end
         end
     end
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
     πt = bd.lift(π)
-    kxt = isone(k) ? bd.x : mk(bd, :*, cterm(bd, k), bd.x)
+    kxt = isone(k * gθ) ? bd.x : mk(bd, :*, cterm(bd, k * gθ), bd.x)
+    bdy = gθ == 1 ? bd : Builder(bd.build, bd.lift, mk(bd, :*, bd.lift(gθ), bd.x), bd.consts)   # x as y = g x
     xpow(d) = d == 1 ? bd.x : mk(bd, :^, bd.x, bd.lift(d))
     times_x(t, d) = d == 0 ? t : mk(bd, :*, xpow(d), t)
     sc(c, t) = isone(c) ? t : mk(bd, :*, cterm(bd, c), t)
@@ -272,7 +284,7 @@ function try_x_trig(f, x; build = nothing, lift = nothing, verify::Bool = true)
     end
     terms = Any[]
     for (coef, xp, V) in Vts
-        push!(terms, sc(coef, times_x(real_term(bd, T, kinds, V, 1), xp)))
+        push!(terms, sc(coef, times_x(real_term(bdy, T, kinds, V, 1), xp)))
     end
     for key in sort!(collect(keys(CLs)))
         m, ψ = key
@@ -320,7 +332,7 @@ function try_x_trig(f, x; build = nothing, lift = nothing, verify::Bool = true)
     end
     F = isempty(terms) ? bd.lift(0) : length(terms) == 1 ? terms[1] : mk(bd, :+, terms...)
     if !all(iszero, Rc[1])
-        St = real_term(bd, T, kinds, ev(Rc[1]) / Dθ, 1)
+        St = real_term(bdy, T, kinds, ev(Rc[1]) / Dθ, 1)
         FS = risch_integrate(St, x; build = build, lift = lift, verify = verify)
         FS isa IntegralWithRootSums && return nothing
         F = mk(bd, :+, F, FS)
