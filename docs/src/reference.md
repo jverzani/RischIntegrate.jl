@@ -2,6 +2,7 @@
 
 ```@docs
 integrate
+RischIntegrate.@integrate
 RischIntegrate.risch_integrate
 RischIntegrate.IntegralWithRootSums
 RischIntegrate.RootSum

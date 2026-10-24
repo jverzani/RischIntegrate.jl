@@ -114,6 +114,18 @@ build(op, args...) = Expr(:call, nameof(op), args...)
 integrate(:(x * exp(x)), :x; build = build, lift = identity)
 ```
 
+The macro [`@integrate`](@ref RischIntegrate.@integrate) does this without quoting, so no symbolic package is needed
+(`$v` puts in the value of a variable `v`):
+
+```@example expr
+import RischIntegrate: @integrate
+@integrate(x * exp(x), x)
+```
+
+```@example expr
+@integrate(sin(x), (x, 0, π))
+```
+
 ## Non-elementary integrals
 
 Integrals that can be written with the special functions of

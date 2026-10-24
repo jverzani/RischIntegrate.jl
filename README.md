@@ -31,6 +31,14 @@ integrate(exp(x) / (exp(x) + 1)^2, x) # indefinite, -1/(1 + exp(x))
 integrate(sin(x), (x, 0, pi))         # definite, 2
 ```
 
+Without a symbolic package, the macro `@integrate` integrates Julia expressions:
+
+```{julia}
+import RischIntegrate: @integrate
+@integrate(x * exp(x), x)         # (-1 + x) * exp(x)
+@integrate(sin(x), (x, 0, π))     # 2.0
+```
+
 See the [documentation](https://jverzani.github.io/RischIntegrate.jl/dev/) for SymbolicUtils.jl,
 Symbolics.jl, SimpleExpressions.jl and `Expr`, non-elementary integrals and RootSums.
 

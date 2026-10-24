@@ -62,6 +62,7 @@ include("special_fallback.jl")
 include("monomial_radicals.jl")
 include("kummer_logs.jl")
 include("real_log_arguments.jl")
+include("integrate_macro.jl")
 
 export integrate, sinhint, coshint, clausen2, clausen, repolylog, impolylog
 
