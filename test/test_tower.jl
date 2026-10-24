@@ -1,9 +1,7 @@
 using Test
-import SimpleExpressions
 import SymEngine
 using RischIntegrate
 import RischIntegrate as Risch
-@isdefined(ALL_TYPES) || (const ALL_TYPES = true)             # (set in runtests.jl)
 
 fd(f, a; h = 1e-6) = (f(a + h) - f(a - h)) / (2h)
 
@@ -24,8 +22,8 @@ function run_tests(x, evalat, name)
         @test shape(exp(x/2) + exp(x), x) == [:exp]
         @test shape(exp(x) + exp(x/2) + exp(x/3), x) == [:exp]  # restart: θ = exp(x/6)
         @test shape(exp(-x) / (1 + exp(x)), x) == [:exp]
-        # SymEngine merges exp(x)*exp(x^2) into exp(x + x^2) before we see it (1 generator);
-        # SimpleExpressions keeps the product (2 generators). Both towers are valid.
+        # SymEngine merges exp(x)*exp(x^2) into exp(x + x^2) before we see it (1 generator); a term type
+        # that keeps the product gives 2 generators. Both towers are valid.
         @test length(shape(exp(x) * exp(x^2), x)) in (1, 2)
         @test shape(exp(x + x^2) + exp(x) + exp(x^2), x) == [:exp, :exp]   # dependent: 2 not 3
         @test shape(exp(x) / exp(x) + x, x) == Symbol[]
@@ -110,7 +108,5 @@ function run_tests(x, evalat, name)
     end
 end
 
-simple_x = let; SimpleExpressions.@symbolic x; x; end
 sym_x = let; SymEngine.@vars x; x; end
-run_tests(simple_x, (e, a) -> e isa Function ? e(a) : e, "SimpleExpressions")
-ALL_TYPES && run_tests(sym_x, (e, a) -> Float64(SymEngine.N(SymEngine.subs(e, sym_x => a))), "SymEngine")
+run_tests(sym_x, (e, a) -> Float64(SymEngine.N(SymEngine.subs(e, sym_x => a))), "SymEngine")

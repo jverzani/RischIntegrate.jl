@@ -1,8 +1,8 @@
 using Test
 
-using SimpleExpressions
-SimpleExpressions.@symbolic_variables x t a  b c d z n
-Base.://(a::SimpleExpressions.AbstractSymbolic, b::Int64) = a/b
+import SymEngine
+SymEngine.@vars x t a b c d z n
+Base.://(a::SymEngine.Basic, b::Int64) = a / b
 
 import RischIntegrate
 

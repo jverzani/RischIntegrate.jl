@@ -1,9 +1,7 @@
 using Test
-import SimpleExpressions
 import SymEngine
 using RischIntegrate
 import RischIntegrate as Risch
-@isdefined(ALL_TYPES) || (const ALL_TYPES = true)             # (set in runtests.jl)
 
 # Step 5, first half: ℚ(√d) as a constant field, and change of constant field in towers.
 # None of this is used by `risch_integrate` yet; these tests exercise it directly.
@@ -303,12 +301,8 @@ function run_const_tests(x, evalat, name)
     end
 end
 
-simple_x = let; SimpleExpressions.@symbolic x; x; end
 sym_x = let; SymEngine.@vars x; x; end
-tc_simple_eval = (e, a) -> e isa Function ? e(a) : e
 tc_sym_eval = (e, a) -> (z = SymEngine.N(SymEngine.subs(e, sym_x => a));
                       z isa Complex ? ComplexF64(z) : Float64(z))
-run_tests(simple_x, tc_simple_eval, "SimpleExpressions")
-ALL_TYPES && run_tests(sym_x, tc_sym_eval, "SymEngine")
-run_const_tests(simple_x, tc_simple_eval, "SimpleExpressions")
-ALL_TYPES && run_const_tests(sym_x, tc_sym_eval, "SymEngine")
+run_tests(sym_x, tc_sym_eval, "SymEngine")
+run_const_tests(sym_x, tc_sym_eval, "SymEngine")
