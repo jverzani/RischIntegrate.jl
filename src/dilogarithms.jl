@@ -14,6 +14,19 @@ struct DilogTerm
     c::Any
     deriv::Any
 end
+# A pair of simple poles c, c̄ ∈ ℚ(i) \ ℚ (r over ℚ), residues ρ, ρ̄: with v = a x + b > 0 and K = a c + b (not real),
+#   ∫ v′ log v/(v - K) = log v · log(1 - v/K) + Li₂(v/K)
+# (1 - v/K and v/K stay off the cuts), and twice the real part is, α = arg K, sgn = sign(Im K),
+#   ρr log v log(((v - Kr)² + Ki²)/|K|²) - 2ρi log v (atan((v - Kr)/Ki) + atan(Kr/Ki))
+#     + 2ρr Re Li₂(v/|K| e^(-iα)) - 2ρi Im Li₂(v/|K| e^(-iα)),   -α = atan(Kr/Ki) - sgn π/2,
+# (arg(1 - v/K) = arg(K - v) - α, continuous from 0 at v = 0); deriv: (ρ/(x - c) + ρ̄/(x - c̄)) θ.
+struct DilogPairTerm
+    ρ::QI
+    a::Q
+    b::Q
+    c::QI
+    deriv::Any
+end
 function dilog_split(T::Tower, i::Int, p::UPoly)
     C = ctype(T)
     ((C === Q || real_param_field(C)) && i == 1 && T.levels[1].kind === :log && degree(p) == 1) || return nothing
@@ -36,6 +49,23 @@ function dilog_split(T::Tower, i::Int, p::UPoly)
         rs = frac(UPoly{C}(C[ρ]), lin)
         simple = simple + rs
         push!(terms, DilogTerm(ρ, a, b, c, liftto(T, rs, 1) * θ))
+    end
+    if C === Q                                          # pairs of poles in ℚ(i) (C = ℚ only)
+        D1i = UPoly{QI}(QI[QI(c, Q(0)) for c in D1.c])
+        Ni = UPoly{QI}(QI[QI(c, Q(0)) for c in r.num.c])
+        for c in constant_roots(D1i)
+            c.im > 0 || continue
+            lin = UPoly{QI}(QI[-c, one(QI)])
+            iszero(rem(D1i, lin * lin)) && continue
+            ρ = peval(Ni, c) / peval(deriv(D1i), c)
+            iszero(ρ) && continue
+            cb = QI(c.re, -c.im)
+            num_ = UPoly{Q}(Q[-2 * (ρ * cb).re, 2ρ.re])
+            den_ = UPoly{Q}(Q[c.re^2 + c.im^2, -2c.re, Q(1)])
+            rs = frac(num_, den_)
+            simple = simple + rs
+            push!(terms, DilogPairTerm(ρ, Q(a), Q(b), c, liftto(T, rs, 1) * θ))
+        end
     end
     isempty(terms) && return nothing
     P = typeof(p)
@@ -60,4 +90,33 @@ function dilog_term(b::Builder, q::DilogTerm)
                   li(mk(b, :/, cterm(b, -K), as)))
     end
     isone(q.ρ) ? core : mk(b, :*, cterm(b, q.ρ), core)
+end
+
+function dilog_pair_term(b::Builder, q::DilogPairTerm)
+    K = QI(q.a, Q(0)) * q.c + QI(q.b, Q(0))
+    Kr, Ki = K.re, K.im
+    n2 = Kr^2 + Ki^2
+    vp = UPoly{Q}(Q[q.b, q.a])                          # v = a x + b
+    vt = poly_term(b, vp)
+    lv = mk(b, :log, vt)
+    ρr, ρi = q.ρ.re, q.ρ.im
+    sc(c, t) = isone(c) ? t : mk(b, :*, cterm(b, c), t)
+    ts = Any[]
+    if !iszero(ρr)                                      # ρr log v log(((v - Kr)² + Ki²)/|K|²)
+        w = UPoly{Q}(Q[q.b - Kr, q.a])
+        w2 = w * w + UPoly{Q}(Q[Ki^2])
+        push!(ts, sc(ρr, mk(b, :*, lv, mk(b, :log, poly_term(b, UPoly{Q}(w2.c ./ n2))))))
+    end
+    if !iszero(ρi)                                      # -2ρi log v (atan((v - Kr)/Ki) + atan(Kr/Ki))
+        at = mk(b, :atan, poly_term(b, UPoly{Q}(Q[(q.b - Kr) / Ki, q.a / Ki])))
+        iszero(Kr) || (at = mk(b, :+, at, mk(b, :atan, cterm(b, Kr / Ki))))
+        push!(ts, sc(-2ρi, mk(b, :*, lv, at)))
+    end
+    m = rat_sqrt(n2)                                    # v/|K|
+    ρt = m === nothing ? mk(b, :/, vt, mk(b, :sqrt, cterm(b, n2))) : poly_term(b, UPoly{Q}(vp.c ./ m))
+    hp = mk(b, :*, cterm(b, Q(Ki > 0 ? -1 : 1, 2)), b.lift(π))
+    φt = iszero(Kr) ? hp : mk(b, :+, mk(b, :atan, cterm(b, Kr / Ki)), hp)
+    iszero(ρr) || push!(ts, sc(2ρr, mk(b, :ReLi, b.lift(2), ρt, φt)))
+    iszero(ρi) || push!(ts, sc(-2ρi, mk(b, :ImLi, b.lift(2), ρt, φt)))
+    length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
 end

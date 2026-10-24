@@ -83,6 +83,11 @@ function usub_hook(u, xk::String)
         (k !== nothing && isone(denominator(k)) && k > 1) && (kx = Int(numerator(k)))
     end
     intk(r) = isone(denominator(r)) ? Int(numerator(r)) : nothing
+    # u = exp(w): exp(m w) = U^m for an integer m
+    exp_arg(t) = !isnode(t) ? nothing : opname(operation(t)) === :exp ? arguments(t)[1] :
+                 (opname(operation(t)) === :^ && is_e_const(arguments(t)[1])) ? arguments(t)[2] : nothing
+    ua = exp_arg(u)
+    ue = ua === nothing ? nothing : radicand_element(ua, xk)
     function upow(t)
         s = string(t)
         isnode(t) || return s == vs ? intk(inv(e0)) : nothing       # u = x^e: x = U^(1/e)
@@ -95,6 +100,13 @@ function usub_hook(u, xk::String)
         if kx !== nothing && opname(operation(t)) === :^ && string(arguments(t)[1]) == xk
             m = leaf_rational(arguments(t)[2])
             (m !== nothing && isone(denominator(m))) && return intk(Q(m) / kx)
+        end
+        if ue !== nothing && !iszero(ue) && (ta = exp_arg(t)) !== nothing
+            te = radicand_element(ta, xk)
+            if te !== nothing
+                m = te / ue
+                (degree(m.num) == 0 && degree(m.den) == 0) && return intk(m.num.c[1] / m.den.c[1])
+            end
         end
         nothing
     end
