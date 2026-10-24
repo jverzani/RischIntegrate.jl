@@ -1501,6 +1501,29 @@ end
     @test F isa Risch.IntegralWithRootSums && occursin("clausen(3", string(F))
 end
 
+# step CL with roots of the denominator off the unit circle: Re, Im Liₘ(ρ e^(iφ)), ρ < 1
+@testset "xᵖ·trig by parts: roots off the unit circle (step CL)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    Main.eval(:(const repolylog = $(Risch.repolylog)))
+    Main.eval(:(const impolylog = $(Risch.impolylog)))
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    fd(F, x0, h = 1e-3) = (-ev(F, x0 + 2h) + 8ev(F, x0 + h) - 8ev(F, x0 - h) + ev(F, x0 - 2h)) / (12h)
+    for f in (:(x / (5 + 4cos(x))), :(x / (5 - 3cos(2x))), :(x / (5 + 3sin(x))), :(x ^ 2 / (5 + 4cos(x))),
+              :(x / (5 - 4cos(x)) ^ 2), :(x ^ 3 / (5 + 4sin(x))), :(x * cos(x) / (5 + 4cos(x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("repolylog(2,", string(F))
+        for x0 in (0.3, 1.7, -2.4, 5.0)
+            @test isapprox(fd(F, x0), ev(f, x0); rtol = 1e-6, atol = 1e-9)
+        end
+    end
+    @test isapprox(Risch.repolylog(2, 1 / 2, 0.0), π ^ 2 / 12 - log(2) ^ 2 / 2; rtol = 1e-12)   # Li₂(1/2)
+    @test isapprox(Risch.impolylog(1, 0.4, 1.3), atan(0.4sin(1.3) / (1 - 0.4cos(1.3))); rtol = 1e-12)
+    @test isapprox(Risch.repolylog(3, 1.0, 0.7), Risch.clausen(3, 0.7); rtol = 1e-10)
+    SymEngine.@vars x
+    F = integrate(x / (5 + 4cos(x)), x)
+    @test F isa Risch.IntegralWithRootSums && occursin("repolylog(2", string(F))
+end
+
 # step AT: atan(u) by the substitution u = tan t, then step CL (Rubi 1653, 1655, 1656, 1659)
 @testset "atan(u) by u = tan t (step AT)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
