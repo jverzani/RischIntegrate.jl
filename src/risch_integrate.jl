@@ -61,6 +61,8 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         end
         r = try_usub(f, x; build = build, lift = lift, verify = verify)    # step US
         r === nothing || return r
+        r = try_sum_split(f, x; build = build, lift = lift, verify = verify)   # term by term (step LS)
+        r === nothing || return r
         # a u-substitution may have failed only for want of a special function in the term type: once
         # through Expr, keeping the answer when it has special terms
         if !(f isa Expr) && !EXPR_RETRY[]
@@ -83,6 +85,8 @@ const EXPR_RETRY = Ref(false)                           # no nested Expr retries
 function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     xk = string(x)
+    g = merge_exp_powers(f, x, build, lift)            # (bʷ)^r = b^(w r), b > 0 constant (step EP)
+    g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
     g = try_erf(f, x; build = build, lift = lift, verify = verify)   # ∫ erf(ax + b) by parts
     g === nothing || return g
     # step IT: a factor free of x containing other symbols comes out, ∫ c g dx = c ∫ g dx (keeps the

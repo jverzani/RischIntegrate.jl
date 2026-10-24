@@ -435,9 +435,14 @@ function run_tests(x, evalat, name)
         end
         # one class of infinite order is enough
         @test_throws Risch.NotElementary Risch.risch_integrate(1 / (x^3 + 1)^(1 // 3) + 1 / ((x - 2) * (x^3 + 1)^(1 // 3)), x)
-        # q = 4 with classes -1 and 8: (-4)^(1/4) ∈ ℚ(i), they may be dependent: no decision
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x^4 + 1) * (x^4 + 2)^(1 // 4)) +
-                                                                     1 / (x * (x^4 + 2)^(1 // 4)), x)
+        # q = 4 with classes -1 and 8: (-4)^(1/4) ∈ ℚ(i), they may be dependent: no decision for the sum, but
+        # each term has an elementary integral (term by term, step LS)
+        let f = 1 / ((x^4 + 1) * (x^4 + 2)^(1 // 4)) + 1 / (x * (x^4 + 2)^(1 // 4))
+            F = Risch.risch_integrate(f, x)
+            for a in (0.5, 2.7)
+                @test isapprox(fd(t -> val(F, t), a), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
     end
 
     @testset "$name: several radicands in one component (SI2 phase 3b)" begin
@@ -1008,7 +1013,12 @@ function run_tests(x, evalat, name)
                 @test isapprox(real(F(a + 1e-6) - F(a - 1e-6)) / 2e-6, atan(a) * log(a); rtol = 1e-5)
             end
         end
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(atan(1 / x) + atan(x), x)
+        # (the sum is ±π/2, which the tower does not see; term by term, step LS)
+        let F = Risch.risch_integrate(atan(1 / x) + atan(x), x)
+            for a in (-1.7, 0.4, 2.3)
+                @test antiderivative_ok(F, atan(1 / x) + atan(x), a, evalat)
+            end
+        end
     end
 
     # step AS: asin / acos (and integrands whose only radicals are √(K(1 - u²)), √K rational) by the
@@ -1047,8 +1057,13 @@ function run_tests(x, evalat, name)
         end
         @test occursin("asec", string(Risch.risch_integrate(x * asec(x), x)))
         @test count("asec", string(Risch.risch_integrate(x * asec(x), x))) == 1      # collected
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(acot(x) + atan(x), x)   # needs π/2
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(asec(x) + acsc(x), x)
+        # (the sums are π/2, not seen in the tower; term by term, step LS)
+        for (f, pts) in ((acot(x) + atan(x), (0.4, 2.3)), (asec(x) + acsc(x), (1.4, 2.3)))
+            F = Risch.risch_integrate(f, x)
+            for a in pts
+                @test antiderivative_ok(F, f, a, evalat)
+            end
+        end
     end
 
     @testset "$name: u-substitution (step US)" begin
@@ -1077,8 +1092,13 @@ function run_tests(x, evalat, name)
 
     @testset "$name: awaiting later stages" begin
         # RootSums over ℚ, ℚ(i), ℚ(e) (steps RT, RC, RE) are tested in test_risch.jl; over ℚ(i)(e)
-        # (trigonometric input with e) they are not handled
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sin(x) + 1 / (x^3 + x + ℯ), x)
+        # (trigonometric input with e) they are not handled, but term by term (step LS) the RootSum is over ℚ(e)
+        let f = sin(x) + 1 / (x^3 + x + ℯ), F = Risch.risch_integrate(f, x)
+            @test F isa Risch.IntegralWithRootSums
+            for a in (0.4, 2.3)
+                @test isapprox(real(F(a + 1e-6) - F(a - 1e-6)) / 2e-6, real(evalat(f, a)); rtol = 1e-6)
+            end
+        end
     end
 end
 
@@ -1755,6 +1775,20 @@ end
     end
     SymEngine.@vars x a
     @test string(integrate(asin(x / a) ^ 2 / sqrt(a ^ 2 - x ^ 2), x)) == "(1/3)*asin(x/a)^3"
+end
+
+# step LS: a sum term by term, grouped by radicals (Rubi 219); step EP: (bʷ)^r = b^(w r) (Rubi 1533)
+@testset "sums term by term (step LS); (bʷ)^r (step EP)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for f in (:(1 / x + (1 + 1 / x) / (x + log(x)) ^ (3 // 2)),
+              :((log(x) ^ 2 + 2 * x * log(x) + x ^ 2 + (x + 1) * sqrt(x + log(x))) / (x * (x + log(x)) ^ 2)),
+              :(cos((3x) / 2) / (3 ^ (3x)) ^ (1 // 4)), :(x * sqrt(exp(2x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.7, 1.6)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
 end
 
 # step AT: atan(u) by the substitution u = tan t, then step CL (Rubi 1653, 1655, 1656, 1659)

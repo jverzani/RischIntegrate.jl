@@ -95,9 +95,13 @@ function run_tests(x, evalat, name)
                 @test isapprox(fd(ev, a), evalat(x * sin(x) * log(x), a); rtol = 1e-5, atol = 1e-8)
             end
         end
-        # exp(i log 2) = 2^i is not of the form e^(a + bi); refused (a term type that turns log(2)
-        # into a float gives an inexact constant, also refused)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sin(x) + sin(x + log(2)), x)
+        # exp(i log 2) = 2^i is not of the form e^(a + bi): the sum is refused as one integrand, but term by
+        # term (step LS) each is a u-substitution
+        let F = Risch.risch_integrate(sin(x) + sin(x + log(2)), x)
+            for a in (0.4, 2.3)
+                @test isapprox(fd(t -> evalat(F, t), a), evalat(sin(x) + sin(x + log(2)), a); rtol = 1e-6)
+            end
+        end
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(sin(x)), x)         # algebraic
     end
 
