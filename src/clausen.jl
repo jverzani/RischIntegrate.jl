@@ -10,6 +10,11 @@
 # with Cl₁(φ) = -log|2 sin(φ/2)| printed as -½ log(2 - 2 cos φ). The real part of each, Re v + Σ Re(c ·),
 # differentiates to the integrand wherever it is smooth (the imaginary part is constant), and the Clausen
 # terms integrate as ∫ Cl_m(φ) dx = ±Cl_{m+1}(φ)/k (+ for odd m), so every G_j has this form.
+# A root r on an axis off the unit circle, |r| = R ≠ 1, gives Re(d Li₁(ρ e^(iφ))) with ρ < 1:
+#   R > 1: log(θ - r) = log(-r) + log(1 - θ/r),  θ/r = e^(iφ)/R,
+#   R < 1: log(θ - r) = i k x + log(1 - r/θ),     r/θ = R e^(-iφ), and Re(c L̄) = Re(c̄ L),
+# with log(1 - z) = -Li₁(z), and ∫ Re(d Liₘ(ρ e^(iφ))) dx = Re(-i d Li_{m+1}(ρ e^(iφ)))/k. They print
+# with repolylog(m, ρ, φ) = Re Liₘ(ρ e^(iφ)) and impolylog(m, ρ, φ) = Im Liₘ(ρ e^(iφ)) (elementary for m = 1).
 # ---------------------------------------------------------------------------
 """
     clausen(n, φ)
@@ -29,14 +34,30 @@ uses it in answers such as ∫ x tan x dx.
 clausen2(φ::Real) = imag(li2(cis(φ)))
 OPS[:Cl2] = clausen2
 OPS[:Cl] = clausen
+"""
+    repolylog(n, ρ, φ)
+
+Re Liₙ(ρ e^{iφ}) = Σₖ ρᵏ cos(kφ)/kⁿ, for 0 ≤ ρ < 1. RischIntegrate uses it, with [`impolylog`](@ref), in
+answers such as ∫ x/(5 + 4 cos x) dx; at ρ = 1 these are the Clausen functions ([`clausen`](@ref)).
+"""
+repolylog(n::Integer, ρ::Real, φ::Real) = real(PolyLog.li(n, ρ * cis(φ)))
+"""
+    impolylog(n, ρ, φ)
+
+Im Liₙ(ρ e^{iφ}) = Σₖ ρᵏ sin(kφ)/kⁿ, for 0 ≤ ρ < 1; see [`repolylog`](@ref).
+"""
+impolylog(n::Integer, ρ::Real, φ::Real) = imag(PolyLog.li(n, ρ * cis(φ)))
+OPS[:ReLi] = repolylog
+OPS[:ImLi] = impolylog
 
 const CK = Dict{Tuple{Int,Q},Q}                         # Σ q πʲ log L, keyed (j, L) (L = 1: q πʲ)
 addck!(d::CK, key, q) = (iszero(q) || (d[key] = get(d, key, Q(0)) + q); d)
 
-# an iterated antiderivative: Re V + Σ c Cl_m(kx - ψπ) + Σ_d P[d+1] x^d
+# an iterated antiderivative: Re V + Σ c Cl_m(kx - ψπ) + Σ Re(d Li_m(ρ e^(i(kx - ψπ)))) + Σ_d P[d+1] x^d
 struct ClausenSum
     V::Any
     cl::Dict{Tuple{Int,Q},Q}                            # (m, ψ) => c
+    li::Dict{Tuple{Int,Q,Q},QI}                         # (m, ρ, ψ) => d
     P::Vector{CK}
 end
 
@@ -92,7 +113,7 @@ function try_x_trig(f, x; build = nothing, lift = nothing, verify::Bool = true)
         (isempty(res.atans) && isempty(res.quads)) || return nothing
         res
     end
-    # Σ Re(c log W) into the Clausen terms (m = 1) and the polynomial of G; false if a root is not on an axis
+    # Σ Re(c log W) into the Clausen and Li terms (m = 1) and the polynomial of G; false if a root is not on an axis
     function add_logs!(G::ClausenSum, logs)
         for (c, W0) in logs
             W0 = liftto(T, W0, 1)                       # an element of K₁: a polynomial in θ over K₀
@@ -128,10 +149,23 @@ function try_x_trig(f, x; build = nothing, lift = nothing, verify::Bool = true)
                     addck!(G.P[2], (0, Q(1)), -ci * k * m)
                     continue
                 end
-                (r.re^2 + r.im^2 == 1) || return false
                 ψ = axis_arg(r)                         # in units of π, ψ ∈ [0, 2)
                 ψ === nothing && return false
                 ψ = ψ < 0 ? ψ + 2 : ψ
+                R = abs(r.re + r.im)                    # |r|, r on an axis
+                if R != 1
+                    cq = QI(cr, ci)
+                    if R > 1                            # Re(c log(-r)) = cr log R - ci arg(-r) π
+                        addck!(G.P[1], (0, R), cr * m)
+                        addck!(G.P[1], (1, Q(1)), -ci * m * axis_arg(-r))
+                        key, d = (1, inv(R), ψ), -cq
+                    else                                # Re(c i k x) = -ci k x
+                        addck!(G.P[2], (0, Q(1)), -ci * k * m)
+                        key, d = (1, R, ψ), -cconj(cq)
+                    end
+                    G.li[key] = get(G.li, key, zero(QI)) + d * m
+                    continue
+                end
                 amr = axis_arg(-r)                      # arg(-r) ∈ (-1, 1] (× π)
                 # Re(c log(θ - r)) = -cr Cl₁(φ) - ci (arg(-r) π + (kx - (ψ + 1)π)/2)
                 iszero(cr) || (G.cl[(1, ψ)] = get(G.cl, (1, ψ), Q(0)) - cr * m)
@@ -145,7 +179,7 @@ function try_x_trig(f, x; build = nothing, lift = nothing, verify::Bool = true)
     function antiderivatives(R, n)
         res = int_el(R)
         res === nothing && return nothing
-        G = ClausenSum(re(res.v), Dict{Tuple{Int,Q},Q}(), [CK(), CK()])
+        G = ClausenSum(re(res.v), Dict{Tuple{Int,Q},Q}(), Dict{Tuple{Int,Q,Q},QI}(), [CK(), CK()])
         add_logs!(G, res.logs) || return nothing
         Gs = [G]
         for _ in 2:n
@@ -155,12 +189,13 @@ function try_x_trig(f, x; build = nothing, lift = nothing, verify::Bool = true)
             end
             push!(P, CK())
             cl = Dict{Tuple{Int,Q},Q}(((m + 1, ψ) => (isodd(m) ? c : -c) / k) for ((m, ψ), c) in G.cl)
+            lis = Dict{Tuple{Int,Q,Q},QI}(((m + 1, ρ, ψ) => QI(d.im / k, -d.re / k)) for ((m, ρ, ψ), d) in G.li)
             V = zero(G.V)
-            Gn = ClausenSum(V, cl, P)
+            Gn = ClausenSum(V, cl, lis, P)
             if !iszero(G.V)
                 r = int_el(G.V)
                 r === nothing && return nothing
-                Gn = ClausenSum(re(r.v), cl, P)
+                Gn = ClausenSum(re(r.v), cl, lis, P)
                 add_logs!(Gn, r.logs) || return nothing
             end
             G = Gn
@@ -172,6 +207,7 @@ function try_x_trig(f, x; build = nothing, lift = nothing, verify::Bool = true)
     # of x, the Clausen terms with polynomial multipliers, one polynomial
     Vts = Tuple{Q,Int,Any}[]
     CLs = Dict{Tuple{Int,Q},Vector{Q}}()
+    LIs = Dict{Tuple{Symbol,Int,Q,Q},Vector{Q}}()       # (:re or :im, m, ρ, ψ): Re(d L) = dr Re L - di Im L
     Ps = CK[]
     for p in 1:MAX_X_POWER
         all(iszero, Rc[p + 1]) && continue
@@ -182,12 +218,19 @@ function try_x_trig(f, x; build = nothing, lift = nothing, verify::Bool = true)
             xp = p - j
             G = Gs[j + 1]
             iszero(G.V) || push!(Vts, (coef, xp, G.V))
-            for (key, c) in G.cl
-                M = get!(() -> Q[], CLs, key)
+            function addM!(D, key, c)
+                M = get!(() -> Q[], D, key)
                 while length(M) <= xp
                     push!(M, Q(0))
                 end
                 M[xp + 1] += coef * c
+            end
+            for (key, c) in G.cl
+                addM!(CLs, key, c)
+            end
+            for ((m, ρ, ψ), d) in G.li
+                iszero(d.re) || addM!(LIs, (:re, m, ρ, ψ), d.re)
+                iszero(d.im) || addM!(LIs, (:im, m, ρ, ψ), -d.im)
             end
             for (d, cd) in enumerate(G.P)
                 while length(Ps) < d + xp
@@ -241,6 +284,32 @@ function try_x_trig(f, x; build = nothing, lift = nothing, verify::Bool = true)
             M = -M / 2
         else
             base = m == 2 ? mk(bd, :Cl2, φt) : mk(bd, :Cl, bd.lift(m), φt)
+        end
+        t = mul_poly(M, base)
+        t === nothing || push!(terms, t)
+    end
+    # cos(kx - ψπ), sin(kx - ψπ) for ψ ∈ {0, 1/2, 1, 3/2}, as (±1, cos kx or sin kx)
+    function trig_shift(f::Symbol, ψ)
+        j = Int(2ψ)
+        g = iseven(j) == (f === :cos) ? :cos : :sin
+        s = f === :cos ? (j in (0, 1) ? 1 : -1) : (j in (0, 3) ? 1 : -1)
+        s, mk(bd, g, kxt)
+    end
+    for key in sort!(collect(keys(LIs)))
+        part, m, ρ, ψ = key
+        M = LIs[key]
+        if m == 1
+            (sc_, ct), (ss, st) = trig_shift(:cos, ψ), trig_shift(:sin, ψ)
+            if part === :re                             # Re Li₁ = -½ log(1 - 2ρ cos φ + ρ²)
+                base = mk(bd, :log, mk(bd, :+, cterm(bd, 1 + ρ^2), mk(bd, :*, cterm(bd, -2ρ * sc_), ct)))
+                M = -M / 2
+            else                                        # Im Li₁ = atan(ρ sin φ/(1 - ρ cos φ))
+                base = mk(bd, :atan, mk(bd, :/, mk(bd, :*, cterm(bd, ρ * ss), st),
+                                       mk(bd, :+, bd.lift(1), mk(bd, :*, cterm(bd, -ρ * sc_), ct))))
+            end
+        else
+            φt = iszero(ψ) ? kxt : mk(bd, :+, kxt, mk(bd, :*, cterm(bd, -ψ), πt))
+            base = mk(bd, part === :re ? :ReLi : :ImLi, bd.lift(m), cterm(bd, ρ), φt)
         end
         t = mul_poly(M, base)
         t === nothing || push!(terms, t)

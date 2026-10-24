@@ -61,7 +61,7 @@ include("monomial_radicals.jl")
 include("kummer_logs.jl")
 include("real_log_arguments.jl")
 
-export integrate, sinhint, coshint, clausen2, clausen
+export integrate, sinhint, coshint, clausen2, clausen, repolylog, impolylog
 
 """
     integrate(ex, x, ys...; build = nothing, lift = nothing)
