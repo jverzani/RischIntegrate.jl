@@ -1563,6 +1563,31 @@ end
     @test occursin("sin(x)", string(Risch.risch_integrate(:(x * tan(x)), :x; build = build, lift = identity)))
 end
 
+# step LP: ∫ logʲ(x) L(w x)/x by parts, L = atan, log(a + b x) or li2 (Rubi 207)
+@testset "logʲ(x)·polylog(w x)/x by parts (step LP)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    Main.eval(:(const repolylog = $(Risch.repolylog)))
+    Main.eval(:(const impolylog = $(Risch.impolylog)))
+    Main.eval(:(const li2 = $(Risch.li2)))
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    fd(F, x0, h = 1e-4) = (-ev(F, x0 + 2h) + 8ev(F, x0 + h) - 8ev(F, x0 - h) + ev(F, x0 - 2h)) / (12h)
+    for (f, has) in ((:(atan(x) * log(x) / x), "impolylog(3,"), (:(atan(x) * log(x) ^ 2 / x), "impolylog(4,"),
+                     (:(5atan(x / 2) * log(x) / (3x)), "impolylog(3,"), (:(log(x) * log(1 + x) / x), "repolylog(3,"),
+                     (:(log(x) ^ 3 * log(2 + x) / x), "repolylog(5,"), (:(li2(x) / x), "repolylog(3,"),
+                     (:(log(x) * li2(x / 2) / x), "repolylog(4,"))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin(has, string(F))
+        for x0 in (0.31, 0.45, 0.8, 1.7, 4.2)
+            @test isapprox(fd(F, x0), real(ev(f, x0)); rtol = 1e-6, atol = 1e-9)   # (li2(x) is complex for x > 1)
+        end
+    end
+    @test isapprox(Risch.impolylog(2, 1.0, π / 2), 0.915965594177219; rtol = 1e-12)   # Ti₂(1) = Catalan's G
+    @test isapprox(Risch.repolylog(3, -1.0, 0.0), -3 / 4 * 1.2020569031595942; rtol = 1e-12)
+    SymEngine.@vars x
+    F = integrate(atan(x) * log(x) / x, x)
+    @test F isa Risch.IntegralWithRootSums && occursin("impolylog(3", string(F))
+end
+
 # step AT: atan(u) by the substitution u = tan t, then step CL (Rubi 1653, 1655, 1656, 1659)
 @testset "atan(u) by u = tan t (step AT)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)

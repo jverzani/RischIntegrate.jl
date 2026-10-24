@@ -40,14 +40,16 @@ OPS[:Cl] = clausen
 """
     repolylog(n, ρ, φ)
 
-Re Liₙ(ρ e^{iφ}) = Σₖ ρᵏ cos(kφ)/kⁿ, for 0 ≤ ρ < 1. RischIntegrate uses it, with [`impolylog`](@ref), in
-answers such as ∫ x/(5 + 4 cos x) dx; at ρ = 1 these are the Clausen functions ([`clausen`](@ref)).
+Re Liₙ(ρ e^{iφ}) for real ρ (principal branch), = Σₖ ρᵏ cos(kφ)/kⁿ for |ρ| ≤ 1. RischIntegrate uses it, with
+[`impolylog`](@ref), in answers such as ∫ x/(5 + 4 cos x) dx; at ρ = 1 these are the Clausen functions
+([`clausen`](@ref)), and repolylog(n, y, 0) = Liₙ(y) for y ≤ 1 (∫ log(x) log(1 + x)/x dx).
 """
 repolylog(n::Integer, ρ::Real, φ::Real) = real(PolyLog.li(n, ρ * cis(φ)))
 """
     impolylog(n, ρ, φ)
 
-Im Liₙ(ρ e^{iφ}) = Σₖ ρᵏ sin(kφ)/kⁿ, for 0 ≤ ρ < 1; see [`repolylog`](@ref).
+Im Liₙ(ρ e^{iφ}) for real ρ (principal branch), = Σₖ ρᵏ sin(kφ)/kⁿ for |ρ| ≤ 1; see [`repolylog`](@ref).
+impolylog(n, x, π/2) = Im Liₙ(i x) is the inverse tangent integral Tiₙ(x) (∫ atan(x) log(x)/x dx).
 """
 impolylog(n::Integer, ρ::Real, φ::Real) = imag(PolyLog.li(n, ρ * cis(φ)))
 OPS[:ReLi] = repolylog
