@@ -48,9 +48,27 @@ function evalat(e, xs, x0, cplx)
     EVAL(e, vals)
 end
 
+# the check points: 0.31 and 0.57, except that a point where the integrand is not real (outside its real
+# domain, where an answer may be on a branch cut: asin(u) for u > 1) is replaced by a spare real point
+# where it is; complex values are used only where there is none
+const POINTS = (0.31, 0.57)
+const SPARE = (0.13, -0.43, 0.83, -0.77, 1.37, -1.61, 2.11, -2.3, 3.3)
+function realat(f, xs, x0)
+    v = try evalat(f, xs, x0, false) catch; nothing end
+    v !== nothing && isfinite(v) && abs(imag(v)) <= 1e-12 * max(1, abs(v))
+end
+function check_points(f, xs)
+    pts, spare = Float64[], collect(SPARE)
+    for x0 in POINTS
+        i = realat(f, xs, x0) ? nothing : findfirst(s -> realat(f, xs, s), spare)
+        push!(pts, i === nothing ? x0 : popat!(spare, i))
+    end
+    pts
+end
+
 function check(f, F, xs)
     fsu, Fsu = f, F
-    for x0 in (0.31, 0.57)
+    for x0 in check_points(f, xs)
         h = 1e-5
         ok = nothing
         for cplx in (false, true)
