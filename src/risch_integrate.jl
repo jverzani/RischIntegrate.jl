@@ -9,8 +9,8 @@ The antiderivative of the term `f` in the variable `x` (the function behind [`in
 check of the answer by differentiation (every answer is checked by default). Returns a term, or an
 [`IntegralWithRootSums`](@ref); throws [`NotElementary`](@ref) or [`RischNotImplemented`](@ref).
 """
-function risch_integrate(f, x; build = nothing, lift = nothing, verify::Bool = true)
-    @nospecialize f x
+Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize(x); build = nothing, lift = nothing,
+                                                  verify::Bool = true)
     check_leaves(f, string(x))                                         # step WR
     try
         r = integrate_direct(f, x; build = build, lift = lift, verify = verify)
