@@ -67,14 +67,14 @@ function merge_exp_powers(f, x, build, lift)
         if rp !== nothing
             r, B = rp
             if safe_iscall(B) && depends_on(B, xk)
-                bn, ba = opname(operation(B)), arguments(B)
-                if bn === :exp && length(ba) == 1
+                bop, bargs = opname(operation(B)), arguments(B)
+                if bop === :exp && length(bargs) == 1
                     changed = true
-                    return mk(bd, :exp, mk(bd, :*, cterm(bd, r), walk(ba[1])))
-                elseif bn === :^ && length(ba) == 2 && !depends_on(ba[1], xk) &&
-                       (is_e_const(ba[1]) || (q = leaf_rational(ba[1]); q !== nothing && q > 0))
+                    return mk(bd, :exp, mk(bd, :*, cterm(bd, r), walk(bargs[1])))
+                elseif bop === :^ && length(bargs) == 2 && !depends_on(bargs[1], xk) &&
+                       (is_e_const(bargs[1]) || (q = leaf_rational(bargs[1]); q !== nothing && q > 0))
                     changed = true
-                    return mk(bd, :^, ba[1], mk(bd, :*, cterm(bd, r), walk(ba[2])))
+                    return mk(bd, :^, bargs[1], mk(bd, :*, cterm(bd, r), walk(bargs[2])))
                 end
             end
         end
