@@ -147,7 +147,7 @@ function integrate_arcsin(f, x, arcs; sK::Q = Q(1), radicand = nothing, build = 
         if safe_iscall(t) && !isempty(arguments(t))
             n = opname(operation(t))
             args = arguments(t)
-            if n in (:sin, :cos, :tan) && length(args) == 1
+            if n in (:sin, :cos, :tan, :cot) && length(args) == 1
                 e = radicand_element(args[1], xk)
                 if e !== nothing && isone(e.den) && degree(e.num) == 1 && iszero(e.num.c[1])
                     c = e.num.c[2]
@@ -155,9 +155,12 @@ function integrate_arcsin(f, x, arcs; sK::Q = Q(1), radicand = nothing, build = 
                         cc, sn = cis(Int(numerator(c)))
                         n === :sin && return pterm(sn)
                         n === :cos && return pterm(cc)
+                        n === :cot && return mk(bd, :/, pterm(cc), pterm(sn))
                         return mk(bd, :/, pterm(sn), pterm(cc))
                     elseif c == 1 // 2 && n === :tan          # tan(t/2) = sin t/(1 + cos t)
                         return mk(bd, :/, pterm(csin), mk(bd, :+, bd.lift(1), pterm(ccos)))
+                    elseif c == 1 // 2 && n === :cot          # cot(t/2) = (1 + cos t)/sin t
+                        return mk(bd, :/, mk(bd, :+, bd.lift(1), pterm(ccos)), pterm(csin))
                     end
                 end
             end
@@ -345,7 +348,7 @@ function try_atan_subst(f, x; build = nothing, lift = nothing, verify::Bool = tr
         if safe_iscall(t) && !isempty(arguments(t))
             n = opname(operation(t))
             args = arguments(t)
-            if n in (:sin, :cos, :tan) && length(args) == 1
+            if n in (:sin, :cos, :tan, :cot) && length(args) == 1
                 e = radicand_element(args[1], xk)
                 if e !== nothing && isone(e.den) && degree(e.num) == 1 && iszero(e.num.c[1])
                     c = e.num.c[2]
@@ -354,9 +357,12 @@ function try_atan_subst(f, x; build = nothing, lift = nothing, verify::Bool = tr
                         A, B = cis(k)
                         n === :cos && return over(A, k)
                         n === :sin && return over(B, k)
+                        n === :cot && return frac_term(bu, frac(A, B))
                         return frac_term(bu, frac(B, A))
                     elseif c == 1 // 2 && n === :tan    # tan(t/2) = u/(1 + √(1 + u²))
                         return mk(bd, :/, arguments(ats[1])[1], mk(bd, :+, bd.lift(1), rterm))
+                    elseif c == 1 // 2 && n === :cot    # cot(t/2) = (1 + √(1 + u²))/u
+                        return mk(bd, :/, mk(bd, :+, bd.lift(1), rterm), arguments(ats[1])[1])
                     end
                 end
             end
