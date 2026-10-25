@@ -109,7 +109,8 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
     kq(c) = frac(P(Q[c]))
     # step SQ: square roots of a polynomial with repeated factors, u = s² w (w squarefree): the variable
     # is Y = √u/s (Y² = w on every interval, whatever the sign of s), u^(k/2) = sᵏ Yᵏ, and the answer is
-    # printed with √u/s for √w
+    # printed with √u/s for √w. A rational u = c S² W/(T² V) (W, V squarefree): s = S/(T V), w = c W V
+    # (√(x²(2 - x²))/(1 - x²) from ∫ sec x/√(sec⁴x - 1) by s = sin x, Rubi 260)
     uo, sq, Yterm = u, nothing, nothing
     if n == 2 && isone(Dd) && isempty(pmap) && degree(N) >= 2
         sf = squarefree(N)
@@ -119,9 +120,21 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
             degree(w) == 0 && cfix === nothing &&
                 return integrate_const_times_square(f, xk, uo, uterm, sp, w, b0, verify)
             degree(w) == 0 && return integrate_square_branches(f, x, xk, uo, uterm, sp, w, b0, verify)
-            sq = sp
+            sq = frac(sp)
             u, N = frac(w), w
             Yterm = mk(b0, :/, mk(b0, :sqrt, uterm), poly_term(b0, sp))
+        end
+    elseif n == 2 && degree(Dd) >= 1 && isempty(pmap)
+        sfN, sfD = squarefree(N), squarefree(Dd)
+        if any(((_, m),) -> m >= 2, sfN) || any(((_, m),) -> m >= 2, sfD)
+            V = prod((p for (p, m) in sfD if isodd(m)); init = one(P))
+            w = scale(lc(N) / lc(Dd), prod((p for (p, m) in sfN if isodd(m)); init = one(P)) * V)
+            if degree(w) >= 1
+                sq = frac(prod((p^(m ÷ 2) for (p, m) in sfN); init = one(P)),
+                          prod((p^(m ÷ 2) for (p, m) in sfD); init = one(P)) * V)
+                u, N, Dd = frac(w), w, one(P)
+                Yterm = mk(b0, :/, mk(b0, :sqrt, uterm), frac_term(b0, sq))
+            end
         end
     end
     # step SQ for an index n ≥ 3: u = sⁿ (x - a)ʲ (x - b)ᵏ (j + k ≡ 0 mod n, or a single linear factor):
@@ -135,7 +148,8 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         ue == uo || throw(RischError("unexpected radicand"))
         k = 2 * e
         isone(denominator(k)) || throw(RischError("radical exponent not a multiple of 1/2"))
-        sφ = sum((φ^(i - 1) * frac(UPoly{S}(S[cfromQ(S, c)])) for (i, c) in enumerate(sq.c)); init = zero(φ))
+        ev(p) = sum((φ^(i - 1) * frac(UPoly{S}(S[cfromQ(S, c)])) for (i, c) in enumerate(p.c)); init = zero(φ))
+        sφ = ev(sq.num) / ev(sq.den)
         sφ^Int(numerator(k)) * radpow(Int(numerator(k)))
     end
     if n == 1                                           # every radical is a power of w (RP): x = t
@@ -162,7 +176,7 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
             if sq !== nothing
                 ue == uo || return nothing
                 k = 2 * e
-                return isone(denominator(k)) ? (Int(numerator(k)), frac(sq)^Int(numerator(k))) : nothing
+                return isone(denominator(k)) ? (Int(numerator(k)), sq^Int(numerator(k))) : nothing
             end
             wm = ue == u ? (u, 1) : get(pmap, ue, nothing)
             (wm === nothing || wm[1] != u) && return nothing
