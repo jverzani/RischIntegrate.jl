@@ -193,13 +193,15 @@ function mr_direct(f, x; build = nothing, lift = nothing, verify::Bool = true)
         H === nothing && return nothing
         st = mk(bd, kind, ut)
         back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? st : t)
-        push!(total, back(H))
+        Hb = subst_answer(H, back, bd)
+        Hb === nothing && return nothing
+        push!(total, Hb)
     end
-    length(total) == 1 ? total[1] : mk(bd, :+, total...)
+    add_answers(bd, total, xk)
 end
 
 # ∫ g(s) ds for one substitution of step MR: the radicals as terms in s (x stands for s), as generators of the
-# constant field; nothing when the integral leaves a RootSum
+# constant field
 function mr_piece(f, x, bd, T, radt, Usx, real_frac, RC, kind, gr; build, lift, verify)
     @nospecialize f x
     consts = copy(T.consts)
@@ -242,8 +244,7 @@ function mr_piece(f, x, bd, T, radt, Usx, real_frac, RC, kind, gr; build, lift, 
                                               st === nothing ? rt : mk(bd, :*, st, rt))
     end
     bs = Builder(bd.build, bd.lift, x, consts)
-    H = risch_integrate(frac_term(bs, gr), x; build = build, lift = lift, verify = verify)
-    H isa IntegralWithRootSums ? nothing : H
+    risch_integrate(frac_term(bs, gr), x; build = build, lift = lift, verify = verify)
 end
 
 # the order of s in h ∈ C(s): h = sᵐ·(unit at s = 0)
@@ -421,8 +422,7 @@ function integrate_inner_linear_radical(f, x; build = nothing, lift = nothing, v
     end
     g = mk(bd, :*, sub(f), mk(bd, :/, mk(bd, :*, bd.lift(Q), upow(Q - 1)), cterm(bd, a)))
     G = risch_integrate(g, x; build = build, lift = lift, verify = verify)
-    G isa IntegralWithRootSums && return nothing
     root = Q == 2 ? mk(bd, :sqrt, Lt) : mk(bd, :^, Lt, bd.lift(1 // Q))
     back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? root : t)
-    back(G)
+    subst_answer(G, back, bd)
 end

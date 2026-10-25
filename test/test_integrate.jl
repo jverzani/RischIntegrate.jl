@@ -1816,8 +1816,8 @@ end
 end
 
 # step MR, then step SQ for a rational radicand with square factors: s = sin x, √(s²(2 - s²))/(1 - s²) (Rubi 260);
-# s = tan x, √(2s²/(1 - s²)) (Rubi 1448)
-@testset "trigonometric radicands with square factors (steps MR, SQ)" begin
+# s = tan x, √(2s²/(1 - s²)) (Rubi 1448); a RootSum in s put back (`subst_answer`, Rubi 229)
+@testset "trigonometric radicands (steps MR, SQ)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
     ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
     for (f, pts) in ((:(sec(x) / sqrt(sec(x) ^ 4 - 1)), (0.4, 1.2, 2.0)),
@@ -1826,6 +1826,13 @@ end
         for x0 in pts
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
         end
+    end
+    # a RootSum in s = tan x, its variable standing for tan x (Rubi 229), evaluated on both sides of π/2
+    f = :(sqrt(tan(x) ^ 2 + 2 * tan(x) + 2))
+    F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+    @test F isa Risch.IntegralWithRootSums
+    for x0 in (0.31, -0.4, 1.2, 2.0)
+        @test isapprox((F(x0 + 1e-5) - F(x0 - 1e-5)) / 2e-5, ev(f, x0); rtol = 1e-6)
     end
 end
 

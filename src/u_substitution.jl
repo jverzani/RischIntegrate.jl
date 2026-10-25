@@ -252,9 +252,8 @@ function integrate_usub(f, x, u, bd::Builder; build, lift, verify::Bool)
         consts = ConstGen[g.kind === :sym ? ConstGen(:sym, g.arg, to_x(g.term)) : g for g in T.consts]
         G = frac_term(Builder(bd.build, bd.lift, bd.x, consts), Gx)
         H = risch_integrate(G, x; build = build, lift = lift, verify = verify)
-        H isa IntegralWithRootSums && return nothing
         backx(t) = isnode(t) ? term_rebuild(bd, t, Any[backx(s) for s in arguments(t)]) : (string(t) == xk ? u : t)
-        return backx(H)
+        return subst_answer(H, backx, bd)
     end
     c = el.num.c[1]
     if is_complex_field(ctype(T))
@@ -267,9 +266,8 @@ function integrate_usub(f, x, u, bd::Builder; build, lift, verify::Bool)
     consts = ConstGen[g.kind === :sym ? ConstGen(:sym, g.arg, to_x(g.term)) : g for g in T.consts]
     G = cterm(Builder(bd.build, bd.lift, bd.x, consts), c)
     H = risch_integrate(G, x; build = build, lift = lift, verify = verify)
-    H isa IntegralWithRootSums && return nothing
     back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? u : t)
-    back(H)
+    subst_answer(H, back, bd)
 end
 
 # the first substitution that works, or nothing
@@ -357,9 +355,8 @@ function integrate_usub_trig(f, x, u, du, bd::Builder; build, lift, verify::Bool
     iszero(β) || push!(fs, mk(bd, :^, Pt, bd.lift(Int(numerator(β)) ÷ 2)))
     G = isempty(fs) ? bd.lift(1) : length(fs) == 1 ? fs[1] : mk(bd, :*, fs...)
     H = risch_integrate(G, x; build = build, lift = lift, verify = verify)
-    H isa IntegralWithRootSums && return nothing
     back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? u : t)
-    back(H)
+    subst_answer(H, back, bd)
 end
 
 # k when u = xᵏ (k ≥ 2), else nothing
