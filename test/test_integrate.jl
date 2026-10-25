@@ -1934,3 +1934,21 @@ end
         end
     end
 end
+
+# a square root of a negative constant (I written as √-1) is an opaque constant, as √(2h) is: the answer is an
+# identity in it (Rubi 492)
+@testset "square roots of negative constants as opaque constants" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    vals = Dict{Symbol,Any}(:a => 0.5 + 0im, :epsilon => 1.5 + 0im)
+    subst(e) = e isa Symbol ? get(vals, e, e) :
+        (e isa Expr && e.args[1] === :sqrt && e.args[2] isa Real && e.args[2] < 0) ? sqrt(complex(e.args[2])) :
+        e isa Expr ? Expr(e.head, map(subst, e.args)...) : e
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $(complex(x0))), subst(e)))
+    for f in (:((sqrt(-1) * epsilon * sinh(x) - 1) / ((epsilon * sqrt(-1) * cosh(x) + sqrt(-1) * a) - x)),
+              :(1 / (x + sqrt(-1))), :(sqrt(-2) / (x ^ 2 + 1)), :(sqrt(-1) * sin(x)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.7, 1.9)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+end
