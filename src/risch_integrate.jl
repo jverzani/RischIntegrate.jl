@@ -61,6 +61,8 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         end
         r = try_usub(f, x; build = build, lift = lift, verify = verify)    # step US
         r === nothing || return r
+        r = try_nested_radical(f, x; build = build, lift = lift, verify = verify)   # nested radicals (step NS)
+        r === nothing || return r
         r = try_sum_split(f, x; build = build, lift = lift, verify = verify)   # term by term (step LS)
         r === nothing || return r
         # a u-substitution may have failed only for want of a special function in the term type: once
