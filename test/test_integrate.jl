@@ -331,7 +331,11 @@ function run_tests(x, evalat, name)
                          (x / sqrt((x - 1)^2 * (x^2 + 1)), (-2.0, 0.5, 2.0, 3.0)),    # Euler, w quadratic
                          (sqrt(x^5 + x^4), (-0.5, 1.0, 2.0)),                         # x⁴(x + 1)
                          (sqrt(x^2 + 2x + 1), (-3.0, 1.0)),                           # |x + 1|: w constant
-                         (sqrt(2 * (x - 1)^2) / (x + 1), (-0.5, 0.0, 2.0)))
+                         (sqrt(2 * (x - 1)^2) / (x + 1), (-0.5, 0.0, 2.0)),
+                         # rational u = c S² W/(T² V): s = S/(T V), w = c W V
+                         (sqrt((2x^2 - x^4) / (1 - x^2)^2), (-0.5, 0.5, 1.2)),
+                         (x * sqrt((x + 1) / (x - 1)^2), (0.5, 2.0)),
+                         (1 / sqrt(x^2 * (x + 1) / (x + 2)), (-0.5, 0.5, 1.5)))
             F = Risch.risch_integrate(f, x)
             for a in pts
                 @test antiderivative_ok(F, f, a, evalat)
@@ -1807,6 +1811,20 @@ end
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)
         for x0 in pts
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+end
+
+# step MR, then step SQ for a rational radicand with square factors: s = sin x, √(s²(2 - s²))/(1 - s²) (Rubi 260);
+# s = tan x, √(2s²/(1 - s²)) (Rubi 1448)
+@testset "trigonometric radicands with square factors (steps MR, SQ)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for (f, pts) in ((:(sec(x) / sqrt(sec(x) ^ 4 - 1)), (0.4, 1.2, 2.0)),
+                     (:((2 * tan(x) ^ 2 - cos(2x)) / (cos(x) ^ 2 * (tan(x) * tan(2x)) ^ (3 // 2))), (0.3, 0.6)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in pts
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
         end
     end
 end
