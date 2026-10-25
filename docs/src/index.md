@@ -37,4 +37,5 @@ integrate(sin(x), (x, 0, pi))             # definite
 integrate(1 / (x^3 + 1), x)
 ```
 
-The only entry point is [`integrate`](@ref).
+The entry points are [`integrate`](@ref), for the terms of a symbolic package, and the macro
+[`@integrate`](@ref), for Julia expressions.

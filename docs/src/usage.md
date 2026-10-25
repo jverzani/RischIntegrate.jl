@@ -114,6 +114,25 @@ build(op, args...) = Expr(:call, nameof(op), args...)
 integrate(:(x * exp(x)), :x; build = build, lift = identity)
 ```
 
+The macro [`@integrate`](@ref) does this without quoting, so no symbolic package is needed
+(`$v` puts in the value of a variable `v`):
+
+```@example expr
+using RischIntegrate
+@integrate(x * exp(x), x)
+```
+
+```@example expr
+@integrate(sin(x), (x, 0, π))
+```
+
+The bounds of a definite integral are evaluated, so a bound in the variable of a later integral is
+quoted. Over the region between y = x² and y = x for 0 ≤ x ≤ 1:
+
+```@example expr
+@integrate(x + y, (y, :(x^2), :x), (x, 0, 1))
+```
+
 ## Non-elementary integrals
 
 Integrals that can be written with the special functions of
