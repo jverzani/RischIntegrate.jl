@@ -1919,3 +1919,18 @@ end
         @test ∫(f, :x) == ∫(g, :x)
     end
 end
+
+# one radical of an exponential/logarithmic tower element: ∫ A yʳ = B yʳ by the Risch differential equation
+# (step RY; Rubi 218)
+@testset "radicals of tower elements (step RY)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for f in (:((3 * (x + ℯ ^ x) ^ (1 // 3) + (2 * x ^ 2 + 3x) * ℯ ^ x + 5 * x ^ 2) / (x * (x + ℯ ^ x) ^ (1 // 3))),
+              :((3x + 2 * log(x) + 1) / (2 * sqrt(x + log(x)))),
+              :(exp(x) * (2 + (3x + 1) * exp(x)) / (2 * sqrt(1 + x * exp(x)))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.7, 1.9)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+end
