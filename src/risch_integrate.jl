@@ -65,6 +65,8 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         r === nothing || return r
         r = try_reciprocal(f, x; build = build, lift = lift, verify = verify)   # u = x + s/x (step RC)
         r === nothing || return r
+        r = try_tower_radical(f, x; build = build, lift = lift, verify = verify)   # √ of a tower element (step RY)
+        r === nothing || return r
         r = try_sum_split(f, x; build = build, lift = lift, verify = verify)   # term by term (step LS)
         r === nothing || return r
         # a u-substitution may have failed only for want of a special function in the term type: once
