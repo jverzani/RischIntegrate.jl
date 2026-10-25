@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>RischIntegrate.jl — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="./assets/materialdocs.css?v=7bfc8751">
+  <link rel="stylesheet" href="./assets/materialdocs.css?v=74d5c39e">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="RischIntegrate.jl — RischIntegrate.jl">
   <meta property="og:title" content="RischIntegrate.jl — RischIntegrate.jl">
@@ -80,7 +80,7 @@ integrate(exp(x) / (exp(x) + 1)^2, x)     # indefinite</code></pre>
 </div>
 <pre class="md-output md-output-text"><code class="nohighlight ansi">(1/3)*sqrt(3)*atan(sqrt(3)*(-1/3 + (2/3)*x)) + (1/3)*log(1 + x) + (-1/6)*log(1 - x + x^2)</code></pre>
 </div>
-<p>The only entry point is <a href="./reference/#RischIntegrate.integrate"><code class="md-code-inline">integrate</code></a>.</p>
+<p>The entry points are <a href="./reference/#RischIntegrate.integrate"><code class="md-code-inline">integrate</code></a>, for the terms of a symbolic package, and the macro <a href="./reference/#RischIntegrate.@integrate"><code class="md-code-inline">@integrate</code></a>, for Julia expressions.</p>
       </article>
       <footer class="md-footer">
 <p>Built with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and <a href="https://github.com/mthelm85/MaterialDocs.jl">MaterialDocs.jl</a>.</p>
@@ -99,6 +99,6 @@ integrate(exp(x) / (exp(x) + 1)^2, x)     # indefinite</code></pre>
   <script>hljs.highlightAll();</script>
   <script src="./siteinfo.js"></script>
   <script src="./../versions.js"></script>
-  <script src="./assets/materialdocs.js?v=7bfc8751"></script>
+  <script src="./assets/materialdocs.js?v=74d5c39e"></script>
 </body>
 </html>

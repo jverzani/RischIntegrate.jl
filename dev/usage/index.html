@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usage — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=208c71cf">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=6c22e93e">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Usage — RischIntegrate.jl">
   <meta property="og:title" content="Usage — RischIntegrate.jl">
@@ -180,6 +180,30 @@ integrate(:(x * exp(x)), :x; build = build, lift = identity)</code></pre>
 </div>
 <pre class="md-output md-output-text"><code class="nohighlight ansi">:((-1 + x) * exp(x))</code></pre>
 </div>
+<p>The macro <a href="../reference/#RischIntegrate.@integrate"><code class="md-code-inline">@integrate</code></a> does this without quoting, so no symbolic package is needed (<code class="md-code-inline">$v</code> puts in the value of a variable <code class="md-code-inline">v</code>):</p>
+<div class="md-multi-output">
+<div class="md-code-block">
+<button class="md-copy-btn" title="Copy to clipboard" aria-label="Copy code"><span class="md-copy-icon">⧉</span><span class="md-copy-feedback">Copied!</span></button>
+<pre><code class="language-julia">using RischIntegrate
+@integrate(x * exp(x), x)</code></pre>
+</div>
+<pre class="md-output md-output-text"><code class="nohighlight ansi">:((-1 + x) * exp(x))</code></pre>
+</div>
+<div class="md-multi-output">
+<div class="md-code-block">
+<button class="md-copy-btn" title="Copy to clipboard" aria-label="Copy code"><span class="md-copy-icon">⧉</span><span class="md-copy-feedback">Copied!</span></button>
+<pre><code class="language-julia">@integrate(sin(x), (x, 0, π))</code></pre>
+</div>
+<pre class="md-output md-output-text"><code class="nohighlight ansi">2.0</code></pre>
+</div>
+<p>The bounds of a definite integral are evaluated, so a bound in the variable of a later integral is quoted. Over the region between y = x² and y = x for 0 ≤ x ≤ 1:</p>
+<div class="md-multi-output">
+<div class="md-code-block">
+<button class="md-copy-btn" title="Copy to clipboard" aria-label="Copy code"><span class="md-copy-icon">⧉</span><span class="md-copy-feedback">Copied!</span></button>
+<pre><code class="language-julia">@integrate(x + y, (y, :(x^2), :x), (x, 0, 1))</code></pre>
+</div>
+<pre class="md-output md-output-text"><code class="nohighlight ansi">0.15</code></pre>
+</div>
 <h2 id="Non-elementary-integrals" class="md-heading">Non-elementary integrals<a href="#Non-elementary-integrals" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
 <p>Integrals that can be written with the special functions of <a href="https://github.com/JuliaMath/SpecialFunctions.jl">SpecialFunctions.jl</a> (<code class="md-code-inline">expinti</code>, <code class="md-code-inline">sinint</code>, <code class="md-code-inline">cosint</code>, <code class="md-code-inline">erf</code>, <code class="md-code-inline">erfi</code>) and <a href="https://github.com/Expander/PolyLog.jl">PolyLog.jl</a> (<code class="md-code-inline">li2</code>) are returned that way, when the term type has methods for them (SymbolicUtils does):</p>
 <div class="md-multi-output">
@@ -300,6 +324,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=208c71cf"></script>
+  <script src="../assets/materialdocs.js?v=6c22e93e"></script>
 </body>
 </html>
