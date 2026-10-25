@@ -1779,13 +1779,16 @@ end
     @test string(integrate(asin(x / a) ^ 2 / sqrt(a ^ 2 - x ^ 2), x)) == "(1/3)*asin(x/a)^3"
 end
 
-# step LS: a sum term by term, grouped by radicals (Rubi 219); step EP: (bʷ)^r = b^(w r) (Rubi 1533)
+# step LS: a sum term by term, grouped by radicals (Rubi 219, 220); step EP: (bʷ)^r = b^(w r) (Rubi 1533)
 @testset "sums term by term (step LS); (bʷ)^r (step EP)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
     ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
     for f in (:(1 / x + (1 + 1 / x) / (x + log(x)) ^ (3 // 2)),
               :((log(x) ^ 2 + 2 * x * log(x) + x ^ 2 + (x + 1) * sqrt(x + log(x))) / (x * (x + log(x)) ^ 2)),
-              :(cos((3x) / 2) / (3 ^ (3x)) ^ (1 // 4)), :(x * sqrt(exp(2x))))
+              :(cos((3x) / 2) / (3 ^ (3x)) ^ (1 // 4)), :(x * sqrt(exp(2x))),
+              # step US with θ = log x, exp x linear in u's radicand: θ = U^m - x (Rubi 220)
+              :((log(x) ^ 2 + 2 * x * log(x) + x ^ 2 + (x + 1) * sqrt(x + log(x))) / (x * log(x) ^ 2 + 2 * x ^ 2 * log(x) + x ^ 3)),
+              :((1 + exp(x)) / (x ^ 2 + 2 * x * exp(x) + exp(2x))), :((1 + exp(x)) / ((x + exp(x)) * (exp(x) + x) ^ (1 // 3))))
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)
         for x0 in (0.7, 1.6)
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)

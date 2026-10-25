@@ -9,6 +9,9 @@
 # (of u only) are put back. For u = v^e (a radical) also v = U^(1/e) and v^(ke) = U^k, for
 # u = x^k also x^(mk) = U^m. G is the constant printed with u ↦ x (the variable x stands for U,
 # as in `integrate_arcsin`), integrated in x (verified there), and the answer printed with x ↦ u.
+# When v (u = v^(1/m), or u itself, m = 1) is a + b·θ with θ = log(w) or exp(w) and a, b free of θ, θ is
+# U^m - a over b wherever it occurs, so v in another form is still seen as U^m (u = √(x + log x) for
+# (x + 1)√(x + log x)/(x log² x + 2x² log x + x³), Rubi 220).
 # ---------------------------------------------------------------------------
 const USUB_DEPTH = Ref(0)       # nesting of substitutions (at most 2)
 
@@ -133,13 +136,66 @@ function usub_hook(u, xk::String)
         nothing
     end
     only_in_u(t) = upow(t) !== nothing || (isnode(t) ? all(only_in_u, arguments(t)) : string(t) != xk)
+    m = rp === nothing ? 1 : intk(inv(e0))
+    lin = m === nothing ? nothing : linear_theta(rp === nothing ? u : rp[2], xk)
     function hook(t, T)
         k = upow(t)
         k === nothing || return sym_const(T, u)^k
+        if lin !== nothing && string(t) == lin[1]          # θ = (U^m - a)/b
+            r = sym_const(T, u)^m
+            for a in lin[2]
+                r, ae = unify(T, r, parse_tower(a, T))
+                r -= ae
+            end
+            B = nothing
+            for fs in lin[3]
+                c = nothing
+                for (fa, e) in fs
+                    fe = parse_tower(fa, T)^abs(e)
+                    c = c === nothing ? (e > 0 ? fe : inv(fe)) : fold_op(T, e > 0 ? (*) : (/), Any[c, fe])
+                end
+                B = B === nothing ? c : fold_op(T, +, Any[B, c])
+            end
+            return fold_op(T, /, Any[r, B])
+        end
         (isnode(t) && depends_on(t, xk) && only_in_u(t)) || return nothing
         sym_const(T, t)                                     # a function of u only: opaque
     end
     hook, upow
+end
+
+# v = a + b·θ, θ = log(w) or exp(w) depending on x, a and b free of θ, not both free of x: (θ's string, the terms of a, the terms of
+# b as factor lists [(factor, exponent)]), or nothing
+function linear_theta(v, xk::String)
+    isnode(v) || return nothing
+    ts = opname(operation(v)) === :+ ? arguments(v) : Any[v]
+    istheta(t) = isnode(t) && depends_on(t, xk) && (opname(operation(t)) in (:log, :exp) ||
+                 (opname(operation(t)) === :^ && is_e_const(arguments(t)[1])))
+    cands = Any[]
+    walk(t) = (istheta(t) && push!(cands, t); isnode(t) && foreach(walk, arguments(t)))
+    walk(v)
+    for θ in cands
+        θs = string(θ)
+        as, bs = Any[], Any[]
+        for t in ts
+            if !occursin(θs, string(t))
+                push!(as, t)
+                continue
+            end
+            fs = product_factors!(Any[], t, 1)
+            j = findall(((f, _),) -> string(f) == θs, fs)
+            (length(j) == 1 && fs[j[1]][2] == 1) || (bs = nothing; break)
+            rest = [fs[i] for i in eachindex(fs) if i != j[1]]
+            any(((f, _),) -> occursin(θs, string(f)), rest) && (bs = nothing; break)
+            isempty(rest) && (rest = Any[(1, 1)])
+            push!(bs, rest)
+        end
+        (bs === nothing || isempty(bs)) && continue
+        # a, b free of x: u = θ covers it (and gives the better answer: ₂F₁ of e^(nx) for (a + b e^(nx))^q)
+        (any(t -> depends_on(t, xk), as) || any(fs -> any(((f, _),) -> depends_on(f, xk), fs), bs)) || continue
+        return (θs, as, bs)
+    end
+    nothing
 end
 
 # subterms of f to try as u (outermost first): not x, not f, not of degree ≤ 1 in x
