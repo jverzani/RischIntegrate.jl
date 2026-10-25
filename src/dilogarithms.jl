@@ -7,6 +7,8 @@
 # the normal algorithm. Printed with `PolyLog.li2`, which the symbolic package must support.
 # (ρ, a, b, c in the constant field: ℚ, or a parameter field ℚ(a, …) (∫ log(x)/(a + bx)); there the sign
 # of K is taken at the parameter values of `param_value`, a = 1, b = 2, …, as for the step PQ forms)
+# Poles in pairs: c, c̄ ∈ ℚ(i) (`DilogPairTerm`), c, c̄ ∈ ℚ(√d) real (`DilogQuadTerm`); θ = log of a product of
+# linear factors: step LF (`DilogGroup`).
 struct DilogTerm
     ρ::Any
     a::Any
@@ -27,28 +29,77 @@ struct DilogPairTerm
     c::QI
     deriv::Any
 end
+# A pair of simple real poles c, c̄ = (-B ± √Δ)/2 ∈ ℚ(√d) \ ℚ (a factor x² + B x + C of the denominator, Δ > 0 not a
+# square), residues ρ, ρ̄ ∈ ℚ(√d): the DilogTerm formulas for each, over ℚ(√d) (∫ log(x² - 1)/(x² - 2) after
+# step LF; deriv: (ρ/(x - c) + ρ̄/(x - c̄)) θ).
+struct DilogQuadTerm
+    ρ::Any
+    a::Any
+    b::Any
+    c::Any
+    deriv::Any
+end
+qconj(x::QSB{D,B}) where {D,B} = QSB{D,B}(x.a, -x.b)
+
+# Step LF: θ = log u with u = l ∏ (x - rⱼ)^eⱼ (rⱼ ∈ ℚ, more than one factor, l put into a factor with eⱼ = ±1; log(t² - 1)
+# after t = √(1 + x), log((t² - 1)/(2t)) after the Euler substitution for √(x² + 1)): θ = Σ eⱼ log(x - rⱼ) where every x - rⱼ > 0, and each pole gives the terms above for each
+# log(x - rⱼ), weighted by eⱼ, in one `DilogGroup` with the derivative ρ θ/(x - c) (a pole c = rⱼ: ½ log²(x - rⱼ))
+struct DilogGroup
+    terms::Vector{Any}
+    deriv::Any
+end
+
+# the linear factors (a, b, e) of u, u = Π (a x + b)^e, or nothing
+function dilog_factors(u::Frac{UPoly{C}}) where {C}
+    (isone(u.den) && degree(u.num) == 1) && return [(u.num.c[2], u.num.c[1], 1)]
+    C === Q || return nothing
+    out = Tuple{Q,Q,Int}[]
+    for (P0, sgn) in ((u.num, 1), (u.den, -1)), (g, m) in squarefree(monic(P0))
+        degree(g) == 0 && continue
+        for h in factor_Q(g)
+            degree(h) == 1 || return nothing
+            push!(out, (Q(1), h.c[1], sgn * m))
+        end
+    end
+    length(out) >= 2 || return nothing
+    # the leading coefficient l into a factor with exponent ±1: l (x - r) = l x - l r, (x - r)⁻¹/l = (l x - l r)⁻¹
+    l = lc(u.num) / lc(u.den)
+    if !isone(l)
+        j = findfirst(((_, _, e),) -> abs(e) == 1, out)
+        j === nothing && return nothing
+        a, b, e = out[j]
+        out[j] = (a * l, b * l, e)
+    end
+    out
+end
+
 function dilog_split(T::Tower, i::Int, p::UPoly)
     C = ctype(T)
     ((C === Q || real_param_field(C)) && i == 1 && T.levels[1].kind === :log && degree(p) == 1) || return nothing
-    u = T.levels[1].arg
-    (isone(u.den) && degree(u.num) == 1) || return nothing
-    b, a = u.num.c
+    facs = dilog_factors(T.levels[1].arg)
+    facs === nothing && return nothing
+    single = length(facs) == 1
     r = p.c[2]                                          # coefficient of θ, ∈ ℚ(x)
     D1 = r.den
     terms = Any[]
     simple = zero(r)
-    xp = xpoly(Q)
     θ = frac(xpoly(T.Ts[1]))
+    # the terms for one pole (pair) over the factors, as one term (one factor) or a DilogGroup
+    function add!(mkterm, rs)
+        ts = Any[mkterm(a, b, e) for (a, b, e) in facs]
+        any(isnothing, ts) && return
+        simple = simple + rs
+        dv = liftto(T, rs, 1) * θ
+        push!(terms, single ? ts[1](dv) : DilogGroup(Any[t(nothing) for t in ts], dv))
+    end
     for c in constant_roots(D1)
         lin = UPoly{C}(C[-c, one(C)])
         iszero(rem(D1, lin * lin)) && continue           # not a simple pole
-        K = a * c + b
-        iszero(K) && continue                            # log(a s)/s: elementary
         ρ = peval(r.num, c) / peval(deriv(D1), c)
         iszero(ρ) && continue
-        rs = frac(UPoly{C}(C[ρ]), lin)
-        simple = simple + rs
-        push!(terms, DilogTerm(ρ, a, b, c, liftto(T, rs, 1) * θ))
+        # K = a c + b = 0, log(a s)/s: elementary for one factor (the normal algorithm), ½ log²(a s) in a group
+        add!((a, b, e) -> (single && iszero(a * c + b)) ? nothing : (dv -> DilogTerm(e * ρ, a, b, c, dv)),
+             frac(UPoly{C}(C[ρ]), lin))
     end
     if C === Q                                          # pairs of poles in ℚ(i) (C = ℚ only)
         D1i = UPoly{QI}(QI[QI(c, Q(0)) for c in D1.c])
@@ -62,9 +113,24 @@ function dilog_split(T::Tower, i::Int, p::UPoly)
             cb = QI(c.re, -c.im)
             num_ = UPoly{Q}(Q[-2 * (ρ * cb).re, 2ρ.re])
             den_ = UPoly{Q}(Q[c.re^2 + c.im^2, -2c.re, Q(1)])
-            rs = frac(num_, den_)
-            simple = simple + rs
-            push!(terms, DilogPairTerm(ρ, Q(a), Q(b), c, liftto(T, rs, 1) * θ))
+            add!((a, b, e) -> (dv -> DilogPairTerm(QI(Q(e), Q(0)) * ρ, Q(a), Q(b), c, dv)), frac(num_, den_))
+        end
+        # pairs of real poles in ℚ(√d)
+        for (g0, m) in squarefree(monic(D1)), g in (m == 1 && degree(g0) >= 2 ? factor_Q(g0) : ())
+            degree(g) == 2 || continue                  # (factor_Q needs a squarefree polynomial)
+            C0, B0 = g.c[1], g.c[2]
+            Δ = B0^2 - 4C0
+            Δ > 0 || continue
+            sq, dd = sqfree_split(numerator(Δ) * denominator(Δ))
+            isone(dd) && continue
+            Sd = QS{Int(dd)}
+            rt = Sd(-B0 / 2, Q(sq, denominator(Δ)) / 2)      # (-B + √Δ)/2
+            toS(q) = UPoly{Sd}(Sd[Sd(cc, Q(0)) for cc in q.c])
+            ρ = peval(toS(r.num), rt) / peval(toS(deriv(D1)), rt)
+            iszero(ρ) && continue
+            ρc, cc = qconj(ρ), qconj(rt)
+            num_ = UPoly{Q}(Q[-(ρ * cc + ρc * rt).a, (ρ + ρc).a])
+            add!((a, b, e) -> (dv -> DilogQuadTerm(Sd(Q(e), Q(0)) * ρ, Sd(a, Q(0)), Sd(b, Q(0)), rt, dv)), frac(num_, g))
         end
     end
     isempty(terms) && return nothing
@@ -77,8 +143,13 @@ function dilog_term(b::Builder, q::DilogTerm)
     st = poly_term(b, UPoly{C}(C[-q.c, one(C)]))       # s = x - c
     K = q.a * q.c + q.b
     li(z) = mk(b, :li2, z)          # a MethodError if the symbolic package has no method for li2
+    if iszero(K)                                        # ρ ½ log²(a s) (a group of step LF)
+        as = isone(q.a) ? st : mk(b, :*, cterm(b, q.a), st)
+        core = mk(b, :*, cterm(b, Q(1) // 2), mk(b, :^, mk(b, :log, as), b.lift(2)))
+        return isone(q.ρ) ? core : mk(b, :*, cterm(b, q.ρ), core)
+    end
     Kr = crational(K)
-    Kpos = Kr !== nothing ? Kr > 0 : (v = param_value(K, b.consts); v !== nothing && v > 0)
+    Kpos = Kr !== nothing ? Kr > 0 : K isa QSB ? qs_float(K) > 0 : (v = param_value(K, b.consts); v !== nothing && v > 0)
     if Kpos
         L = li(mk(b, :*, cterm(b, -q.a / K), st))
         core = isone(K) ? mk(b, :*, b.lift(-1), L) :           # log K · ½ log(s²) - Li₂(-a s/K)
@@ -91,6 +162,15 @@ function dilog_term(b::Builder, q::DilogTerm)
     end
     isone(q.ρ) ? core : mk(b, :*, cterm(b, q.ρ), core)
 end
+
+qs_float(x::QS{D}) where {D} = Float64(x.a) + Float64(x.b) * sqrt(Float64(D))
+dilog_group_term(b::Builder, q::DilogGroup) = mk(b, :+, Any[dilog_out(b, t) for t in q.terms]...)
+dilog_out(b::Builder, q::DilogTerm) = dilog_term(b, q)
+dilog_out(b::Builder, q::DilogPairTerm) = dilog_pair_term(b, q)
+dilog_out(b::Builder, q::DilogQuadTerm) = dilog_quad_term(b, q)
+dilog_quad_term(b::Builder, q::DilogQuadTerm) =
+    mk(b, :+, dilog_term(b, DilogTerm(q.ρ, q.a, q.b, q.c, nothing)),
+              dilog_term(b, DilogTerm(qconj(q.ρ), q.a, q.b, qconj(q.c), nothing)))
 
 function dilog_pair_term(b::Builder, q::DilogPairTerm)
     K = QI(q.a, Q(0)) * q.c + QI(q.b, Q(0))

@@ -1647,6 +1647,27 @@ end
     @test F isa Risch.IntegralWithRootSums && occursin("impolylog(3", string(F))
 end
 
+# step DL with real poles in ℚ(√d) (`DilogQuadTerm`) and logs of products of linear factors (step LF): after the
+# substitutions for √(1 + x), √(x² + 1), √(1 + √(1 + x)) (Rubi 181, 182); step AP with log²
+@testset "dilogarithms: poles in ℚ(√d), logs of products (steps DL, LF)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    Main.eval(:(const li2 = $(Risch.li2)))
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for (f, pts) in ((:(log(x - 1) / (x ^ 2 - 2)), (1.2, 3.0)), (:(log(x ^ 2 - 1) / (x ^ 2 - 2)), (1.2, 3.0)),
+                     (:(log(x ^ 2 - 1) / x), (1.5, 3.0)), (:(log(x ^ 2 - 1) / (x - 1)), (1.5, 3.0)),
+                     (:(log(x ^ 2 - 1) / (x ^ 2 * (x ^ 2 - 2))), (1.5, 3.0)), (:(log(x) / (x * sqrt(1 + x))), (0.5, 2.0)),
+                     (:(log(x) / (x * sqrt(x ^ 2 + 1))), (0.5, 2.0)), (:(log(x) * sqrt(x ^ 2 + 1) / x), (0.5, 2.0)),
+                     (:(log(1 + x) / (x * sqrt(1 + sqrt(1 + x)))), (0.5, 2.0)),
+                     (:((log(1 + x) / x) * sqrt(1 + sqrt(1 + x))), (0.5, 2.0)),
+                     (:(x * log(x) ^ 2 / sqrt(x ^ 2 + 1)), (0.5, 2.0)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("li2", string(F))
+        for x0 in pts
+            @test isapprox(real(ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+end
+
 # step DL with a pair of poles c, c̄ ∈ ℚ(i): Re, Im Li₂(v/|K| e^(-i arg K)); with u = exp(x), Rubi 200
 @testset "log(a x + b)·r(x) with complex poles (step DL)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
