@@ -56,3 +56,17 @@ SymbolicIntegration.jl, with Symbolics terms: the number of the 175 problems of
 integrates with an answer that checks out numerically. The [comparison](https://rawcdn.githack.com/jverzani/RischIntegrate.jl/bed5aa02a6d98a833ac6bcbfd986f3ab3c104b01/benchmark/apostol/results/apostol_comparison.html) also has
 RischIntegrate with SymEngine, `Expr`, SimpleExpressions and Giac.jl terms, and Giac's own
 `integrate`.
+
+The 1680 sample problems compiled by SymbolicIntegration.jl (from the test suite of Rubi) give a wider comparison. Each system integrates every problem, with a limit of 60 s per problem, and an answer counts as verified when its derivative matches the integrand numerically at two points (parameters set to fixed positive values). An answer that only fails there because it is written for the real line (ln|u|, sign(u)) and the points are outside its domain was checked again at two real points of the domain. Answers may contain special functions, as Rubi's do.
+
+| System | Verified (of 1680) | Unevaluated | Timed out | Total time | Median time (verified) |
+|:---|---:|---:|---:|---:|---:|
+| RischIntegrate (`Expr` terms) | 1641 (97.7%) | 33 | 0 | 3.6 min | < 0.005 s |
+| Giac 2.0.0 (Giac.jl 0.14.3) | 1534 (91.3%) | 127 | 0 | 0.3 min | < 0.005 s |
+| SymPy 1.14.0 (SymPyPythonCall 0.5.1) | 1333 (79.3%) | 251 | 63 | 84 min | 0.03 s |
+
+Notes:
+
+- "Unevaluated" counts refusals: `NotElementary` or `RischNotImplemented` for RischIntegrate (4 of its 33 are problems Rubi itself leaves unintegrated), an unevaluated integral for Giac and SymPy.
+- RischIntegrate's 6 others are 5 answers that the check misjudges by floating-point cancellation (they verify in `BigFloat` arithmetic) and 1 answer with a `RootSum` over a symbolic parameter, which cannot be evaluated numerically. Giac's 19 others are 9 answers that still fail the check and 10 whose integrand is real at none of the points tried. SymPy's 33 others are 24 wrong answers (∫ 1/(a x² + b x + c) = 0, ∫ 1/(x⁶ - 2) with only the real logarithms, ...), 5 with no real points, and 4 errors.
+- SymPy's parameters were declared positive. Times are wall-clock on an Apple M4, run in one process per system (compilation included); for Giac and SymPy they include the numerical check.
