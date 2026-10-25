@@ -328,6 +328,36 @@ Base.show(io::IO, s::ScaledRootSum) = print(io, "(", s.factor, ")*", s.rs)
 rs_value(s::ScaledRootSum, xk::String, a) = term_value(s.factor, xk, a) * rs_value(s.rs, xk, a)
 rs_value_continuous(s::ScaledRootSum, xk::String, a::Real) = term_value(s.factor, xk, a) * rs_value_continuous(s.rs, xk, a)
 
+# an answer with its variable substituted (a substitution step putting u back): the elementary part by the term
+# map `back`, a RootSum with its variable standing for back(x) (`arg`), a TermRootSum with `back` applied to its
+# coefficients; nothing when a part cannot be substituted (an `ExprTerm`)
+function subst_answer(F, back, bd::Builder)
+    F isa IntegralWithRootSums || return back(F)
+    rss = Any[rootsum_subst(r, back, bd) for r in F.rootsums]
+    any(isnothing, rss) && return nothing
+    IntegralWithRootSums(back(F.elementary), rss, F.var)
+end
+rootsum_subst(r::TermRootSum, back, bd::Builder) =
+    TermRootSum(r.poly, Any[c === nothing ? nothing : c isa Tuple ? map(t -> t === nothing ? nothing : back(t), c) : back(c)
+                            for c in r.coeffs], r.var, r.pterms)
+function rootsum_subst(r::ScaledRootSum, back, bd::Builder)
+    s = rootsum_subst(r.rs, back, bd)
+    s === nothing ? nothing : ScaledRootSum(back(r.factor), s)
+end
+function rootsum_subst(r::RootSum{C}, back, bd::Builder) where {C}
+    a = back(r.arg === nothing ? bd.x : r.arg)
+    RootSum{C}(r.poly, r.W, safe_iscall(a) ? "($a)" : string(a), a)
+end
+rootsum_subst(r, back, bd::Builder) = nothing
+
+# the sum of answers, some of them with RootSums
+function add_answers(bd::Builder, Fs, xk::String)
+    els = Any[F isa IntegralWithRootSums ? F.elementary : F for F in Fs]
+    E = length(els) == 1 ? els[1] : mk(bd, :+, els...)
+    any(F -> F isa IntegralWithRootSums, Fs) || return E
+    IntegralWithRootSums(E, Any[rs for F in Fs if F isa IntegralWithRootSums for rs in F.rootsums], xk)
+end
+
 has_leaf(t, yk::String) = safe_iscall(t) && !isempty(arguments(t)) ? any(a -> has_leaf(a, yk), arguments(t)) :
                           string(t) == yk
 depends_on(rs::RootSum, yk::String) = rs.var == yk || (rs.arg !== nothing && has_leaf(rs.arg, yk))

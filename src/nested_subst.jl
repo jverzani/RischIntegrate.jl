@@ -61,8 +61,8 @@ function try_nested_radical(f, x; build = nothing, lift = nothing, verify::Bool 
         G === nothing && continue
         back(t) = safe_iscall(t) && !isempty(arguments(t)) ? term_rebuild(bd, t, Any[back(a) for a in arguments(t)]) :
                   (string(t) == xk ? U : t)
-        G isa IntegralWithRootSums && return nothing    # (a RootSum in u: not mapped back)
-        return back(G)
+        r = subst_answer(G, back, bd)                   # (a RootSum in u: its variable stands for U)
+        r === nothing || return r
     end
     nothing
 end
