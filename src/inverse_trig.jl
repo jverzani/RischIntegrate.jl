@@ -374,11 +374,12 @@ function try_atan_subst(f, x; build = nothing, lift = nothing, verify::Bool = tr
 end
 
 # ---------------------------------------------------------------------------
-# Step AP: ∫ A·L by parts, L = atan(g), asin(g), …, log(g) (a function with an algebraic derivative) and A free
+# Step AP: ∫ A·Lᵏ by parts, L = atan(g), asin(g), …, log(g) (a function with an algebraic derivative) and A free
 # of L, after the usual route and steps CL, LP and AT have failed (∫ atan(2 tan x), Rubi 206;
 # ∫ asin(x)/(1 + x²)^(3/2), Rubi 235): when Q = ∫ A is elementary,
-#   ∫ A L = Q L - ∫ Q L′,
-# both integrals by the usual route (for g rational in sin, cos: step CL).
+#   ∫ A Lᵏ = Q Lᵏ - k ∫ Q Lᵏ⁻¹ L′,
+# both integrals by the usual route (for g rational in sin, cos: step CL; ∫ x log²x/√(x² + 1): k = 2, then dilogarithms
+# by steps DL, LF).
 # ---------------------------------------------------------------------------
 const PARTS = Ref(false)                                # no nested integration by parts
 const PARTS_FNS = (:atan, :acot, :asin, :acos, :asec, :acsc, :asinh, :acosh, :atanh, :log)
@@ -387,15 +388,16 @@ function try_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     PARTS[] && return nothing
     xk = string(x)
-    # f = c·L·A: one factor L (to the first power), the others free of L
+    # f = c·Lᵏ·A: one factor L (to a power k ≥ 1, k > 1 for L = log only: asinᵏ(x/a)/√(a² - x²) is step US's), the
+    # others free of L; ∫ A Lᵏ = Q Lᵏ - k ∫ Q Lᵏ⁻¹ L′
     fs = product_factors!(Any[], f, 1)
-    isL(t, e) = e == 1 && safe_iscall(t) && opname(operation(t)) in PARTS_FNS && length(arguments(t)) == 1 &&
+    isL(t, e) = e >= 1 && safe_iscall(t) && (e == 1 || opname(operation(t)) === :log) && opname(operation(t)) in PARTS_FNS && length(arguments(t)) == 1 &&
                 depends_on(arguments(t)[1], xk)
     ia = findall(((t, e),) -> isL(t, e), fs)
     isempty(ia) && return nothing
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     for j in ia                                         # (several candidates: each in turn)
-        L = fs[j][1]
+        L, k = fs[j]
         Ls = string(L)
         rest = [fs[m] for m in eachindex(fs) if m != j]
         any(((t, _),) -> occursin(Ls, string(t)), rest) && continue
@@ -405,9 +407,11 @@ function try_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
             Qt = isempty(rest) ? bd.x : risch_integrate(A, x; build = build, lift = lift, verify = verify)
             Qt isa IntegralWithRootSums && return nothing
             dL = term_deriv(bd, L, xk)
-            H = risch_integrate(mk(bd, :*, Qt, dL), x; build = build, lift = lift, verify = verify)
+            Lk = k == 1 ? L : mk(bd, :^, L, bd.lift(k))
+            dLk = k == 1 ? dL : mk(bd, :*, bd.lift(k), k == 2 ? L : mk(bd, :^, L, bd.lift(k - 1)), dL)
+            H = risch_integrate(mk(bd, :*, Qt, dLk), x; build = build, lift = lift, verify = verify)
             H isa IntegralWithRootSums && return nothing
-            mk(bd, :+, mk(bd, :*, Qt, L), mk(bd, :*, bd.lift(-1), H))
+            mk(bd, :+, mk(bd, :*, Qt, Lk), mk(bd, :*, bd.lift(-1), H))
         end
         G === nothing || return G
     end
