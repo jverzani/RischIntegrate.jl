@@ -4,7 +4,9 @@
 # is split as Σ Nᵢ/D (Rubi 220). Terms with the same radicals stay together (the radical-free ones of Rubi 220
 # sum to 1/x); each group is integrated as usual, and a group that fails gives up.
 # Step EP: (bʷ)^r = b^(w r) for a positive constant base b (b ∈ ℚ, ℯ) or exp(w)^r = exp(w r), before the
-# integrand is parsed ((3^(3x))^(1/4) = 3^(3x/4), Rubi 1533).
+# integrand is parsed ((3^(3x))^(1/4) = 3^(3x/4), Rubi 1533). Also (C^s)ⁿ = C^(s n) for an integer n, over a
+# product or quotient (∏ bᵢ)ⁿ = ∏ bᵢⁿ, so a radicand with even powers of a radical is seen as rational
+# (√(1 - (x/√(1 - x²))²), from ∫ asin(x/√(1 - x²)) by parts; Rubi 265).
 # ---------------------------------------------------------------------------
 const SUM_SPLIT = Ref(0)                                # nesting (at most 2)
 
@@ -63,6 +65,21 @@ function merge_exp_powers(f, x, build, lift)
         safe_iscall(t) || return t
         args = arguments(t)
         isempty(args) && return t
+        if opname(operation(t)) === :^ && length(args) == 2 && (n = leaf_rational(args[2]); n !== nothing &&
+                                                                 isone(denominator(n)) && abs(n) > 1)
+            B = args[1]
+            rq = radical_parts(B)
+            if rq !== nothing && depends_on(rq[2], xk)  # (C^s)ⁿ = C^(s n)
+                changed = true
+                e = rq[1] * n
+                C = walk(rq[2])
+                return isone(e) ? C : mk(bd, :^, C, cterm(bd, e))
+            end
+            if safe_iscall(B) && opname(operation(B)) in (:*, :/) && has_x_radical(B, xk)   # (∏ bᵢ)ⁿ = ∏ bᵢⁿ
+                changed = true
+                return term_rebuild(bd, B, Any[walk(mk(bd, :^, b, args[2])) for b in arguments(B)])
+            end
+        end
         rp = radical_parts(t)
         if rp !== nothing
             r, B = rp
@@ -83,3 +100,4 @@ function merge_exp_powers(f, x, build, lift)
     g = walk(f)
     changed ? g : nothing
 end
+has_x_radical(t, xk::String) = !isempty(collect_radicals(t, xk))

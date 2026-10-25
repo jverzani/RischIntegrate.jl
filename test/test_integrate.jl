@@ -1668,7 +1668,8 @@ end
 end
 
 # step AP: ∫ A·L by parts, L = asin, log, atan, … of an algebraic argument, A free of L with an elementary
-# integral Q: ∫ A L = Q L - ∫ Q L′ (Rubi 230, 234, 235, 236, 240, 1021, 1669, 1673)
+# integral Q: ∫ A L = Q L - ∫ Q L′ (Rubi 230, 234, 235, 236, 240, 1021, 1669, 1673); with step EP's (√R)² = R in
+# L′ (Rubi 265)
 @testset "A·L by parts, L = asin, log, … (step AP)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
     ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
@@ -1677,7 +1678,8 @@ end
                      (:(log(x + sqrt(x ^ 2 - 1)) / (1 + x ^ 2) ^ (3 // 2)), (1.3, 2.7)),
                      (:(x ^ 3 * (asin(x) / sqrt(1 - x ^ 4))), (0.3, 0.7)), (:(x ^ 3 * asin(x ^ 2)), (-0.5, 0.3, 0.7)),
                      (:(asin(sqrt(1 - x ^ 2)) / sqrt(1 - x ^ 2)), (0.3, 0.7)), (:(asin(tanh(x)) * exp(x)), (0.3, -0.7)),
-                     (:(sin(x) * atan(sqrt(sec(x) - 1))), (0.3, 1.2)), (:(acot(x) / x ^ 2), (0.3, 1.2)))
+                     (:(sin(x) * atan(sqrt(sec(x) - 1))), (0.3, 1.2)), (:(acot(x) / x ^ 2), (0.3, 1.2)),
+                     (:(asin(x / sqrt(1 - x ^ 2))), (-0.5, 0.3, 0.6)), (:(sqrt(sqrt(1 - x ^ 2) ^ 2 - x ^ 2)), (0.3, 0.6)))
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)
         for x0 in pts
             @test isapprox(real(ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
