@@ -7,20 +7,17 @@
 
 This is
 
-> Symbolic integration following Bronstein, [*Symbolic Integration I: Transcendental Functions*](https://books.google.com.sg/books?id=pwQyR3hayFMC&printsec=copyright#v=onepage&q&f=false), for any symbolic term type that implements the TermInterface.jl methods `iscall`, `operation` and `arguments` (SimpleExpressions.jl, SymEngine.jl, `Expr`, ...). Only very light dependencies are required: all algebra is done by this module's own exact, dependency-free polynomial / rational-function types, and results are rebuilt by calling operations as functions.
+> Symbolic integration following Bronstein, [*Symbolic Integration I: Transcendental Functions*](https://books.google.com.sg/books?id=pwQyR3hayFMC&printsec=copyright#v=onepage&q&f=false) with extensions to algebraic functions, for any symbolic term type that implements the TermInterface.jl methods `iscall`, `operation` and `arguments` (SymbolicUtils.jl, SymEngine.jl, `Expr`, ...). Only very light dependencies are required: all algebra is done by this module's own exact, dependency-free polynomial / rational-function types, and results are rebuilt by calling operations as functions.
 
-This was completely implemented by Claude Code, which presumably had "read" the book.
+This was implemented by Claude Code, which presumably had "read" the book and then some.
 
-The repository https://github.com/JuliaSymbolics/SymbolicIntegration.jl was not consulted. It too has an implementation of the algorithm, but is loosely coupled with Symbolics. The goal here was to relax that dependence.
+`Symbolics.jl` has the package [SymbolicIntegration.jl](https://github.com/JuliaSymbolics/SymbolicIntegration.jl) supporting symbolic integration. The code base was not specifically consulted here, but its compilation of 1680 sample integration problems was extremely useful in the development of this package.
 
-Beyond the transcendental case, version 1.1 integrates many algebraic integrands (radicals of rational
-functions, including hyperelliptic and Kummer cases, nested radicals, radicals of exponential and
-trigonometric functions and radicands with symbolic parameters), along the lines Bronstein's unwritten
-*Symbolic Integration II* would have taken (see `SI2_PLAN.md`), and gives non-elementary answers with
-special functions where they are standard (Ei, Si, Ci, Shi, Chi, erf, Li₂, Γ, ₁F₁, ₂F₁).
 
-The entry points are `integrate`, for the terms of a symbolic package, and the macro `@integrate`, for Julia
-expressions.
+
+Bronstein's book covers the transcendental case, but this package also integrates many algebraic integrands (radicals of rational functions, including hyperelliptic and Kummer cases, nested radicals, radicals of exponential and trigonometric functions and radicands with symbolic parameters), along the lines Bronstein's unwritten *Symbolic Integration II* would have taken (see `SI2_PLAN.md`). The package also gives non-elementary answers with special functions where they are standard (Ei, Si, Ci, Shi, Chi, erf, Li₂, Γ, ₁F₁, ₂F₁).
+
+The entry points are `integrate`, for the terms of a symbolic package, and the macro `@integrate`, for CAS-independent integration.
 
 ## Example
 
@@ -32,8 +29,7 @@ integrate(exp(x) / (exp(x) + 1)^2, x) # indefinite, -1/(1 + exp(x))
 integrate(sin(x), (x, 0, pi))         # definite, 2
 ```
 
-Without a symbolic package, the macro `@integrate` integrates Julia expressions; other names are
-parameters, and `$v` puts in the value of a variable `v`:
+As `Expr` objects support `TermInterface`, we can integrate without a symbolic package. The macro `@integrate` integrates Julia expressions; other names are parameters, and `$v` puts in the value of a variable `v`:
 
 ```{julia}
 using RischIntegrate
@@ -52,9 +48,6 @@ rectangle, a bound in the variable of an outer integral must be quoted. Over the
 @integrate(x * y, (x, 0, y), (y, 0, 1))               # UndefVarError: y is evaluated, not quoted
 ```
 
-See the [documentation](https://jverzani.github.io/RischIntegrate.jl/dev/) for SymbolicUtils.jl,
-Symbolics.jl, SimpleExpressions.jl and `Expr`, non-elementary integrals and RootSums.
-
 ## Comparison
 
 The apostol badge compares RischIntegrate, with SymbolicUtils terms, to the Risch method of
@@ -62,4 +55,4 @@ SymbolicIntegration.jl, with Symbolics terms: the number of the 175 problems of
 `test/test_apostol.jl` (from Apostol's *Calculus*, as collected by SymbolicIntegration.jl) each
 integrates with an answer that checks out numerically. The [comparison](https://rawcdn.githack.com/jverzani/RischIntegrate.jl/bed5aa02a6d98a833ac6bcbfd986f3ab3c104b01/benchmark/apostol/results/apostol_comparison.html) also has
 RischIntegrate with SymEngine, `Expr`, SimpleExpressions and Giac.jl terms, and Giac's own
-`integrate` for reference; see `benchmark/apostol/README.md` to rerun it.
+`integrate`.
