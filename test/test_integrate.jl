@@ -1791,6 +1791,21 @@ end
     end
 end
 
+# step NS: nested radicals, the inner radical rationalized: u = √((p x + q)/(r x + s)) or u = x + √(x² + B x + C)
+# (Rubi 192, 467, 1665)
+@testset "nested radicals (step NS)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 1.3)), e))
+    for (f, pts) in ((:(sqrt(1 / x + sqrt(1 + 1 / x))), (0.4, 1.3, 2.7)), (:(sqrt(x + sqrt(x ^ 2 + a ^ 2)) / x), (0.4, 2.7)),
+                     (:(sqrt(x + sqrt(x ^ 2 + 1)) / x), (0.4, 2.7)), (:(1 / sqrt(x + sqrt(x ^ 2 - 1))), (1.3, 2.7)),
+                     (:(sqrt(sqrt(x) + 2) / x), (0.4, 2.7)), (:(asin(sqrt((x - a) / (x + a)))), (1.5, 2.7)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in pts
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+end
+
 # step AT: atan(u) by the substitution u = tan t, then step CL (Rubi 1653, 1655, 1656, 1659)
 @testset "atan(u) by u = tan t (step AT)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
