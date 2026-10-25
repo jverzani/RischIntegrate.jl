@@ -1647,6 +1647,23 @@ end
     @test F isa Risch.IntegralWithRootSums && occursin("impolylog(3", string(F))
 end
 
+# step RC: u = x + s/x for √P, P(x) = x² S(x + s/x) (palindromic quartic with parameters, Rubi 1347); σ = √P/(x √S(u))
+# keeps the answer right for x < 0 (parameters at values with the signs of a = 1, b = 2)
+@testset "reciprocal substitution u = x + s/x (step RC)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    vals = Dict{Symbol,Any}(:a => 0.5 + 0im, :b => 1.5 + 0im)
+    subst(e) = e isa Symbol ? get(vals, e, e) : e isa Expr ? Expr(e.head, map(subst, e.args)...) : e
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $(complex(x0))), subst(e)))
+    for (f, pts) in ((:((1 - x ^ 2) / ((1 + 2 * a * x + x ^ 2) * sqrt(1 + 2 * a * x + 2 * b * x ^ 2 + 2 * a * x ^ 3 + x ^ 4))),
+                      (0.5, 2.0, -0.5, -2.0)),
+                     (:((x ^ 2 - 1) / ((x ^ 2 + a * x + 1) * sqrt(x ^ 4 + a * x ^ 3 + b * x ^ 2 + a * x + 1))), (0.5, 2.0, -0.5)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in pts
+            @test isapprox(real(ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, real(ev(f, x0)); rtol = 1e-6)
+        end
+    end
+end
+
 # step DL with real poles in ℚ(√d) (`DilogQuadTerm`) and logs of products of linear factors (step LF): after the
 # substitutions for √(1 + x), √(x² + 1), √(1 + √(1 + x)) (Rubi 181, 182); step AP with log²
 @testset "dilogarithms: poles in ℚ(√d), logs of products (steps DL, LF)" begin
