@@ -2,7 +2,8 @@
 
 The integrand is parsed into an exact differential field and integrated there by the Risch
 algorithm, following Bronstein, *Symbolic Integration I*. The answer is checked by
-differentiation in the same field, then rebuilt as a term of the user's package.
+differentiation in the same field, then rebuilt as a term of the user's package. The
+[Design notes](design.md) follow an integrand through every step in detail.
 
 ## The steps
 
