@@ -11,6 +11,7 @@ makedocs(
         "Home" => "index.md",
         "Usage" => "usage.md",
         "How it works" => "algorithm.md",
+        "Design notes" => "design.md",
         "Reference" => "reference.md",
     ],
 )
