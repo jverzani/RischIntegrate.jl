@@ -70,6 +70,8 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         r === nothing || return r
         r = try_const_scaling(f, x; build = build, lift = lift, verify = verify)   # … over ℚ(√d) (step CS)
         r === nothing || return r
+        r = try_pair_radical(f, x; build = build, lift = lift, verify = verify)   # √(g + c₁), √(g + c₂) (step PP)
+        r === nothing || return r
         r = try_reciprocal(f, x; build = build, lift = lift, verify = verify)   # u = x + s/x (step RC)
         r === nothing || return r
         r = try_tower_radical(f, x; build = build, lift = lift, verify = verify)   # √ of a tower element (step RY)

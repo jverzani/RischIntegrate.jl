@@ -378,6 +378,7 @@ order:
 | US | any | ``f = G(u)\,u'`` for a subterm ``u`` | derivative-divides, below |
 | NS | any | a radical with an inner radical ``\sqrt{R(x)}`` | ``x = X(u)`` that rationalizes the inner radical |
 | CS | any | nested radicals with coefficients in ``ℚ(\sqrt d)`` | ``x = σy`` (``σ = 1, d, 1/d``). Each radicand is written as ``κ P_0`` with ``P_0`` over ``ℚ``, so ``\sqrt{κ}`` comes out: in ``ℚ(\sqrt d)``, or ``\sqrt b\, d^{1/4}`` for ``κ = b\sqrt d``. Step IT then takes out ``d^{1/4}``. Example: ``\sqrt{\sqrt2 + \sqrt x + \sqrt{2 + \sqrt8\sqrt x + 2x}}`` |
+| PP | any | ``\sqrt{g + c_1}``, ``\sqrt{g + c_2}`` of one term ``g`` | ``w = \sqrt{x + c_1} - \sqrt{x + c_2}`` for ``g = x``. Then ``\sqrt{x + c_1} = (w + k/w)/2`` and ``\sqrt{x + c_2} = (k/w - w)/2``, with ``k = c_1 - c_2``. For ``g = h(ax + b)`` (``h`` = sec, csc, sin, cos, tan, cot, exp, sinh, cosh), first ``u = g``. Example: ``\sqrt{\sqrt{\sec x + 1} - \sqrt{\sec x - 1}}`` |
 | RC | any | ``R(x)\sqrt{P}^k``, ``P(x) = x^m S(x + s/x)`` | ``u = x + s/x`` |
 | RY | any | one radical ``y = P^{1/n}`` with ``P`` in an `exp`/`log` tower | ``\int A_r y^r = B_r y^r`` with ``B_r' + (r/n)(P'/P) B_r = A_r``, a Risch differential equation in the tower |
 | LS | any | a sum, or a quotient with a sum on top | term by term, grouping terms with the same radicals |
@@ -619,6 +620,7 @@ failures, and their comments cite the Rubi problem numbers.
 | NP | `radicals.jl` | square roots of never-positive radicands |
 | NS | `nested_subst.jl` | nested radicals by substitution |
 | CS | `constant_scaling.jl` | nested radicals over ``ℚ(\sqrt d)``: scaling and constant factors out of radicands |
+| PP | `nested_subst.jl` | pairs of square roots ``\sqrt{g + c_1}``, ``\sqrt{g + c_2}`` |
 | PL, PR, PS | `param_radicals.jl` | parameters: linearity, radicands, scaling |
 | BN | `param_radicals.jl` | binomial denominators ``x^n + c``: ``x = \lvert c\rvert^{1/n} u`` |
 | PC | `precompile.jl` | precompile workload |
