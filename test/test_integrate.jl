@@ -1789,6 +1789,17 @@ end
             @test isapprox(real(ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
         end
     end
+    # logs of quadratics with complex roots α ± iβ, poles at those roots (step DC): real forms with Re, Im Li₂, continuous
+    # on ℝ; u = sinh x for a function of cosh² x times cosh x (Pythagorean u-substitution, Rubi 201, 202)
+    Main.eval(:(const repolylog = $(Risch.repolylog); const impolylog = $(Risch.impolylog)))
+    for f in (:(log(x ^ 2 + 2) / (x ^ 2 + 2)), :(log(x ^ 2 + 1) / (x ^ 2 + 1)), :(log(x ^ 2 + 2) ^ 2), :(log(x ^ 2 + x + 1) ^ 2),
+              :(x * log(x ^ 2 + x + 1) / (x ^ 2 + x + 1)), :(x ^ 2 * log(x ^ 2 + 2) ^ 2),
+              :(log(1 + cosh(x) ^ 2) ^ 2 * cosh(x)), :(log(sinh(x) + cosh(x) ^ 2) ^ 2 * cosh(x)), :(log(2 - sin(x) ^ 2) * cos(x)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (-1.3, 0.4, 1.9)
+            @test isapprox(real(ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
     # (a double pole with residue 0: by parts only, elementary)
     for (f, x0) in ((:(log(x ^ 2 + x - 1) / x ^ 2), 1.7), (:(log(x ^ 2 - 3) / (x - 1) ^ 2), 1.9))
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)

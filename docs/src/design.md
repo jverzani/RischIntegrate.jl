@@ -328,7 +328,13 @@ At a level ``i ≥ 1`` with monomial ``θ`` over ``K = K_{i-1}`` (Bronstein ch. 
      linear factors. These include the roots of quadratics in one real ``ℚ(\sqrt d)``, for example
      ``\log(x^2 + x - 1) = \log(x - r_+) + \log(x - r_-)``. Poles of order ``j ≥ 2`` are moved by
      parts: ``θ\,c/(x - c_0)^j = (Eθ)' - Eθ'`` with ``E = -c/((j - 1)(x - c_0)^{j-1})``, and the
-     rational term ``-Eθ'`` joins the coefficient of ``θ^0``. Each pair of complex poles ``c, \bar c`` contributes twice the real part of
+     rational term ``-Eθ'`` joins the coefficient of ``θ^0``.
+     **Step DC** handles a quadratic factor ``Q = (x - α)^2 + β^2`` with complex roots
+     ``c = α ± iβ`` and poles of the coefficient at those roots. Its integral is
+     ``2\operatorname{Re}[γ(\tfrac12\log^2(x - c) + \log(x - \bar c)\log w + \operatorname{Li}_2(\bar w))]``
+     with ``w = ½ + i(x - α)/(2β)``. Since ``\operatorname{Re} w = ½``, no `log` or ``\operatorname{Li}_2`` crosses a
+     branch cut, and the real form (`atan`, `repolylog`, `impolylog`) is continuous on ``ℝ``. An example is
+     ``\int \log(x^2 + 2)^2``. Each pair of complex poles ``c, \bar c`` contributes twice the real part of
      ``\int ρ \log v/(x - c)``. That real part uses ``\operatorname{Re}\operatorname{Li}_2`` and
      ``\operatorname{Im}\operatorname{Li}_2`` (`repolylog`, `impolylog`), and works over a
      parameter field too. The poles come from ``ℚ(i)``, or from a quadratic factor with
@@ -379,7 +385,7 @@ order:
 | HS | `NotElementary` | ``x^m(α + βx^n)^q``, ``\sin^p \cos^r``, symbolic exponents | ``{}_2F_1`` terms |
 | EH | `NotElementary` | ``e^{ax} R(\cos bx, \sin bx)`` with the poles of ``R(E)``, ``E = e^{ibx}``, in ``ℚ(i)`` | partial fractions in ``E``. Each pole gives ``\int e^{ax}/(1 - E/r)^k = e^{ax}\,{}_2F_1(k, s; s+1; E/r)/a`` with ``s = a/(ib)``. The real part is printed with `rehyp2f1` and `imhyp2f1` (``\int e^x/(1 + \cos x)``) |
 | H3, H4 | `NotElementary` | ``x^s e^{bx + d}``, ``x^s \sin``, ``x^s \cos`` | incomplete ``Γ`` terms |
-| US | any | ``f = G(u)\,u'`` for a subterm ``u`` | derivative-divides, below |
+| US | any | ``f = G(u)\,u'`` for a subterm ``u`` (and the partner ``\sinh v`` of ``\cosh v``, ``\sin v`` of ``\cos v``, …) | derivative-divides, below. With ``u = \sinh v``, even powers of ``\cosh v`` are ``(1 + u^2)^k``, and so on |
 | NS | any | a radical with an inner radical ``\sqrt{R(x)}`` | ``x = X(u)`` that rationalizes the inner radical |
 | CS | any | nested radicals with coefficients in ``ℚ(\sqrt d)`` | ``x = σy`` (``σ = 1, d, 1/d``). Each radicand is written as ``κ P_0`` with ``P_0`` over ``ℚ``, so ``\sqrt{κ}`` comes out: in ``ℚ(\sqrt d)``, or ``\sqrt b\, d^{1/4}`` for ``κ = b\sqrt d``. Step IT then takes out ``d^{1/4}``. Example: ``\sqrt{\sqrt2 + \sqrt x + \sqrt{2 + \sqrt8\sqrt x + 2x}}`` |
 | PP | any | ``\sqrt{g + c_1}``, ``\sqrt{g + c_2}`` of one term ``g`` | ``w = \sqrt{x + c_1} - \sqrt{x + c_2}`` for ``g = x``. Then ``\sqrt{x + c_1} = (w + k/w)/2`` and ``\sqrt{x + c_2} = (k/w - w)/2``, with ``k = c_1 - c_2``. For ``g = h(ax + b)`` (``h`` = sec, csc, sin, cos, tan, cot, exp, sinh, cosh), first ``u = g``. Example: ``\sqrt{\sqrt{\sec x + 1} - \sqrt{\sec x - 1}}`` |
@@ -612,7 +618,7 @@ failures, and their comments cite the Rubi problem numbers.
 | AT | `inverse_trig.jl` | `atan(u)` by ``u = \tan t`` |
 | BQ | `biquadratic.jl` | two square roots, biquadratic splitting |
 | CL | `clausen.jl` | ``x^p R(\sin, \cos)`` with Clausen functions |
-| DL, LF | `dilogarithms.jl` | dilogarithms |
+| DL, LF, DC | `dilogarithms.jl` | dilogarithms; logs of quadratics with complex roots |
 | DN | `denest.jl` | denesting square roots |
 | EC, EL, RL, TL | `real_log_arguments.jl` | real arguments of logarithms |
 | EP, LS | `linearity.jl` | exponent merging; term-by-term integration |

@@ -53,6 +53,25 @@ struct DilogGroup
     deriv::Any
 end
 
+# Step DC: a factor Q = (x - α)² + β² of u with complex roots c, c̄ = α ± iβ (α, β² ∈ ℚ; log(u² + 2), log(u² + u + 1)
+# after u = sinh x, Rubi 201, 202). With poles of r at c, c̄ (residues γ, γ̄), ∫ log Q (γ/(x - c) + γ̄/(x - c̄)) is
+#   2 Re[γ (½ log²(x - c) + log(x - c̄) log w + Li₂(w̄))],  w = (c - x)/(c - c̄) = ½ + i(x - α)/(2β),
+# (log(x - c)/(x - c) and log(x - c̄)/(x - c) = d/dx[log(x - c̄) log w + Li₂(w̄)]); Re w = ½, so no log or Li₂ crosses a
+# branch cut: continuous on ℝ. With A = ½ log((x - α)² + β²), Φ = atan((x - α)/β), Θ = Φ - π/2 (= arg(x - c)):
+#   Re S = ½(A² - Θ²) + A(A - log 2β) + ΘΦ + Re Li₂(ρ e^(-iΦ)),  Im S = AΘ + AΦ - Θ(A - log 2β) + Im Li₂(ρ e^(-iΦ)),
+# ρ = √((x - α)² + β²)/(2β), and the term is 2e(Re γ Re S - Im γ Im S) for log Qᵉ.
+struct ConjFactor
+    α::Q
+    b2::Q                                               # β²
+end
+struct DilogConjTerm
+    γ::Any                                              # the residue at c, in ℚ(√D), D < 0 (c = α + s√D)
+    s::Q                                                # β = s √|D|
+    f::ConjFactor
+    e::Int
+    deriv::Any
+end
+
 # the linear factors (a, b, e) of u, u = Π (a x + b)^e, or nothing; over ℚ(√d) when u has irreducible quadratic
 # factors with real roots in one ℚ(√d) (log(t² + t - 1) = log(t - r₊) + log(t - r₋), r± = (-1 ± √5)/2, Rubi 204)
 function dilog_factors(u::Frac{UPoly{C}}) where {C}
@@ -70,7 +89,10 @@ function dilog_factors(u::Frac{UPoly{C}}) where {C}
             degree(h) == 2 || return nothing
             C0, B0 = h.c[1], h.c[2]
             Δ = B0^2 - 4C0
-            Δ > 0 || return nothing
+            if Δ < 0                                    # complex roots α ± iβ: log of the factor kept whole
+                push!(out, (ConjFactor(-B0 / 2, -Δ / 4), nothing, sgn * m))
+                continue
+            end
             sq, d = sqfree_split(numerator(Δ) * denominator(Δ))
             (dd === nothing || dd == d) || return nothing
             dd = d
@@ -80,7 +102,9 @@ function dilog_factors(u::Frac{UPoly{C}}) where {C}
             end
         end
     end
-    length(out) >= 2 || return nothing
+    nconj = count(((a, _, _),) -> a isa ConjFactor, out)
+    (length(out) >= 2 || nconj == 1) || return nothing
+    (nconj > 0 && dd !== nothing) && return nothing     # (complex and real irrational roots together)
     if dd !== nothing                                   # all over ℚ(√d)
         S = QS{Int(dd)}
         toS(v) = v isa Q ? S(v, Q(0)) : v
@@ -89,7 +113,7 @@ function dilog_factors(u::Frac{UPoly{C}}) where {C}
     # the leading coefficient l into a factor with exponent ±1: l (x - r) = l x - l r, (x - r)⁻¹/l = (l x - l r)⁻¹
     l = lc(u.num) / lc(u.den)
     if !isone(l)
-        j = findfirst(((_, _, e),) -> abs(e) == 1, out)
+        j = findfirst(((a, _, e),) -> abs(e) == 1 && !(a isa ConjFactor), out)
         j === nothing && return nothing
         a, b, e = out[j]
         out[j] = (a * l, b * l, e)
@@ -156,7 +180,8 @@ function dilog_split(T::Tower, i::Int, p::UPoly)
         end
         iszero(ρ) && continue
         # K = a c + b = 0, log(a s)/s: elementary for one factor (the normal algorithm), ½ log²(a s) in a group
-        add!((a, b, e) -> (single && iszero(a * conv(c) + b)) ? nothing : (dv -> DilogTerm(conv(e * ρ), a, b, conv(c), dv)),
+        add!((a, b, e) -> (a isa ConjFactor || (single && iszero(a * conv(c) + b))) ? nothing :
+                          (dv -> DilogTerm(conv(e * ρ), a, b, conv(c), dv)),
              frac(UPoly{C}(C[ρ]), lin))
     end
     # pairs of poles c, c̄ = cr ± i ci: with r over ℚ the roots in ℚ(i) (the log's a, b may have parameters); over
@@ -166,6 +191,8 @@ function dilog_split(T::Tower, i::Int, p::UPoly)
         num_ = UPoly{C}(C[-two * (ρr * cr + ρi * ci), two * ρr])    # ρ/(x - c) + ρ̄/(x - c̄)
         den_ = UPoly{C}(C[cr * cr + ci * ci, -two * cr, one(C)])
         add!((a, b, e) -> facS ? nothing :           # (complex poles with irrational log factors: not handled)
+                          a isa ConjFactor ?                # the pole is a root of the factor itself (step DC)
+                          ((C === Q && a.α == cr && a.b2 == ci * ci) ? (dv -> DilogConjTerm(QS{-1}(ρr, ρi), ci, a, e, dv)) : nothing) :
                           (dv -> DilogPairTerm(cfromQ(C, Q(e)) * ρr, cfromQ(C, Q(e)) * ρi, a, b, cr, ci, dv)),
              frac(num_, den_))
     end
@@ -203,6 +230,26 @@ function dilog_split(T::Tower, i::Int, p::UPoly)
             add_pair!(cr, ci, ρr, ρi)
         end
     end
+    # step DC: poles at the complex roots c = α + s√D (D < 0, not ℚ(i)) of a factor Q of u, from that factor of D1
+    if C === Q && any(((a, _, _),) -> a isa ConjFactor, facs)
+        for (g0, m) in squarefree(monic(D1)), g in (m == 1 && degree(g0) >= 2 ? factor_Q(g0) : ())
+            degree(g) == 2 || continue
+            C0, B0 = g.c[1], g.c[2]
+            Δ = B0^2 - 4C0
+            Δ < 0 || continue
+            sq, dd = sqfree_split(numerator(Δ) * denominator(Δ))
+            dd == -1 && continue                        # (roots in ℚ(i): the pairs above)
+            Sd = QS{Int(dd)}
+            sc = Q(sq, denominator(Δ)) / 2
+            rt = Sd(-B0 / 2, sc)                        # c = α + iβ, β = sc √|D|
+            toS(q) = UPoly{Sd}(Sd[Sd(cc, Q(0)) for cc in q.c])
+            γ = peval(toS(r.num), rt) / peval(toS(deriv(D1)), rt)
+            iszero(γ) && continue
+            num_ = UPoly{Q}(Q[-2 * (γ * qconj(rt)).a, 2γ.a])
+            add!((a, b, e) -> (a isa ConjFactor && a.α == -B0 / 2 && a.b2 == -Δ / 4) ?
+                              (dv -> DilogConjTerm(γ, sc, a, e, dv)) : nothing, frac(num_, g))
+        end
+    end
     if C === Q
         # pairs of real poles in ℚ(√d)
         for (g0, m) in squarefree(monic(D1)), g in (m == 1 && degree(g0) >= 2 ? factor_Q(g0) : ())
@@ -220,7 +267,7 @@ function dilog_split(T::Tower, i::Int, p::UPoly)
             ρc, cc = qconj(ρ), qconj(rt)
             num_ = UPoly{Q}(Q[-(ρ * cc + ρc * rt).a, (ρ + ρc).a])
             toSd(v) = v isa QSB ? v : Sd(v, Q(0))
-            add!((a, b, e) -> (facS && !(a isa Sd)) ? nothing :     # (factors over another ℚ(√d′))
+            add!((a, b, e) -> ((facS && !(a isa Sd)) || a isa ConjFactor) ? nothing :     # (factors over another ℚ(√d′))
                               (dv -> DilogQuadTerm(Sd(Q(e), Q(0)) * ρ, toSd(a), toSd(b), rt, dv)), frac(num_, g))
         end
     end
@@ -259,6 +306,36 @@ dilog_group_term(b::Builder, q::DilogGroup) = mk(b, :+, Any[dilog_out(b, t) for 
 dilog_out(b::Builder, q::DilogTerm) = dilog_term(b, q)
 dilog_out(b::Builder, q::DilogPairTerm) = dilog_pair_term(b, q)
 dilog_out(b::Builder, q::DilogQuadTerm) = dilog_quad_term(b, q)
+dilog_out(b::Builder, q::DilogConjTerm) = dilog_conj_term(b, q)
+
+function dilog_conj_term(b::Builder, q::DilogConjTerm)
+    D = typeof(q.γ).parameters[1]
+    α, b2 = q.f.α, q.f.b2
+    m = rat_sqrt(b2)
+    βt = m === nothing ? mk(b, :sqrt, cterm(b, b2)) : cterm(b, m)
+    Xt = iszero(α) ? b.x : poly_term(b, UPoly{Q}(Q[-α, 1]))       # x - α
+    Qt = poly_term(b, UPoly{Q}(Q[α^2 + b2, -2α, 1]))               # (x - α)² + β²
+    half(t) = mk(b, :*, cterm(b, Q(1, 2)), t)
+    A = half(mk(b, :log, Qt))
+    Φ = mk(b, :atan, m === nothing ? mk(b, :/, Xt, βt) : poly_term(b, UPoly{Q}(Q[-α / m, 1 / m])))
+    Θ = mk(b, :+, Φ, mk(b, :*, cterm(b, Q(-1, 2)), b.lift(π)))
+    twoβ = m === nothing ? mk(b, :*, b.lift(2), βt) : cterm(b, 2m)
+    Bw = mk(b, :+, A, mk(b, :*, b.lift(-1), mk(b, :log, twoβ)))
+    ρ = mk(b, :/, mk(b, :sqrt, Qt), twoβ)
+    mΦ = mk(b, :*, b.lift(-1), Φ)
+    sq(t) = mk(b, :^, t, b.lift(2))
+    neg(t) = mk(b, :*, b.lift(-1), t)
+    ReS = mk(b, :+, half(mk(b, :+, sq(A), neg(sq(Θ)))), mk(b, :*, A, Bw), mk(b, :*, Θ, Φ),
+             mk(b, :ReLi, b.lift(2), ρ, mΦ))
+    ImS = mk(b, :+, mk(b, :*, A, Θ), mk(b, :*, A, Φ), neg(mk(b, :*, Θ, Bw)), mk(b, :ImLi, b.lift(2), ρ, mΦ))
+    γr = q.γ.a * q.e
+    γi_q = q.γ.b * q.e / q.s                            # Im γ = γ.b √|D| = (γ.b/s) β
+    ts = Any[]
+    sc(c, t) = isone(c) ? t : mk(b, :*, cterm(b, c), t)
+    iszero(γr) || push!(ts, sc(2γr, ReS))
+    iszero(γi_q) || push!(ts, m === nothing ? mk(b, :*, cterm(b, -2γi_q), βt, ImS) : sc(-2γi_q * m, ImS))
+    isempty(ts) ? b.lift(0) : length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
+end
 dilog_quad_term(b::Builder, q::DilogQuadTerm) =
     mk(b, :+, dilog_term(b, DilogTerm(q.ρ, q.a, q.b, q.c, nothing)),
               dilog_term(b, DilogTerm(qconj(q.ρ), q.a, q.b, qconj(q.c), nothing)))

@@ -233,6 +233,8 @@ function integrate_usub(f, x, u, bd::Builder; build, lift, verify::Bool)
     du = term_deriv(bd, u, xk)
     r = integrate_usub_trig(f, x, u, du, bd; build = build, lift = lift, verify = verify)   # u = sech v, …
     r === nothing || return r
+    r = integrate_usub_pyth(f, x, u, du, bd; build = build, lift = lift, verify = verify)   # u = sinh v, cosh² = 1 + u²
+    r === nothing || return r
     hook, upow = usub_hook(u, xk)
     T, el = build_tower(cancel_quotient(bd, f, du), xk; subst = hook)
     levelof(T, el) == 0 || return nothing
@@ -277,8 +279,17 @@ function try_usub(f, x; build, lift, verify::Bool)
     xk = string(x)
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     USUB_DEPTH[] += 1
+    # (the Pythagorean partners of sin, cos, sinh, cosh subterms too: u = sinh x for a function of cosh² x times cosh x)
+    partner = Dict(:cos => :sin, :sin => :cos, :cosh => :sinh, :sinh => :cosh)
+    cands = Any[usub_candidates(f, xk)...]
+    seen = Set(string.(cands))
+    for t in copy(cands)
+        (isnode(t) && length(arguments(t)) == 1 && haskey(partner, opname(operation(t)))) || continue
+        p = mk(bd, partner[opname(operation(t))], arguments(t)[1])
+        string(p) in seen || (push!(cands, p); push!(seen, string(p)))
+    end
     try
-        for u in usub_candidates(f, xk)
+        for u in cands
             r = try
                 integrate_usub(f, x, u, bd; build = build, lift = lift, verify = verify)
             catch e
@@ -355,6 +366,46 @@ function integrate_usub_trig(f, x, u, du, bd::Builder; build, lift, verify::Bool
     iszero(β) || push!(fs, mk(bd, :^, Pt, bd.lift(Int(numerator(β)) ÷ 2)))
     G = isempty(fs) ? bd.lift(1) : length(fs) == 1 ? fs[1] : mk(bd, :*, fs...)
     H = risch_integrate(G, x; build = build, lift = lift, verify = verify)
+    back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? u : t)
+    subst_answer(H, back, bd)
+end
+
+# u = h(v), h = sin, cos, sinh, cosh: f/u′ with h(v) ↦ U and the even powers of the companion function written in U
+# (cos² v = 1 - U², sin² v = 1 - U², cosh² v = 1 + U², sinh² v = U² - 1), other functions of x left alone only when
+# they are free of x (log(1 + cosh²x)² cosh x: u = sinh x, ∫ log(2 + U²)² dU, Rubi 201). Nothing when x remains.
+const PYTH = Dict(:sin => (:cos, 1, -1), :cos => (:sin, 1, -1), :sinh => (:cosh, 1, 1), :cosh => (:sinh, -1, 1))
+function integrate_usub_pyth(f, x, u, du, bd::Builder; build, lift, verify::Bool)
+    @nospecialize f x
+    xk = string(x)
+    (isnode(u) && length(arguments(u)) == 1) || return nothing
+    h = opname(operation(u))
+    haskey(PYTH, h) || return nothing
+    comp, c0, c2 = PYTH[h]                              # companion² = c0 + c2 U²
+    vs = string(arguments(u)[1])
+    us = string(u)
+    U = bd.x
+    sq = mk(bd, :+, bd.lift(c0), mk(bd, :*, bd.lift(c2), mk(bd, :^, U, bd.lift(2))))
+    ok = Ref(true)
+    iscomp(t) = isnode(t) && opname(operation(t)) === comp && length(arguments(t)) == 1 && string(arguments(t)[1]) == vs
+    function walk(t)
+        string(t) == us && return U
+        if !isnode(t)
+            string(t) == xk && (ok[] = false)
+            return t
+        end
+        if opname(operation(t)) === :^ && length(arguments(t)) == 2 && iscomp(arguments(t)[1])
+            k = leaf_rational(arguments(t)[2])
+            if k !== nothing && isone(denominator(k)) && iseven(numerator(k))
+                n = Int(numerator(k)) ÷ 2
+                return n == 1 ? sq : mk(bd, :^, sq, bd.lift(n))
+            end
+        end
+        iscomp(t) && (ok[] = false)
+        term_rebuild(bd, t, Any[walk(a) for a in arguments(t)])
+    end
+    g = walk(cancel_quotient(bd, f, du))
+    ok[] || return nothing
+    H = risch_integrate(g, x; build = build, lift = lift, verify = verify)
     back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? u : t)
     subst_answer(H, back, bd)
 end
