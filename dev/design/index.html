@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=42f3cad7">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=3483f7ed">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -434,7 +434,7 @@
 </li>
 </ul>
 </li>
-<li><p><strong>Special functions</strong> (Step 8a). Where step 4 proves <span class="md-math md-math-inline">\(\int a θ^j\)</span> (<span class="md-math md-math-inline">\(θ = e^U\)</span>) not elementary, the parametric Risch equation (ch. 7, <code class="md-code-inline">prde</code>) looks for <span class="md-math md-math-inline">\(a = y&#39; + jU&#39;y + \sum c_t U&#39;/(U - t) + \sum d_l θ_l^{-j} W_l&#39;/W_l [+ k]\)</span>, which integrates with <code class="md-code-inline">Ei</code> terms, and <code class="md-code-inline">erf</code>/<code class="md-code-inline">erfi</code> for a quadratic exponent at the base. At a log level with non-constant residues, <span class="md-math md-math-inline">\(\int c\,u^m u&#39;/(\log u + b)\)</span> gives <span class="md-math md-math-inline">\(\operatorname{Ei}\)</span> of a log (<code class="md-code-inline">li</code>). These terms keep their exact derivatives, so the usual check still applies.</p>
+<li><p><strong>Special functions</strong> (Step 8a). Where step 4 proves <span class="md-math md-math-inline">\(\int a θ^j\)</span> (<span class="md-math md-math-inline">\(θ = e^U\)</span>) not elementary, the parametric Risch equation (ch. 7, <code class="md-code-inline">prde</code>) looks for <span class="md-math md-math-inline">\(a = y&#39; + jU&#39;y + \sum c_t U&#39;/(U - t) + \sum d_l θ_l^{-j} W_l&#39;/W_l [+ k]\)</span>, which integrates with <code class="md-code-inline">Ei</code> terms, and <code class="md-code-inline">erf</code>/<code class="md-code-inline">erfi</code> for a quadratic exponent at the base. At a log level with non-constant residues, <span class="md-math md-math-inline">\(\int c\,u^m u&#39;/(\log u + b)\)</span> gives <span class="md-math md-math-inline">\(\operatorname{Ei}\)</span> of a log (<code class="md-code-inline">li</code>). When the denominator has several factors, partial fractions first split off each factor <span class="md-math md-math-inline">\(θ - r\)</span> with <span class="md-math md-math-inline">\(r\)</span> constant (<code class="md-code-inline">special_log_split</code>). These factors are found as the common roots of the denominator and its coefficientwise derivative. Each such piece is integrated by the usual log part if possible (for example <span class="md-math md-math-inline">\(-\log\log x\)</span>), and otherwise as <code class="md-code-inline">Ei</code>. The rest goes to the usual log part. For example, <span class="md-math md-math-inline">\(\int (2θ^2 - θ - x^2)/(θ^3 - x^2 θ)\)</span> with <span class="md-math md-math-inline">\(θ = \log x\)</span> is <span class="md-math md-math-inline">\(\operatorname{Ei}(\log x) + \tfrac12\log(x + \log x) - \tfrac12\log(\log x - x)\)</span>. These terms keep their exact derivatives, so the usual check still applies.</p>
 </li>
 </ol>
 <p>Over <span class="md-math md-math-inline">\(ℚ(i)\)</span> (trigonometric input) the integral is computed there and then put in <strong>real form</strong> (Step 7). Conjugation <span class="md-math md-math-inline">\(σ\)</span> (<span class="md-math md-math-inline">\(i ↦ -i\)</span>, with <span class="md-math md-math-inline">\(σθ = θ\)</span> for real generators and <span class="md-math md-math-inline">\(σθ = 1/θ\)</span> for <span class="md-math md-math-inline">\(θ = e^{iw}\)</span>) commutes with the derivation, so <span class="md-math md-math-inline">\(\operatorname{Re} F = (F + σF)/2\)</span> is also an antiderivative. Its real form uses <span class="md-math md-math-inline">\(\cos kw\)</span>, <span class="md-math md-math-inline">\(\sin kw\)</span>, and <span class="md-math md-math-inline">\((c \log w + σc \log σw)/2 = (c_r/2) \log(w\,σw) - c_i \operatorname{atan}(V/U)\)</span>, with <span class="md-math md-math-inline">\(c_r = (c + σc)/2\)</span>, <span class="md-math md-math-inline">\(c_i = (c - σc)/(2i)\)</span>, <span class="md-math md-math-inline">\(U = (w + σw)/2\)</span> and <span class="md-math md-math-inline">\(V = (w - σw)/(2i)\)</span>. The real form is verified again in the tower.</p>
@@ -944,6 +944,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=42f3cad7"></script>
+  <script src="../assets/materialdocs.js?v=3483f7ed"></script>
 </body>
 </html>
