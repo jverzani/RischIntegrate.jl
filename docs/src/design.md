@@ -325,7 +325,10 @@ At a level ``i ≥ 1`` with monomial ``θ`` over ``K = K_{i-1}`` (Bronstein ch. 
      integration* in ``K`` (§5.8), recursively calling `integrate_el` at level ``i - 1``. When
      that is impossible because of ``θ \log(ax + b)`` times simple rational poles, the dilogarithm
      step DL writes those terms with ``\operatorname{Li}_2``; step LF handles logs of products of
-     linear factors. Each pair of complex poles ``c, \bar c`` contributes twice the real part of
+     linear factors. These include the roots of quadratics in one real ``ℚ(\sqrt d)``, for example
+     ``\log(x^2 + x - 1) = \log(x - r_+) + \log(x - r_-)``. Poles of order ``j ≥ 2`` are moved by
+     parts: ``θ\,c/(x - c_0)^j = (Eθ)' - Eθ'`` with ``E = -c/((j - 1)(x - c_0)^{j-1})``, and the
+     rational term ``-Eθ'`` joins the coefficient of ``θ^0``. Each pair of complex poles ``c, \bar c`` contributes twice the real part of
      ``\int ρ \log v/(x - c)``. That real part uses ``\operatorname{Re}\operatorname{Li}_2`` and
      ``\operatorname{Im}\operatorname{Li}_2`` (`repolylog`, `impolylog`), and works over a
      parameter field too. The poles come from ``ℚ(i)``, or from a quadratic factor with

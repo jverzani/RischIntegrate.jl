@@ -53,19 +53,39 @@ struct DilogGroup
     deriv::Any
 end
 
-# the linear factors (a, b, e) of u, u = Π (a x + b)^e, or nothing
+# the linear factors (a, b, e) of u, u = Π (a x + b)^e, or nothing; over ℚ(√d) when u has irreducible quadratic
+# factors with real roots in one ℚ(√d) (log(t² + t - 1) = log(t - r₊) + log(t - r₋), r± = (-1 ± √5)/2, Rubi 204)
 function dilog_factors(u::Frac{UPoly{C}}) where {C}
     (isone(u.den) && degree(u.num) == 1) && return [(u.num.c[2], u.num.c[1], 1)]
     C === Q || return nothing
-    out = Tuple{Q,Q,Int}[]
+    out = Tuple{Any,Any,Int}[]
+    dd = nothing
     for (P0, sgn) in ((u.num, 1), (u.den, -1)), (g, m) in squarefree(monic(P0))
         degree(g) == 0 && continue
         for h in factor_Q(g)
-            degree(h) == 1 || return nothing
-            push!(out, (Q(1), h.c[1], sgn * m))
+            if degree(h) == 1
+                push!(out, (Q(1), h.c[1], sgn * m))
+                continue
+            end
+            degree(h) == 2 || return nothing
+            C0, B0 = h.c[1], h.c[2]
+            Δ = B0^2 - 4C0
+            Δ > 0 || return nothing
+            sq, d = sqfree_split(numerator(Δ) * denominator(Δ))
+            (dd === nothing || dd == d) || return nothing
+            dd = d
+            S = QS{Int(d)}
+            for sg in (1, -1)                           # x - r, r = (-B ± √Δ)/2
+                push!(out, (S(Q(1), Q(0)), S(B0 / 2, -sg * Q(sq, denominator(Δ)) / 2), sgn * m))
+            end
         end
     end
     length(out) >= 2 || return nothing
+    if dd !== nothing                                   # all over ℚ(√d)
+        S = QS{Int(dd)}
+        toS(v) = v isa Q ? S(v, Q(0)) : v
+        out = Tuple{Any,Any,Int}[(toS(a), toS(b), e) for (a, b, e) in out]
+    end
     # the leading coefficient l into a factor with exponent ±1: l (x - r) = l x - l r, (x - r)⁻¹/l = (l x - l r)⁻¹
     l = lc(u.num) / lc(u.den)
     if !isone(l)
@@ -83,6 +103,8 @@ function dilog_split(T::Tower, i::Int, p::UPoly)
     facs = dilog_factors(T.levels[1].arg)
     facs === nothing && return nothing
     single = length(facs) == 1
+    facS = facs[1][1] isa QSB                           # factors over ℚ(√d)
+    conv(v) = facS ? typeof(facs[1][1])(v, Q(0)) : v
     r = p.c[2]                                          # coefficient of θ, ∈ ℚ(x)
     D1 = r.den
     terms = Any[]
@@ -96,13 +118,45 @@ function dilog_split(T::Tower, i::Int, p::UPoly)
         dv = liftto(T, rs, 1) * θ
         push!(terms, single ? ts[1](dv) : DilogGroup(Any[t(nothing) for t in ts], dv))
     end
-    for c in constant_roots(D1)
+    # a pole c of order μ ≥ 2: the parts cⱼ/(x - c)ʲ, j ≥ 2, by parts, θ cⱼ/(x - c)ʲ = (Eⱼ θ)′ - Eⱼ θ′ with
+    # Eⱼ = -cⱼ/((j - 1)(x - c)^(j-1)): Eⱼ θ joins the answer (`extra`), -Eⱼ θ′ the rational coefficient (`rat0`)
+    K = typeof(r)
+    extra, rat0 = zero(K), zero(K)
+    dθ = D(T, 0, T.levels[1].arg) / T.levels[1].arg
+    for c in constant_roots(quo(D1, gcd(D1, deriv(D1))))
         lin = UPoly{C}(C[-c, one(C)])
-        iszero(rem(D1, lin * lin)) && continue           # not a simple pole
-        ρ = peval(r.num, c) / peval(deriv(D1), c)
+        μ, H = 0, D1
+        while iszero(rem(H, lin))
+            H = quo(H, lin)
+            μ += 1
+        end
+        if μ >= 2                                       # Laurent coefficients of r at c: N(c + t)/H(c + t)
+            sh(q) = foldr((a, acc) -> acc * UPoly{C}(C[c, one(C)]) + UPoly{C}(C[a]), q.c; init = zero(UPoly{C}))
+            A, B = sh(r.num), sh(H)
+            co(q, j) = j + 1 <= length(q.c) ? q.c[j + 1] : zero(C)
+            sr = C[]
+            for j in 0:(μ - 1)
+                acc = co(A, j)
+                for i2 in 0:(j - 1)
+                    acc = acc - sr[i2 + 1] * co(B, j - i2)
+                end
+                push!(sr, acc / co(B, 0))
+            end
+            for j in 2:μ                                # cⱼ = sr[μ - j + 1]
+                cj = sr[μ - j + 1]
+                iszero(cj) && continue
+                Ej = frac(UPoly{C}(C[-cj / cfromQ(C, Q(j - 1))]), lin^(j - 1))
+                extra = extra + Ej
+                rat0 = rat0 - Ej * dθ
+                simple = simple + frac(UPoly{C}(C[cj]), lin^j)
+            end
+            ρ = sr[μ]                                   # the residue
+        else
+            ρ = peval(r.num, c) / peval(deriv(D1), c)
+        end
         iszero(ρ) && continue
         # K = a c + b = 0, log(a s)/s: elementary for one factor (the normal algorithm), ½ log²(a s) in a group
-        add!((a, b, e) -> (single && iszero(a * c + b)) ? nothing : (dv -> DilogTerm(e * ρ, a, b, c, dv)),
+        add!((a, b, e) -> (single && iszero(a * conv(c) + b)) ? nothing : (dv -> DilogTerm(conv(e * ρ), a, b, conv(c), dv)),
              frac(UPoly{C}(C[ρ]), lin))
     end
     # pairs of poles c, c̄ = cr ± i ci: with r over ℚ the roots in ℚ(i) (the log's a, b may have parameters); over
@@ -111,7 +165,8 @@ function dilog_split(T::Tower, i::Int, p::UPoly)
     function add_pair!(cr, ci, ρr, ρi)
         num_ = UPoly{C}(C[-two * (ρr * cr + ρi * ci), two * ρr])    # ρ/(x - c) + ρ̄/(x - c̄)
         den_ = UPoly{C}(C[cr * cr + ci * ci, -two * cr, one(C)])
-        add!((a, b, e) -> (dv -> DilogPairTerm(cfromQ(C, Q(e)) * ρr, cfromQ(C, Q(e)) * ρi, a, b, cr, ci, dv)),
+        add!((a, b, e) -> facS ? nothing :           # (complex poles with irrational log factors: not handled)
+                          (dv -> DilogPairTerm(cfromQ(C, Q(e)) * ρr, cfromQ(C, Q(e)) * ρi, a, b, cr, ci, dv)),
              frac(num_, den_))
     end
     rq(c) = C === Q ? c : crational(c)
@@ -164,12 +219,14 @@ function dilog_split(T::Tower, i::Int, p::UPoly)
             iszero(ρ) && continue
             ρc, cc = qconj(ρ), qconj(rt)
             num_ = UPoly{Q}(Q[-(ρ * cc + ρc * rt).a, (ρ + ρc).a])
-            add!((a, b, e) -> (dv -> DilogQuadTerm(Sd(Q(e), Q(0)) * ρ, Sd(a, Q(0)), Sd(b, Q(0)), rt, dv)), frac(num_, g))
+            toSd(v) = v isa QSB ? v : Sd(v, Q(0))
+            add!((a, b, e) -> (facS && !(a isa Sd)) ? nothing :     # (factors over another ℚ(√d′))
+                              (dv -> DilogQuadTerm(Sd(Q(e), Q(0)) * ρ, toSd(a), toSd(b), rt, dv)), frac(num_, g))
         end
     end
-    isempty(terms) && return nothing
+    (isempty(terms) && iszero(extra)) && return nothing
     P = typeof(p)
-    (P(eltype(p.c)[p.c[1], r - simple]), terms)
+    (P(eltype(p.c)[p.c[1] + liftto(T, rat0, i - 1), r - simple]), terms, P(eltype(p.c)[zero(eltype(p.c)), liftto(T, extra, i - 1)]))
 end
 
 function dilog_term(b::Builder, q::DilogTerm)
