@@ -1736,6 +1736,19 @@ end
     SymEngine.@vars x
     F = integrate(log(1 + x) / (1 + x ^ 2), x)
     @test F isa Risch.IntegralWithRootSums && occursin("impolylog(2", string(F))
+    # over a parameter field: a, b, c in the log (poles in ℚ(i)), or poles a ± i·k from a quadratic factor; with
+    # step AP, atan(x - a)/(x + a) (Rubi 1668)
+    evp(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.3), :(b = 2.1), :(c = 0.6), :(x = $x0)), e))
+    fdp(F, x0, h = 1e-4) = (-evp(F, x0 + 2h) + 8evp(F, x0 + h) - 8evp(F, x0 - h) + evp(F, x0 - 2h)) / (12h)
+    for f in (:(log(x + c) / (1 + x ^ 2)), :(log(b * x - a) / (1 + x ^ 2)), :(x * log(x + a) / (1 + x ^ 2)),
+              :(log(x) / (1 + (x - a) ^ 2)), :(log(x - a) / (4 + (x - b) ^ 2)), :(atan(x) / (x + c)),
+              :(atan(x - a) / (x + a)), :(atan(a + b * x) / (c + x)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("polylog(2,", string(F))
+        for x0 in (1.9, 2.7, 3.3)
+            @test isapprox(fdp(F, x0), evp(f, x0); rtol = 1e-6, atol = 1e-9)
+        end
+    end
 end
 
 # step AP: ∫ A·L by parts, L = asin, log, atan, … of an algebraic argument, A free of L with an elementary
