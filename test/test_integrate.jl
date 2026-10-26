@@ -1957,6 +1957,27 @@ end
     @test string(integrate(asin(x / a) ^ 2 / sqrt(a ^ 2 - x ^ 2), x)) == "(1/3)*asin(x/a)^3"
 end
 
+# step AL: asin, acos, acsc, asec of a x + b with parameters: y = a x + b, the radicands rewritten in y (1 - c²x² ↦ 1 - y²);
+# step RY declines towers over ℚ(i) (a RischError before)
+@testset "asin, acos of a x + b with parameters (step AL)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 1.3), :(c = 0.6),
+                                              :(clausen = $(Risch.clausen)), :(clausen2 = $(Risch.clausen2))), e))
+    for (f, pts) in ((:(x ^ 3 * asin(a * x) ^ 3), (0.1, 0.25, 0.4)), (:(asin(a * x) ^ 3 / x ^ 2), (0.1, 0.25, 0.4)),
+                     (:(acos(a * x - c) ^ 2), (0.1, 0.25, 0.4)), (:(x ^ 2 * acos(c * x)), (0.1, 0.25, 0.4)),
+                     (:(x * asin(c * x) / sqrt(1 - c ^ 2 * x ^ 2)), (0.1, 0.25, 0.4)),
+                     (:(asin(a * x) ^ 2 / sqrt(1 - a ^ 2 * x ^ 2)), (0.1, 0.25, 0.4)),
+                     (:(asin(a * x) / (1 - a ^ 2 * x ^ 2) ^ (3 // 2)), (0.1, 0.25, 0.4)),
+                     (:(asec(a * x) / x), (1.1, 2.0, 3.0)), (:(acsc(a * x) * x), (1.1, 2.0, 3.0)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in pts
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    F = Risch.risch_integrate(:(x * asin(x) / sqrt(1 - c ^ 2 * (x / c) ^ 2)), :x; build = build, lift = identity)
+    @test isapprox((ev(F, 0.3 + 1e-6) - ev(F, 0.3 - 1e-6)) / 2e-6, ev(:(x * asin(x) / sqrt(1 - x ^ 2)), 0.3); rtol = 1e-6)
+end
+
 # step LS: a sum term by term, grouped by radicals (Rubi 219, 220); step EP: (bʷ)^r = b^(w r) (Rubi 1533)
 @testset "sums term by term (step LS); (bʷ)^r (step EP)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)

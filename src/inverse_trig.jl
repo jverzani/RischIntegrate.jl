@@ -66,6 +66,74 @@ function term_rebuild(b::Builder, t, args)
     b.build(op_function(t), args...)
 end
 
+# step AL: asin, acos, acsc, asec of a x + b with a, b free of x but not rational (asin(a x), the parameter a): y = a x + b,
+# ∫ f dx = ∫ f((y - b)/a) dy/a with the arcs of y, then y = a x + b. Nothing when the arguments differ or are not linear.
+function integrate_arcs_scaled(f, x, arcs; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    L = arcs[1][2]
+    Ls = string(L)
+    all(a -> string(a[2]) == Ls, arcs) || return nothing
+    u = radicand_element(L, xk)
+    (u !== nothing && isone(u.den) && degree(u.num) == 1) && return nothing        # (rational: integrate_arcsin)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    pp = poly_parts(bd, L, xk)
+    (pp === nothing || !haskey(pp, 1) || maximum(keys(pp)) != 1) && return nothing
+    a = pp[1]
+    b = get(pp, 0, nothing)
+    y = bd.x
+    X = b === nothing ? mk(bd, :/, y, a) : mk(bd, :/, mk(bd, :+, y, mk(bd, :*, bd.lift(-1), b)), a)
+    function walk(t)
+        isnode(t) || return string(t) == xk ? X : t
+        n = opname(operation(t))
+        (n in (:asin, :acos, :acsc, :asec) && length(arguments(t)) == 1 && string(arguments(t)[1]) == Ls) &&
+            return term_rebuild(bd, t, Any[y])
+        rp = radical_parts(t)
+        if rp !== nothing && depends_on(rp[2], xk)      # a radicand as a polynomial in y (1 - c²x² ↦ 1 - y²)
+            R = walk(rp[2])
+            pr = poly_parts(bd, R, xk)
+            if pr !== nothing
+                # each coefficient through the constant field (a²·a⁻²·(-1) ↦ -1)
+                function csimp(c)
+                    T, el = try
+                        build_tower(c, xk)
+                    catch err
+                        (err isa RischNotImplemented || err isa RischError) || rethrow()
+                        return c
+                    end
+                    (isempty(T.levels) && degree(el.num) <= 0 && degree(el.den) == 0) || return c
+                    v = isempty(el.num.c) ? zero(ctype(T)) : el.num.c[1] / el.den.c[1]
+                    cterm(Builder(bd.build, bd.lift, bd.x, T.consts), v)
+                end
+                ts = Any[]
+                for (k, c) in sort(collect(pr); by = first)
+                    c = csimp(c)
+                    iszero(leaf_rational(c) === nothing ? 1 : leaf_rational(c)) && continue
+                    push!(ts, k == 0 ? c : mk(bd, :*, c, k == 1 ? y : mk(bd, :^, y, bd.lift(k))))
+                end
+                R = length(ts) == 1 ? ts[1] : mk(bd, :+, ts...)
+            end
+            return mk(bd, :^, R, cterm(bd, rp[1]))
+        end
+        term_rebuild(bd, t, Any[walk(s) for s in arguments(t)])
+    end
+    # f(X)/a as one product, the powers xᵏ of a pure scaling written yᵏ a⁻ᵏ: the factors free of x come out (step IT)
+    cs, gs = Any[mk(bd, :^, a, bd.lift(-1))], Any[]
+    for (t, e) in product_factors!(Any[], f, 1)
+        if b === nothing && !isnode(t) && string(t) == xk
+            push!(gs, mk(bd, :^, y, bd.lift(e)))
+            push!(cs, mk(bd, :^, a, bd.lift(-e)))
+        else
+            w = walk(t)
+            push!(gs, e == 1 ? w : mk(bd, :^, w, bd.lift(e)))
+        end
+    end
+    g = mk(bd, :*, cs..., gs...)
+    G = risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? L : t)
+    subst_answer(G, back, bd)
+end
+
 function integrate_arcsin(f, x, arcs; sK::Q = Q(1), radicand = nothing, build = nothing, lift = nothing,
                           verify::Bool = true)
     @nospecialize f x
