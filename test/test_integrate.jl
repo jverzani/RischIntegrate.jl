@@ -1957,6 +1957,21 @@ end
     @test string(integrate(asin(x / a) ^ 2 / sqrt(a ^ 2 - x ^ 2), x)) == "(1/3)*asin(x/a)^3"
 end
 
+# step IH: atanh, acoth, asinh, acosh as logarithms
+@testset "inverse hyperbolic functions as logarithms (step IH)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 1.3), :(li2 = $(Risch.li2))), e))
+    for (f, pts) in ((:(atanh(x)), (0.1, 0.3, 0.6)), (:(x * atanh(x) ^ 2), (0.1, 0.3, 0.6)), (:(atanh(a * x) / x), (0.1, 0.3, 0.6)),
+                     (:(atanh(x) / (1 - x ^ 2)), (0.1, 0.3, 0.6)), (:(asinh(x)), (-0.6, 0.3, 1.6)), (:(asinh(x) ^ 2), (-0.6, 0.3, 1.6)),
+                     (:(x ^ 2 * asinh(a * x)), (-0.6, 0.3, 1.6)), (:(acosh(x)), (1.2, 2.0, 3.1)), (:(x * acosh(x)), (1.2, 2.0, 3.1)),
+                     (:(acoth(x)), (1.2, 2.0, 3.1)), (:(acoth(x) / x ^ 2), (1.2, 2.0, 3.1)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in pts
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+end
+
 # step AL: asin, acos, acsc, asec of a x + b with parameters: y = a x + b, the radicands rewritten in y (1 - c²x² ↦ 1 - y²);
 # step RY declines towers over ℚ(i) (a RischError before)
 @testset "asin, acos of a x + b with parameters (step AL)" begin

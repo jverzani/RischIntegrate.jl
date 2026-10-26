@@ -32,6 +32,32 @@ function unit_circle_radicand(f, x, rads, xk::String; build = nothing, lift = no
     Any[(:asin, ut, mk(bd, :asin, ut))], sK, rads[1][2]
 end
 
+# step IH: the inverse hyperbolic functions as logarithms (Julia's definitions, real where the function is):
+#   atanh u = ½ log((1 + u)/(1 - u)),  acoth u = ½ log((u + 1)/(u - 1)),
+#   asinh u = log(u + √(u² + 1)),      acosh u = log(u + √(u² - 1))  (u ≥ 1)
+const INV_HYP = (:atanh, :acoth, :asinh, :acosh)
+function rewrite_invhyp(f, x, build, lift)
+    @nospecialize f x
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    half(t) = mk(bd, :*, bd.lift(1 // 2), t)
+    neg(t) = mk(bd, :*, bd.lift(-1), t)
+    sq(u) = mk(bd, :^, u, bd.lift(2))
+    function rw(t)
+        safe_iscall(t) && !isempty(arguments(t)) || return t
+        args = Any[rw(a) for a in arguments(t)]
+        n = opname(operation(t))
+        if n in INV_HYP && length(args) == 1
+            u = args[1]
+            n === :atanh && return half(mk(bd, :log, mk(bd, :/, mk(bd, :+, bd.lift(1), u), mk(bd, :+, bd.lift(1), neg(u)))))
+            n === :acoth && return half(mk(bd, :log, mk(bd, :/, mk(bd, :+, u, bd.lift(1)), mk(bd, :+, u, bd.lift(-1)))))
+            n === :asinh && return mk(bd, :log, mk(bd, :+, u, mk(bd, :sqrt, mk(bd, :+, sq(u), bd.lift(1)))))
+            return mk(bd, :log, mk(bd, :+, u, mk(bd, :sqrt, mk(bd, :+, sq(u), bd.lift(-1)))))
+        end
+        term_rebuild(bd, t, args)
+    end
+    rw(f)
+end
+
 has_op(f, n::Symbol) = safe_iscall(f) && !isempty(arguments(f)) &&
                        (opname(operation(f)) === n || any(a -> has_op(a, n), arguments(f)))
 # step AC: acot(u) ↦ atan(1/u) (Julia's definition, all u ≠ 0)

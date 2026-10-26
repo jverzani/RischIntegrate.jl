@@ -120,6 +120,8 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
     has_op(f, :acot) && return risch_integrate(rewrite_acot(f, x, build, lift), x; build = build, lift = lift,
                                                verify = verify)     # acot(u) = atan(1/u) (step AC)
+    any(n -> has_op(f, n), INV_HYP) &&                 # atanh, acoth, asinh, acosh as logs (step IH)
+        return risch_integrate(rewrite_invhyp(f, x, build, lift), x; build = build, lift = lift, verify = verify)
     arcs = collect_arcs(f, xk)                  # asin / acos: substitution u = sin t / cos t (step AS)
     if !isempty(arcs)
         r = integrate_arcs_scaled(f, x, arcs; build = build, lift = lift, verify = verify)   # asin(a x): y = a x (AL)
