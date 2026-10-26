@@ -1282,6 +1282,23 @@ end
     end
 end
 
+# step BN: a denominator λ xʲ (xⁿ + c)ᵏ whose residues need a RootSum: x = |c|^(1/n) u, integrate over ℚ
+@testset "binomial denominators, x = |c|^(1/n) u (step BN)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 1.7), :(b = 0.6), :(A = 0.7), :(B = 1.9)), e))
+    for f in (:(1 / (x ^ 3 - 2)), :(1 / (a * x ^ 3 - b)), :(x / (a * x ^ 3 - b)), :((A + B * x) / (a + b * x ^ 3)),
+              :(1 / (x ^ 4 + a)), :(1 / (x ^ 3 + 2) ^ 2), :(1 / (x ^ 2 * (x ^ 3 - 2))), :(1 / (x ^ 5 + 2)), :(1 / (x ^ 6 - a)),
+              :(x ^ 4 / (b - a * x ^ 3) ^ 2))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        for x0 in (0.4, 1.3, 2.2)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+    # uⁿ + 1 itself (Φ₁₆ = u⁸ + 1) stays a RootSum
+    @test Risch.risch_integrate(:(1 / (x ^ 8 + a)), :x; build = build, lift = identity) isa Risch.IntegralWithRootSums
+end
+
 # step MR: radicals of functions of e^(kx), cos, sin, tan of kx, removed by a substitution
 @testset "radicals of exp and trig monomials (step MR)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)

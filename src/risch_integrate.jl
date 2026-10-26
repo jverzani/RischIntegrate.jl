@@ -19,6 +19,11 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             r2 = integrate_param_scaled(f, x; build = build, lift = lift, verify = verify)
             r2 === nothing || return r2
         end
+        # a RootSum for a binomial denominator xⁿ + c: x = |c|^(1/n) u (step BN)
+        if r isa IntegralWithRootSums
+            r2 = integrate_binomial_scaled(f, x; build = build, lift = lift, verify = verify)
+            r2 === nothing || return r2
+        end
         r
     catch e
         # the term type has no method for a special function of the answer: through Expr, the special terms
