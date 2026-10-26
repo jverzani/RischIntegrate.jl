@@ -287,6 +287,21 @@ the top level. A rational function (``n = 0``) is integrated directly:
    splits ``Q`` when a leading coefficient turns out to be a zero divisor, so no factorization is
    needed.
 
+A RootSum answer is not final. `risch_integrate` tries two rescalings ``x = ρu`` that move the
+denominator to one over ``ℚ``, where the real forms above apply:
+
+- **Step PS.** If ``f`` is homogeneous in ``x`` and a parameter ``a``, then ``ρ = a``.
+  For example, ``1/(x^3 + a^3) = a^{-3}/(u^3 + 1)``.
+- **Step BN.** If the denominator is ``λ x^j (x^n + c)^k`` with ``n ≥ 3``, then
+  ``ρ = |c|^{1/n}``, kept as an opaque constant. For example, ``1/(x^3 - 2)`` and ``1/(a x^3 - b)``.
+  Here ``x^n + c = |c|(u^n ± 1)``. The numerator is split into monomials ``u^i``, and powers of
+  ``ρ`` are reduced with ``ρ^n = |c|``. That leaves one integral ``\int u^{i-j}/(u^n ± 1)^k`` over
+  ``ℚ`` for each monomial. The factors of ``u^n ± 1`` are cyclotomic, so for ``n = 3, 4, 5, 6``
+  the answer has only `log` and `atan`, with ``\sqrt 3``, ``\sqrt 2`` or ``\sqrt 5``.
+  For ``u^8 + 1`` the integral stays a RootSum.
+
+Either way the answer is ``G(x/ρ)``, which matches the ``b^{1/3}`` form Rubi gives.
+
 At a level ``i ≥ 1`` with monomial ``θ`` over ``K = K_{i-1}`` (Bronstein ch. 5):
 
 1. **Special part** (exp only): ``θ^m`` in the denominator splits off as Laurent terms.
@@ -581,6 +596,7 @@ failures, and their comments cite the Rubi problem numbers.
 | NP | `radicals.jl` | square roots of never-positive radicands |
 | NS | `nested_subst.jl` | nested radicals by substitution |
 | PL, PR, PS | `param_radicals.jl` | parameters: linearity, radicands, scaling |
+| BN | `param_radicals.jl` | binomial denominators ``x^n + c``: ``x = \lvert c\rvert^{1/n} u`` |
 | PC | `precompile.jl` | precompile workload |
 | R2, NR | `quartic_residues.jl` | real forms of quartic residues, nested radicals in them |
 | RC | `reciprocal_subst.jl` | ``u = x + s/x`` |

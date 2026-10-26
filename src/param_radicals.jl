@@ -215,6 +215,61 @@ function integrate_param_scaled(f, x; build = nothing, lift = nothing, verify::B
     nothing
 end
 
+# step BN: f ∈ C(x) (C = ℚ or ℚ(a, …)) with denominator λ xʲ (xⁿ + c)ᵏ, n ≥ 3, whose residues need a RootSum
+# (c not ± an n-th power: 1/(x³ - 2), 1/(a x³ - b)). With ρ = |c|^(1/n) (an opaque constant, positive at the
+# parameter values of `param_value`) and x = ρ u, xⁿ + c = |c| (uⁿ ± 1); the numerator N(ρu) = Σ Nᵢ ρⁱ uⁱ, and
+# ρ^(i+1-j) = |c|^q ρ^m (i + 1 - j = qn + m), so by linearity
+#   ∫ f dx = Σᵢ Nᵢ |c|^(q-k)/λ · ρ^m ∫ uⁱ⁻ʲ/(uⁿ ± 1)ᵏ du,
+# each integral over ℚ (real forms with √3, √2, …); then u = x/ρ. Nothing when one of them needs a RootSum.
+function integrate_binomial_scaled(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    T, el = try
+        build_tower(f, xk)
+    catch err
+        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        return nothing
+    end
+    C = ctype(T)
+    (isempty(T.levels) && (C === Q || real_param_field(C))) || return nothing
+    Dn = el.den
+    j = findfirst(!iszero, Dn.c) - 1                   # Dn = xʲ R, R(0) ≠ 0
+    R = UPoly{C}(Dn.c[(j + 1):end])
+    sf = squarefree(R)
+    (length(sf) == 1 && degree(sf[1][1]) >= 3) || return nothing
+    Qf, k = sf[1]
+    n = degree(Qf)
+    all(iszero, Qf.c[2:n]) || return nothing           # Qf = xⁿ + c
+    c = Qf.c[1]
+    pos(c) = C === Q ? c > 0 :
+             (rc = crational(c); rc !== nothing ? rc > 0 : (v = param_value(c, T.consts); v !== nothing && v > 0))
+    σ = pos(c) ? 1 : -1
+    iseven(n) && σ == -1 && !pos(-c) && return nothing  # (no sign at the parameter values)
+    r = cfromQ(C, Q(σ)) * c                            # |c|, ρⁿ = r
+    isone(r) && return nothing                         # (already uⁿ ± 1)
+    lcD = lc(Dn)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
+    ρpow(m) = mk(bd, :^, cterm(bd, r), bd.lift(Q(m) // n))
+    Q0 = QX([i == 0 ? Q(σ) : i == n ? Q(1) : Q(0) for i in 0:n])^k
+    terms = Any[]
+    for (i, Ni) in enumerate(el.num.c)
+        i -= 1
+        iszero(Ni) && continue
+        q, m = fldmod(i + 1 - j, n)
+        coef = Ni * r^(q - k) / lcD
+        num, den = i >= j ? (QX([l == i - j ? Q(1) : Q(0) for l in 0:(i - j)]), Q0) :
+                            (one(QX), QX([l == j - i ? Q(1) : Q(0) for l in 0:(j - i)]) * Q0)
+        G = risch_integrate(frac_term(bd, frac(num, den)), x; build = build, lift = lift, verify = verify)
+        G isa IntegralWithRootSums && return nothing
+        push!(terms, m == 0 ? mk(bd, :*, cterm(bd, coef), G) : mk(bd, :*, cterm(bd, coef), ρpow(m), G))
+    end
+    isempty(terms) && return bd.lift(0)
+    tot = length(terms) == 1 ? terms[1] : mk(bd, :+, terms...)
+    back = mk(bd, :/, bd.x, ρpow(1))
+    bk(t) = isnode(t) ? term_rebuild(bd, t, Any[bk(a) for a in arguments(t)]) : (string(t) == xk ? back : t)
+    bk(tot)
+end
+
 # step PS for radicals: x = p u with p a parameter, a radicand homogeneous in (x, p), U(p u) = p^m U₀(u) with U₀
 # free of p, written p^(me) U₀^e (p > 0; p^(me) an opaque constant when me ∉ ℤ): ∫ g(x) dx = ∫ g(p u) p du,
 # then u = x/p. Nothing when no parameter gives an answer without a RootSum.
