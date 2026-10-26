@@ -510,13 +510,13 @@ function integrate_el(T::Tower, i::Int, f)::ElemIntegral
             e isa NotElementary || rethrow()
             dl = dilog_split(T, i, p)
             dl === nothing && rethrow()
-            p, dterms = dl
+            p, dterms, qextra = dl
             r = try
                 integrate_log_poly(T, i, p)
             catch e2
                 e2 isa NotElementary ? rethrow(e) : rethrow()
             end
-            (r[1], r[2], r[3], vcat(r[4], dterms))
+            (r[1] + qextra, r[2], r[3], vcat(r[4], dterms))
         end
         v = v + frac(q)
         for (c, w) in lp

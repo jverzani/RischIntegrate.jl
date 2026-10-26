@@ -1777,6 +1777,24 @@ end
             @test isapprox(real(ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
         end
     end
+    # logs of quadratics with real roots in ℚ(√d) (log(x² + x - 1) = log(x - r₊) + log(x - r₋)), and poles of order
+    # ≥ 2 moved by parts (θ c/(x - c)ʲ): log² by step AP, after t = √(1 + x) (Rubi 204)
+    for (f, pts) in ((:(log(x ^ 2 - 2) / (x ^ 2 - 2)), (1.7, 3.2, 4.5)), (:(log(x ^ 2 + x - 1) ^ 2), (0.9, 1.7, 3.2)),
+                     (:(log(x ^ 2 + x - 1) ^ 2 / x ^ 3), (0.9, 1.7, 3.2)),
+                     (:(log(x ^ 2 - x - 1) / (x * (x - 3))), (1.9, 2.5, 4.5)), (:(log(x + 1) ^ 2 / x ^ 3), (0.3, 0.8, 2.5)),
+                     (:(log(x + sqrt(1 + x)) ^ 2 / (1 + x) ^ 2), (0.9, 1.7, 3.2)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("li2", string(F))
+        for x0 in pts
+            @test isapprox(real(ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    # (a double pole with residue 0: by parts only, elementary)
+    for (f, x0) in ((:(log(x ^ 2 + x - 1) / x ^ 2), 1.7), (:(log(x ^ 2 - 3) / (x - 1) ^ 2), 1.9))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !occursin("li2", string(F))
+        @test isapprox(real(ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+    end
 end
 
 # step DL with a pair of poles c, c̄ ∈ ℚ(i): Re, Im Li₂(v/|K| e^(-i arg K)); with u = exp(x), Rubi 200
