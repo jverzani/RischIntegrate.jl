@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=45a51a7a">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=820a6bac">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -300,6 +300,11 @@
 <td style="text-align:left">AS</td>
 <td style="text-align:left"><code class="md-code-inline">asin(u)</code> or <code class="md-code-inline">acos(u)</code> with <span class="md-math md-math-inline">\(u\)</span> linear</td>
 <td style="text-align:left"><span class="md-math md-math-inline">\(u = \sin t\)</span>: the integrand is rebuilt in <span class="md-math md-math-inline">\(t\)</span> (<code class="md-code-inline">x</code> stands for <span class="md-math md-math-inline">\(t\)</span>), integrated, and mapped back, <span class="md-math md-math-inline">\(\sin kt\)</span>, <span class="md-math md-math-inline">\(\cos kt\)</span> written exactly as <span class="md-math md-math-inline">\(A(u) + B(u)\sqrt{1 - u^2}\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">AL</td>
+<td style="text-align:left"><code class="md-code-inline">asin(u)</code>, <code class="md-code-inline">acos(u)</code>, … with <span class="md-math md-math-inline">\(u = ax + b\)</span> and <span class="md-math md-math-inline">\(a, b\)</span> parameters</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(y = ax + b\)</span>. The radicands are rewritten as polynomials in <span class="md-math md-math-inline">\(y\)</span>, with constants simplified (<span class="md-math md-math-inline">\(1 - c^2x^2 \mapsto 1 - y^2\)</span>), then step AS is used and <span class="md-math md-math-inline">\(y = ax + b\)</span> is substituted back</td>
 </tr>
 <tr>
 <td style="text-align:left">PL</td>
@@ -769,6 +774,11 @@
 <td style="text-align:left"><code class="md-code-inline">asin</code>, <code class="md-code-inline">acos</code> by <span class="md-math md-math-inline">\(u = \sin t\)</span></td>
 </tr>
 <tr>
+<td style="text-align:left">AL</td>
+<td style="text-align:left"><code class="md-code-inline">inverse_trig.jl</code></td>
+<td style="text-align:left"><code class="md-code-inline">asin</code>, <code class="md-code-inline">acos</code> of <span class="md-math md-math-inline">\(ax + b\)</span> with parameters</td>
+</tr>
+<tr>
 <td style="text-align:left">AT</td>
 <td style="text-align:left"><code class="md-code-inline">inverse_trig.jl</code></td>
 <td style="text-align:left"><code class="md-code-inline">atan(u)</code> by <span class="md-math md-math-inline">\(u = \tan t\)</span></td>
@@ -982,6 +992,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=45a51a7a"></script>
+  <script src="../assets/materialdocs.js?v=820a6bac"></script>
 </body>
 </html>
