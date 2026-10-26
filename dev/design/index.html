@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=3483f7ed">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=eafded75">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -121,7 +121,7 @@
 </tr>
 <tr>
 <td style="text-align:left">algebraic integrands</td>
-<td style="text-align:left"><code class="md-code-inline">radicals.jl</code>, <code class="md-code-inline">euler_substitutions.jl</code>, <code class="md-code-inline">biquadratic.jl</code>, <code class="md-code-inline">hyperelliptic.jl</code>, <code class="md-code-inline">kummer.jl</code>, <code class="md-code-inline">kummer_logs.jl</code>, <code class="md-code-inline">param_radicals.jl</code>, <code class="md-code-inline">denest.jl</code>, <code class="md-code-inline">nested.jl</code>, <code class="md-code-inline">nested_subst.jl</code>, <code class="md-code-inline">monomial_radicals.jl</code>, <code class="md-code-inline">reciprocal_subst.jl</code>, <code class="md-code-inline">tower_radicals.jl</code>, <code class="md-code-inline">real_log_arguments.jl</code></td>
+<td style="text-align:left"><code class="md-code-inline">radicals.jl</code>, <code class="md-code-inline">euler_substitutions.jl</code>, <code class="md-code-inline">biquadratic.jl</code>, <code class="md-code-inline">hyperelliptic.jl</code>, <code class="md-code-inline">kummer.jl</code>, <code class="md-code-inline">kummer_logs.jl</code>, <code class="md-code-inline">param_radicals.jl</code>, <code class="md-code-inline">denest.jl</code>, <code class="md-code-inline">nested.jl</code>, <code class="md-code-inline">nested_subst.jl</code>, <code class="md-code-inline">constant_scaling.jl</code>, <code class="md-code-inline">monomial_radicals.jl</code>, <code class="md-code-inline">reciprocal_subst.jl</code>, <code class="md-code-inline">tower_radicals.jl</code>, <code class="md-code-inline">real_log_arguments.jl</code></td>
 </tr>
 <tr>
 <td style="text-align:left">substitutions and rewrites</td>
@@ -283,7 +283,7 @@
 </tr>
 <tr>
 <td style="text-align:left">IT</td>
-<td style="text-align:left">a factor free of <code class="md-code-inline">x</code> that contains a symbol</td>
+<td style="text-align:left">a factor free of <code class="md-code-inline">x</code> that contains a symbol or a root <span class="md-math md-math-inline">\(c^{p/q}\)</span> with <span class="md-math md-math-inline">\(q &gt; 2\)</span></td>
 <td style="text-align:left">takes it out: <span class="md-math md-math-inline">\(\int c\,g = c \int g\)</span>. This keeps the parameter out of the constant field, and lets an iterated integral see <span class="md-math md-math-inline">\(c(y) \cdot \text{RootSum}(x)\)</span></td>
 </tr>
 <tr>
@@ -499,6 +499,12 @@
 <td style="text-align:left">any</td>
 <td style="text-align:left">a radical with an inner radical <span class="md-math md-math-inline">\(\sqrt{R(x)}\)</span></td>
 <td style="text-align:left"><span class="md-math md-math-inline">\(x = X(u)\)</span> that rationalizes the inner radical</td>
+</tr>
+<tr>
+<td style="text-align:left">CS</td>
+<td style="text-align:left">any</td>
+<td style="text-align:left">nested radicals with coefficients in <span class="md-math md-math-inline">\(ℚ(\sqrt d)\)</span></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(x = σy\)</span> (<span class="md-math md-math-inline">\(σ = 1, d, 1/d\)</span>). Each radicand is written as <span class="md-math md-math-inline">\(κ P_0\)</span> with <span class="md-math md-math-inline">\(P_0\)</span> over <span class="md-math md-math-inline">\(ℚ\)</span>, so <span class="md-math md-math-inline">\(\sqrt{κ}\)</span> comes out: in <span class="md-math md-math-inline">\(ℚ(\sqrt d)\)</span>, or <span class="md-math md-math-inline">\(\sqrt b\, d^{1/4}\)</span> for <span class="md-math md-math-inline">\(κ = b\sqrt d\)</span>. Step IT then takes out <span class="md-math md-math-inline">\(d^{1/4}\)</span>. Example: <span class="md-math md-math-inline">\(\sqrt{\sqrt2 + \sqrt x + \sqrt{2 + \sqrt8\sqrt x + 2x}}\)</span></td>
 </tr>
 <tr>
 <td style="text-align:left">RC</td>
@@ -821,6 +827,11 @@
 <td style="text-align:left">nested radicals by substitution</td>
 </tr>
 <tr>
+<td style="text-align:left">CS</td>
+<td style="text-align:left"><code class="md-code-inline">constant_scaling.jl</code></td>
+<td style="text-align:left">nested radicals over <span class="md-math md-math-inline">\(ℚ(\sqrt d)\)</span>: scaling and constant factors out of radicands</td>
+</tr>
+<tr>
 <td style="text-align:left">PL, PR, PS</td>
 <td style="text-align:left"><code class="md-code-inline">param_radicals.jl</code></td>
 <td style="text-align:left">parameters: linearity, radicands, scaling</td>
@@ -944,6 +955,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=3483f7ed"></script>
+  <script src="../assets/materialdocs.js?v=eafded75"></script>
 </body>
 </html>
