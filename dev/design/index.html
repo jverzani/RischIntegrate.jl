@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=eafded75">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=7bd61f0f">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -406,7 +406,7 @@
 <ol class="md-list-tight">
 <li><p><strong>Hermite reduction</strong> (Bronstein §2.2) gives the rational part and a remainder with a squarefree denominator.</p>
 </li>
-<li><p><strong>The logarithmic part.</strong> The Rothstein–Trager resultant <span class="md-math md-math-inline">\(R(z) = \operatorname{res}_x(D, A - zD&#39;)\)</span> is computed, and its roots in the constant field give <span class="md-math md-math-inline">\(c \log \gcd(D, A - cD&#39;)\)</span>. Over <span class="md-math md-math-inline">\(ℚ\)</span> the factor that remains is factored. A quadratic factor, with residues <span class="md-math md-math-inline">\(a ± b\sqrt d\)</span>, gives logarithms over <span class="md-math md-math-inline">\(ℚ(\sqrt d)\)</span>, or <code class="md-code-inline">atan</code> terms for a complex pair. Rioboo&#39;s LogToAtan (§2.8) turns <span class="md-math md-math-inline">\(\operatorname{atan}(A/B)\)</span>, which jumps at the zeros of <span class="md-math md-math-inline">\(B\)</span>, into a sum of <code class="md-code-inline">atan</code>s of polynomials, continuous on the real line. Quartic residues are written with real radicals when their roots lie in one <span class="md-math md-math-inline">\(ℚ(i, \sqrt d)\)</span> (step R2). Other residues of degree greater than 2 give a <strong>RootSum</strong> <span class="md-math md-math-inline">\(\sum_{Q(α) = 0} α \log W(α, x)\)</span>, with <span class="md-math md-math-inline">\(W\)</span> computed by dynamic evaluation (<code class="md-code-inline">d5_gcd</code>), which splits <span class="md-math md-math-inline">\(Q\)</span> when a leading coefficient turns out to be a zero divisor, so no factorization is needed.</p>
+<li><p><strong>The logarithmic part.</strong> The Rothstein–Trager resultant <span class="md-math md-math-inline">\(R(z) = \operatorname{res}_x(D, A - zD&#39;)\)</span> is computed, and its roots in the constant field give <span class="md-math md-math-inline">\(c \log \gcd(D, A - cD&#39;)\)</span>. Over <span class="md-math md-math-inline">\(ℚ\)</span> the factor that remains is factored. A quadratic factor, with residues <span class="md-math md-math-inline">\(a ± b\sqrt d\)</span>, gives logarithms over <span class="md-math md-math-inline">\(ℚ(\sqrt d)\)</span>, or <code class="md-code-inline">atan</code> terms for a complex pair. Rioboo&#39;s LogToAtan (§2.8) turns <span class="md-math md-math-inline">\(\operatorname{atan}(A/B)\)</span>, which jumps at the zeros of <span class="md-math md-math-inline">\(B\)</span>, into a sum of <code class="md-code-inline">atan</code>s of polynomials, continuous on the real line. Quartic residues are written with real radicals when their roots lie in one <span class="md-math md-math-inline">\(ℚ(i, \sqrt d)\)</span> (step R2). Step BQ4 handles an even quartic factor <span class="md-math md-math-inline">\(G = x^4 + bx^2 + c\)</span> of the denominator with <span class="md-math md-math-inline">\(b^2 &lt; 4c\)</span> whose residues need nested radicals. Partial fractions split it off, and the factorization <span class="md-math md-math-inline">\(G = (x^2 + rx + q)(x^2 - rx + q)\)</span>, with <span class="md-math md-math-inline">\(q = \sqrt c\)</span> and <span class="md-math md-math-inline">\(r = \sqrt{2q - b}\)</span>, gives continuous <code class="md-code-inline">atan</code>s and a <code class="md-code-inline">log</code> with nested constants, as in <span class="md-math md-math-inline">\(1/(x^8 + 4)\)</span>. Other residues of degree greater than 2 give a <strong>RootSum</strong> <span class="md-math md-math-inline">\(\sum_{Q(α) = 0} α \log W(α, x)\)</span>, with <span class="md-math md-math-inline">\(W\)</span> computed by dynamic evaluation (<code class="md-code-inline">d5_gcd</code>), which splits <span class="md-math md-math-inline">\(Q\)</span> when a leading coefficient turns out to be a zero divisor, so no factorization is needed.</p>
 </li>
 </ol>
 <p>A RootSum answer is not final. <code class="md-code-inline">risch_integrate</code> tries two rescalings <span class="md-math md-math-inline">\(x = ρu\)</span> that move the denominator to one over <span class="md-math md-math-inline">\(ℚ\)</span>, where the real forms above apply:</p>
@@ -852,6 +852,11 @@
 <td style="text-align:left">real forms of quartic residues, nested radicals in them</td>
 </tr>
 <tr>
+<td style="text-align:left">BQ4</td>
+<td style="text-align:left"><code class="md-code-inline">quartic_residues.jl</code></td>
+<td style="text-align:left">even quartics <span class="md-math md-math-inline">\(x^4 + bx^2 + c\)</span> with nested real forms</td>
+</tr>
+<tr>
 <td style="text-align:left">RC</td>
 <td style="text-align:left"><code class="md-code-inline">reciprocal_subst.jl</code></td>
 <td style="text-align:left"><span class="md-math md-math-inline">\(u = x + s/x\)</span></td>
@@ -955,6 +960,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=eafded75"></script>
+  <script src="../assets/materialdocs.js?v=7bd61f0f"></script>
 </body>
 </html>
