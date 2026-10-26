@@ -299,8 +299,14 @@ denominator to one over ``ℚ``, where the real forms above apply:
   ``ℚ`` for each monomial. The factors of ``u^n ± 1`` are cyclotomic, so for ``n = 3, 4, 5, 6``
   the answer has only `log` and `atan`, with ``\sqrt 3``, ``\sqrt 2`` or ``\sqrt 5``.
   For ``u^8 + 1`` the integral stays a RootSum.
+  If ``|c|`` is an ``n``-th power in the constant field, ``ρ`` is that root rather than an opaque
+  constant: ``ρ = a`` for ``c = a^3``.
 
 Either way the answer is ``G(x/ρ)``, which matches the ``b^{1/3}`` form Rubi gives.
+
+Step BN is also tried inside the radical substitutions (`integrate_subst`), on the rational function
+of ``t``. There ``t = x^{1/3}`` turns ``1/((a^3 - x) x^{4/3})`` into ``3/(t^2 (a^3 - t^3))``.
+Together with step US (``u = \cos^n x``) this handles ``\tan x/(a^3 - b^3\cos^n x)^{4/3}``.
 
 At a level ``i ≥ 1`` with monomial ``θ`` over ``K = K_{i-1}`` (Bronstein ch. 5):
 

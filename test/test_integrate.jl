@@ -1297,6 +1297,18 @@ end
     end
     # uⁿ + 1 itself (Φ₁₆ = u⁸ + 1) stays a RootSum
     @test Risch.risch_integrate(:(1 / (x ^ 8 + a)), :x; build = build, lift = identity) isa Risch.IntegralWithRootSums
+    # after a radical substitution t = (αx + β)^(1/3), the rational function of t; |c| = a³ has the root ρ = a
+    # (points in the domain: a³ - b³x > 0); cosⁿ x = u (step US), then the same (Rubi 1449)
+    ev2(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 1.7), :(b = 0.6), :(n = 2.5)), e))
+    for f in (:(1 / ((2 - x) * x ^ (4 // 3))), :(1 / ((a ^ 3 - x) * x ^ (4 // 3))), :(1 / (x * (a ^ 3 - b ^ 3 * x) ^ (4 // 3))),
+              :(tan(x) / (a ^ 3 - b ^ 3 * cos(x) ^ n) ^ (4 // 3)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        for x0 in (0.4, 0.9, 1.3)
+            @test isapprox(real(ev2(F, complex(x0 + 1e-6)) - ev2(F, complex(x0 - 1e-6))) / 2e-6, ev2(f, x0); rtol = 1e-5)
+        end
+    end
+    @test !occursin("^(1 // 3)", string(Risch.risch_integrate(:(1 / (x ^ 3 + a ^ 3 * b ^ 3)), :x; build = build, lift = identity)))
 end
 
 # step MR: radicals of functions of e^(kx), cos, sin, tan of kx, removed by a substitution

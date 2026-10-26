@@ -261,7 +261,7 @@ function try_substitutions(f, xk::String, cands, b0::Builder, verify::Bool, cfix
             (S === Q || S === cfix.C) ? cfix.C : continue
         try
             return integrate_subst(f, xk, S, φ, radval, Builder(b0.build, b0.lift, tterm), verify, C, cfix;
-                                   pos = pos)
+                                   pos = pos, xvar = b0.x)
         catch e
             e isa RischNotImplemented || rethrow()
             err = e
@@ -273,7 +273,7 @@ end
 # ∫ f dx with x = φ(t) and u^e = radval(u, e) ∈ S(t) for the radicands u ∈ ℚ(x);
 # the answer is printed with t as bt.x
 function integrate_subst(f, xk::String, ::Type{S}, φ, radval, bt::Builder, verify::Bool,
-                         constants = S === Q ? nothing : S, cfix = nothing; pos = nothing) where {S}
+                         constants = S === Q ? nothing : S, cfix = nothing; pos = nothing, xvar = nothing) where {S}
     dφ = dx(φ)
     function sub(term, T)
         if !safe_iscall(term)
@@ -297,7 +297,18 @@ function integrate_subst(f, xk::String, ::Type{S}, φ, radval, bt::Builder, veri
     g = el * liftto(T, to_K0(T, dφ), levelof(T, el))     # f(φ(t), …) φ'(t)
     T, g = minimal(T, g)
     bd = Builder(bt.build, bt.lift, bt.x, T.consts)
-    integrate_built(T, g, bd, verify; pos = pos)
+    F = integrate_built(T, g, bd, verify; pos = pos)
+    # a RootSum for a binomial denominator in t (1/(t²(a³ - t³)) from t = x^(1/3)): step BN, in the variable
+    # x standing for t, then t put back
+    if F isa IntegralWithRootSums && isempty(T.levels) && xvar !== nothing
+        bx = Builder(bt.build, bt.lift, xvar, T.consts)
+        F2 = integrate_binomial_scaled(frac_term(bx, g), xvar; build = bt.build, lift = bt.lift, verify = verify)
+        if F2 !== nothing
+            back(t) = isnode(t) ? term_rebuild(bx, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? bt.x : t)
+            return back(F2)
+        end
+    end
+    F
 end
 
 # ---------------------------------------------------------------------------
