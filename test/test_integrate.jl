@@ -889,7 +889,8 @@ function run_tests(x, evalat, name)
         end
         @test_throws Risch.NotElementary Risch.risch_integrate(s2 * exp(x) * sqrt(3 - x^2), x)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(s2 * s3 * x, x)              # ℚ(√2, √3)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(cbrt(SymEngine.Basic(2)) * x, x)
+        # a cube root of a constant is taken out as a factor (step IT)
+        @test iszero(SymEngine.expand(Risch.risch_integrate(cbrt(SymEngine.Basic(2)) * x, x) - cbrt(SymEngine.Basic(2)) * x^2 / 2))
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(SymEngine.Basic(6)) * sqrt(3 - x^2), x)
     end
 
@@ -1910,6 +1911,20 @@ end
                      (:(sqrt(sqrt(x) + 2) / x), (0.4, 2.7)), (:(asin(sqrt((x - a) / (x + a)))), (1.5, 2.7)))
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)
         for x0 in pts
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+end
+
+# step CS: nested radicals with coefficients in ℚ(√d), x = σy and the radicands made κ·(over ℚ), √κ ∈ ℚ(√d) or
+# √b·d^(1/4) taken out by step IT (Rubi 190)
+@testset "nested radicals over ℚ(√d) (step CS)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for f in (:(sqrt(sqrt(2) + sqrt(x) + sqrt(2 + sqrt(8) * sqrt(x) + 2x))), :(x * sqrt(sqrt(2) + sqrt(x) + sqrt(2 + sqrt(8) * sqrt(x) + 2x))),
+              :(sqrt(sqrt(3) + sqrt(x) + sqrt(3 + sqrt(12) * sqrt(x) + 2x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 1.2, 2.5)
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
         end
     end

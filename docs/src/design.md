@@ -69,7 +69,7 @@ answer back. The chain rule check that comes with each substitution keeps the re
 | terms ↔ fields | `term_input.jl`, `term_output.jl`, `tower_terms.jl`, `rootsum_numerics.jl` |
 | towers | `tower.jl`, `structure_theorems.jl`, `monomial_integration.jl`, `rde_base.jl`, `risch_de.jl`, `parametric_rde.jl`, `tower_rootsums.jl`, `tower_real_forms.jl`, `real_form.jl` |
 | special functions | `special_functions.jl`, `dilogarithms.jl`, `exp_trig_polynomials.jl`, `clausen.jl`, `polylog_parts.jl`, `hypergeometric.jl`, `hyp_symbolic.jl`, `gamma_terms.jl`, `special_fallback.jl` |
-| algebraic integrands | `radicals.jl`, `euler_substitutions.jl`, `biquadratic.jl`, `hyperelliptic.jl`, `kummer.jl`, `kummer_logs.jl`, `param_radicals.jl`, `denest.jl`, `nested.jl`, `nested_subst.jl`, `monomial_radicals.jl`, `reciprocal_subst.jl`, `tower_radicals.jl`, `real_log_arguments.jl` |
+| algebraic integrands | `radicals.jl`, `euler_substitutions.jl`, `biquadratic.jl`, `hyperelliptic.jl`, `kummer.jl`, `kummer_logs.jl`, `param_radicals.jl`, `denest.jl`, `nested.jl`, `nested_subst.jl`, `constant_scaling.jl`, `monomial_radicals.jl`, `reciprocal_subst.jl`, `tower_radicals.jl`, `real_log_arguments.jl` |
 | substitutions and rewrites | `bioche.jl`, `inverse_trig.jl`, `u_substitution.jl`, `linearity.jl` |
 | entry points | `risch_integrate.jl`, `integrate_macro.jl`, `precompile.jl` |
 
@@ -194,7 +194,7 @@ throws. A step that rewrites the integrand calls `risch_integrate` again on the 
 |:-----|:-----------|:-----|
 | EP | ``(b^w)^r`` with a positive constant ``b``; ``(C^s)^n`` with integer ``n`` over products and quotients | merges exponents: ``(3^{3x})^{1/4} = 3^{3x/4}``, so a radicand with even powers of a radical becomes rational |
 | erf | ``\int \operatorname{erf}(ax + b)`` | by parts |
-| IT | a factor free of `x` that contains a symbol | takes it out: ``\int c\,g = c \int g``. This keeps the parameter out of the constant field, and lets an iterated integral see ``c(y) \cdot \text{RootSum}(x)`` |
+| IT | a factor free of `x` that contains a symbol or a root ``c^{p/q}`` with ``q > 2`` | takes it out: ``\int c\,g = c \int g``. This keeps the parameter out of the constant field, and lets an iterated integral see ``c(y) \cdot \text{RootSum}(x)`` |
 | TS2 | ``\sin(v + a)``, ``\cosh(v + a)``, … with ``a`` free of `x` | addition formulas, so ``\cos a``, ``\sin a`` become opaque constants. Exact values for multiples of ``π/6`` and ``π/4`` |
 | AC | `acot`, `acsc`, `asec` | ``\operatorname{acot} u = \operatorname{atan}(1/u)``, ``\operatorname{acsc} u = \operatorname{asin}(1/u)``, … |
 | AS | `asin(u)` or `acos(u)` with ``u`` linear | ``u = \sin t``: the integrand is rebuilt in ``t`` (`x` stands for ``t``), integrated, and mapped back, ``\sin kt``, ``\cos kt`` written exactly as ``A(u) + B(u)\sqrt{1 - u^2}`` |
@@ -373,6 +373,7 @@ order:
 | H3, H4 | `NotElementary` | ``x^s e^{bx + d}``, ``x^s \sin``, ``x^s \cos`` | incomplete ``Γ`` terms |
 | US | any | ``f = G(u)\,u'`` for a subterm ``u`` | derivative-divides, below |
 | NS | any | a radical with an inner radical ``\sqrt{R(x)}`` | ``x = X(u)`` that rationalizes the inner radical |
+| CS | any | nested radicals with coefficients in ``ℚ(\sqrt d)`` | ``x = σy`` (``σ = 1, d, 1/d``). Each radicand is written as ``κ P_0`` with ``P_0`` over ``ℚ``, so ``\sqrt{κ}`` comes out: in ``ℚ(\sqrt d)``, or ``\sqrt b\, d^{1/4}`` for ``κ = b\sqrt d``. Step IT then takes out ``d^{1/4}``. Example: ``\sqrt{\sqrt2 + \sqrt x + \sqrt{2 + \sqrt8\sqrt x + 2x}}`` |
 | RC | any | ``R(x)\sqrt{P}^k``, ``P(x) = x^m S(x + s/x)`` | ``u = x + s/x`` |
 | RY | any | one radical ``y = P^{1/n}`` with ``P`` in an `exp`/`log` tower | ``\int A_r y^r = B_r y^r`` with ``B_r' + (r/n)(P'/P) B_r = A_r``, a Risch differential equation in the tower |
 | LS | any | a sum, or a quotient with a sum on top | term by term, grouping terms with the same radicals |
@@ -613,6 +614,7 @@ failures, and their comments cite the Rubi problem numbers.
 | MR, PW, NR | `monomial_radicals.jl` | radicals of functions of a monomial; inner linear radicals |
 | NP | `radicals.jl` | square roots of never-positive radicands |
 | NS | `nested_subst.jl` | nested radicals by substitution |
+| CS | `constant_scaling.jl` | nested radicals over ``ℚ(\sqrt d)``: scaling and constant factors out of radicands |
 | PL, PR, PS | `param_radicals.jl` | parameters: linearity, radicands, scaling |
 | BN | `param_radicals.jl` | binomial denominators ``x^n + c``: ``x = \lvert c\rvert^{1/n} u`` |
 | PC | `precompile.jl` | precompile workload |
