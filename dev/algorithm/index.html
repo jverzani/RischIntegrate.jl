@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>How it works — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=ca3702a8">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=ee9b6632">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="How it works — RischIntegrate.jl">
   <meta property="og:title" content="How it works — RischIntegrate.jl">
@@ -45,13 +45,14 @@
       <a href="../">Home</a>
       <a href="../usage/">Usage</a>
       <a href="../algorithm/" class="md-nav-active">How it works</a>
+      <a href="../design/">Design notes</a>
       <a href="../reference/">Reference</a>
     </nav>
     <main class="md-content">
       <article class="md-article">
       <div class="md-article-actions"><a class="md-icon-btn md-edit-link" href="https://github.com/jverzani/RischIntegrate.jl/blob/main/docs/src/algorithm.md" title="Edit source on GitHub" aria-label="Edit source on GitHub"><svg class="md-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 000-1.41l-2.34-2.34a.996.996 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></a></div>
 <h1 id="How-it-works" class="md-heading">How it works<a href="#How-it-works" class="md-heading-anchor" aria-label="Link to this section">#</a></h1>
-<p>The integrand is parsed into an exact differential field and integrated there by the Risch algorithm, following Bronstein, <em>Symbolic Integration I</em>. The answer is checked by differentiation in the same field, then rebuilt as a term of the user&#39;s package.</p>
+<p>The integrand is parsed into an exact differential field and integrated there by the Risch algorithm, following Bronstein, <em>Symbolic Integration I</em>. The answer is checked by differentiation in the same field, then rebuilt as a term of the user&#39;s package. The <a href="../design/">Design notes</a> follow an integrand through every step in detail.</p>
 <h2 id="The-steps" class="md-heading">The steps<a href="#The-steps" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
 <ol class="md-list-tight">
 <li><p><strong>Rational functions</strong> <span class="md-math md-math-inline">\(ℚ(x)\)</span>: Hermite reduction (Bronstein §2.2) gives the rational part, the Rothstein–Trager resultant the logarithmic part. Quadratic residues give <code class="md-code-inline">log</code> and <code class="md-code-inline">atan</code> terms over <span class="md-math md-math-inline">\(ℚ(\sqrt d)\)</span> (with Rioboo&#39;s LogToAtan for real, continuous <code class="md-code-inline">atan</code> terms); quartic residues are written with real radicals when possible; other residues of degree greater than 2 give a <code class="md-code-inline">RootSum</code>.</p>
@@ -230,6 +231,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=ca3702a8"></script>
+  <script src="../assets/materialdocs.js?v=ee9b6632"></script>
 </body>
 </html>
