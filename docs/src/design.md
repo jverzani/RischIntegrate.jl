@@ -321,7 +321,12 @@ At a level ``i ≥ 1`` with monomial ``θ`` over ``K = K_{i-1}`` (Bronstein ch. 
      integration* in ``K`` (§5.8), recursively calling `integrate_el` at level ``i - 1``. When
      that is impossible because of ``θ \log(ax + b)`` times simple rational poles, the dilogarithm
      step DL writes those terms with ``\operatorname{Li}_2``; step LF handles logs of products of
-     linear factors.
+     linear factors. Each pair of complex poles ``c, \bar c`` contributes twice the real part of
+     ``\int ρ \log v/(x - c)``. That real part uses ``\operatorname{Re}\operatorname{Li}_2`` and
+     ``\operatorname{Im}\operatorname{Li}_2`` (`repolylog`, `impolylog`), and works over a
+     parameter field too. The poles come from ``ℚ(i)``, or from a quadratic factor with
+     ``-Δ`` a square, as in ``a ± i`` for ``1/(1 + (x - a)^2)``. That is how ``\int \operatorname{atan}(x - a)/(x + a)``
+     is done, by parts (step AP).
    - `exp` levels: ``\int a_j θ^j`` needs ``y`` with ``y' + j u' y = a_j``, the **Risch differential
      equation** (ch. 6). `rde` dispatches: `rde_base` over ``C(x)`` (bounds on poles and degree,
      then exact linear algebra), and `rde_general` for arbitrary denominators (weak normalization,

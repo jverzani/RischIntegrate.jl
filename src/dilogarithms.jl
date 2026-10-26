@@ -22,11 +22,15 @@ end
 #   ρr log v log(((v - Kr)² + Ki²)/|K|²) - 2ρi log v (atan((v - Kr)/Ki) + atan(Kr/Ki))
 #     + 2ρr Re Li₂(v/|K| e^(-iα)) - 2ρi Im Li₂(v/|K| e^(-iα)),   -α = atan(Kr/Ki) - sgn π/2,
 # (arg(1 - v/K) = arg(K - v) - α, continuous from 0 at v = 0); deriv: (ρ/(x - c) + ρ̄/(x - c̄)) θ.
+# (over a parameter field ℚ(a, …) too: then c = cr + i ci, ρ = ρr + i ρi, a, b have parts in that field, and the sign
+# of Ki is taken at `param_value`)
 struct DilogPairTerm
-    ρ::QI
-    a::Q
-    b::Q
-    c::QI
+    ρr::Any
+    ρi::Any
+    a::Any
+    b::Any
+    cr::Any              # c = cr + i ci, ci > 0
+    ci::Any
     deriv::Any
 end
 # A pair of simple real poles c, c̄ = (-B ± √Δ)/2 ∈ ℚ(√d) \ ℚ (a factor x² + B x + C of the denominator, Δ > 0 not a
@@ -101,20 +105,50 @@ function dilog_split(T::Tower, i::Int, p::UPoly)
         add!((a, b, e) -> (single && iszero(a * c + b)) ? nothing : (dv -> DilogTerm(e * ρ, a, b, c, dv)),
              frac(UPoly{C}(C[ρ]), lin))
     end
-    if C === Q                                          # pairs of poles in ℚ(i) (C = ℚ only)
-        D1i = UPoly{QI}(QI[QI(c, Q(0)) for c in D1.c])
-        Ni = UPoly{QI}(QI[QI(c, Q(0)) for c in r.num.c])
+    # pairs of poles c, c̄ = cr ± i ci: with r over ℚ the roots in ℚ(i) (the log's a, b may have parameters); over
+    # ℚ(a, …) the quadratic factors of D1 with -Δ a square (atan(x - a): poles a ± i)
+    two = cfromQ(C, Q(2))
+    function add_pair!(cr, ci, ρr, ρi)
+        num_ = UPoly{C}(C[-two * (ρr * cr + ρi * ci), two * ρr])    # ρ/(x - c) + ρ̄/(x - c̄)
+        den_ = UPoly{C}(C[cr * cr + ci * ci, -two * cr, one(C)])
+        add!((a, b, e) -> (dv -> DilogPairTerm(cfromQ(C, Q(e)) * ρr, cfromQ(C, Q(e)) * ρi, a, b, cr, ci, dv)),
+             frac(num_, den_))
+    end
+    rq(c) = C === Q ? c : crational(c)
+    if all(c -> rq(c) !== nothing, D1.c) && all(c -> rq(c) !== nothing, r.num.c)
+        D1i = UPoly{QI}(QI[QI(rq(c), Q(0)) for c in D1.c])
+        Ni = UPoly{QI}(QI[QI(rq(c), Q(0)) for c in r.num.c])
         for c in constant_roots(D1i)
             c.im > 0 || continue
             lin = UPoly{QI}(QI[-c, one(QI)])
             iszero(rem(D1i, lin * lin)) && continue
             ρ = peval(Ni, c) / peval(deriv(D1i), c)
             iszero(ρ) && continue
-            cb = QI(c.re, -c.im)
-            num_ = UPoly{Q}(Q[-2 * (ρ * cb).re, 2ρ.re])
-            den_ = UPoly{Q}(Q[c.re^2 + c.im^2, -2c.re, Q(1)])
-            add!((a, b, e) -> (dv -> DilogPairTerm(QI(Q(e), Q(0)) * ρ, Q(a), Q(b), c, dv)), frac(num_, den_))
+            add_pair!(cfromQ(C, c.re), cfromQ(C, c.im), cfromQ(C, ρ.re), cfromQ(C, ρ.im))
         end
+    elseif C !== Q
+        CC = cplx_type(C)
+        I = cimag(CC)
+        up(q) = UPoly{CC}(CC[to_complex(CC, c) for c in q.c])
+        half = inv(cfromQ(CC, Q(2)))
+        for (g, m) in squarefree(D1)
+            (m == 1 && degree(g) == 2) || continue
+            p0, p1 = g.c[1], g.c[2]
+            sq = csqrt(two * two * p0 - p1 * p1)
+            (sq === nothing || iszero(sq)) && continue
+            cr, ci = -p1 / two, sq / two
+            v = param_value(ci, T.consts)
+            v === nothing && continue
+            v < 0 && (ci = -ci)
+            c = to_complex(CC, cr) + I * to_complex(CC, ci)
+            ρ = peval(up(r.num), c) / peval(up(deriv(D1)), c)
+            iszero(ρ) && continue
+            ρr, ρi = to_real((ρ + cconj(ρ)) * half), to_real((ρ - cconj(ρ)) * inv(I + I))
+            (ρr === nothing || ρi === nothing) && continue
+            add_pair!(cr, ci, ρr, ρi)
+        end
+    end
+    if C === Q
         # pairs of real poles in ℚ(√d)
         for (g0, m) in squarefree(monic(D1)), g in (m == 1 && degree(g0) >= 2 ? factor_Q(g0) : ())
             degree(g) == 2 || continue                  # (factor_Q needs a squarefree polynomial)
@@ -173,30 +207,33 @@ dilog_quad_term(b::Builder, q::DilogQuadTerm) =
               dilog_term(b, DilogTerm(qconj(q.ρ), q.a, q.b, qconj(q.c), nothing)))
 
 function dilog_pair_term(b::Builder, q::DilogPairTerm)
-    K = QI(q.a, Q(0)) * q.c + QI(q.b, Q(0))
-    Kr, Ki = K.re, K.im
+    C = typeof(q.a)
+    Kr, Ki = q.a * q.cr + q.b, q.a * q.ci               # K = a c + b
     n2 = Kr^2 + Ki^2
-    vp = UPoly{Q}(Q[q.b, q.a])                          # v = a x + b
+    vp = UPoly{C}(C[q.b, q.a])                          # v = a x + b
     vt = poly_term(b, vp)
     lv = mk(b, :log, vt)
-    ρr, ρi = q.ρ.re, q.ρ.im
+    ρr, ρi = q.ρr, q.ρi
     sc(c, t) = isone(c) ? t : mk(b, :*, cterm(b, c), t)
     ts = Any[]
     if !iszero(ρr)                                      # ρr log v log(((v - Kr)² + Ki²)/|K|²)
-        w = UPoly{Q}(Q[q.b - Kr, q.a])
-        w2 = w * w + UPoly{Q}(Q[Ki^2])
-        push!(ts, sc(ρr, mk(b, :*, lv, mk(b, :log, poly_term(b, UPoly{Q}(w2.c ./ n2))))))
+        w = UPoly{C}(C[q.b - Kr, q.a])
+        w2 = w * w + UPoly{C}(C[Ki^2])
+        push!(ts, sc(ρr, mk(b, :*, lv, mk(b, :log, poly_term(b, UPoly{C}(C[c / n2 for c in w2.c]))))))
     end
     if !iszero(ρi)                                      # -2ρi log v (atan((v - Kr)/Ki) + atan(Kr/Ki))
-        at = mk(b, :atan, poly_term(b, UPoly{Q}(Q[(q.b - Kr) / Ki, q.a / Ki])))
+        at = mk(b, :atan, poly_term(b, UPoly{C}(C[(q.b - Kr) / Ki, q.a / Ki])))
         iszero(Kr) || (at = mk(b, :+, at, mk(b, :atan, cterm(b, Kr / Ki))))
-        push!(ts, sc(-2ρi, mk(b, :*, lv, at)))
+        push!(ts, sc(cfromQ(C, Q(-2)) * ρi, mk(b, :*, lv, at)))
     end
-    m = rat_sqrt(n2)                                    # v/|K|
-    ρt = m === nothing ? mk(b, :/, vt, mk(b, :sqrt, cterm(b, n2))) : poly_term(b, UPoly{Q}(vp.c ./ m))
-    hp = mk(b, :*, cterm(b, Q(Ki > 0 ? -1 : 1, 2)), b.lift(π))
+    m = csqrt(n2)                                       # v/|K|
+    m === nothing || C === Q || (v = param_value(m, b.consts); (v !== nothing && v < 0) && (m = -m))
+    ρt = m === nothing ? mk(b, :/, vt, mk(b, :sqrt, cterm(b, n2))) : poly_term(b, UPoly{C}(C[c / m for c in vp.c]))
+    Kir = C === Q ? Ki : crational(Ki)
+    Kipos = Kir !== nothing ? Kir > 0 : (v = param_value(Ki, b.consts); v !== nothing && v > 0)
+    hp = mk(b, :*, cterm(b, Q(Kipos ? -1 : 1, 2)), b.lift(π))
     φt = iszero(Kr) ? hp : mk(b, :+, mk(b, :atan, cterm(b, Kr / Ki)), hp)
-    iszero(ρr) || push!(ts, sc(2ρr, mk(b, :ReLi, b.lift(2), ρt, φt)))
-    iszero(ρi) || push!(ts, sc(-2ρi, mk(b, :ImLi, b.lift(2), ρt, φt)))
+    iszero(ρr) || push!(ts, sc(cfromQ(C, Q(2)) * ρr, mk(b, :ReLi, b.lift(2), ρt, φt)))
+    iszero(ρi) || push!(ts, sc(cfromQ(C, Q(-2)) * ρi, mk(b, :ImLi, b.lift(2), ρt, φt)))
     length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
 end
