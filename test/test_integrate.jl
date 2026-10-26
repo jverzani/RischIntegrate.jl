@@ -1409,6 +1409,29 @@ end
     end
 end
 
+# step EH: e^(ax) R(cos bx, sin bx) by partial fractions in E = e^(ibx), Re ₂F₁(k, s; s + 1; E/r) (Rubi 1539-1543)
+@testset "e^(ax) R(cos, sin) with ₂F₁ terms (step EH)" begin
+    Risch.HYP_ANSWERS[] = true
+    try
+        build(op, args...) = Expr(:call, nameof(op), args...)
+        ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 1.3)), e))
+        Main.eval(:(const rehyp2f1 = $(Risch.rehyp2f1); const imhyp2f1 = $(Risch.imhyp2f1)))
+        for f in (:(exp(x) / (1 + cos(x))), :(exp(x) / (1 - cos(x))), :(exp(x) / (1 + sin(x))), :(exp(x) / (1 - sin(x))),
+                  :(exp(a * x) / sin(x) ^ 2), :(exp(x) * (1 + sin(x)) / (1 - cos(x))), :(exp(x) * tan(x) ^ 2),
+                  :(exp(a * x) / cos(x) ^ 3), :(exp(-2x) * cot(x)), :(exp(a * x) * tan(x) ^ 3))
+            F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+            @test occursin("hyp2f1", string(F))
+            for x0 in (0.3, 1.1, 2.5)
+                @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+            end
+        end
+        # poles off ℚ(i) (E² + 4E + 1): not handled
+        @test_throws Risch.NotElementary Risch.risch_integrate(:(exp(2x) / (2 + cos(x))), :x; build = build, lift = identity)
+    finally
+        Risch.HYP_ANSWERS[] = false
+    end
+end
+
 # step PR with √(∓D/A) not in the parameter field: an opaque constant (as √(2h), cos a)
 @testset "parameter radicands with opaque square roots" begin
     build(op, args...) = Expr(:call, nameof(op), args...)

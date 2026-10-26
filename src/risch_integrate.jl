@@ -49,7 +49,9 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         if e isa NotElementary && HYP_ANSWERS[]           # xᵐ(α + βxⁿ)^q, sinᵖ cosʳ, symbolic exponents: ₂F₁ (step HS)
             g = try
                 g1 = try_binomial_symbolic(f, x; build = build, lift = lift, verify = verify)
-                g1 === nothing ? try_trig_symbolic(f, x; build = build, lift = lift, verify = verify) : g1
+                g1 === nothing && (g1 = try_trig_symbolic(f, x; build = build, lift = lift, verify = verify))
+                # e^(ax) R(cos bx, sin bx): Re ₂F₁(k, s; s + 1; E/r) (step EH)
+                g1 === nothing ? try_exp_trig_hyp(f, x; build = build, lift = lift, verify = verify) : g1
             catch e2
                 (e2 isa MethodError && any(fn -> e2.f === fn, SPECIAL_FNS) && !(f isa Expr)) || rethrow()
                 integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
