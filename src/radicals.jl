@@ -27,9 +27,16 @@ function radical_parts(t)
 end
 
 # a radical of this radicand is an opaque constant (a `:sym` generator): free of x, with a parameter (√(2h)),
+# a negative rational (√-1 for I, Rubi 492: the answer is an identity in the symbol, so holds for √-1 = i),
 # or any constant radical inside step PR for rational radicands (√7, √(7/2): `OPAQUE_CONST_RADICALS`)
 const OPAQUE_CONST_RADICALS = Ref(false)
-opaque_radical(u, xk::String) = !has_x(u, xk) && (OPAQUE_CONST_RADICALS[] || has_param(u, xk))
+opaque_radical(u, xk::String) = !has_x(u, xk) && (OPAQUE_CONST_RADICALS[] || has_param(u, xk) || negative_constant(u))
+function negative_constant(u)
+    r = leaf_rational(u)
+    r === nothing && safe_iscall(u) && opname(operation(u)) === :- && length(arguments(u)) == 1 &&
+        (r = leaf_rational(arguments(u)[1]); r = r === nothing ? nothing : -r)
+    r !== nothing && r < 0
+end
 
 # all radicals of f: [(exponent, radicand term)]
 function collect_radicals(f, xk::String, out = Tuple{Q,Any}[])
