@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=5b44875b">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=cf7a478e">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -413,10 +413,11 @@
 <ul class="md-list-tight">
 <li><p><strong>Step PS.</strong> If <span class="md-math md-math-inline">\(f\)</span> is homogeneous in <span class="md-math md-math-inline">\(x\)</span> and a parameter <span class="md-math md-math-inline">\(a\)</span>, then <span class="md-math md-math-inline">\(ρ = a\)</span>. For example, <span class="md-math md-math-inline">\(1/(x^3 + a^3) = a^{-3}/(u^3 + 1)\)</span>.</p>
 </li>
-<li><p><strong>Step BN.</strong> If the denominator is <span class="md-math md-math-inline">\(λ x^j (x^n + c)^k\)</span> with <span class="md-math md-math-inline">\(n ≥ 3\)</span>, then <span class="md-math md-math-inline">\(ρ = |c|^{1/n}\)</span>, kept as an opaque constant. For example, <span class="md-math md-math-inline">\(1/(x^3 - 2)\)</span> and <span class="md-math md-math-inline">\(1/(a x^3 - b)\)</span>. Here <span class="md-math md-math-inline">\(x^n + c = |c|(u^n ± 1)\)</span>. The numerator is split into monomials <span class="md-math md-math-inline">\(u^i\)</span>, and powers of <span class="md-math md-math-inline">\(ρ\)</span> are reduced with <span class="md-math md-math-inline">\(ρ^n = |c|\)</span>. That leaves one integral <span class="md-math md-math-inline">\(\int u^{i-j}/(u^n ± 1)^k\)</span> over <span class="md-math md-math-inline">\(ℚ\)</span> for each monomial. The factors of <span class="md-math md-math-inline">\(u^n ± 1\)</span> are cyclotomic, so for <span class="md-math md-math-inline">\(n = 3, 4, 5, 6\)</span> the answer has only <code class="md-code-inline">log</code> and <code class="md-code-inline">atan</code>, with <span class="md-math md-math-inline">\(\sqrt 3\)</span>, <span class="md-math md-math-inline">\(\sqrt 2\)</span> or <span class="md-math md-math-inline">\(\sqrt 5\)</span>. For <span class="md-math md-math-inline">\(u^8 + 1\)</span> the integral stays a RootSum.</p>
+<li><p><strong>Step BN.</strong> If the denominator is <span class="md-math md-math-inline">\(λ x^j (x^n + c)^k\)</span> with <span class="md-math md-math-inline">\(n ≥ 3\)</span>, then <span class="md-math md-math-inline">\(ρ = |c|^{1/n}\)</span>, kept as an opaque constant. For example, <span class="md-math md-math-inline">\(1/(x^3 - 2)\)</span> and <span class="md-math md-math-inline">\(1/(a x^3 - b)\)</span>. Here <span class="md-math md-math-inline">\(x^n + c = |c|(u^n ± 1)\)</span>. The numerator is split into monomials <span class="md-math md-math-inline">\(u^i\)</span>, and powers of <span class="md-math md-math-inline">\(ρ\)</span> are reduced with <span class="md-math md-math-inline">\(ρ^n = |c|\)</span>. That leaves one integral <span class="md-math md-math-inline">\(\int u^{i-j}/(u^n ± 1)^k\)</span> over <span class="md-math md-math-inline">\(ℚ\)</span> for each monomial. The factors of <span class="md-math md-math-inline">\(u^n ± 1\)</span> are cyclotomic, so for <span class="md-math md-math-inline">\(n = 3, 4, 5, 6\)</span> the answer has only <code class="md-code-inline">log</code> and <code class="md-code-inline">atan</code>, with <span class="md-math md-math-inline">\(\sqrt 3\)</span>, <span class="md-math md-math-inline">\(\sqrt 2\)</span> or <span class="md-math md-math-inline">\(\sqrt 5\)</span>. For <span class="md-math md-math-inline">\(u^8 + 1\)</span> the integral stays a RootSum. If <span class="md-math md-math-inline">\(|c|\)</span> is an <span class="md-math md-math-inline">\(n\)</span>-th power in the constant field, <span class="md-math md-math-inline">\(ρ\)</span> is that root rather than an opaque constant: <span class="md-math md-math-inline">\(ρ = a\)</span> for <span class="md-math md-math-inline">\(c = a^3\)</span>.</p>
 </li>
 </ul>
 <p>Either way the answer is <span class="md-math md-math-inline">\(G(x/ρ)\)</span>, which matches the <span class="md-math md-math-inline">\(b^{1/3}\)</span> form Rubi gives.</p>
+<p>Step BN is also tried inside the radical substitutions (<code class="md-code-inline">integrate_subst</code>), on the rational function of <span class="md-math md-math-inline">\(t\)</span>. There <span class="md-math md-math-inline">\(t = x^{1/3}\)</span> turns <span class="md-math md-math-inline">\(1/((a^3 - x) x^{4/3})\)</span> into <span class="md-math md-math-inline">\(3/(t^2 (a^3 - t^3))\)</span>. Together with step US (<span class="md-math md-math-inline">\(u = \cos^n x\)</span>) this handles <span class="md-math md-math-inline">\(\tan x/(a^3 - b^3\cos^n x)^{4/3}\)</span>.</p>
 <p>At a level <span class="md-math md-math-inline">\(i ≥ 1\)</span> with monomial <span class="md-math md-math-inline">\(θ\)</span> over <span class="md-math md-math-inline">\(K = K_{i-1}\)</span> (Bronstein ch. 5):</p>
 <ol class="md-list-tight">
 <li><p><strong>Special part</strong> (exp only): <span class="md-math md-math-inline">\(θ^m\)</span> in the denominator splits off as Laurent terms.</p>
@@ -943,6 +944,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=5b44875b"></script>
+  <script src="../assets/materialdocs.js?v=cf7a478e"></script>
 </body>
 </html>
