@@ -1951,6 +1951,24 @@ end
     end
 end
 
+# step PP: √(g + c₁), √(g + c₂): w = √(g + c₁) - √(g + c₂) for g = x, after u = g for g = sec, exp, cosh, … (Rubi 262)
+@testset "pairs of square roots √(g + c₁), √(g + c₂) (step PP)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for (f, pts) in ((:(sqrt(sqrt(x + 1) - sqrt(x - 1))), (1.3, 2.1, 4.7)), (:(sqrt(sqrt(x + 3) + sqrt(x - 1))), (1.3, 2.1, 4.7)),
+                     (:(x / sqrt(sqrt(x + 2) - sqrt(x))), (1.3, 2.1, 4.7)),
+                     (:(sqrt(sqrt(sec(x) + 1) - sqrt(sec(x) - 1))), (0.3, 0.8, 1.3)),
+                     (:(sqrt(sqrt(sec(2x) + 1) + sqrt(sec(2x) - 1))), (0.1, 0.3, 0.7)),
+                     (:(sqrt(sqrt(exp(x) + 1) - sqrt(exp(x) - 1))), (0.3, 0.8, 1.3)),
+                     (:(sqrt(sqrt(cosh(x) + 1) - sqrt(cosh(x) - 1))), (0.1, 0.3, 0.7)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !occursin("RootSum", string(F))
+        for x0 in pts
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+end
+
 # step MR, then step SQ for a rational radicand with square factors: s = sin x, √(s²(2 - s²))/(1 - s²) (Rubi 260);
 # s = tan x, √(2s²/(1 - s²)) (Rubi 1448); a RootSum in s put back (`subst_answer`, Rubi 229)
 @testset "trigonometric radicands (steps MR, SQ)" begin
