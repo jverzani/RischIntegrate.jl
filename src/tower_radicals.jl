@@ -86,6 +86,7 @@ function try_tower_radical(f, x; build = nothing, lift = nothing, verify::Bool =
     end
     m = length(T.levels)
     m >= 1 || return nothing
+    is_complex_field(ctype(T)) && return nothing        # (no real forms here: trig towers over ℚ(i))
     lift_m(e) = liftto(T, e, m)
     Pm = lift_m(Pel)
     dlogP = D(T, m, Pm) / Pm

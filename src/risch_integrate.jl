@@ -121,7 +121,11 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     has_op(f, :acot) && return risch_integrate(rewrite_acot(f, x, build, lift), x; build = build, lift = lift,
                                                verify = verify)     # acot(u) = atan(1/u) (step AC)
     arcs = collect_arcs(f, xk)                  # asin / acos: substitution u = sin t / cos t (step AS)
-    isempty(arcs) || return integrate_arcsin(f, x, arcs; build = build, lift = lift, verify = verify)
+    if !isempty(arcs)
+        r = integrate_arcs_scaled(f, x, arcs; build = build, lift = lift, verify = verify)   # asin(a x): y = a x (AL)
+        r === nothing || return r
+        return integrate_arcsin(f, x, arcs; build = build, lift = lift, verify = verify)
+    end
     rads = collect_radicals(f, xk)
     if isempty(rads) && has_param(f, xk)               # a power of one parameter quadratic: linearity (step PL)
         r = integrate_param_linear(f, x; build = build, lift = lift, verify = verify)
