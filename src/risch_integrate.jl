@@ -68,6 +68,8 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         r === nothing || return r
         r = try_nested_radical(f, x; build = build, lift = lift, verify = verify)   # nested radicals (step NS)
         r === nothing || return r
+        r = try_const_scaling(f, x; build = build, lift = lift, verify = verify)   # … over ℚ(√d) (step CS)
+        r === nothing || return r
         r = try_reciprocal(f, x; build = build, lift = lift, verify = verify)   # u = x + s/x (step RC)
         r === nothing || return r
         r = try_tower_radical(f, x; build = build, lift = lift, verify = verify)   # √ of a tower element (step RY)
@@ -302,8 +304,11 @@ end
 # a leaf that is a symbol (not a number, e or π)
 has_symbol(t) = safe_iscall(t) && !isempty(arguments(t)) ? any(has_symbol, arguments(t)) :
                 (leaf_rational(t) === nothing && !is_e_const(t) && !(string(t) in ("pi", "π")))
+# a root c^(p/q) with q > 2 of a constant (2^(1/4) from step CS): the constant fields hold square roots only
+has_high_root(t) = safe_iscall(t) && !isempty(arguments(t)) &&
+                   ((rp = radical_parts(t); rp !== nothing && denominator(rp[1]) > 2) || any(has_high_root, arguments(t)))
 # f = c·g with c ≠ 1 the product of the factors of f (numerator and denominator of a top-level
-# product or quotient) that are free of x but contain a symbol: (c, g, builder), or nothing
+# product or quotient) that are free of x but contain a symbol or a root c^(p/q), q > 2: (c, g, builder), or nothing
 function split_free_factor(f, x, xk::String, build, lift)
     @nospecialize f x
     (safe_iscall(f) && !isempty(arguments(f))) || return nothing
@@ -313,7 +318,7 @@ function split_free_factor(f, x, xk::String, build, lift)
     nums, dens = n === :* ? (Any[arguments(f)...], Any[]) :
                  length(arguments(f)) == 2 ? (Any[factors(arguments(f)[1])...], Any[factors(arguments(f)[2])...]) :
                  return nothing
-    isfree(t) = !has_leaf(t, xk) && has_symbol(t)
+    isfree(t) = !has_leaf(t, xk) && (has_symbol(t) || has_high_root(t))
     cn, cd = filter(isfree, nums), filter(isfree, dens)
     (isempty(cn) && isempty(cd)) && return nothing
     gn, gd = filter(!isfree, nums), filter(!isfree, dens)
