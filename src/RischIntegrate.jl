@@ -58,6 +58,7 @@ include("param_radicals.jl")
 include("clausen.jl")
 include("polylog_parts.jl")
 include("hyp_symbolic.jl")
+include("exp_trig_hyp.jl")
 include("linearity.jl")
 include("nested_subst.jl")
 include("constant_scaling.jl")
@@ -69,7 +70,7 @@ include("kummer_logs.jl")
 include("real_log_arguments.jl")
 include("integrate_macro.jl")
 
-export integrate, @integrate, sinhint, coshint, clausen2, clausen, repolylog, impolylog
+export integrate, @integrate, sinhint, coshint, clausen2, clausen, repolylog, impolylog, rehyp2f1, imhyp2f1
 
 """
     integrate(ex, x, ys...; build = nothing, lift = nothing)
