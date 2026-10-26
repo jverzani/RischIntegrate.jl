@@ -215,6 +215,26 @@ function integrate_param_scaled(f, x; build = nothing, lift = nothing, verify::B
     nothing
 end
 
+# an n-th root of c in C = ℚ or ℚ(t₁, …) (c > 0 in ℚ when n is even), or nothing
+cnthroot(c::Q, n::Int) = (c > 0 || isodd(n)) ? rat_root(c, n) : nothing
+function cnthroot(c::Frac{<:UPoly}, n::Int)
+    a = pnthroot(c.num, n)
+    a === nothing && return nothing
+    b = pnthroot(c.den, n)
+    b === nothing ? nothing : frac(a, b)
+end
+function pnthroot(p::UPoly{B}, n::Int) where {B}
+    iszero(p) && return nothing
+    l = cnthroot(lc(p), n)
+    l === nothing && return nothing
+    r = UPoly{B}(B[l])
+    for (a, e) in squarefree(p)
+        e % n == 0 || return nothing
+        r = r * a^(e ÷ n)
+    end
+    r^n == p ? r : nothing
+end
+
 # step BN: f ∈ C(x) (C = ℚ or ℚ(a, …)) with denominator λ xʲ (xⁿ + c)ᵏ, n ≥ 3, whose residues need a RootSum
 # (c not ± an n-th power: 1/(x³ - 2), 1/(a x³ - b)). With ρ = |c|^(1/n) (an opaque constant, positive at the
 # parameter values of `param_value`) and x = ρ u, xⁿ + c = |c| (uⁿ ± 1); the numerator N(ρu) = Σ Nᵢ ρⁱ uⁱ, and
@@ -249,7 +269,10 @@ function integrate_binomial_scaled(f, x; build = nothing, lift = nothing, verify
     isone(r) && return nothing                         # (already uⁿ ± 1)
     lcD = lc(Dn)
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
-    ρpow(m) = mk(bd, :^, cterm(bd, r), bd.lift(Q(m) // n))
+    # ρ itself when |c| is an n-th power in C (a³: ρ = a, positive at the parameter values), else |c|^(m/n)
+    ρ = cnthroot(r, n)
+    ρ !== nothing && !pos(ρ) && (ρ = -ρ)
+    ρpow(m) = ρ === nothing ? mk(bd, :^, cterm(bd, r), bd.lift(Q(m) // n)) : cterm(bd, ρ^m)
     Q0 = QX([i == 0 ? Q(σ) : i == n ? Q(1) : Q(0) for i in 0:n])^k
     terms = Any[]
     for (i, Ni) in enumerate(el.num.c)
