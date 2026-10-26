@@ -259,6 +259,9 @@ function tan_jump_terms(bd::Builder, bs::Builder, res::RationalIntegral, sg = c 
         elseif q isa RationalIntegral
             Jd = sum((c * atan_infinity_sign(p) for (c, p) in q.atans); init = zero(typeof(q.rational.num.c[1])))
             iszero(Jd) || push!(corr, cterm(bd, Jd))
+        elseif q isa BiquadTerm                         # α/s (atan((2x + r)/s) + atan((2x - r)/s)): 2α/s
+            j = biquad_jump(bd, q)
+            j === nothing || push!(corr, j)
         elseif q isa QuarticNested                      # c √w atan(√w u): jump c σ √w (√w > 0)
             for (c, w, u) in q.natans
                 σ = atan_infinity_sign(frac(u))

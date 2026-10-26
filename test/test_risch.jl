@@ -40,8 +40,12 @@ end
         @test length(res.atans) == natans
     end
     # irrational residues are reported, not mis-integrated
-    res = Risch.integrate_rational(rf(poly(1), poly(2, 0, 0, 0, 1)))   # 1/(x^4+2)
+    res = Risch.integrate_rational(rf(poly(1), poly(1, 1, 0, 1)))      # 1/(x^3+x+1)
     @test !isempty(res.unresolved)
+    # an even quartic: nested real forms (step BQ4), exact derivative
+    f = rf(poly(1), poly(2, 0, 0, 0, 1))                                # 1/(x^4+2)
+    res = Risch.integrate_rational(f)
+    @test isempty(res.unresolved) && Risch.derivative_of(res) == f
 end
 
 # step WR: Hermite reduction with a repeated factor V of degree ≥ 2 next to other factors (the new
@@ -77,17 +81,20 @@ Base.show(io::IO, w::WrLeaf) = print(io, w.s)
 end
 
 @testset "RootSum: residues of degree > 2, verified in the exact field" begin
-    for f in (rf(poly(1), poly(2, 0, 0, 0, 1)),                       # 1/(x⁴+2): needs 2^(1/4)
-              rf(poly(1), poly(1, 1, 0, 1)),                          # 1/(x³+x+1)
+    for f in (rf(poly(1), poly(1, 1, 0, 1)),                          # 1/(x³+x+1)
               rf(poly(0, 1), poly(1, 1, 0, 1)^2),                     # x/(x³+x+1)²  (Hermite part too)
               rf(poly(1), poly(-2, 0, 0, 1) * poly(-3, 0, 0, 1)),     # 1/((x³-2)(x³-3))
-              rf(poly(1), poly(3, 0, 1) * poly(2, 0, 0, 0, 1)),       # 1/((x²+3)(x⁴+2))
               rf(poly(1), poly(1, 1, 0, 0, 0, 1)))                    # 1/(x⁵+x+1)
         res = Risch.integrate_rational(f)
         @test !isempty(res.unresolved)
         rss = vcat([Risch.root_sums(rest, R, D, "x") for (rest, R, D) in res.unresolved]...)
         el = Risch.RationalIntegral(res.rational, res.logs, res.atans, Any[], res.quads)
         @test Risch.derivative_of(el) + sum(Risch.rootsum_derivative(rs) for rs in rss) == f
+    end
+    # even quartic factors (needing 2^(1/4)): nested real forms instead (step BQ4), exact derivative
+    for f in (rf(poly(1), poly(2, 0, 0, 0, 1)), rf(poly(1), poly(3, 0, 1) * poly(2, 0, 0, 0, 1)))   # 1/(x⁴+2), 1/((x²+3)(x⁴+2))
+        res = Risch.integrate_rational(f)
+        @test isempty(res.unresolved) && Risch.derivative_of(res) == f
     end
     # dynamic evaluation: m = (z-1)(z-2) splits on the zero divisor z - 1
     m = poly(2, -3, 1)
@@ -100,7 +107,7 @@ end
     @test Risch.power_sums(poly(2, -3, 1)) == Q[2, 3]                  # roots 1, 2
     # Lazard–Rioboo–Trager (step LR): W from subresultants, also for a residue shared by two roots
     # (x/(x⁶+x²+1): residues 1/(2(3y²+1)) at y³+y+1 = 0, y = x², so deg W = 2)
-    for (A, D, degW) in ((poly(1), poly(1, 1, 0, 1), 1), (poly(1), poly(2, 0, 0, 0, 1), 1),
+    for (A, D, degW) in ((poly(1), poly(1, 1, 0, 1), 1), (poly(1), poly(1, 1, 0, 0, 1), 1),
                          (poly(0, 1), poly(1, 0, 1, 0, 0, 0, 1), 2))
         f = rf(A, D)
         res = Risch.integrate_rational(f)
@@ -125,7 +132,7 @@ end
     @test Risch.field_det(Q[2 1 3; 0 4 1; 5 2 0]) == Q(-59)
     @test Risch.field_det(Q[0 1; 1 0]) == Q(-1)
     # quadratic residue factors are split off over ℚ: only the quartic is left for RootSum
-    res = Risch.integrate_rational(rf(poly(1), poly(3, 0, 1) * poly(2, 0, 0, 0, 1)))
+    res = Risch.integrate_rational(rf(poly(1), poly(3, 0, 1) * poly(1, 1, 0, 0, 1)))
     @test [Risch.degree(u[1]) for u in res.unresolved] == [4]
     @test !isempty(res.quads) || !isempty(res.atans)
     res = Risch.integrate_rational(rf(poly(1), poly(4, 0, 0, 0, 1)))  # 1/(x⁴+4): fully elementary
@@ -147,9 +154,12 @@ end
         @test any(q -> q isa Risch.RationalIntegral, res.quads)
         @test Risch.check_result(res, f)
     end
-    # roots not in ℚ(i, √d): stays a RootSum
-    @test !isempty(Risch.integrate_rational(rf(poly(1), poly(2, 0, 0, 0, 1))).unresolved)
-    @test !isempty(Risch.integrate_rational(rf(poly(1), poly(3, 0, 1, 0, 1))).unresolved)   # 1/(x⁴+x²+3)
+    # roots not in ℚ(i, √d): for an even quartic, nested real forms (step BQ4); otherwise a RootSum
+    for f in (rf(poly(1), poly(2, 0, 0, 0, 1)), rf(poly(1), poly(3, 0, 1, 0, 1)))       # 1/(x⁴+2), 1/(x⁴+x²+3)
+        res = Risch.integrate_rational(f)
+        @test isempty(res.unresolved) && any(q -> q isa Risch.BiquadTerm, res.quads) && Risch.check_result(res, f)
+    end
+    @test !isempty(Risch.integrate_rational(rf(poly(1), poly(1, 1, 0, 0, 1))).unresolved)   # 1/(x⁴+x+1)
     # step NR: nested radicals √w, w ∈ ℚ(√d) (Im ζ₁₀ = √(10 − 2√5)/4): 1/(x⁵+1) etc. in real form
     for N in (poly(1), poly(0, 1), poly(0, 0, 0, 1))
         f = rf(N, poly(1, 0, 0, 0, 0, 1))
@@ -228,8 +238,9 @@ function run_tests(x, evalat, name)
                 @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5)
             end
         end
-        # a binomial denominator: x = 2^(1/4) u (or ℯ^(1/4) u), then a quartic over ℚ (step BN)
-        for f in (1/(x^4 + 2), 1/(x^4 + ℯ))
+        # a binomial denominator: x = 2^(1/4) u (or ℯ^(1/4) u), then a quartic over ℚ (step BN); an even quartic
+        # with nested real forms (step BQ4)
+        for f in (1/(x^4 + 2), 1/(x^4 + ℯ), 1/((x^2 + 3)*(x^4 + 2)), 1/((x^2 + 1)*sqrt(x + 1)))   # t⁴ - 2t² + 2
             F = Risch.risch_integrate(f, x)
             @test !(F isa Risch.IntegralWithRootSums)
             for a in (1.7, 2.6, 4.1)
@@ -239,7 +250,7 @@ function run_tests(x, evalat, name)
         # residues algebraic of degree > 2: elementary part + RootSums (verified exactly
         # inside), evaluated numerically by F(a)
         for f in (1/(x^3 + x + 1), x/(x^3 + x + 1), 1/(x^3 + x + 1)^2,
-                  1/(x^5 + x + 1), (x^2 + 1)/(x^6 + x + 1), 1/((x^2 + 3)*(x^4 + 2)))
+                  1/(x^5 + x + 1), (x^2 + 1)/(x^6 + x + 1), 1/((x^2 + 3)*(x^4 + x + 1)))
             F = Risch.risch_integrate(f, x)
             @test F isa Risch.IntegralWithRootSums
             @test occursin("RootSum", string(F))
@@ -248,7 +259,7 @@ function run_tests(x, evalat, name)
             end
         end
         # a RootSum in a substitution variable (t = sqrt(1 + x), Euler's t) is evaluated through x
-        for f in (1/((x^2 + 1)*sqrt(x + 1)), 1/((x^3 + x + 1)*sqrt(x^2 + 1)))
+        for f in (1/((x^3 + 2)*sqrt(x + 1)), 1/((x^3 + x + 1)*sqrt(x^2 + 1)))
             F = Risch.risch_integrate(f, x)
             @test F isa Risch.IntegralWithRootSums
             for a in (0.3, 1.7, 2.6)
@@ -302,7 +313,7 @@ function run_tests(x, evalat, name)
         end
         # RootSums over ℚ(i) in trigonometric towers (step RC): complex coefficients R + i·I in cos/sin;
         # F(a) is the real part (an antiderivative between the branch-cut jumps of the complex logs)
-        for f in (cos(x)/(sin(x)^3 + sin(x) + 1), 1/(cos(x)^3 + 2), cos(x)/(sin(x)^4 + 2),
+        for f in (cos(x)/(sin(x)^3 + sin(x) + 1), 1/(cos(x)^3 + 2), cos(x)/(sin(x)^4 + sin(x) + 2),
                   sin(x) + 1/(x^3 + x + 1), 1/(sin(x)^3 + 2))
             F = Risch.risch_integrate(f, x)
             @test F isa Risch.IntegralWithRootSums
@@ -315,7 +326,7 @@ function run_tests(x, evalat, name)
         # point, so F is continuous and F(b) - F(a) is the definite integral (Simpson's rule)
         simpson(g, a, b; n = 1000) = (h = (b - a) / n;
             h / 3 * (g(a) + g(b) + sum((isodd(k) ? 4 : 2) * g(a + k * h) for k in 1:(n - 1))))
-        for (f, a, b) in ((1/(cos(x)^3 + 2), 0.0, 13.0), (sin(x)/(cos(x)^4 + 2), -3.0, 6.0),
+        for (f, a, b) in ((1/(cos(x)^3 + 2), 0.0, 13.0), (sin(x)/(cos(x)^4 + cos(x) + 2), -3.0, 6.0),
                           (cos(x)/(sin(x)^3 + sin(x) + 3), 0.0, 7.0), (1/(x^3 + x + 1), 0.0, 5.0),
                           (1/(exp(3x) + exp(x) + 1), -3.0, 3.0))
             F = Risch.risch_integrate(f, x)

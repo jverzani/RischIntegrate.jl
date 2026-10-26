@@ -156,7 +156,7 @@ function run_tests(x, evalat, name)
         end
         # step TR: residues of degree > 2 give a RootSum over ℚ in s = sin u or cos u (no `im`),
         # continuous through F(a) (step RN)
-        for (f, s) in ((cos(x)/(sin(x)^4 + 2), "sin"), (sin(x)/(cos(x)^5 + 2), "cos"),
+        for (f, s) in ((sin(x)/(cos(x)^5 + 2), "cos"),
                        (cos(x)/(sin(x)^3 + sin(x) + 3), "sin"), (cos(x)/(sin(x)^3 + 2)^2, "sin"))
             F = Risch.risch_integrate(f, x)
             @test F isa Risch.IntegralWithRootSums
@@ -179,8 +179,7 @@ function run_tests(x, evalat, name)
         end
         # step TT: s = tan u with a RootSum, written with W̃ = cos(u)ⁿ W(α, tan u) (bounded, nonzero) and
         # -(Σα)·n/2·log(cos²u); no `im`, continuous across tan u = ±∞
-        for (f, haslogcos) in ((1/(sin(x)^4 + 2cos(x)^4), false), (1/(ℯ + sin(x)^2), false),
-                               (1/(sin(x)^2 + 2) + 1/(cos(x)^4 + 2sin(x)^4), false),
+        for (f, haslogcos) in ((1/(ℯ + sin(x)^2), false),
                                (cos(x)^4/(sin(x)^4 + sin(x)*cos(x)^3 + 2cos(x)^4), true),
                                # step SD: over ℚ(e) the e-free factor 1 + s² of the denominator is split off
                                # (took minutes as one degree-6 residue polynomial)
@@ -192,6 +191,13 @@ function run_tests(x, evalat, name)
             @test occursin("log(cos(x)", str) == haslogcos
             @test maximum(abs.(diff([F(a) for a in -7:0.05:13]))) < 0.2
             @test isapprox(F(13) - F(-7), ts_simpson(t -> evalat(f, t), -7, 13); atol = 1e-7)
+        end
+        # even quartics in s = sin u or tan u: closed forms with nested constants (step BQ4), continuous
+        for f in (cos(x)/(sin(x)^4 + 2), 1/(sin(x)^4 + 2cos(x)^4), 1/(sin(x)^2 + 2) + 1/(cos(x)^4 + 2sin(x)^4))
+            F = Risch.risch_integrate(f, x)
+            @test !(F isa Risch.IntegralWithRootSums) && !occursin("im", string(F))
+            @test maximum(abs.(diff([evalat(F, a) for a in -7:0.02:13]))) < 0.05
+            @test isapprox(evalat(F, 13) - evalat(F, -7), ts_simpson(t -> evalat(f, t), -7, 13); atol = 1e-8)
         end
         # step TB: where the general route gives a ℚ(i) RootSum, the tan-rule answer is kept
         str = string(Risch.risch_integrate(1/(2 + sin(x)^2) + 1/(3 + cos(x)^2), x))
