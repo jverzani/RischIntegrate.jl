@@ -69,9 +69,46 @@ to_K0(T::Tower, φ::Frac{UPoly{Q}}) = (C = ctype(T); P = UPoly{C};
     frac(P(C[cfromQ(C, c) for c in φ.num.c]), P(C[cfromQ(C, c) for c in φ.den.c])))
 to_K0(T::Tower{C}, φ::Frac{UPoly{C}}) where {C} = φ
 
+# u ∈ ℚ(x) with u ≤ 0 wherever it is defined: N D ≤ 0, i.e. no real root of odd multiplicity and lc(N D) < 0
+function never_positive(u::Frac{UPoly{Q}})
+    M = u.num * u.den
+    lc(M) < 0 || return false
+    W = prod((p for (p, m) in squarefree(M) if isodd(m)); init = one(UPoly{Q}))
+    real_root_count(W, nothing, nothing) == 0
+end
+
+# step NP: square roots of a radicand u ≤ 0 on ℝ (√(-1 - 4x²), Rubi 1427 after s = sin x): on the principal branch
+# u^(p/2) = i^p (-u)^(p/2), with i = √-1 an opaque constant; f rewritten so, or nothing
+function negative_radicands(f, rads, xk::String, b0::Builder)
+    neg = Set{String}()
+    for (_, ut) in rads
+        ue = radicand_element(ut, xk)
+        (ue === nothing || is_const_radicand(ue)) && continue
+        all(((e, u),) -> string(u) != string(ut) || denominator(e) == 2, rads) && never_positive(ue) && push!(neg, string(ut))
+    end
+    isempty(neg) && return nothing
+    i = mk(b0, :sqrt, b0.lift(-1))
+    function rw(t)
+        safe_iscall(t) || return t
+        rp = radical_parts(t)
+        if rp !== nothing && string(rp[2]) in neg
+            p = numerator(2 * rp[1])                       # odd: i^p = (-1)^((p-1)/2) i
+            mu = mk(b0, :*, b0.lift(-1), rp[2])
+            r = p == 1 ? mk(b0, :sqrt, mu) : mk(b0, :^, mu, b0.lift(rp[1]))
+            return mk(b0, :*, iseven((p - 1) ÷ 2) ? i : mk(b0, :*, b0.lift(-1), i), r)
+        end
+        term_rebuild(b0, t, Any[rw(a) for a in arguments(t)])
+    end
+    rw(f)
+end
+
 function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     xk = string(x)
+    let b = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+        f2 = negative_radicands(f, rads, xk, b)
+        f2 === nothing || return risch_integrate(f2, x; build = build, lift = lift, verify = verify)
+    end
     groups = Any[]                                      # [radicand element, term, lcm of indices]
     cvs = Q[]                                           # radicands of constant radicals (10e)
     b0 = Builder(build === nothing ? auto_build(f, x) : build,

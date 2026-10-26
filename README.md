@@ -52,7 +52,7 @@ On a wider set of 1680 sample problems from the same collection (the test suite 
 
 | System | Verified¹ (of 1680) | Unevaluated | Timed out | Total time | Median time (verified) |
 |:---|---:|---:|---:|---:|---:|
-| `RischIntegrate.jl` (`Expr` terms) | 1651 (98.3%) | 23 | 0 | 3.3 min | < 0.005 s |
+| `RischIntegrate.jl` (`Expr` terms) | 1657 (98.6%) | 20 | 0 | 3.3 min | < 0.005 s |
 | Giac 2.0.0 (`Giac.jl` 0.14.3) | 1534 (91.3%) | 127 | 0 | 0.3 min | < 0.005 s |
 | SymPy 1.14.0 (`SymPyPythonCall.jl` 0.5.1) | 1333 (79.3%) | 251 | 63 | 84 min | 0.03 s |
 

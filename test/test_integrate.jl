@@ -831,7 +831,7 @@ function run_tests(x, evalat, name)
             end
         end
         @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) * sqrt(3 - x^2), x)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / sqrt(-x^2 - 1), x)       # never real
+        @test Risch.risch_integrate(1 / sqrt(-x^2 - 1), x) !== nothing   # never real: √-1 √(x² + 1) (step NP, tested there)
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / ((x + 1) * sqrt(3 - x^2)), x)  # √2 and √3
     end
 
@@ -857,7 +857,7 @@ function run_tests(x, evalat, name)
             end
         end
         @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) * sqrt(x) * sqrt(x + 1), x)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(x) * sqrt(-x - 1), x)   # never real
+        @test Risch.risch_integrate(sqrt(x) * sqrt(-x - 1), x) !== nothing   # never real: √-1 √(x + 1) (step NP)
         @test_throws Risch.NotElementary Risch.risch_integrate(sqrt(x) * sqrt(x^2 + 1), x)  # genus 1 (step BQ)
         @test_throws Risch.NotElementary Risch.risch_integrate(sqrt(x) * cbrt(x + 1), x)   # phase 3a; Chebyshev
     end
@@ -1948,6 +1948,26 @@ end
               :(1 / (x + sqrt(-1))), :(sqrt(-2) / (x ^ 2 + 1)), :(sqrt(-1) * sin(x)))
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)
         for x0 in (0.7, 1.9)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+end
+
+# square roots of a radicand u ≤ 0 on ℝ: u^(p/2) = i^p (-u)^(p/2), i = √-1 opaque (step NP; Rubi 1427, 1437, 1438)
+@testset "square roots of never-positive radicands (step NP)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    nz(z) = iszero(imag(z)) ? complex(real(z), 0.0) : z      # radicands on the principal branch (+0.0 imaginary part)
+    rat(e) = e isa Rational || (e isa Expr && e.args[1] === ://)
+    subst(e) = !(e isa Expr) ? e :
+        (e.args[1] === :sqrt && e.args[2] isa Real && e.args[2] < 0) ? sqrt(complex(e.args[2])) :
+        (e.args[1] === :sqrt || (e.args[1] === :^ && rat(e.args[3]))) ? Expr(:call, e.args[1], :($nz($(subst(e.args[2])))), e.args[3:end]...) :
+        Expr(e.head, map(subst, e.args)...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $(complex(x0))), subst(e)))
+    for f in (:((-(cos(x) ^ 2) - 5 * sin(x) ^ 2) ^ (3 // 2) * cos(x)), :((4 - 5 * sec(x) ^ 2) ^ (3 // 2)),
+              :(1 / (4 - 5 * sec(x) ^ 2) ^ (3 // 2)), :((-1 - 4 * x ^ 2) ^ (3 // 2)), :(1 / sqrt(-1 - x ^ 2)),
+              :(x / sqrt(-(x - 1) ^ 2 * (x ^ 2 + 1))), :(1 / ((x + 2) * sqrt(-x ^ 2 - 1))), :(sqrt(x) * sqrt(-x - 1)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 1.9)
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
         end
     end
