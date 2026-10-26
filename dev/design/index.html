@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=7bd61f0f">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=36bc6fe2">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -507,6 +507,12 @@
 <td style="text-align:left"><span class="md-math md-math-inline">\(x = σy\)</span> (<span class="md-math md-math-inline">\(σ = 1, d, 1/d\)</span>). Each radicand is written as <span class="md-math md-math-inline">\(κ P_0\)</span> with <span class="md-math md-math-inline">\(P_0\)</span> over <span class="md-math md-math-inline">\(ℚ\)</span>, so <span class="md-math md-math-inline">\(\sqrt{κ}\)</span> comes out: in <span class="md-math md-math-inline">\(ℚ(\sqrt d)\)</span>, or <span class="md-math md-math-inline">\(\sqrt b\, d^{1/4}\)</span> for <span class="md-math md-math-inline">\(κ = b\sqrt d\)</span>. Step IT then takes out <span class="md-math md-math-inline">\(d^{1/4}\)</span>. Example: <span class="md-math md-math-inline">\(\sqrt{\sqrt2 + \sqrt x + \sqrt{2 + \sqrt8\sqrt x + 2x}}\)</span></td>
 </tr>
 <tr>
+<td style="text-align:left">PP</td>
+<td style="text-align:left">any</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(\sqrt{g + c_1}\)</span>, <span class="md-math md-math-inline">\(\sqrt{g + c_2}\)</span> of one term <span class="md-math md-math-inline">\(g\)</span></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(w = \sqrt{x + c_1} - \sqrt{x + c_2}\)</span> for <span class="md-math md-math-inline">\(g = x\)</span>. Then <span class="md-math md-math-inline">\(\sqrt{x + c_1} = (w + k/w)/2\)</span> and <span class="md-math md-math-inline">\(\sqrt{x + c_2} = (k/w - w)/2\)</span>, with <span class="md-math md-math-inline">\(k = c_1 - c_2\)</span>. For <span class="md-math md-math-inline">\(g = h(ax + b)\)</span> (<span class="md-math md-math-inline">\(h\)</span> = sec, csc, sin, cos, tan, cot, exp, sinh, cosh), first <span class="md-math md-math-inline">\(u = g\)</span>. Example: <span class="md-math md-math-inline">\(\sqrt{\sqrt{\sec x + 1} - \sqrt{\sec x - 1}}\)</span></td>
+</tr>
+<tr>
 <td style="text-align:left">RC</td>
 <td style="text-align:left">any</td>
 <td style="text-align:left"><span class="md-math md-math-inline">\(R(x)\sqrt{P}^k\)</span>, <span class="md-math md-math-inline">\(P(x) = x^m S(x + s/x)\)</span></td>
@@ -832,6 +838,11 @@
 <td style="text-align:left">nested radicals over <span class="md-math md-math-inline">\(ℚ(\sqrt d)\)</span>: scaling and constant factors out of radicands</td>
 </tr>
 <tr>
+<td style="text-align:left">PP</td>
+<td style="text-align:left"><code class="md-code-inline">nested_subst.jl</code></td>
+<td style="text-align:left">pairs of square roots <span class="md-math md-math-inline">\(\sqrt{g + c_1}\)</span>, <span class="md-math md-math-inline">\(\sqrt{g + c_2}\)</span></td>
+</tr>
+<tr>
 <td style="text-align:left">PL, PR, PS</td>
 <td style="text-align:left"><code class="md-code-inline">param_radicals.jl</code></td>
 <td style="text-align:left">parameters: linearity, radicands, scaling</td>
@@ -960,6 +971,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=7bd61f0f"></script>
+  <script src="../assets/materialdocs.js?v=36bc6fe2"></script>
 </body>
 </html>
