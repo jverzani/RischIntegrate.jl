@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=36bc6fe2">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=1e967cd4">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -117,7 +117,7 @@
 </tr>
 <tr>
 <td style="text-align:left">special functions</td>
-<td style="text-align:left"><code class="md-code-inline">special_functions.jl</code>, <code class="md-code-inline">dilogarithms.jl</code>, <code class="md-code-inline">exp_trig_polynomials.jl</code>, <code class="md-code-inline">clausen.jl</code>, <code class="md-code-inline">polylog_parts.jl</code>, <code class="md-code-inline">hypergeometric.jl</code>, <code class="md-code-inline">hyp_symbolic.jl</code>, <code class="md-code-inline">gamma_terms.jl</code>, <code class="md-code-inline">special_fallback.jl</code></td>
+<td style="text-align:left"><code class="md-code-inline">special_functions.jl</code>, <code class="md-code-inline">dilogarithms.jl</code>, <code class="md-code-inline">exp_trig_polynomials.jl</code>, <code class="md-code-inline">clausen.jl</code>, <code class="md-code-inline">polylog_parts.jl</code>, <code class="md-code-inline">hypergeometric.jl</code>, <code class="md-code-inline">hyp_symbolic.jl</code>, <code class="md-code-inline">exp_trig_hyp.jl</code>, <code class="md-code-inline">gamma_terms.jl</code>, <code class="md-code-inline">special_fallback.jl</code></td>
 </tr>
 <tr>
 <td style="text-align:left">algebraic integrands</td>
@@ -483,6 +483,12 @@
 <td style="text-align:left"><span class="md-math md-math-inline">\({}_2F_1\)</span> terms</td>
 </tr>
 <tr>
+<td style="text-align:left">EH</td>
+<td style="text-align:left"><code class="md-code-inline">NotElementary</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(e^{ax} R(\cos bx, \sin bx)\)</span> with the poles of <span class="md-math md-math-inline">\(R(E)\)</span>, <span class="md-math md-math-inline">\(E = e^{ibx}\)</span>, in <span class="md-math md-math-inline">\(ℚ(i)\)</span></td>
+<td style="text-align:left">partial fractions in <span class="md-math md-math-inline">\(E\)</span>. Each pole gives <span class="md-math md-math-inline">\(\int e^{ax}/(1 - E/r)^k = e^{ax}\,{}_2F_1(k, s; s+1; E/r)/a\)</span> with <span class="md-math md-math-inline">\(s = a/(ib)\)</span>. The real part is printed with <code class="md-code-inline">rehyp2f1</code> and <code class="md-code-inline">imhyp2f1</code> (<span class="md-math md-math-inline">\(\int e^x/(1 + \cos x)\)</span>)</td>
+</tr>
+<tr>
 <td style="text-align:left">H3, H4</td>
 <td style="text-align:left"><code class="md-code-inline">NotElementary</code></td>
 <td style="text-align:left"><span class="md-math md-math-inline">\(x^s e^{bx + d}\)</span>, <span class="md-math md-math-inline">\(x^s \sin\)</span>, <span class="md-math md-math-inline">\(x^s \cos\)</span></td>
@@ -808,6 +814,11 @@
 <td style="text-align:left">incomplete <span class="md-math md-math-inline">\(Γ\)</span> answers</td>
 </tr>
 <tr>
+<td style="text-align:left">EH</td>
+<td style="text-align:left"><code class="md-code-inline">exp_trig_hyp.jl</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(e^{ax} R(\cos bx, \sin bx)\)</span> with <span class="md-math md-math-inline">\({}_2F_1\)</span> terms</td>
+</tr>
+<tr>
 <td style="text-align:left">IT</td>
 <td style="text-align:left"><code class="md-code-inline">risch_integrate.jl</code></td>
 <td style="text-align:left">constant factors out; iterated integrals</td>
@@ -971,6 +982,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=36bc6fe2"></script>
+  <script src="../assets/materialdocs.js?v=1e967cd4"></script>
 </body>
 </html>
