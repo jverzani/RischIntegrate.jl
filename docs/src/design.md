@@ -282,7 +282,11 @@ the top level. A rational function (``n = 0``) is integrated directly:
    complex pair. Rioboo's LogToAtan (§2.8) turns ``\operatorname{atan}(A/B)``,
    which jumps at the zeros of ``B``, into a sum of `atan`s of polynomials, continuous on the real
    line. Quartic residues are written with real radicals when their roots lie in one ``ℚ(i, \sqrt d)``
-   (step R2). Other residues of degree greater than 2 give a **RootSum**
+   (step R2). Step BQ4 handles an even quartic factor ``G = x^4 + bx^2 + c`` of the denominator
+   with ``b^2 < 4c`` whose residues need nested radicals. Partial fractions split it off, and
+   the factorization ``G = (x^2 + rx + q)(x^2 - rx + q)``, with ``q = \sqrt c`` and
+   ``r = \sqrt{2q - b}``, gives continuous `atan`s and a `log` with nested constants, as in
+   ``1/(x^8 + 4)``. Other residues of degree greater than 2 give a **RootSum**
    ``\sum_{Q(α) = 0} α \log W(α, x)``, with ``W`` computed by dynamic evaluation (`d5_gcd`), which
    splits ``Q`` when a leading coefficient turns out to be a zero divisor, so no factorization is
    needed.
@@ -619,6 +623,7 @@ failures, and their comments cite the Rubi problem numbers.
 | BN | `param_radicals.jl` | binomial denominators ``x^n + c``: ``x = \lvert c\rvert^{1/n} u`` |
 | PC | `precompile.jl` | precompile workload |
 | R2, NR | `quartic_residues.jl` | real forms of quartic residues, nested radicals in them |
+| BQ4 | `quartic_residues.jl` | even quartics ``x^4 + bx^2 + c`` with nested real forms |
 | RC | `reciprocal_subst.jl` | ``u = x + s/x`` |
 | RE, RT, RF | `constant_fields.jl`, `tower_rootsums.jl`, `tower_real_forms.jl` | RootSums over parameter fields and in towers, their real forms |
 | RP, SQ | `factoring.jl`, `radicals.jl` | radicands that are powers; repeated factors |

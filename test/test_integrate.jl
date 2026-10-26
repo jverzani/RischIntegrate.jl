@@ -1283,6 +1283,27 @@ end
     end
 end
 
+# step BQ4: an even quartic x⁴ + b x² + c (b² < 4c) whose residues need nested radicals: (x² ± r x + q),
+# q = √c, r = √(2q - b), s = √(2q + b), atans and logs continuous on ℝ
+@testset "even quartics with nested real forms (step BQ4)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    simpson(g, a, b; n = 20000) = (h = (b - a) / n; h / 3 * (g(a) + g(b) + sum((isodd(k) ? 4 : 2) * g(a + k * h) for k in 1:(n - 1))))
+    for f in (:(1 / (x ^ 4 + 2x ^ 2 + 2)), :(x ^ 4 / (x ^ 8 + 4)), :((1 + x + x ^ 2 + x ^ 3) / (x ^ 4 + x ^ 2 + 3)),
+              :((x ^ 5 + 1) / ((x ^ 4 - 2x ^ 2 + 2) * (x ^ 2 + 1))), :(1 / (x ^ 4 + 2x ^ 2 + 2) ^ 2))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        for x0 in (-2.3, -0.4, 0.37, 1.9)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+        @test isapprox(ev(F, 7.3) - ev(F, -5.0), simpson(t -> ev(f, t), -5.0, 7.3); atol = 1e-8)
+    end
+    for f in (:(1 / (1 + sin(x) ^ 4)), :(1 / (2 + cos(x) ^ 4)))      # continuous across periods (step 7)
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test isapprox(ev(F, 7.3) - ev(F, -5.0), simpson(t -> ev(f, t), -5.0, 7.3); atol = 1e-8)
+    end
+end
+
 # step BN: a denominator λ xʲ (xⁿ + c)ᵏ whose residues need a RootSum: x = |c|^(1/n) u, integrate over ℚ
 @testset "binomial denominators, x = |c|^(1/n) u (step BN)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)

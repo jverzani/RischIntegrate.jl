@@ -272,7 +272,7 @@ function to_term(b::Builder, res::RationalIntegral)
         push!(ts, isone(c) ? l : mk(b, :*, cterm(b, c), l))
     end
     for q in res.quads
-        if q isa RationalIntegral || q isa QuarticNested
+        if q isa RationalIntegral || q isa QuarticNested || q isa BiquadTerm
             push!(ts, to_term(b, q))
         elseif q isa QuadLog
             r = mk(b, :sqrt, b.lift(q.d))

@@ -219,6 +219,10 @@ function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
     if rational_tfield(C) && degree(rest) == 2 && quad_factor_t!(logs, atans, A, D, dD, rest)   # step SY
         hard = one(CXl)
     end
+    if degree(hard) > 0 && C === Q                  # even quartic factors with nested real forms (step BQ4)
+        bq = biquad_log_part(A, D)
+        bq === nothing || return bq
+    end
     degree(hard) > 0 && push!(unresolved, (hard, A, D))
     logs, atans, unresolved, quads
 end
@@ -245,6 +249,8 @@ function derivative_of(res::RationalIntegral{C}) where {C}
     for q in res.quads
         if q isa RationalIntegral || q isa QuarticNested   # real form of a quartic RootSum (R2, NR)
             tot = tot + qs_down(derivative_of(q))
+        elseif q isa BiquadTerm                             # even quartic (BQ4)
+            tot = tot + derivative_of(q)
         elseif q isa QuadLog  # d/dx [β√d log(W/W̄)] = 2βd (V'U - U'V)/(U² - dV²)
             U, V = q.U, q.V
             tot = tot + kconst(2 * q.β * q.d) * frac(deriv(V) * U - deriv(U) * V, U * U - q.d * (V * V))
