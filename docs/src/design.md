@@ -197,6 +197,7 @@ throws. A step that rewrites the integrand calls `risch_integrate` again on the 
 | IT | a factor free of `x` that contains a symbol or a root ``c^{p/q}`` with ``q > 2`` | takes it out: ``\int c\,g = c \int g``. This keeps the parameter out of the constant field, and lets an iterated integral see ``c(y) \cdot \text{RootSum}(x)`` |
 | TS2 | ``\sin(v + a)``, ``\cosh(v + a)``, … with ``a`` free of `x` | addition formulas, so ``\cos a``, ``\sin a`` become opaque constants. Exact values for multiples of ``π/6`` and ``π/4`` |
 | AC | `acot`, `acsc`, `asec` | ``\operatorname{acot} u = \operatorname{atan}(1/u)``, ``\operatorname{acsc} u = \operatorname{asin}(1/u)``, … |
+| IH | `atanh`, `acoth`, `asinh`, `acosh` | as logarithms: ``\operatorname{atanh} u = \tfrac12\log\frac{1+u}{1-u}``, ``\operatorname{acoth} u = \tfrac12\log\frac{u+1}{u-1}``, ``\operatorname{asinh} u = \log(u + \sqrt{u^2+1})``, ``\operatorname{acosh} u = \log(u + \sqrt{u^2-1})`` |
 | AS | `asin(u)` or `acos(u)` with ``u`` linear | ``u = \sin t``: the integrand is rebuilt in ``t`` (`x` stands for ``t``), integrated, and mapped back, ``\sin kt``, ``\cos kt`` written exactly as ``A(u) + B(u)\sqrt{1 - u^2}`` |
 | AL | `asin(u)`, `acos(u)`, … with ``u = ax + b`` and ``a, b`` parameters | ``y = ax + b``. The radicands are rewritten as polynomials in ``y``, with constants simplified (``1 - c^2x^2 \mapsto 1 - y^2``), then step AS is used and ``y = ax + b`` is substituted back |
 | PL | no radicals, parameters, denominator a power of one quadratic | linearity over a parameter field |
@@ -614,6 +615,7 @@ failures, and their comments cite the Rubi problem numbers.
 | 10d | `euler_substitutions.jl` | square roots of two linear polynomials |
 | 10e | `radicals.jl` | square roots of rational constants |
 | AC | `inverse_trig.jl` | `acot`, `acsc`, `asec` rewritten |
+| IH | `inverse_trig.jl` | `atanh`, `acoth`, `asinh`, `acosh` as logarithms |
 | AP | `inverse_trig.jl` | by parts for ``A L^k`` |
 | AS | `inverse_trig.jl` | `asin`, `acos` by ``u = \sin t`` |
 | AL | `inverse_trig.jl` | `asin`, `acos` of ``ax + b`` with parameters |
