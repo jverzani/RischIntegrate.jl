@@ -1509,6 +1509,26 @@ end
     end
 end
 
+# Step 8a at a log level with several factors: the factors θ - r with r constant split off, each by the usual log
+# part or as Ei; the rest by the usual log part (Rubi 221)
+@testset "Ei terms split off at a log level (Step 8a)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    Main.eval(:(import SpecialFunctions))
+    # (log(-x + log x) is evaluated as log|u| + iπ: expinti on the real part of its real arguments)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(expinti = z -> SpecialFunctions.expinti(real(z)))), e))
+    for f in (:(((2 * log(x) ^ 2 - log(x)) - x ^ 2) / (log(x) ^ 3 - x ^ 2 * log(x))), :(x / (log(x) * (log(x) + 2))),
+              :(1 / (log(x) * (log(x) + 1))), :((log(x) ^ 2 + x) / (log(x) * (log(x) - 1) * (log(x) ^ 2 + x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("expinti", string(F))
+        for x0 in (1.5, 2.7, 3.3)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+    # a factor θ - x whose residue is not constant: still not elementary, and no Ei
+    @test_throws Risch.NotElementary Risch.risch_integrate(:((1 + log(x)) / (log(x) * (log(x) - x))), :x;
+                                                           build = build, lift = identity)
+end
+
 # step DL over a parameter field: a dilogarithm for a pole that depends on parameters (Rubi 1597)
 @testset "dilogarithms with parameter poles" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
