@@ -338,7 +338,14 @@ At a level ``i ≥ 1`` with monomial ``θ`` over ``K = K_{i-1}`` (Bronstein ch. 
    ``a = y' + jU'y + \sum c_t U'/(U - t) + \sum d_l θ_l^{-j} W_l'/W_l [+ k]``, which integrates with
    `Ei` terms, and `erf`/`erfi` for a quadratic exponent at the base. At a log level with
    non-constant residues, ``\int c\,u^m u'/(\log u + b)`` gives ``\operatorname{Ei}`` of a log
-   (`li`). These terms keep their exact derivatives, so the usual check still applies.
+   (`li`). When the denominator has several factors, partial fractions first split off each factor
+   ``θ - r`` with ``r`` constant (`special_log_split`). These factors are found as the common roots
+   of the denominator and its coefficientwise derivative. Each such piece is integrated by the usual
+   log part if possible (for example ``-\log\log x``), and otherwise as `Ei`. The rest goes to the
+   usual log part. For example,
+   ``\int (2θ^2 - θ - x^2)/(θ^3 - x^2 θ)`` with ``θ = \log x`` is
+   ``\operatorname{Ei}(\log x) + \tfrac12\log(x + \log x) - \tfrac12\log(\log x - x)``.
+   These terms keep their exact derivatives, so the usual check still applies.
 
 Over ``ℚ(i)`` (trigonometric input) the integral is computed there and then put in **real form**
 (Step 7). Conjugation ``σ`` (``i ↦ -i``, with ``σθ = θ`` for real generators and ``σθ = 1/θ`` for

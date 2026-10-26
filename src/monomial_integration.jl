@@ -478,9 +478,15 @@ function integrate_el(T::Tower, i::Int, f)::ElemIntegral
         rl, rq = try
             residue_logs(T, i, R, Dsf)
         catch e
-            sp = (e isa NotElementary && lv.kind === :log) ? special_log(T, i, R, Dsf) : nothing
-            sp === nothing && rethrow()
-            Tuple{ctype(T),Any}[], Any[sp]                 # li-type: c·e^p·Ei(k·log(u) + k·b) (Step 8a)
+            (e isa NotElementary && lv.kind === :log) || rethrow()
+            sp = special_log(T, i, R, Dsf)
+            if sp === nothing                               # one factor θ + b of several: split it off
+                sps = special_log_split(T, i, R, Dsf)
+                sps === nothing && rethrow()
+                sps
+            else
+                Tuple{ctype(T),Any}[], Any[sp]             # li-type: c·e^p·Ei(k·log(u) + k·b) (Step 8a)
+            end
         end
         for (c, W) in rl
             push!(logs, (c, frac(W)))

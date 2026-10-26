@@ -171,6 +171,58 @@ function special_log(T::Tower, i::Int, R::UPoly, Dsf::UPoly)
     SpecialTerm(:Ei, cv, -(kc * bc), lconst(T, kc, i) * w, Q(0), d)
 end
 
+# a log level whose residue criterion fails with more than one factor (Rubi 221: θ³ - x²θ, θ = log x): the factors
+# θ - r with r constant, the roots of G = gcd(Dsf, Σ d_k′θᵏ) (a constant root r has Σ d_k′rᵏ = (Dsf(r))′ = 0), are split
+# off by partial fractions, R/Dsf = Σ R_r/(θ - r) + R₂/H; each piece by the usual log part (-log log x) or else by
+# `special_log` (Ei), R₂/H by the usual log part. (logs, terms) as from `residue_logs`, or nothing
+function special_log_split(T::Tower, i::Int, R::UPoly, Dsf::UPoly)
+    degree(Dsf) >= 2 || return nothing
+    l = lc(Dsf)
+    R, Dsf = scale(inv(l), R), scale(inv(l), Dsf)
+    P = typeof(Dsf)
+    K = eltype(Dsf.c)
+    G = gcd(Dsf, P(K[D(T, i - 1, c) for c in Dsf.c]))
+    degree(G) >= 1 || return nothing
+    C = ctype(T)
+    Gc = [dconst_value(T, c) for c in G.c]
+    any(isnothing, Gc) && return nothing
+    rs = constant_roots(UPoly{C}(C[Gc...]))
+    isempty(rs) && return nothing
+    logs, terms = Tuple{C,Any}[], Any[]
+    special = false
+    for r in rs
+        L = P(K[lconst(T, -r, i - 1), one(K)])
+        H = quo(Dsf, L)
+        s, t, g = gcdex(H, L)                           # s H + t L = 1
+        isone(g) || return nothing
+        R1 = rem(R * s, L)
+        R, Dsf = rem(R * t, H), H
+        try
+            rl, rq = residue_logs(T, i, R1, L)
+            append!(logs, rl)
+            append!(terms, rq)
+        catch e
+            e isa NotElementary || rethrow()
+            sp = special_log(T, i, R1, L)
+            sp === nothing && return nothing
+            push!(terms, sp)
+            special = true
+        end
+    end
+    special || return nothing
+    if degree(Dsf) >= 1 && !iszero(R)
+        try
+            rl, rq = residue_logs(T, i, R, Dsf)
+            append!(logs, rl)
+            append!(terms, rq)
+        catch e
+            e isa NotElementary || rethrow()
+            return nothing
+        end
+    end
+    logs, terms
+end
+
 """
     sinhint(x), coshint(x)
 
