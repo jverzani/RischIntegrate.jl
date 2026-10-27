@@ -175,6 +175,16 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     if any(((_, u),) -> has_param(u, xk), rads)        # parameters in a radicand: x = s u + h (step PR)
         r = integrate_param_repeated(f, x, rads; build = build, lift = lift, verify = verify)   # u = sⁿ w (PM)
         r === nothing || return r
+        g = rewrite_two_linear(f, x, rads; build = build, lift = lift)   # (a + bx)^E₁ (c + dx)^E₂, E₁ + E₂ ∈ ℤ (LL)
+        if g !== nothing
+            r = try
+                risch_integrate(g, x; build = build, lift = lift, verify = verify)
+            catch e
+                (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+                nothing
+            end
+            r === nothing || return r
+        end
         r = integrate_param_radicals(f, x, rads; build = build, lift = lift, verify = verify)
         r === nothing || return r
         r = try                                          # several radicands, one linear: u = √(linear) (NR)

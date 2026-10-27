@@ -563,3 +563,64 @@ function integrate_param_repeated(f, x, rads; build = nothing, lift = nothing, v
     end
     nothing
 end
+
+# ---------------------------------------------------------------------------
+# Step LL: radicals of two linear radicands L₁ = a + b x, L₂ = c + d x (with parameters) whose exponents add up to
+# an integer in each product, as in (a + bx)^(-3/4) (c + dx)^(-1/4): on the real domain (L₁, L₂ ≥ 0 for an even
+# index; real roots for an odd one) the product has one radicand,
+#   index 2:  L₁^E₁ L₂^E₂ = (L₁ L₂)^E₁ L₂^(E₂ - E₁)     (a quadratic: step PR, with its asin, acosh forms)
+#   else:     L₁^E₁ L₂^E₂ = (L₁/L₂)^E₁ L₂^(E₁ + E₂)    (linear-fractional: step PR)
+# Nothing when the radicands are not both linear or some product does not combine.
+# ---------------------------------------------------------------------------
+
+function rewrite_two_linear(f, x, rads; build = nothing, lift = nothing)
+    @nospecialize f x
+    xk = string(x)
+    us = unique(string(u) for (_, u) in rads)
+    (length(us) == 2 && any(((_, u),) -> has_param(u, xk), rads)) || return nothing
+    uts = Any[first(u for (_, u) in rads if string(u) == s) for s in us]
+    for ut in uts
+        T, el = try
+            build_tower(ut, xk)
+        catch err
+            (err isa RischNotImplemented || err isa RischError) || rethrow()
+            return nothing
+        end
+        (isempty(T.levels) && degree(el.num) == 1 && degree(el.den) == 0) || return nothing
+    end
+    n = lcm([Int(denominator(e)) for (e, _) in rads])
+    b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    L1, L2 = uts
+    v = n == 2 ? mk(b0, :*, L1, L2) : mk(b0, :/, L1, L2)
+    pw(t, e) = iszero(e) ? nothing : isone(e) ? t : mk(b0, :^, t, b0.lift(e))
+    ismult(t) = (o = opname(operation(t)); o === :* || o === :/ || radical_parts(t) !== nothing ||
+                 (o === :^ && (p = leaf_rational(arguments(t)[2]); p !== nothing && isone(denominator(p)))))
+    function rw(t)
+        (safe_iscall(t) && !isempty(arguments(t))) || return t
+        ismult(t) || return term_rebuild(b0, t, Any[rw(a) for a in arguments(t)])
+        E = [Q(0), Q(0)]
+        fs = Any[]
+        for (s, e) in product_factors!(Any[], t, 1)
+            rp = radical_parts(s)
+            k = rp === nothing ? nothing : findfirst(==(string(rp[2])), us)
+            if k === nothing
+                push!(fs, pw(rw(s), e))
+            else
+                E[k] += rp[1] * e
+            end
+        end
+        if !all(iszero, E)
+            isone(denominator(E[1] + E[2])) || throw(RischNotImplemented("radicals of $L1 and $L2 that do not combine"))
+            push!(fs, pw(v, E[1]), pw(L2, n == 2 ? E[2] - E[1] : E[1] + E[2]))
+        end
+        fs = Any[t for t in fs if t !== nothing]
+        isempty(fs) ? b0.lift(1) : length(fs) == 1 ? fs[1] : mk(b0, :*, fs...)
+    end
+    g = try
+        rw(f)
+    catch err
+        err isa RischNotImplemented || rethrow()
+        return nothing
+    end
+    length(unique(string(u) for (_, u) in collect_radicals(g, xk))) == 1 ? g : nothing
+end
