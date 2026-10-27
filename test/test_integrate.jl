@@ -1216,6 +1216,26 @@ end
     end
 end
 
+# step PM: parameters in a radicand with repeated factors, u = sⁿ w: Y = u^(1/n)/s, Y = ±w^(1/n) on each interval
+# (Rubi 1.1.1, 1.2.1, 1.2.2: (a² + 2abx + b²x²)^(p/2) = |a + bx|ᵖ); points with a + b x < 0 check the sign
+@testset "parameters in radicands with repeated factors (step PM)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 1.3), :(b = 0.6), :(d = 1.7), :(e = 0.4)), e))
+    u = :(a ^ 2 + 2 * a * b * x + b ^ 2 * x ^ 2)
+    for (f, pts) in ((:(x ^ 2 * $u ^ (3 // 2)), (0.3, 1.5, -3.1)), (:(1 / $u ^ (5 // 2)), (0.3, 1.5, -3.1)),
+                     (:(sqrt($u) + x * $u ^ (3 // 2)), (0.3, 1.5, -3.1)),
+                     (:(((a + b * x) * (d + e * x) ^ (7 // 2)) / $u ^ (5 // 2)), (0.3, 1.5)),
+                     (:(x ^ 10 * (a ^ 2 + 2 * a * b * x ^ 2 + b ^ 2 * x ^ 4) ^ (5 // 2)), (0.3, 1.5)),
+                     (:(1 / sqrt((a ^ 2 + x ^ 2) ^ 3)), (-0.6, 0.3, 1.5)), (:(1 / (b * x ^ 3) ^ (3 // 2)), (0.3, 1.5)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in pts
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    F = Risch.risch_integrate(:(x * $u ^ (3 // 2)), :x; build = build, lift = identity)
+    @test occursin("sqrt(a ^ 2 + 2 * a * b * x + b ^ 2 * x ^ 2) / (a + b * x)", string(F))   # σ times F₊
+end
+
 # step PL: log of a parameter is a constant generator; step PQ: quadratic residue pairs over a
 # parameter field written out (log or atan); step TW: tan(u/2) over parameter fields
 @testset "parameters: logs, quadratic residues, tan(u/2)" begin
