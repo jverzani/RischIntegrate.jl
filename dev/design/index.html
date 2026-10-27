@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=2febe596">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=3d00656b">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -137,6 +137,7 @@
 <h2 id="Exact-algebra" class="md-heading">Exact algebra<a href="#Exact-algebra" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
 <h3 id="Polynomials-and-fractions" class="md-heading">Polynomials and fractions<a href="#Polynomials-and-fractions" class="md-heading-anchor" aria-label="Link to this section">#</a></h3>
 <p><code class="md-code-inline">UPoly{T}</code> is a dense univariate polynomial over a field <code class="md-code-inline">T</code>, coefficients from low to high degree. It has Euclidean division, gcd and extended gcd, squarefree factorization, resultants and the derivative. <code class="md-code-inline">Frac{P}</code> is the fraction field of a polynomial ring, kept normalized: numerator and denominator coprime, denominator monic. The normal form is unique, so equality is structural.</p>
+<p>Over a rational function field <span class="md-math md-math-inline">\(K = B(t_1, …, t_k)\)</span> (parameters, tower monomials) each step of Euclid normalizes fractions by gcds one level down, so a gcd that is <span class="md-math md-math-inline">\(1\)</span>, the usual case when adding and multiplying fractions, can cost much more than its answer. <code class="md-code-inline">gcd</code> first evaluates both polynomials at a fixed point <span class="md-math md-math-inline">\(t_j = v_j\)</span>. When every coefficient is defined there, neither leading coefficient vanishes and the images are coprime over <span class="md-math md-math-inline">\(B\)</span>, the polynomials are coprime: a common factor of degree <span class="md-math md-math-inline">\(≥ 1\)</span> keeps its degree in the images, since it divides the primitive parts. Otherwise Euclid runs as before. The result is the same either way.</p>
 <p>Factoring over <span class="md-math md-math-inline">\(ℚ\)</span> (<code class="md-code-inline">factoring.jl</code>) uses rational roots and Cantor–Zassenhaus. The logarithmic part uses it on the residue polynomial over <span class="md-math md-math-inline">\(ℚ\)</span> to find quadratic and quartic factors; RootSums use dynamic evaluation instead, so the factors left for them need not be irreducible.</p>
 <h3 id="Constant-fields" class="md-heading">Constant fields<a href="#Constant-fields" class="md-heading-anchor" aria-label="Link to this section">#</a></h3>
 <p>The constants of the differential field form a type <code class="md-code-inline">C</code>:</p>
@@ -1002,6 +1003,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=2febe596"></script>
+  <script src="../assets/materialdocs.js?v=3d00656b"></script>
 </body>
 </html>
