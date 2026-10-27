@@ -47,6 +47,46 @@ function Base.:+(f::Frac{P}, g::Frac{P}) where {P}
     degree(h) <= 0 ? Frac{P}(t, bg * d) : Frac{P}(quo(t, h), bg * quo(d, h))
 end
 Base.:-(f::Frac{P}, g::Frac{P}) where {P} = f + (-g)
+
+# gcd over a rational function field K = B(t₁, …, tₖ) (parameters, tower monomials; B = ℚ, ℚ(i), ℚ(√d), …):
+# first the images at a point tⱼ = vⱼ. When every coefficient is defined there and neither leading coefficient
+# vanishes, a common factor of degree ≥ 1 keeps its degree in the images (Gauss: it divides the primitive parts),
+# so coprime images mean coprime a, b, the usual case, without Euclid over K (each of whose steps
+# normalises fractions by gcds one level down). Otherwise Euclid.
+function Base.gcd(a::UPoly{T}, b::UPoly{T}) where {T<:Frac}
+    degree(a) > 0 && degree(b) > 0 && coprime_image(a, b) && return one(a)
+    euclid_gcd(a, b)
+end
+fbase(::Type{Frac{UPoly{S}}}) where {S} = fbase(S)
+fbase(::Type{S}) where {S} = S
+fdepth(::Type{Frac{UPoly{S}}}) where {S} = 1 + fdepth(S)
+fdepth(::Type) = 0
+image_point(B, j::Int) = cfromQ(B, Q(isodd(j) ? -(2j + 1) : 2j + 1, 3j + 4))     # tⱼ ↦ -3/7, 5/10, -7/13, …
+cimage(c) = c
+function cimage(c::Frac{UPoly{S}}) where {S}
+    n, d = pimage(c.num), pimage(c.den)
+    (n === nothing || d === nothing || iszero(d)) ? nothing : n / d
+end
+function pimage(p::UPoly{S}) where {S}
+    v = image_point(fbase(S), fdepth(S) + 1)
+    r = zero(v)
+    for i in length(p.c):-1:1
+        ci = cimage(p.c[i])
+        ci === nothing && return nothing
+        r = r * v + ci
+    end
+    r
+end
+function coprime_image(a::UPoly{T}, b::UPoly{T}) where {T<:Frac}
+    B = fbase(T)
+    applicable(cfromQ, B, Q(1)) || return false
+    im_(p) = (cs = map(cimage, p.c); (any(isnothing, cs) || iszero(cs[end])) ? nothing : UPoly{B}(B[c for c in cs]))
+    ia = im_(a)
+    ia === nothing && return false
+    ib = im_(b)
+    ib === nothing && return false
+    degree(euclid_gcd(ia, ib)) == 0
+end
 function Base.:*(f::Frac{P}, g::Frac{P}) where {P}
     (iszero(f) || iszero(g)) && return zero(f)
     a, b, c, d = f.num, f.den, g.num, g.den

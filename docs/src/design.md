@@ -82,6 +82,14 @@ degree. It has Euclidean division, gcd and extended gcd, squarefree factorizatio
 the derivative. `Frac{P}` is the fraction field of a polynomial ring, kept normalized: numerator
 and denominator coprime, denominator monic. The normal form is unique, so equality is structural.
 
+Over a rational function field ``K = B(t_1, …, t_k)`` (parameters, tower monomials) each step of
+Euclid normalizes fractions by gcds one level down, so a gcd that is ``1``, the usual case when
+adding and multiplying fractions, can cost much more than its answer. `gcd` first evaluates both
+polynomials at a fixed point ``t_j = v_j``. When every coefficient is defined there, neither leading
+coefficient vanishes and the images are coprime over ``B``, the polynomials are coprime: a common
+factor of degree ``≥ 1`` keeps its degree in the images, since it divides the primitive parts.
+Otherwise Euclid runs as before. The result is the same either way.
+
 Factoring over ``ℚ`` (`factoring.jl`) uses rational roots and Cantor–Zassenhaus. The logarithmic
 part uses it on the residue polynomial over ``ℚ`` to find quadratic and quartic factors; RootSums
 use dynamic evaluation instead, so the factors left for them need not be irreducible.

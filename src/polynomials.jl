@@ -93,7 +93,8 @@ end
 
 # Euclid with monic remainders (same gcd; over function fields such as ℚ(e) this keeps the
 # coefficients from swelling)
-function Base.gcd(a::UPoly{T}, b::UPoly{T}) where {T}
+Base.gcd(a::UPoly{T}, b::UPoly{T}) where {T} = euclid_gcd(a, b)
+function euclid_gcd(a::UPoly{T}, b::UPoly{T}) where {T}
     while !iszero(b)
         a, b = b, monic(rem(a, b))
     end
