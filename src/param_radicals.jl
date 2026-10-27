@@ -468,3 +468,98 @@ function integrate_param_linear(f, x; build = nothing, lift = nothing, verify::B
     bk(t) = isnode(t) ? term_rebuild(bd, t, Any[bk(a) for a in arguments(t)]) : (string(t) == xk ? back : t)
     bk(tot)
 end
+
+# ---------------------------------------------------------------------------
+# Step PM: a radicand with parameters and repeated factors (multiplicities), u = c sⁿ W/V (s ∈ K(x);
+# W, V ∈ K[x] keep the multiplicities mod n; K the parameter field), its radicals of even index n.
+# Y = u^(1/n)/s satisfies Yⁿ = w = c W/V, and on the real line Y = ±w^(1/n), the sign σ = Y/w^(1/n)
+# locally constant. With F± the integrals of f where u^(k/n) is (±s w^(1/n))ᵏ,
+#   ∫ f = (F₊ + F₋)/2 + σ (F₊ - F₋)/2,
+# and F₋ = ±F₊ when u occurs once (an odd or even power). For w = c constant (√((a + bx)²) = (a + bx)·σ)
+# w^(1/n) = ρ ∈ K is needed (c = ρⁿ); s is taken as ρ s, and σ = u^(1/n)/s multiplies F₊, as Rubi writes it.
+# ---------------------------------------------------------------------------
+
+function integrate_param_repeated(f, x, rads; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    for us in unique(string(u) for (_, u) in rads if has_param(u, xk))
+        ut = first(u for (_, u) in rads if string(u) == us)
+        n = lcm([Int(denominator(e)) for (e, u) in rads if string(u) == us])
+        iseven(n) || continue
+        T, el = try
+            build_tower(ut, xk)
+        catch err
+            (err isa RischNotImplemented || err isa RischError) || rethrow()
+            continue
+        end
+        isempty(T.levels) || continue
+        C = ctype(T)
+        P = UPoly{C}
+        function split_n(p)                             # p/lc(p) = Sⁿ W
+            S, W = one(P), one(P)
+            for (a, m) in squarefree(p)
+                S *= a^(m ÷ n)
+                W *= a^(m % n)
+            end
+            S, W
+        end
+        SN, WN = split_n(el.num)
+        SD, WD = split_n(el.den)
+        degree(SN) + degree(SD) > 0 || continue
+        c = lc(el.num) / lc(el.den)
+        s = frac(SN, SD)
+        b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
+        wconst = degree(WN) == 0 && degree(WD) == 0
+        local wroot                                     # w^(1/n) as a term
+        if wconst
+            ρ = c
+            k = n
+            while k > 1 && ρ !== nothing                 # ρⁿ = c, n a power of 2
+                iseven(k) || (ρ = nothing; break)
+                ρ = csqrt(ρ)
+                k ÷= 2
+            end
+            ρ === nothing && continue
+            v = param_value(ρ, T.consts)
+            (v !== nothing && v < 0) && (ρ = -ρ)
+            s = frac(scale(ρ, SN), SD)                  # ρ s (a + b x for (a + b x)²), and w^(1/n) = 1
+            wroot = b0.lift(1)
+        else
+            wt = frac_term(b0, frac(scale(c, WN), WD))
+            wroot = n == 2 ? mk(b0, :sqrt, wt) : mk(b0, :^, wt, b0.lift(Q(1, n)))
+        end
+        st = frac_term(b0, s)
+        ks = Int[]
+        function rewrite(t, sg)
+            safe_iscall(t) || return t
+            args = arguments(t)
+            isempty(args) && return t
+            rp = radical_parts(t)
+            if rp !== nothing && string(rp[2]) == us
+                k = Int(rp[1] * n)
+                sg == 1 && push!(ks, k)
+                y = wconst ? (sg == 1 ? st : mk(b0, :*, b0.lift(-1), st)) :
+                    mk(b0, :*, st, sg == 1 ? wroot : mk(b0, :*, b0.lift(-1), wroot))
+                return k == 1 ? y : mk(b0, :^, y, b0.lift(k))
+            end
+            term_rebuild(b0, t, Any[rewrite(a, sg) for a in args])
+        end
+        integ(g) = try
+            risch_integrate(g, x; build = b0.build, lift = b0.lift, verify = verify)
+        catch err
+            (err isa RischNotImplemented || err isa NotElementary) || rethrow()
+            nothing
+        end
+        Fp = integ(rewrite(f, 1))
+        (Fp === nothing || Fp isa IntegralWithRootSums) && continue
+        un = n == 2 ? mk(b0, :sqrt, ut) : mk(b0, :^, ut, b0.lift(Q(1, n)))
+        σ = mk(b0, :/, un, wconst ? st : mk(b0, :*, st, wroot))
+        length(ks) == 1 && return isodd(ks[1]) ? mk(b0, :*, σ, Fp) : Fp
+        Fm = integ(rewrite(f, -1))
+        (Fm === nothing || Fm isa IntegralWithRootSums) && continue
+        half = b0.lift(Q(1, 2))
+        return mk(b0, :+, mk(b0, :*, half, mk(b0, :+, Fp, Fm)),
+                  mk(b0, :*, half, σ, mk(b0, :+, Fp, mk(b0, :*, b0.lift(-1), Fm))))
+    end
+    nothing
+end

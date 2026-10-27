@@ -173,6 +173,8 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         end
     end
     if any(((_, u),) -> has_param(u, xk), rads)        # parameters in a radicand: x = s u + h (step PR)
+        r = integrate_param_repeated(f, x, rads; build = build, lift = lift, verify = verify)   # u = sⁿ w (PM)
+        r === nothing || return r
         r = integrate_param_radicals(f, x, rads; build = build, lift = lift, verify = verify)
         r === nothing || return r
         r = try                                          # several radicands, one linear: u = √(linear) (NR)

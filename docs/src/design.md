@@ -220,6 +220,7 @@ rational exponent). Radicals of parameters are opaque constants and are not coun
 | AS | only powers of ``\sqrt{1 - u^2}``, ``u`` linear | ``u = \sin t`` first, which gives `asin(u)` instead of logarithms |
 | PR (rational) | one quadratic radicand ``K - \lvert α \rvert (x - h)^2`` whose scaling to ``K(1 - u^2)`` is irrational, e.g. ``7 - 2x^2`` | step PR with the constant radicals opaque, so that the `asin` route applies in ``u`` |
 | PR | parameters in a radicand: ``a^2 - x^2``, ``(x - a)(b - x)``, ``(a + x)/(a - x)`` | an affine ``x = s u + h`` over the parameter field makes the radicand ``κ R(u)`` with ``R`` free of parameters |
+| PM | parameters in a radicand with repeated factors, ``u = s^n w``, ``n`` even: ``(a^2 + 2abx + b^2x^2)^{3/2}``, ``((a^2 + x^2)^3)^{1/2}`` | ``Y = u^{1/n}/s`` is ``\pm w^{1/n}`` on each interval: with ``F_\pm`` the integrals for each sign, ``(F_+ + F_-)/2 + σ (F_+ - F_-)/2``, ``σ = Y/w^{1/n}``; for constant ``w`` the answer is ``(u^{1/n}/s) F_+``, as Rubi writes it |
 | NR | several radicands, one innermost radical of a linear radicand | ``u = \sqrt{\text{linear}}`` |
 | MR | radicands that are functions of one ``e^{kx}``, ``\cos kx``, ``\sin kx`` or ``\tan kx`` (``\sqrt{1 + e^x}``) | substitute that function. The radicals are opaque constants while the identities ``g(s(θ))\,s' = R`` and ``\tilde U_j(s(θ)) = U_j`` are checked exactly. Before that, a cheap derivative-divides test with a radicand as ``u`` |
 | PW | radicands that are perfect powers at a finer monomial | rewrite at ``e^{ckx/m}`` |
@@ -644,7 +645,7 @@ failures, and their comments cite the Rubi problem numbers.
 | NS | `nested_subst.jl` | nested radicals by substitution |
 | CS | `constant_scaling.jl` | nested radicals over ``ℚ(\sqrt d)``: scaling and constant factors out of radicands |
 | PP | `nested_subst.jl` | pairs of square roots ``\sqrt{g + c_1}``, ``\sqrt{g + c_2}`` |
-| PL, PR, PS | `param_radicals.jl` | parameters: linearity, radicands, scaling |
+| PL, PR, PM, PS | `param_radicals.jl` | parameters: linearity, radicands, repeated factors, scaling |
 | BN | `param_radicals.jl` | binomial denominators ``x^n + c``: ``x = \lvert c\rvert^{1/n} u`` |
 | PC | `precompile.jl` | precompile workload |
 | R2, NR | `quartic_residues.jl` | real forms of quartic residues, nested radicals in them |
