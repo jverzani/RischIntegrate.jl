@@ -18,37 +18,37 @@ The entry points are `integrate`, for the terms of a symbolic package, and the m
 
 
 ```{julia}
+using RischIntegrate
 using SymEngine: @vars
-using RischIntegrate: integrate
 @vars x
 integrate(exp(x) / (exp(x) + 1)^2, x) # indefinite, -1/(1 + exp(x))
 integrate(sin(x), (x, 0, pi))         # definite, 2
 ```
 
 
-The macro `@integrate` integrates Julia expressions; other names are parameters, and `$v` puts in the value of a variable `v`:
+Since `Expr` objects support `TermInterface.jl`, the package can be used without loading a symbolic package through the macro `@integrate`.
 
 ```{julia}
-using RischIntegrate
-@integrate(x * exp(x), x)         # (-1 + x) * exp(x)
-@integrate(sin(x), (x, 0, π))     # 2.0
-@integrate(a * x^2, (x, 0, 1))    # an expression in the parameter a
+@integrate(x * exp(x), x)         # :((-1 + x) * exp(x))
+@integrate(log(a + x)/x, x)       # :(1//2 * log(a) * log(x ^ 2) + -1 * li2((-1 / a) * x))
+@integrate(sin(x), (x, 0, pi))    # 2.0
 ```
 
 This is possible, as `Expr` objects support `TermInterface.jl`.
-The bounds are evaluated as Julia values, so in an iterated integral over a region that is not a
-rectangle, a bound in the variable of an outer integral must be quoted. Over the triangle
-0 ≤ x ≤ y ≤ 1, the inner bound is `:y`:
 
+
+There are some subtleties: other names are parameters, `$v` puts in the value of a variable `v`;
+The bounds are evaluated as Julia values, so in an iterated integral over a region that is not a
+rectangle, a bound in the variable of an outer integral must be quoted.
 ```{julia}
-@integrate(x * y, (x, 0, :y), (y, 0, 1))              # 0.125
+@integrate(x * y, (x, 0, :y), (y, 0, 1))              # 0.125, integrate over triangular region
 ```
 
 ## Comparisons
 
-The Apostol badge links to a report comparing coverage and performance on 175 problems from Apostol's *Calculus*, as collected by [`SymbolicIntegration.jl`](https://github.com/JuliaSymbolics/SymbolicIntegration.jl): this package with different symbolic systems in Julia, the `RischMethod` of `SymbolicIntegration.jl`, and Giac's own implementation of integration. Giac is faster; `RischIntegrate.jl` has slightly better coverage.
+The Apostol badge links to a report comparing coverage and performance on 175 problems from Apostol's *Calculus* with this package with different symbolic systems in Julia, the `RischMethod` of `SymbolicIntegration.jl`, and Giac's own implementation of integration. Giac is faster; `RischIntegrate.jl` has slightly better coverage.
 
-On a wider set of 1680 sample problems from the same collection (the test suite of Rubi), the results are:
+Development was greatly aided by a wider set of 1680 sample problems collected by [`SymbolicIntegration.jl`](https://github.com/JuliaSymbolics/SymbolicIntegration.jl), the results are:
 
 | System | Verified¹ (of 1680) | Unevaluated | Timed out | Total time | Median time (verified) |
 |:---|---:|---:|---:|---:|---:|
