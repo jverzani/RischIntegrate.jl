@@ -1236,6 +1236,23 @@ end
     @test occursin("sqrt(a ^ 2 + 2 * a * b * x + b ^ 2 * x ^ 2) / (a + b * x)", string(F))   # σ times F₊
 end
 
+# step LL: two linear radicands whose exponents add up to an integer in each product: one radicand
+# (L₁L₂ for square roots, L₁/L₂ otherwise), then step PR (Rubi 1.1.1)
+@testset "two linear radicands (step LL)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 1.3), :(b = 0.6), :(c = 1.7), :(d = 0.4)), e))
+    for f in (:(1 / ((a + b * x) ^ (3 // 4) * (c + d * x) ^ (1 // 4))), :((c + d * x) ^ (5 // 4) / (a + b * x) ^ (9 // 4)),
+              :((c + d * x) ^ (1 // 3) / (a + b * x) ^ (4 // 3)), :((a + b * x) ^ (1 // 6) / (c + d * x) ^ (13 // 6)),
+              :(x / (sqrt(1 - d * x) * sqrt(1 + d * x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 1.5)                                                # (logs of negative values: complex)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    f = :(sqrt(a + b * x) * (c + d * x) ^ (1 // 4))                      # 1/2 + 1/4 ∉ ℤ: not rewritten
+    @test Risch.rewrite_two_linear(f, :x, Risch.collect_radicals(f, "x"); build = build, lift = identity) === nothing
+end
+
 # step PL: log of a parameter is a constant generator; step PQ: quadratic residue pairs over a
 # parameter field written out (log or atan); step TW: tan(u/2) over parameter fields
 @testset "parameters: logs, quadratic residues, tan(u/2)" begin
