@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=9db31c59">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=8ea27951">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -351,6 +351,11 @@
 <td style="text-align:left">PM</td>
 <td style="text-align:left">parameters in a radicand with repeated factors, <span class="md-math md-math-inline">\(u = s^n w\)</span>, <span class="md-math md-math-inline">\(n\)</span> even: <span class="md-math md-math-inline">\((a^2 + 2abx + b^2x^2)^{3/2}\)</span>, <span class="md-math md-math-inline">\(((a^2 + x^2)^3)^{1/2}\)</span></td>
 <td style="text-align:left"><span class="md-math md-math-inline">\(Y = u^{1/n}/s\)</span> is <span class="md-math md-math-inline">\(\pm w^{1/n}\)</span> on each interval: with <span class="md-math md-math-inline">\(F_\pm\)</span> the integrals for each sign, <span class="md-math md-math-inline">\((F_+ + F_-)/2 + σ (F_+ - F_-)/2\)</span>, <span class="md-math md-math-inline">\(σ = Y/w^{1/n}\)</span>; for constant <span class="md-math md-math-inline">\(w\)</span> the answer is <span class="md-math md-math-inline">\((u^{1/n}/s) F_+\)</span>, as Rubi writes it</td>
+</tr>
+<tr>
+<td style="text-align:left">LL</td>
+<td style="text-align:left">two linear radicands with parameters whose exponents add up to an integer in each product: <span class="md-math md-math-inline">\((a + bx)^{-3/4}(c + dx)^{-1/4}\)</span></td>
+<td style="text-align:left">one radicand on the real domain: <span class="md-math md-math-inline">\((L_1L_2)^{E_1} L_2^{E_2 - E_1}\)</span> for square roots, <span class="md-math md-math-inline">\((L_1/L_2)^{E_1} L_2^{E_1 + E_2}\)</span> otherwise; then step PR</td>
 </tr>
 <tr>
 <td style="text-align:left">NR</td>
@@ -880,9 +885,9 @@
 <td style="text-align:left">pairs of square roots <span class="md-math md-math-inline">\(\sqrt{g + c_1}\)</span>, <span class="md-math md-math-inline">\(\sqrt{g + c_2}\)</span></td>
 </tr>
 <tr>
-<td style="text-align:left">PL, PR, PM, PS</td>
+<td style="text-align:left">PL, PR, PM, LL, PS</td>
 <td style="text-align:left"><code class="md-code-inline">param_radicals.jl</code></td>
-<td style="text-align:left">parameters: linearity, radicands, repeated factors, scaling</td>
+<td style="text-align:left">parameters: linearity, radicands, repeated factors, two linear radicands, scaling</td>
 </tr>
 <tr>
 <td style="text-align:left">BN</td>
@@ -1008,6 +1013,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=9db31c59"></script>
+  <script src="../assets/materialdocs.js?v=8ea27951"></script>
 </body>
 </html>
