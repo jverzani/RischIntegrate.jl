@@ -173,6 +173,15 @@ signs of all its terms (from the parameters' signs; even powers are positive), o
 into a product of the facts' expressions and the parameters. There is no linear deduction:
 ``b - 2 > 0`` does not give ``b > 0``, as GruntzLimit's Fourier–Motzkin elimination would.
 
+Logarithms in answers are `log(w)`, real where ``w > 0``; on an interval where ``w < 0`` such a term
+``c \log w`` differs from a real antiderivative by the constant ``iπc`` (``∫ x/(x^2 - 1) =
+\tfrac12 \log(x^2 - 1)``, as in Mathematica). Steps RL, EL and EC write ``\log|w|`` where the
+real domain of a substitution is known. With an oracle, the arguments of the logs that are summands
+of the answer are asked about too (`oracle_real_logs`, after the answer is checked): `-1`, on the
+caller's domain (assumptions about ``x``), gives ``\log(-w)``, real there (``\tfrac12 \log(1 -
+x^2)`` for ``-1 < x < 1``). Logs inside other functions are left alone: in ``\log(1 + \log x)``
+the inner ``\log x`` is not a summand.
+
 `sturm.jl` counts real roots and decides signs exactly with Sturm sequences, for ``ℚ`` and the real
 quadratic fields, and numerically to 256 bits for parameter fields.
 

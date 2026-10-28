@@ -188,6 +188,50 @@ function term_oracle_sign(t)
     s == 0 && throw(SignOracleZero("the sign oracle says $t = 0: a special case of the parameters"))
     s
 end
+# step SO, log arguments: with an oracle, each c·log(w) of the answer (a summand, w depending on x) becomes
+# log(-w) where the oracle says w < 0 (on the caller's domain, assumptions about x included): the same
+# derivative, and real there. Undecided, or without an oracle, log(w) stays: on an interval where w < 0 it
+# differs from a real antiderivative by the constant iπ·c (the convention of Mathematica). A log inside
+# another function is left alone: in log(1 + log x) the inner log is not a summand, and log(-x) would change
+# the answer. The term is returned as it is (===) when nothing changes.
+function oracle_real_logs(t, bd::Builder, xk::String, o::SignOracle)
+    safe_iscall(t) || return t
+    n, args = opname(operation(t)), arguments(t)
+    sub(a) = oracle_real_logs(a, bd, xk, o)
+    function rebuild(f, new)
+        all(((a, b),) -> a === b, zip(args, new)) && return t
+        f(new...)
+    end
+    if n === :+
+        return rebuild((as...) -> mk(bd, :+, as...), Any[sub(a) for a in args])
+    elseif n === :*
+        k = findall(a -> depends_on(a, xk), args)
+        length(k) == 1 || return t
+        return rebuild((as...) -> mk(bd, :*, as...), Any[i == k[1] ? sub(a) : a for (i, a) in enumerate(args)])
+    elseif n === :-
+        return rebuild((as...) -> bd.build(-, as...), Any[sub(a) for a in args])
+    elseif n === :/ && length(args) == 2 && !depends_on(args[2], xk)
+        return rebuild((as...) -> mk(bd, :/, as...), Any[sub(args[1]), args[2]])
+    elseif n === :log && length(args) == 1 && depends_on(args[1], xk)
+        oracle_ask(o, string(args[1]), args[1]) == -1 && return mk(bd, :log, neg_term(bd, args[1]))
+    end
+    t
+end
+# -w as a term: the sign taken into a numerator, the terms of a sum or a rational factor
+function neg_term(bd::Builder, w)
+    if safe_iscall(w)
+        n, args = opname(operation(w)), arguments(w)
+        n === :/ && length(args) == 2 && return mk(bd, :/, neg_term(bd, args[1]), args[2])
+        n === :+ && return mk(bd, :+, Any[neg_term(bd, a) for a in args]...)
+        if n === :* && (r = leaf_rational(args[1])) !== nothing
+            rest = args[2:end]
+            return isone(-r) ? (length(rest) == 1 ? rest[1] : mk(bd, :*, rest...)) : mk(bd, :*, cterm(bd, -Q(r)), rest...)
+        end
+    elseif (r = leaf_rational(w)) !== nothing
+        return cterm(bd, -Q(r))
+    end
+    mk(bd, :*, bd.lift(-1), w)
+end
 # the sign of the parameter g itself: -1 when the oracle says g < 0, else +1
 function oracle_sym_sign(g::ConstGen)
     o = SIGN_ORACLE[]
