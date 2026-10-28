@@ -134,9 +134,10 @@ function bioche(f, x; build = nothing, lift = nothing)
     sg(c) = csign(c, T.consts)
     rng = kind in (:tan, :half) ? (nothing, nothing) : (-1, 1)
     nreal = real_root_count(gq.den, rng..., sg)
-    # (tan(u/2) with parameters: the sign conditions are not decided; the answer holds on (-π, π) where
-    # the parameters leave g without real poles, e.g. |a| < 1 for 1/(1 + a cos u))
-    (nreal == 0 || (kind === :half && nreal === nothing)) || return nothing
+    # (tan(u/2) with parameters: whether the sign conditions are decided (by the caller's oracle, step SO)
+    # or not, the answer holds between the real poles of g, on (-π, π) when the parameters leave none,
+    # e.g. |a| < 1 for 1/(1 + a cos u); the general route has no parameter forms to offer instead)
+    (nreal == 0 || kind === :half) || return nothing
     res = integrate_rational(gq)
     # residues of degree > 2 (step TR): a RootSum in s = cos u or sin u (over ℚ, real and continuous
     # since g has no pole in [-1, 1]); for s = tan u see step TT below

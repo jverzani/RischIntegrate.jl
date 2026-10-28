@@ -180,6 +180,14 @@ function oracle_sign(c, consts)
     s == 0 && throw(SignOracleZero("the sign oracle says $t = 0: a special case of the parameters"))
     s
 end
+# the oracle's sign of a term t in the parameters (built like the answer), or nothing (no oracle, undecided)
+function term_oracle_sign(t)
+    o = SIGN_ORACLE[]
+    o === nothing && return nothing
+    s = oracle_ask(o, string(t), t)
+    s == 0 && throw(SignOracleZero("the sign oracle says $t = 0: a special case of the parameters"))
+    s
+end
 # the sign of the parameter g itself: -1 when the oracle says g < 0, else +1
 function oracle_sym_sign(g::ConstGen)
     o = SIGN_ORACLE[]
