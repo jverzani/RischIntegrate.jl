@@ -50,9 +50,9 @@ The Apostol badge links to a report comparing coverage and performance on 175 pr
 
 Development was greatly aided by a wider set of 1680 sample problems collected by [`SymbolicIntegration.jl`](https://github.com/JuliaSymbolics/SymbolicIntegration.jl), the results are:
 
-| System | Verified¹ (of 1680) | Unevaluated | Timed out | Total time | Median time (verified) |
+| System | Verified¹ (of 1680) | Unevaluated | Timed out | Total time³ | Median time (verified) |
 |:---|---:|---:|---:|---:|---:|
-| `RischIntegrate.jl` (`Expr` terms) | 1671 (99.5%)² | 7 | 0 | 3.3 min | < 0.005 s |
+| `RischIntegrate.jl` (`Expr` terms) | 1671 (99.5%)² | 7 | 0 | 2.0 min | < 0.005 s |
 | Giac 2.0.0 (`Giac.jl` 0.14.3) | 1534 (91.3%) | 127 | 0 | 0.3 min | < 0.005 s |
 | SymPy 1.14.0 (`SymPyPythonCall.jl` 0.5.1) | 1333 (79.3%) | 251 | 63 | 84 min | 0.03 s |
 
@@ -60,3 +60,5 @@ Development was greatly aided by a wider set of 1680 sample problems collected b
 ¹ Answers may contain special functions, as Rubi's do. An answer counts as verified when its derivative matches the integrand numerically at two points (parameters set to fixed positive values). An answer that only fails there because it is written for the real line (`ln|u|`, `sign(u)`) and the points are outside its domain was checked again at two real points of the domain. For SymPy, parameters were declared positive, to match the assumptions of this package.
 
 ² The other two of the 1680 problems, 423 (∫ x²⁰ eˣ dx) and 541 (a rational function times 1/√(x⁴ + 4x³ + 2x² + 1)), fail this check only because it is done in double precision. Their answers involve heavy cancellation: coefficients up to 20! ≈ 2.4·10¹⁸ for 423, and the log of a ratio of nearly cancelling degree-10 polynomials for 541. In 512-bit arithmetic, their derivatives match the integrands to a relative error of about 10⁻⁸⁰.
+
+³ On the 1306 problems all three verify, the totals are 61 s (RischIntegrate), 3.3 s (Giac) and 10.1 min (SymPy). Most of RischIntegrate's time is Julia compiling code the first time a problem reaches it: run again in the same session, the same problems take about 15 s.
