@@ -6,7 +6,7 @@
 # keeps that derivative for the exact check (as SpecialTerm); the rest of the integrand goes through
 # the normal algorithm. Printed with `PolyLog.li2`, which the symbolic package must support.
 # (ρ, a, b, c in the constant field: ℚ, or a parameter field ℚ(a, …) (∫ log(x)/(a + bx)); there the sign
-# of K is taken at the parameter values of `param_value`, a = 1, b = 2, …, as for the step PQ forms)
+# of K is `param_sign`'s: the oracle's, else at the parameter values a = 1, b = 2, …, as for the step PQ forms)
 # Poles in pairs: c, c̄ ∈ ℚ(i) (`DilogPairTerm`), c, c̄ ∈ ℚ(√d) real (`DilogQuadTerm`); θ = log of a product of
 # linear factors: step LF (`DilogGroup`).
 struct DilogTerm
@@ -23,7 +23,7 @@ end
 #     + 2ρr Re Li₂(v/|K| e^(-iα)) - 2ρi Im Li₂(v/|K| e^(-iα)),   -α = atan(Kr/Ki) - sgn π/2,
 # (arg(1 - v/K) = arg(K - v) - α, continuous from 0 at v = 0); deriv: (ρ/(x - c) + ρ̄/(x - c̄)) θ.
 # (over a parameter field ℚ(a, …) too: then c = cr + i ci, ρ = ρr + i ρi, a, b have parts in that field, and the sign
-# of Ki is taken at `param_value`)
+# of Ki is `param_sign`'s)
 struct DilogPairTerm
     ρr::Any
     ρi::Any
@@ -219,9 +219,9 @@ function dilog_split(T::Tower, i::Int, p::UPoly)
             sq = csqrt(two * two * p0 - p1 * p1)
             (sq === nothing || iszero(sq)) && continue
             cr, ci = -p1 / two, sq / two
-            v = param_value(ci, T.consts)
-            v === nothing && continue
-            v < 0 && (ci = -ci)
+            sg = param_sign(ci, T.consts)
+            sg === nothing && continue
+            sg < 0 && (ci = -ci)
             c = to_complex(CC, cr) + I * to_complex(CC, ci)
             ρ = peval(up(r.num), c) / peval(up(deriv(D1)), c)
             iszero(ρ) && continue
@@ -287,7 +287,7 @@ function dilog_term(b::Builder, q::DilogTerm)
         return isone(q.ρ) ? core : mk(b, :*, cterm(b, q.ρ), core)
     end
     Kr = crational(K)
-    Kpos = Kr !== nothing ? Kr > 0 : K isa QSB ? qs_float(K) > 0 : (v = param_value(K, b.consts); v !== nothing && v > 0)
+    Kpos = Kr !== nothing ? Kr > 0 : K isa QSB ? qs_float(K) > 0 : param_sign(K, b.consts) == 1
     if Kpos
         L = li(mk(b, :*, cterm(b, -q.a / K), st))
         core = isone(K) ? mk(b, :*, b.lift(-1), L) :           # log K · ½ log(s²) - Li₂(-a s/K)
@@ -361,10 +361,10 @@ function dilog_pair_term(b::Builder, q::DilogPairTerm)
         push!(ts, sc(cfromQ(C, Q(-2)) * ρi, mk(b, :*, lv, at)))
     end
     m = csqrt(n2)                                       # v/|K|
-    m === nothing || C === Q || (v = param_value(m, b.consts); (v !== nothing && v < 0) && (m = -m))
+    m === nothing || C === Q || (param_sign(m, b.consts) == -1 && (m = -m))
     ρt = m === nothing ? mk(b, :/, vt, mk(b, :sqrt, cterm(b, n2))) : poly_term(b, UPoly{C}(C[c / m for c in vp.c]))
     Kir = C === Q ? Ki : crational(Ki)
-    Kipos = Kir !== nothing ? Kir > 0 : (v = param_value(Ki, b.consts); v !== nothing && v > 0)
+    Kipos = Kir !== nothing ? Kir > 0 : param_sign(Ki, b.consts) == 1
     hp = mk(b, :*, cterm(b, Q(Kipos ? -1 : 1, 2)), b.lift(π))
     φt = iszero(Kr) ? hp : mk(b, :+, mk(b, :atan, cterm(b, Kr / Ki)), hp)
     iszero(ρr) || push!(ts, sc(cfromQ(C, Q(2)) * ρr, mk(b, :ReLi, b.lift(2), ρt, φt)))

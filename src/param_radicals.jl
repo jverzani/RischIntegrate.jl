@@ -31,8 +31,8 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     kc(c) = frac(P([c]))
     co(p, i) = i <= length(p.c) ? p.c[i] : zero(C)
     sh = nothing                                        # (s, h, κ, R ∈ ℚ(u))
-    # the sign of a parameter constant at the parameter values of `param_value` (a = 1, b = 2, …)
-    pos(c) = (rc = crational(c); rc !== nothing ? rc > 0 : (v = param_value(c, T.consts); v !== nothing && v > 0))
+    # the sign of a parameter constant: the oracle's, else at the parameter values of `param_value` (step SO)
+    pos(c) = param_sign(c, T.consts) == 1
     if isone(Dn) && degree(N) == 2
         A, B, Cc = co(N, 3), co(N, 2), co(N, 1)
         h = -B / (A + A)
@@ -85,8 +85,7 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     # the branch cuts elsewhere
     # (the quadratic case only: R(u) = 1 ± u² is even, so u ↦ -u keeps it)
     if isone(Dn) && degree(N) == 2 && !(s isa Tuple)
-        sv = param_value(s, T.consts)
-        (sv !== nothing && sv < 0) && (s = -s)
+        param_sign(s, T.consts) == -1 && (s = -s)
     end
     b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
     st, ht = s isa Tuple ? mk(b0, :sqrt, cterm(b0, s[2])) : cterm(b0, s), cterm(b0, h)
@@ -139,16 +138,70 @@ end
 has_param(t, xk::String) = safe_iscall(t) && !isempty(arguments(t)) ? any(a -> has_param(a, xk), arguments(t)) :
                            (string(t) != xk && leaf_rational(t) === nothing && !is_e_const(t) && !(string(t) in ("pi", "π")))
 
-# the value of a parameter constant with the k-th parameter (alphabetically) set to k, or nothing
+# step SO: the caller's sign oracle, the `sign` keyword of `risch_integrate`. Called with a parameter
+# expression (a term built like the answer), it returns +1, -1, 0 or nothing (undecided). Every decision
+# that depends on the sign of a parameter expression asks it first (`param_sign`, `csign`); undecided
+# ones are made at the parameter values of `param_value`, the k-th parameter set to -k when the oracle
+# says it is negative, so that the two agree. Without an oracle, the values are 1, 2, … as before.
+struct SignOracle
+    f::Any
+    build::Any
+    lift::Any
+    x::Any
+    cache::Dict{Any,Union{Int,Nothing}}
+end
+const SIGN_ORACLE = Base.ScopedValues.ScopedValue{Union{Nothing,SignOracle}}(nothing)
+# the oracle's 0 for an expression that is not identically 0: a special case of the parameters. Not a
+# RischNotImplemented, which other methods catch to try theirs (that do not ask); `risch_integrate` turns
+# it into one.
+struct SignOracleZero <: Exception
+    msg::String
+end
+
+function oracle_ask(o::SignOracle, key, t)
+    get!(o.cache, key) do
+        s = o.f(t)
+        s === nothing && return nothing
+        s in (-1, 0, 1) || throw(ArgumentError("the sign oracle returned $s for $t: +1, -1, 0 or nothing expected"))
+        Int(s)
+    end
+end
+# the oracle's sign of a constant c (not identically 0), or nothing (no oracle, undecided, or c has no term)
+function oracle_sign(c, consts)
+    o = SIGN_ORACLE[]
+    o === nothing && return nothing
+    t = try
+        cterm(Builder(o.build, o.lift, o.x, consts), c)
+    catch err
+        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        return nothing
+    end
+    s = oracle_ask(o, (c, consts), t)
+    s == 0 && throw(SignOracleZero("the sign oracle says $t = 0: a special case of the parameters"))
+    s
+end
+# the sign of the parameter g itself: -1 when the oracle says g < 0, else +1
+function oracle_sym_sign(g::ConstGen)
+    o = SIGN_ORACLE[]
+    o === nothing && return 1
+    s = oracle_ask(o, string(g.term), g.term)
+    s == 0 && throw(SignOracleZero("the sign oracle says $(g.term) = 0: a special case of the parameters"))
+    s == -1 ? -1 : 1
+end
+
+# the value of a parameter constant with the k-th parameter (alphabetically) set to ±k (the sign from the
+# oracle), or nothing
 function param_value(c, consts)
-    names = sort([string(g.term) for g in consts if g.kind === :sym])
+    syms = sort([g for g in consts if g.kind === :sym]; by = g -> string(g.term))
+    names = [string(g.term) for g in syms]
+    sgs = [oracle_sym_sign(g) for g in syms]           # (outside the try: the oracle's special case is thrown)
     eb = Builder((op, args...) -> Expr(:call, nameof(op), args...), identity, :x, consts)
     function ev(e)
         if e isa Expr && e.head === :call
             return op_function(e)(map(ev, e.args[2:end])...)
         end
         k = findfirst(==(string(e)), names)            # (before Number: SymEngine's symbols are Numbers)
-        k === nothing || return float(k)
+        k === nothing || return float(sgs[k] * k)
         r = leaf_rational(e)
         r === nothing && throw(RischError("no value for $e"))
         float(r)
@@ -159,6 +212,17 @@ function param_value(c, consts)
     catch
         nothing
     end
+end
+
+# the sign of a constant c: exact when c is rational, else the oracle's, else its sign at `param_value`;
+# nothing when undecided
+function param_sign(c, consts)
+    r = crational(c)
+    r === nothing || return Int(sign(r))
+    s = oracle_sign(c, consts)
+    s === nothing || return s
+    v = param_value(c, consts)
+    v === nothing ? nothing : Int(sign(v))
 end
 
 # step PS: f ∈ ℚ(a, …)(x) homogeneous in x and a parameter a: f(a u)·a = aᵏ g(u) with g ∈ ℚ(u)
@@ -236,8 +300,8 @@ function pnthroot(p::UPoly{B}, n::Int) where {B}
 end
 
 # step BN: f ∈ C(x) (C = ℚ or ℚ(a, …)) with denominator λ xʲ (xⁿ + c)ᵏ, n ≥ 3, whose residues need a RootSum
-# (c not ± an n-th power: 1/(x³ - 2), 1/(a x³ - b)). With ρ = |c|^(1/n) (an opaque constant, positive at the
-# parameter values of `param_value`) and x = ρ u, xⁿ + c = |c| (uⁿ ± 1); the numerator N(ρu) = Σ Nᵢ ρⁱ uⁱ, and
+# (c not ± an n-th power: 1/(x³ - 2), 1/(a x³ - b)). With ρ = |c|^(1/n) (an opaque constant, positive by
+# `param_sign`) and x = ρ u, xⁿ + c = |c| (uⁿ ± 1); the numerator N(ρu) = Σ Nᵢ ρⁱ uⁱ, and
 # ρ^(i+1-j) = |c|^q ρ^m (i + 1 - j = qn + m), so by linearity
 #   ∫ f dx = Σᵢ Nᵢ |c|^(q-k)/λ · ρ^m ∫ uⁱ⁻ʲ/(uⁿ ± 1)ᵏ du,
 # each integral over ℚ (real forms with √3, √2, …); then u = x/ρ. Nothing when one of them needs a RootSum.
@@ -261,8 +325,7 @@ function integrate_binomial_scaled(f, x; build = nothing, lift = nothing, verify
     n = degree(Qf)
     all(iszero, Qf.c[2:n]) || return nothing           # Qf = xⁿ + c
     c = Qf.c[1]
-    pos(c) = C === Q ? c > 0 :
-             (rc = crational(c); rc !== nothing ? rc > 0 : (v = param_value(c, T.consts); v !== nothing && v > 0))
+    pos(c) = param_sign(c, T.consts) == 1
     σ = pos(c) ? 1 : -1
     iseven(n) && σ == -1 && !pos(-c) && return nothing  # (no sign at the parameter values)
     r = cfromQ(C, Q(σ)) * c                            # |c|, ρⁿ = r
@@ -424,7 +487,7 @@ function integrate_param_linear(f, x; build = nothing, lift = nothing, verify::B
     Qf, k = sf[1]
     lcD = lc(Dn)                                       # Dn = lcD Qf^k (Qf monic)
     co(p, i) = i <= length(p.c) ? p.c[i] : zero(C)
-    pos(c) = (r = crational(c); r !== nothing ? r > 0 : (v = param_value(c, T.consts); v !== nothing && v > 0))
+    pos(c) = param_sign(c, T.consts) == 1
     if degree(Qf) == 1                                  # Qf = x - x₀: u = x - x₀, Q₀ = u
         s, r, h, κ, Q0 = one(C), one(C), -co(Qf, 1), one(C), QX(Q[0, 1])
     elseif degree(Qf) == 2
@@ -520,8 +583,7 @@ function integrate_param_repeated(f, x, rads; build = nothing, lift = nothing, v
                 k ÷= 2
             end
             ρ === nothing && continue
-            v = param_value(ρ, T.consts)
-            (v !== nothing && v < 0) && (ρ = -ρ)
+            param_sign(ρ, T.consts) == -1 && (ρ = -ρ)
             s = frac(scale(ρ, SN), SD)                  # ρ s (a + b x for (a + b x)²), and w^(1/n) = 1
             wroot = b0.lift(1)
         else

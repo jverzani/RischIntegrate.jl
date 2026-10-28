@@ -55,6 +55,7 @@ include("nested.jl")
 include("hypergeometric.jl")
 include("gamma_terms.jl")
 include("param_radicals.jl")
+include("sign_facts.jl")
 include("clausen.jl")
 include("polylog_parts.jl")
 include("hyp_symbolic.jl")
@@ -73,7 +74,7 @@ include("integrate_macro.jl")
 export integrate, @integrate, sinhint, coshint, clausen2, clausen, repolylog, impolylog, rehyp2f1, imhyp2f1
 
 """
-    integrate(ex, x, ys...; build = nothing, lift = nothing)
+    integrate(ex, x, ys...; build = nothing, lift = nothing, signs = (), sign = nothing)
 
 Indefinite integral of a symbolic expression over variable x. Iterative integrals are possible.
 
@@ -82,6 +83,9 @@ for the operation `op` (a function such as `+`, `sqrt` or `log`) applied to `arg
 turns a Julia number into a term. By default operations are called as functions (for
 SymbolicUtils terms, constants such as `sqrt(2)` are built with `TermInterface.maketerm`). See the
 README for SymbolicUtils.jl and Symbolics.jl.
+
+Where the form of the answer depends on the sign of an expression in the parameters, `signs`
+(pairs such as `a => :positive`) or `sign` (a function) decide it; see [`risch_integrate`](@ref).
 """
 # (@nospecializeinfer: a call from compiled code, such as the definite integral below or a user's function,
 # is inferred with the argument types as declared, not through the whole integrator for the term type)
