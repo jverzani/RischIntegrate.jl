@@ -18,43 +18,47 @@ The entry points are `integrate`, for the terms of a symbolic package, and the m
 
 
 ```{julia}
+using RischIntegrate
 using SymEngine: @vars
-using RischIntegrate: integrate
 @vars x
 integrate(exp(x) / (exp(x) + 1)^2, x) # indefinite, -1/(1 + exp(x))
 integrate(sin(x), (x, 0, pi))         # definite, 2
 ```
 
 
-The macro `@integrate` integrates Julia expressions; other names are parameters, and `$v` puts in the value of a variable `v`:
+Since `Expr` objects support `TermInterface.jl`, the package can be used without loading a symbolic package through the macro `@integrate`.
 
 ```{julia}
-using RischIntegrate
-@integrate(x * exp(x), x)         # (-1 + x) * exp(x)
-@integrate(sin(x), (x, 0, π))     # 2.0
-@integrate(a * x^2, (x, 0, 1))    # an expression in the parameter a
+@integrate(x * exp(x), x)         # :((-1 + x) * exp(x))
+@integrate(log(a + x)/x, x)       # :(1//2 * log(a) * log(x ^ 2) + -1 * li2((-1 / a) * x))
+@integrate(sin(x), (x, 0, pi))    # 2.0
 ```
 
 This is possible, as `Expr` objects support `TermInterface.jl`.
-The bounds are evaluated as Julia values, so in an iterated integral over a region that is not a
-rectangle, a bound in the variable of an outer integral must be quoted. Over the triangle
-0 ≤ x ≤ y ≤ 1, the inner bound is `:y`:
 
+
+There are some subtleties: other names are parameters, `$v` puts in the value of a variable `v`;
+The bounds are evaluated as Julia values, so in an iterated integral over a region that is not a
+rectangle, a bound in the variable of an outer integral must be quoted.
 ```{julia}
-@integrate(x * y, (x, 0, :y), (y, 0, 1))              # 0.125
+@integrate(x * y, (x, 0, :y), (y, 0, 1))              # 0.125, integrate over triangular region
 ```
 
 ## Comparisons
 
-The Apostol badge links to a report comparing coverage and performance on 175 problems from Apostol's *Calculus*, as collected by [`SymbolicIntegration.jl`](https://github.com/JuliaSymbolics/SymbolicIntegration.jl): this package with different symbolic systems in Julia, the `RischMethod` of `SymbolicIntegration.jl`, and Giac's own implementation of integration. Giac is faster; `RischIntegrate.jl` has slightly better coverage.
+The Apostol badge links to a report comparing coverage and performance on 175 problems from Apostol's *Calculus* with this package with different symbolic systems in Julia, the `RischMethod` of `SymbolicIntegration.jl`, and Giac's own implementation of integration. Giac is faster; `RischIntegrate.jl` has slightly better coverage.
 
-On a wider set of 1680 sample problems from the same collection (the test suite of Rubi), the results are:
+Development was greatly aided by a wider set of 1680 sample problems collected by [`SymbolicIntegration.jl`](https://github.com/JuliaSymbolics/SymbolicIntegration.jl), the results are:
 
-| System | Verified¹ (of 1680) | Unevaluated | Timed out | Total time | Median time (verified) |
+| System | Verified¹ (of 1680) | Unevaluated | Timed out | Total time³ | Median time (verified) |
 |:---|---:|---:|---:|---:|---:|
-| `RischIntegrate.jl` (`Expr` terms) | 1671 (99.5%) | 7 | 0 | 3.3 min | < 0.005 s |
+| `RischIntegrate.jl` (`Expr` terms) | 1671 (99.5%)² | 7 | 0 | 2.0 min | < 0.005 s |
 | Giac 2.0.0 (`Giac.jl` 0.14.3) | 1534 (91.3%) | 127 | 0 | 0.3 min | < 0.005 s |
 | SymPy 1.14.0 (`SymPyPythonCall.jl` 0.5.1) | 1333 (79.3%) | 251 | 63 | 84 min | 0.03 s |
 
 
 ¹ Answers may contain special functions, as Rubi's do. An answer counts as verified when its derivative matches the integrand numerically at two points (parameters set to fixed positive values). An answer that only fails there because it is written for the real line (`ln|u|`, `sign(u)`) and the points are outside its domain was checked again at two real points of the domain. For SymPy, parameters were declared positive, to match the assumptions of this package.
+
+² The other two of the 1680 problems, 423 (∫ x²⁰ eˣ dx) and 541 (a rational function times 1/√(x⁴ + 4x³ + 2x² + 1)), fail this check only because it is done in double precision. Their answers involve heavy cancellation: coefficients up to 20! ≈ 2.4·10¹⁸ for 423, and the log of a ratio of nearly cancelling degree-10 polynomials for 541. In 512-bit arithmetic, their derivatives match the integrands to a relative error of about 10⁻⁸⁰.
+
+³ On the 1306 problems all three verify, the totals are 61 s (RischIntegrate), 3.3 s (Giac) and 10.1 min (SymPy). Most of RischIntegrate's time is Julia compiling code the first time a problem reaches it: run again in the same session, the same problems take about 15 s.
