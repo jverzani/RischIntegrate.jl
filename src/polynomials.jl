@@ -10,6 +10,13 @@ struct UPoly{T}
         end
         new{T}(v)
     end
+    # a vector built for the result and not used elsewhere: trimmed in place, not copied
+    function UPoly{T}(c::Vector{T}, ::Val{:fresh}) where {T}
+        while !isempty(c) && iszero(c[end])
+            pop!(c)
+        end
+        new{T}(c)
+    end
 end
 
 Base.zero(::Type{UPoly{T}}) where {T} = UPoly{T}(T[])
@@ -25,15 +32,19 @@ degree(p::UPoly) = length(p.c) - 1          # -1 for the zero polynomial
 lc(p::UPoly) = p.c[end]
 xpoly(::Type{T}) where {T} = UPoly{T}(T[zero(T), one(T)])
 
+# zero terms are skipped, not added: for nested coefficients most are zero, and each zero (and each
+# sum with one) allocates, down to the BigInts of the rationals
 function Base.:+(p::UPoly{T}, q::UPoly{T}) where {T}
-    n = max(length(p.c), length(q.c))
-    r = Vector{T}(undef, n)
-    for i in 1:n
-        r[i] = (i <= length(p.c) ? p.c[i] : zero(T)) + (i <= length(q.c) ? q.c[i] : zero(T))
+    length(p.c) < length(q.c) && ((p, q) = (q, p))
+    r = copy(p.c)
+    for i in eachindex(q.c)
+        b = q.c[i]
+        iszero(b) && continue
+        r[i] = iszero(r[i]) ? b : r[i] + b
     end
-    UPoly{T}(r)
+    UPoly{T}(r, Val(:fresh))
 end
-Base.:-(p::UPoly{T}) where {T} = UPoly{T}(T[-a for a in p.c])
+Base.:-(p::UPoly{T}) where {T} = UPoly{T}(T[-a for a in p.c], Val(:fresh))
 Base.:-(p::UPoly{T}, q::UPoly{T}) where {T} = p + (-q)
 function Base.:*(p::UPoly{T}, q::UPoly{T}) where {T}
     (iszero(p) || iszero(q)) && return zero(p)
@@ -45,10 +56,11 @@ function Base.:*(p::UPoly{T}, q::UPoly{T}) where {T}
         for j in eachindex(q.c)
             b = q.c[j]
             iszero(b) && continue
-            r[i + j - 1] += a * b
+            k = i + j - 1
+            r[k] = iszero(r[k]) ? a * b : r[k] + a * b
         end
     end
-    UPoly{T}(r)
+    UPoly{T}(r, Val(:fresh))
 end
 Base.:*(n::Integer, p::UPoly{T}) where {T} = UPoly{T}(T[n * c for c in p.c])
 function Base.:^(p::UPoly, n::Integer)
@@ -62,8 +74,8 @@ function Base.:^(p::UPoly, n::Integer)
     r
 end
 
-scale(a::T, p::UPoly{T}) where {T} = UPoly{T}(T[iszero(c) ? c : a * c for c in p.c])
-scale_div(p::UPoly{T}, a::T) where {T} = UPoly{T}(T[c / a for c in p.c])
+scale(a::T, p::UPoly{T}) where {T} = UPoly{T}(T[iszero(c) ? c : a * c for c in p.c], Val(:fresh))
+scale_div(p::UPoly{T}, a::T) where {T} = UPoly{T}(T[c / a for c in p.c], Val(:fresh))
 divint(p::UPoly{T}, j::Integer) where {T} = scale_div(p, j * one(T))
 monic(p::UPoly) = iszero(p) ? p : scale_div(p, lc(p))
 

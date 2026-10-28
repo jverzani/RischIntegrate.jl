@@ -136,7 +136,11 @@ polynomials, and the image gcd's degree tells whether one polynomial divides the
 one remainder) or the gcd is proper. For a proper gcd Euclid runs while each monic remainder is at
 most twice the size of the pair it comes from; past that (the nested representation can make a
 remainder 50 times larger), the subresultant PRS takes over on the current pair. Neither method is
-faster on every input. Products skip zero coefficients, which are most of a nested coefficient.
+faster on every input. Sums and products skip zero coefficients, which are most of a nested
+coefficient (in the subresultant PRS for ``∫ dx/(x^4(a + bx^2)^2(c + dx^2)^{3/2})``, 92 nonzero
+rationals among 5436 entries), and build their result vectors without the defensive copy: each zero
+added, and each copy, allocates down to the `BigInt`s of the rationals. A product there takes
+0.07 s instead of 1.15 s.
 
 Some decisions depend on the sign of a parameter expression: choosing `atan` or `log`, the sign of
 a radicand, which branch of a square root. They are made at fixed values, the `k`-th parameter in

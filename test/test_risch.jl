@@ -24,6 +24,12 @@ rf(n, d) = Risch.frac(n, d)
                                poly(2, 0, 0, 1)) |> sort == Q[big_root, big(10)^30 + 7]
     @test Risch.rational_roots(poly(0, 1) * poly(-1, 1)^2 * poly(1, 0, 1)) |> sort == Q[0, 1]
     @test isempty(Risch.rational_roots(poly(1, 0, 1)))
+    # sums and products skip zero terms: lengths, cancellation, zero coefficients, operands unchanged
+    a, b = poly(1, 0, 2), poly(0, 3, -2, 0, 5)
+    @test a + b == poly(1, 3, 0, 0, 5) == b + a
+    @test a + poly(0, 0, -2) == poly(1) && iszero(a + (-a))
+    @test a * b == poly(0, 3, -2, 6, 1, 0, 10) && a == poly(1, 0, 2) && b == poly(0, 3, -2, 0, 5)
+    @test a * (a + b) == a * a + a * b
     # res_x(x^2 - 1, x - 2) = 3
     @test Risch.resultant(poly(-1, 0, 1), poly(-2, 1)) == Q(3)
 end
