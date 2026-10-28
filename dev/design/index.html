@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=21a736ba">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=e039dcd0">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -187,7 +187,7 @@
 <li><p><code class="md-code-inline">:expi</code>: <span class="md-math md-math-inline">\(e^{i/s}\)</span> over <span class="md-math md-math-inline">\(ℚ(i)\)</span>, for constants <span class="md-math md-math-inline">\(e^{iq}\)</span> with <span class="md-math md-math-inline">\(q ∈ ℚ\)</span>; conjugation sends it to its inverse.</p>
 </li>
 </ul>
-<p>The generators are treated as algebraically independent. That is exact for one of <span class="md-math md-math-inline">\(e\)</span> or <span class="md-math md-math-inline">\(\log 2\)</span>; for several together it is Schanuel&#39;s conjecture, which every CAS assumes. A computation that meets a constant needing a new generator throws <code class="md-code-inline">NewConstants</code> with the longer list, and the tower is built again over the larger field. Parameters nest the field one level deeper each, so their number is capped (<code class="md-code-inline">MAX_PARAMS</code>); residues of a denominator of degree above 2 over more than <code class="md-code-inline">MAX_ROOTSUM_GENS</code> generators are refused, since that resultant does not finish.</p>
+<p>The generators are treated as algebraically independent. That is exact for one of <span class="md-math md-math-inline">\(e\)</span> or <span class="md-math md-math-inline">\(\log 2\)</span>; for several together it is Schanuel&#39;s conjecture, which every CAS assumes. A computation that meets a constant needing a new generator throws <code class="md-code-inline">NewConstants</code> with the longer list, and the tower is built again over the larger field. Parameters nest the field one level deeper each, so their number is capped (<code class="md-code-inline">MAX_PARAMS</code>); residues of a denominator of degree above 2 over more than <code class="md-code-inline">MAX_ROOTSUM_GENS</code> generators are refused, since the log part does not finish. Resultants over these fields are fraction-free (step FR): the coefficients are scaled into <span class="md-math md-math-inline">\(B[t_1, …, t_k]\)</span> and the subresultant PRS runs there, with exact divisions; Euclid over <span class="md-math md-math-inline">\(B(t_1, …, t_k)\)</span> normalises nested fractions by gcds at every step. For the residues only a constant multiple of <span class="md-math md-math-inline">\(R(z) = \operatorname{res}_x(D, A - zD&#39;)\)</span> is needed, so the scale factors are not divided out.</p>
 <p>Some decisions depend on the sign of a parameter expression: choosing <code class="md-code-inline">atan</code> or <code class="md-code-inline">log</code>, the sign of a radicand, which branch of a square root. They are made at fixed values, the <code class="md-code-inline">k</code>-th parameter in alphabetical order taking the value <code class="md-code-inline">k</code> (<code class="md-code-inline">param_value</code>). Answers therefore hold for the parameter values that share those signs, the usual convention of symbolic integrators (&quot;assume <code class="md-code-inline">a &gt; 0</code>&quot;).</p>
 <p><code class="md-code-inline">sturm.jl</code> counts real roots and decides signs exactly with Sturm sequences, for <span class="md-math md-math-inline">\(ℚ\)</span> and the real quadratic fields, and numerically to 256 bits for parameter fields.</p>
 <h2 id="Towers" class="md-heading">Towers<a href="#Towers" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
@@ -610,7 +610,7 @@
 <ul class="md-list-tight">
 <li><p>In a tower: <code class="md-code-inline">check_tower(T, n, res, f)</code> differentiates the <code class="md-code-inline">ElemIntegral</code> with the tower derivation and compares with <span class="md-math md-math-inline">\(f\)</span>, exactly.</p>
 </li>
-<li><p>For a rational function: <code class="md-code-inline">check_result</code>. With RootSums, the derivative of <span class="md-math md-math-inline">\(\sum α \log W(α, x)\)</span> is computed exactly in <span class="md-math md-math-inline">\(ℚ(x)\)</span> as <span class="md-math md-math-inline">\(\operatorname{Tr}(z\,∂_xW\,N/W)/N\)</span> with <span class="md-math md-math-inline">\(N = \operatorname{res}_z(Q, W)\)</span>, the trace computed from power sums of the roots. Over a parameter field <span class="md-math md-math-inline">\(ℚ(t_1, …, t_k)\)</span> (no <code class="md-code-inline">QuadLog</code> terms) the derivative is compared at two points <span class="md-math md-math-inline">\(t_j = v_j\)</span> instead, over <span class="md-math md-math-inline">\(ℚ(x)\)</span> (<code class="md-code-inline">check_at_points</code>): the exact comparison&#39;s gcds there cost more than the integration. Specialization is a homomorphism wherever the denominators stay nonzero, so a mismatch is a wrong answer for certain; a wrong answer passes only if its error vanishes identically in <span class="md-math md-math-inline">\(x\)</span> at both points. When an image is undefined (a pole at a point), the check is exact.</p>
+<li><p>For a rational function: <code class="md-code-inline">check_result</code>. With RootSums, the derivative of <span class="md-math md-math-inline">\(\sum α \log W(α, x)\)</span> is computed exactly in <span class="md-math md-math-inline">\(ℚ(x)\)</span> as <span class="md-math md-math-inline">\(\operatorname{Tr}(z\,∂_xW\,N/W)/N\)</span> with <span class="md-math md-math-inline">\(N = \operatorname{res}_z(Q, W)\)</span>, the trace computed from power sums of the roots. Over a parameter field <span class="md-math md-math-inline">\(ℚ(t_1, …, t_k)\)</span> (no <code class="md-code-inline">QuadLog</code> terms) the derivative is compared at two points <span class="md-math md-math-inline">\(t_j = v_j\)</span> instead, over <span class="md-math md-math-inline">\(ℚ(x)\)</span> (<code class="md-code-inline">check_at_points</code>): the exact comparison&#39;s gcds there cost more than the integration. Specialization is a homomorphism wherever the denominators stay nonzero, so a mismatch is a wrong answer for certain; a wrong answer passes only if its error vanishes identically in <span class="md-math md-math-inline">\(x\)</span> at both points. RootSums are specialized with the rest (their monic <span class="md-math md-math-inline">\(m\)</span> keeps its degree) and differentiated over <span class="md-math md-math-inline">\(ℚ(x)\)</span>. When an image is undefined (a pole at a point), the check is exact.</p>
 </li>
 <li><p>Real forms and real-log rewrites are checked again after the rewrite.</p>
 </li>
@@ -920,6 +920,11 @@
 <td style="text-align:left">RootSums over parameter fields and in towers, their real forms</td>
 </tr>
 <tr>
+<td style="text-align:left">FR</td>
+<td style="text-align:left"><code class="md-code-inline">fractions.jl</code>, <code class="md-code-inline">monomial_integration.jl</code></td>
+<td style="text-align:left">fraction-free resultants over parameter fields</td>
+</tr>
+<tr>
 <td style="text-align:left">RP, SQ</td>
 <td style="text-align:left"><code class="md-code-inline">factoring.jl</code>, <code class="md-code-inline">radicals.jl</code></td>
 <td style="text-align:left">radicands that are powers; repeated factors</td>
@@ -1013,6 +1018,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=21a736ba"></script>
+  <script src="../assets/materialdocs.js?v=e039dcd0"></script>
 </body>
 </html>
