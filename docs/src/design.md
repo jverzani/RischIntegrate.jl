@@ -91,7 +91,12 @@ coefficient vanishes and the images are coprime over ``B``, the polynomials are 
 factor of degree ``≥ 1`` keeps its degree in the images, since it divides the primitive parts.
 Otherwise Euclid runs as before. The result is the same either way.
 
-Factoring over ``ℚ`` (`factoring.jl`) uses rational roots and Cantor–Zassenhaus. The logarithmic
+Factoring over ``ℚ`` (`factoring.jl`) uses rational roots and Cantor–Zassenhaus. Rational roots
+come from the same big prime: the roots of ``\gcd(x^p - x, F)`` modulo ``p``, lifted to the symmetric
+range and checked exactly, not from the rational root theorem: the divisors of the end
+coefficients are out of reach when those are large (``∫ dx/((2x^2 - x + 3)^{5/2}(5x^2 + 3x + 2)^3)``
+meets a quartic whose end coefficients have 28 and 40 digits), and trial division up to ``10^6``
+cannot certify the cofactor it leaves as prime, so roots could be missed. The logarithmic
 part uses it on the residue polynomial over ``ℚ`` to find quadratic and quartic factors; RootSums
 use dynamic evaluation instead, so the factors left for them need not be irreducible.
 

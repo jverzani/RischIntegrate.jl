@@ -18,6 +18,12 @@ rf(n, d) = Risch.frac(n, d)
           [poly(-1, 1) => 1, poly(1, 1) => 2] ||
           Set(Risch.squarefree(poly(1, 2, 1) * poly(-1, 1))) == Set([poly(-1, 1) => 1, poly(1, 1) => 2])
     @test Risch.rational_roots(poly(-6, 11, -6, 1)) |> sort == Q[1, 2, 3]
+    # roots with huge numerators and denominators, a repeated root, no rational roots
+    big_root = -(big(3)^40) // big(2)^17
+    @test Risch.rational_roots(poly(-(big(10)^30 + 7), 1) * Risch.UPoly{Q}(Q[-big_root, 1]) *
+                               poly(2, 0, 0, 1)) |> sort == Q[big_root, big(10)^30 + 7]
+    @test Risch.rational_roots(poly(0, 1) * poly(-1, 1)^2 * poly(1, 0, 1)) |> sort == Q[0, 1]
+    @test isempty(Risch.rational_roots(poly(1, 0, 1)))
     # res_x(x^2 - 1, x - 2) = 3
     @test Risch.resultant(poly(-1, 0, 1), poly(-2, 1)) == Q(3)
 end

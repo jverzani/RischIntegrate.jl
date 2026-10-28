@@ -25,19 +25,12 @@ function divisors(n::BigInt)
     ds
 end
 
-function rational_root_candidates(p::UPoly{Q})
-    c = p.c
-    l = reduce(lcm, denominator.(c))
-    ic = BigInt[numerator(x * l) for x in c]
-    out = Set{Q}()
-    for a in divisors(abs(ic[1])), b in divisors(abs(ic[end]))
-        push!(out, Q(a) // Q(b))
-        push!(out, -(Q(a) // Q(b)))
-    end
-    out
-end
-
-# distinct rational roots of p
+# distinct rational roots of p, by the big prime method of factor_Q restricted to linear factors:
+# the roots of p modulo a prime p₀ > 2·|lc F|·B (F the primitive integer form, B = 2ⁿ‖F‖₂ bounds the
+# coefficients of any factor) are the roots of gcd(xᵖ⁰ - x, F) split by Cantor–Zassenhaus; a
+# rational root a/b gives the factor (lc F/b)(b x - a) of lc F·F, whose constant term is the
+# symmetric residue of -lc F·r. Every candidate is checked exactly. (The rational root theorem
+# would need the divisors of the end coefficients, hopeless when they are large.)
 function rational_roots(p::UPoly{Q})
     roots = Q[]
     iszero(p) && return roots
@@ -50,7 +43,22 @@ function rational_roots(p::UPoly{Q})
     end
     length(c) <= 1 && return roots
     q = UPoly{Q}(c)
-    for r in rational_root_candidates(q)
+    degree(q) == 1 && return push!(roots, -c[1] / c[2])
+    l = reduce(lcm, denominator.(c))
+    F = BigInt[numerator(x * l) for x in c]
+    F = F .÷ reduce(gcd, F)
+    n = length(F) - 1
+    p0 = 2 * abs(F[end]) * big(2)^n * (isqrt(sum(x^2 for x in F)) + 1) + 1
+    while !is_probable_prime(p0)
+        p0 += 1
+    end
+    fm = fp_monic(fp_norm(F, p0), p0)
+    g = fp_gcd(fm, fp_sub(fp_powmod(BigInt[0, 1], p0, fm, p0), BigInt[0, 1], p0), p0)
+    length(g) <= 1 && return roots
+    for h in fp_edf(g, 1, p0, Ref(big(20240611)))
+        s = mod(-F[end] * h[1], p0)
+        s > p0 ÷ 2 && (s -= p0)
+        r = Q(s) // Q(F[end])
         iszero(peval(q, r)) && push!(roots, r)
     end
     roots
