@@ -188,6 +188,39 @@ end
     @test Risch.check_at_points(resg, g) === nothing && Risch.check_result(resg, g)
 end
 
+# step FR: resultants over ℚ(t₁, …, tₖ) by the subresultant PRS in ℚ[t₁, …, tₖ]
+@testset "parameter fields: fraction-free resultants" begin
+    F = Risch.cfield(3)
+    t1, t2, t3 = (Risch.tgen(F, j) for j in 1:3)
+    k(c) = Risch.cfromQ(F, Q(c))
+    P(cs...) = Risch.UPoly{F}(F[cs...])
+    euclid(a, b) = invoke(Risch.resultant, Tuple{Risch.UPoly{T},Risch.UPoly{T}} where {T}, a, b)
+    img(p, j) = Risch.UPoly{Q}(Q[Risch.cimage(c, j) for c in p.c])
+    a = P(t1 / (t2 + k(1)), k(2) * t3 - t1, k(1) / t3, t2)                  # deg 3
+    b = P(t3, t1 * t2 / (t1 - k(3)), k(1))                                  # deg 2
+    for (u, v) in ((a, b), (b, a), (a, P(t1)), (P(t2 + k(1)), b), (a * b, b), (a, a * b + P(k(1))))
+        r = Risch.resultant(u, v)
+        @test r == euclid(u, v)
+        @test all(Risch.cimage(r, j) == euclid(img(u, j), img(v, j)) for j in 0:1)
+    end
+    # residues: a constant multiple of R(z) = res(D, A - z D') (roots only), with the same roots
+    D, A = P(t1, k(0), t2, k(1)), P(k(1), t3)
+    Rz = Risch.residue_resultant(D, A, Risch.deriv(D))
+    R0 = invoke(Risch.residue_resultant, Tuple{Risch.UPoly{F},Risch.UPoly{F},Risch.UPoly{F}} where {F}, D, A, Risch.deriv(D))
+    @test Risch.monic(Rz) == Risch.monic(R0)
+    # a RootSum checked at two points: a wrong one is caught
+    X = Risch.frac(Risch.xpoly(F))
+    f = inv(X * X * X + Risch.kconst(t1) * X + Risch.kconst(t2))
+    res = Risch.integrate_rational(f)
+    rss = reduce(vcat, [Risch.root_sums(rest, R, D, "x") for (rest, R, D) in res.unresolved])
+    el = Risch.RationalIntegral(res.rational, res.logs, res.atans, Any[], res.quads)
+    @test Risch.check_at_points(el, f, rss) === true && Risch.check_with_rootsums(el, rss, f)
+    bad = [Risch.RootSum{F}(rs.poly, [i == 1 ? w + Risch.UPoly{F}(F[k(1)]) : w for (i, w) in enumerate(rs.W)], rs.var, rs.arg)
+           for rs in rss]                                                   # W(α, x) + 1
+    @test Risch.check_at_points(el, f, bad) === false && !Risch.check_with_rootsums(el, bad, f)
+    @test Risch.check_at_points(el, f + X, rss) === false
+end
+
 @testset "integration over ℚ(i): rational functions and an exp(ix) tower, verified exactly" begin
     X = Risch.frac(Risch.xpoly(QI))
     kc(c) = Risch.kconst(c isa QI ? c : zi(c, 0))

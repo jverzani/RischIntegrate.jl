@@ -307,7 +307,7 @@ function integrate_built(T::Tower, el, bd::Builder, verify::Bool; pos = nothing)
             append!(rss, root_sums(rest, R, D, string(bd.x); arg = bd.x))
         end
         el_part = RationalIntegral(res.rational, res.logs, res.atans, Any[], res.quads)
-        verify && derivative_of(el_part) + sum(rootsum_derivative(rs) for rs in rss) != F &&
+        verify && !check_with_rootsums(el_part, rss, F) &&
             throw(RischError("internal check failed: derivative of the result (with RootSums) differs from the integrand"))
         out = C === Q ? Any[rs for rs in rss] : Any[base_term_rootsum(bd, rs) for rs in rss]   # step RE
         return with_rootsums(bd, to_term(bd, el_part), out)

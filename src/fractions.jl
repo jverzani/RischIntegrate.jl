@@ -33,7 +33,8 @@ function Base.:+(f::Frac{P}, g::Frac{P}) where {P}
     iszero(f) && return g
     iszero(g) && return f
     a, b, c, d = f.num, f.den, g.num, g.den
-    b == d && return frac(a + c, b)                        # e.g. both polynomials (b = d = 1)
+    isone(b) && isone(d) && return Frac{P}(a + c, b)       # both polynomials
+    b == d && return frac(a + c, b)
     isone(b) && return Frac{P}(a * d + c, d)               # coprime already
     isone(d) && return Frac{P}(a + c * b, b)
     G = gcd(b, d)
@@ -115,4 +116,87 @@ function Base.:^(f::Frac, n::Integer)
         n > 0 && (b = b * b)
     end
     r
+end
+
+# Resultant over K = B(t₁, …, tₖ), fraction-free (step FR). Euclid over K normalises nested fractions by
+# gcds at every step, and the coefficients swell. Instead: scale a, b so that every coefficient lies in the
+# ring B[t₁, …, tₖ] (all nested denominators 1), run the subresultant PRS there (Cohen, Algorithm 3.3.7),
+# whose divisions are exact, and divide by the scale factors once at the end.
+function resultant(a::UPoly{T}, b::UPoly{T}) where {T<:Frac}
+    (iszero(a) || iszero(b)) && return zero(T)
+    ma, mb = integral_multiplier(T, a.c), integral_multiplier(T, b.c)
+    r = ff_resultant(UPoly{T}(T[c * ma for c in a.c]), UPoly{T}(T[c * mb for c in b.c]))
+    r / (ma^degree(b) * mb^degree(a))
+end
+
+# m ∈ K with every c·m in B[t₁, …, tₖ]: the lcm L of the denominators, then the same one level down for the
+# coefficients of the numerators c·L
+integral_multiplier(::Type{T}, cs) where {T} = one(T)
+function integral_multiplier(::Type{Frac{P}}, cs) where {S,P<:UPoly{S}}
+    L = reduce(plcm, [c.den for c in cs]; init = one(P))
+    nums = [c.num * quo(L, c.den) for c in cs]
+    M = integral_multiplier(S, S[a for n in nums for a in n.c])
+    Frac{P}(scale(M, L), one(P))
+end
+
+# a / b for a, b ∈ B[t₁, …, tₖ] when b divides a
+exdiv(a::T, b::T) where {T} = a / b
+function exdiv(a::Frac{P}, b::Frac{P}) where {P}
+    (isone(a.den) && isone(b.den)) || throw(RischError("exdiv: not a polynomial"))
+    Frac{P}(exquo(a.num, b.num), one(P))
+end
+function exquo(a::UPoly{S}, b::UPoly{S}) where {S}
+    db, lb = degree(b), lc(b)
+    n = length(a.c) - length(b.c) + 1
+    n <= 0 && (iszero(a) ? (return zero(a)) : throw(RischError("exquo: not divisible")))
+    r = copy(a.c)
+    q = fill(zero(S), n)
+    for k in n:-1:1
+        iszero(r[k + db]) && continue
+        coef = exdiv(r[k + db], lb)
+        q[k] = coef
+        for j in 0:db
+            r[k + j] -= coef * b.c[j + 1]
+        end
+    end
+    all(iszero, r) || throw(RischError("exquo: not divisible"))
+    UPoly{S}(q)
+end
+
+# lc(b)^(deg a - deg b + 1) a mod b, without divisions
+function prem(a::UPoly{T}, b::UPoly{T}) where {T}
+    db, lb = degree(b), lc(b)
+    e = degree(a) - db + 1
+    r = a
+    while !iszero(r) && degree(r) >= db
+        t = UPoly{T}([fill(zero(T), degree(r) - db); lc(r)])
+        r = scale(lb, r) - t * b
+        e -= 1
+    end
+    scale(lb^e, r)
+end
+
+# the resultant over an integral domain by the subresultant PRS (Cohen, Algorithm 3.3.7, without contents)
+function ff_resultant(a::UPoly{T}, b::UPoly{T}) where {T}
+    (iszero(a) || iszero(b)) && return zero(T)
+    s = 1
+    if degree(a) < degree(b)
+        a, b = b, a
+        isodd(degree(a)) && isodd(degree(b)) && (s = -s)
+    end
+    degree(b) == 0 && return lc(b)^degree(a)
+    g = h = one(T)
+    while degree(b) > 0
+        δ = degree(a) - degree(b)
+        isodd(degree(a)) && isodd(degree(b)) && (s = -s)
+        r = prem(a, b)
+        iszero(r) && return zero(T)
+        a, d = b, g * h^δ
+        b = UPoly{T}(T[exdiv(c, d) for c in r.c])
+        g = lc(a)
+        h = δ == 0 ? h : exdiv(g^δ, h^(δ - 1))
+    end
+    da = degree(a)
+    r = exdiv(lc(b)^da, h^(da - 1))
+    s == 1 ? r : -r
 end

@@ -247,6 +247,16 @@ function power_sums(m::UPoly{C}) where {C}
 end
 ztrace(ps, g::UPoly{C}) where {C} = isempty(g.c) ? zero(C) : sum(g.c[k] * ps[k] for k in eachindex(g.c))
 
+# the derivative of a rational integral plus RootSums is f: at two points over a parameter field (exact when an
+# image is undefined), as `check_result`
+function check_with_rootsums(res::RationalIntegral{C}, rss, f::Frac) where {C}
+    if C <: Frac && isempty(res.quads)
+        r = check_at_points(res, f, rss)
+        r === nothing || return r
+    end
+    derivative_of(res) + sum(rootsum_derivative(rs) for rs in rss) == f
+end
+
 # exact d/dx of the RootSum in C(x)
 function rootsum_derivative(rs::RootSum{C}) where {C}
     m, W = rs.poly, rs.W

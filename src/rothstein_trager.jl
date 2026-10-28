@@ -275,8 +275,10 @@ end
 # the integration itself. There the derivative is compared at two points tⱼ = vⱼ instead, over B(x) (images as in
 # `coprime_image`). Specialization is a homomorphism where every denominator stays nonzero, so a mismatch at a
 # point is a wrong answer for certain; a wrong answer passes only if its error vanishes identically in x at both
-# points. Nothing (the exact check) when an image is undefined.
-function check_at_points(res::RationalIntegral{C}, f::Frac) where {C}
+# points. Nothing (the exact check) when an image is undefined. RootSums `rss` (Σ α log W(α, x), m(α) = 0) are
+# specialized too, m keeping its degree (monic), and differentiated over B (`rootsum_derivative`): the derivative
+# is a rational function of the coefficients of m and W, so it commutes with the specialization.
+function check_at_points(res::RationalIntegral{C}, f::Frac, rss = ()) where {C}
     B = fbase(C)
     applicable(cfromQ, B, Q(1)) || return nothing
     for k in 0:1
@@ -300,6 +302,18 @@ function check_at_points(res::RationalIntegral{C}, f::Frac) where {C}
             den = one(uk) + uk * uk
             iszero(den) && return nothing
             tot = tot + kconst(ck) * dx(uk) / den
+        end
+        for rs in rss
+            mk = pim(rs.poly)
+            Wk = [pim(w) for w in rs.W]
+            (mk === nothing || any(isnothing, Wk) || iszero(Wk[end])) && return nothing
+            d = try
+                rootsum_derivative(RootSum{B}(mk, UPoly{B}[w for w in Wk], rs.var, rs.arg))
+            catch e
+                e isa RischError || rethrow()
+                return nothing
+            end
+            tot = tot + d
         end
         tot == fk || return false
     end
