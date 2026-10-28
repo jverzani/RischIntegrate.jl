@@ -155,8 +155,13 @@ expressions undecided, asks it too. What it leaves undecided is taken at the fix
 A `0` for an expression that is not identically zero is a special case of the parameters (a double
 root, say), which is refused: the error passes through the methods that catch
 `RischNotImplemented` to try their own, since those may not ask. Answers are still checked exactly,
-in the field, so the check does not depend on the signs. Forms that assume a sign without a
-decision, such as scalings by ``\sqrt a`` or ``a^{1/3}``, do not ask yet.
+in the field, so the check does not depend on the signs. Forms that took a sign for granted ask too
+(`term_oracle_sign`, for a term): the derivative of ``\operatorname{asin}(N/D)`` in step US is
+``-N'/\sqrt{D^2 - N^2}`` for ``D < 0``; and step TW (``\tan(x/2)`` with parameters) keeps its answer, valid between the poles,
+when the oracle decides that there are real poles. Without an oracle these are as before. The Rubi
+problems with parameters (293 of 1680), with all parameters negative or of mixed signs and the
+oracle deciding at those values, leave no answer wrong apart from checks outside the integrand's
+real domain, and `log u` where ``u < 0`` (as with positive parameters).
 
 Signs can also be given as facts, the way GruntzLimit takes them (`sign_facts.jl`): `signs = Dict(a
 => :negative, b - a^2/4 => :positive)`, with `:positive`, `:negative` or `:nonzero`. GruntzLimit's

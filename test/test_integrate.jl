@@ -1189,6 +1189,12 @@ end
     end
     @test_throws ArgumentError Risch.risch_integrate(1 / (x^2 + a), x; signs = Dict(a => :big))
     @test_throws ArgumentError Risch.risch_integrate(1 / (x^2 + a), x; signs = Dict(sqrt(a) => :positive))
+    # forms that assumed a sign without a decision now ask (PR 2 of step SO):
+    # tan(x/2) with real poles decided by the oracle (it was refused); asin(x/a)′ for a < 0
+    for (f, pt) in ((1 / (a + b * cos(x)), (-1, -2)), (asin(x / a)^(3 // 2) / sqrt(a^2 - x^2), (-2, 0)))
+        F = Risch.risch_integrate(f, x; sign = oracle(pt))
+        @test ok(F, f, pt)
+    end
     # the deductions: a multiple of a fact, signs of terms, products of facts' expressions
     let F = Risch.SignFacts([:a => :negative, :(b - 2) => :positive, :c => :nonzero])
         @test [Risch.facts_sign(F, t) for t in (:(-3a), :(4 - 2b), :(a^2 + 1), :((b - 2) * a), :((b - 2)^2 * a / c^2),
