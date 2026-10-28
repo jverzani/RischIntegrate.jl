@@ -61,17 +61,18 @@ fbase(::Type{Frac{UPoly{S}}}) where {S} = fbase(S)
 fbase(::Type{S}) where {S} = S
 fdepth(::Type{Frac{UPoly{S}}}) where {S} = 1 + fdepth(S)
 fdepth(::Type) = 0
-image_point(B, j::Int) = cfromQ(B, Q(isodd(j) ? -(2j + 1) : 2j + 1, 3j + 4))     # tⱼ ↦ -3/7, 5/10, -7/13, …
-cimage(c) = c
-function cimage(c::Frac{UPoly{S}}) where {S}
-    n, d = pimage(c.num), pimage(c.den)
+# point k = 0, 1, …: tⱼ ↦ -3/7, 5/10, -7/13, … (k = 0), shifted by k/11 for the others
+image_point(B, j::Int, k::Int = 0) = cfromQ(B, Q(isodd(j) ? -(2j + 1) : 2j + 1, 3j + 4) + Q(k, 11))
+cimage(c, k::Int = 0) = c
+function cimage(c::Frac{UPoly{S}}, k::Int = 0) where {S}
+    n, d = pimage(c.num, k), pimage(c.den, k)
     (n === nothing || d === nothing || iszero(d)) ? nothing : n / d
 end
-function pimage(p::UPoly{S}) where {S}
-    v = image_point(fbase(S), fdepth(S) + 1)
+function pimage(p::UPoly{S}, k::Int = 0) where {S}
+    v = image_point(fbase(S), fdepth(S) + 1, k)
     r = zero(v)
     for i in length(p.c):-1:1
-        ci = cimage(p.c[i])
+        ci = cimage(p.c[i], k)
         ci === nothing && return nothing
         r = r * v + ci
     end

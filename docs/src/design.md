@@ -23,7 +23,8 @@ A table of all of them is at the end.
   (`+`, `*`, `log`, `atan`, …) on the user's terms. The keywords `build` and `lift` change how
   that happens.
 - **Verified answers.** Every answer is differentiated and compared with the integrand, exactly, in
-  the field where it was computed. A failed check is a `RischError`, that is, a bug.
+  the field where it was computed (rational functions over a parameter field: at two values of the
+  parameters, see Verification). A failed check is a `RischError`, that is, a bug.
 - **Honest refusals.** Without an answer, the package says why: `NotElementary` when the integral
   is proved to have no elementary antiderivative (and no form with the special functions used
   here was found), `RischNotImplemented` when the integrand is outside the implemented cases.
@@ -119,7 +120,8 @@ The generators are treated as algebraically independent. That is exact for one o
 ``\log 2``; for several together it is Schanuel's conjecture, which every CAS assumes. A computation
 that meets a constant needing a new generator throws `NewConstants` with the longer list, and the
 tower is built again over the larger field. Parameters nest the field one level deeper each, so
-their number is capped (`MAX_PARAMS`).
+their number is capped (`MAX_PARAMS`); residues of a denominator of degree above 2 over more than
+`MAX_ROOTSUM_GENS` generators are refused, since that resultant does not finish.
 
 Some decisions depend on the sign of a parameter expression: choosing `atan` or `log`, the sign of
 a radicand, which branch of a square root. They are made at fixed values, the `k`-th parameter in
@@ -488,6 +490,12 @@ Every answer is checked before it is returned:
 - For a rational function: `check_result`. With RootSums, the derivative of
   ``\sum α \log W(α, x)`` is computed exactly in ``ℚ(x)`` as ``\operatorname{Tr}(z\,∂_xW\,N/W)/N``
   with ``N = \operatorname{res}_z(Q, W)``, the trace computed from power sums of the roots.
+  Over a parameter field ``ℚ(t_1, …, t_k)`` (no `QuadLog` terms) the derivative is compared at two
+  points ``t_j = v_j`` instead, over ``ℚ(x)`` (`check_at_points`): the exact comparison's gcds
+  there cost more than the integration. Specialization is a homomorphism wherever the denominators
+  stay nonzero, so a mismatch is a wrong answer for certain; a wrong answer passes only if its error
+  vanishes identically in ``x`` at both points. When an image is undefined (a pole at a point), the
+  check is exact.
 - Real forms and real-log rewrites are checked again after the rewrite.
 - A substitution checks its own identities exactly (``g(s(θ))\,s' = R`` in step MR,
   ``H(x + s/x) = h`` in step RC, ``\tilde U_j(s(θ)) = U_j``) and integrates the substituted integrand,
