@@ -221,6 +221,26 @@ end
     @test Risch.check_at_points(el, f + X, rss) === false
 end
 
+# gcds over ℚ(t₁, …, tₖ): coprime images, one dividing the other (Euclid), a proper gcd (subresultant PRS)
+@testset "parameter fields: gcds" begin
+    F = Risch.cfield(3)
+    t1, t2, t3 = (Risch.tgen(F, j) for j in 1:3)
+    k(c) = Risch.cfromQ(F, Q(c))
+    P(cs...) = Risch.UPoly{F}(F[cs...])
+    g1 = P(t1 * t2, k(1))                                                   # x + t₁t₂
+    g2 = P(t3 / t1, t2 - k(1), k(1))                                        # x² + (t₂ - 1)x + t₃/t₁
+    u, v = P(k(1), t3, t2 / (t1 + k(2))), P(t2, k(0), t1, k(1))
+    @test Risch.image_gcd_degree(u, v) == 0 && isone(gcd(u, v))
+    @test Risch.image_gcd_degree(g2 * u, g2) == 2 && gcd(g2 * u, g2) == g2
+    for g in (g1, g2, g1 * g2)
+        a, b = g * u, g * v
+        @test Risch.image_gcd_degree(a, b) == Risch.degree(g)
+        @test gcd(a, b) == g && Risch.ff_gcd(a, b) == g && Risch.euclid_gcd(a, b) == g
+        @test Risch.ff_gcd(b, a) == g
+    end
+    @test Risch.ff_gcd(g1 * u, Risch.scale(k(3), g1 * u)) == Risch.monic(g1 * u)
+end
+
 @testset "integration over ℚ(i): rational functions and an exp(ix) tower, verified exactly" begin
     X = Risch.frac(Risch.xpoly(QI))
     kc(c) = Risch.kconst(c isa QI ? c : zi(c, 0))

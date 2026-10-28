@@ -37,9 +37,16 @@ Base.:-(p::UPoly{T}) where {T} = UPoly{T}(T[-a for a in p.c])
 Base.:-(p::UPoly{T}, q::UPoly{T}) where {T} = p + (-q)
 function Base.:*(p::UPoly{T}, q::UPoly{T}) where {T}
     (iszero(p) || iszero(q)) && return zero(p)
-    r = fill(zero(T), length(p.c) + length(q.c) - 1)
-    for i in eachindex(p.c), j in eachindex(q.c)
-        r[i + j - 1] += p.c[i] * q.c[j]
+    z = zero(T)
+    r = fill(z, length(p.c) + length(q.c) - 1)
+    for i in eachindex(p.c)
+        a = p.c[i]
+        iszero(a) && continue                   # (nested coefficients are mostly zero)
+        for j in eachindex(q.c)
+            b = q.c[j]
+            iszero(b) && continue
+            r[i + j - 1] += a * b
+        end
     end
     UPoly{T}(r)
 end
@@ -55,7 +62,7 @@ function Base.:^(p::UPoly, n::Integer)
     r
 end
 
-scale(a::T, p::UPoly{T}) where {T} = UPoly{T}(T[a * c for c in p.c])
+scale(a::T, p::UPoly{T}) where {T} = UPoly{T}(T[iszero(c) ? c : a * c for c in p.c])
 scale_div(p::UPoly{T}, a::T) where {T} = UPoly{T}(T[c / a for c in p.c])
 divint(p::UPoly{T}, j::Integer) where {T} = scale_div(p, j * one(T))
 monic(p::UPoly) = iszero(p) ? p : scale_div(p, lc(p))

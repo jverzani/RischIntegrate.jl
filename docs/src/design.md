@@ -126,6 +126,12 @@ these fields are fraction-free (step FR): the coefficients are scaled into ``B[t
 the subresultant PRS runs there, with exact divisions; Euclid over ``B(t_1, …, t_k)`` normalises
 nested fractions by gcds at every step. For the residues only a constant multiple of
 ``R(z) = \operatorname{res}_x(D, A - zD')`` is needed, so the scale factors are not divided out.
+Gcds over these fields first compare images at a point ``t_j = v_j``: coprime images mean coprime
+polynomials, and the image gcd's degree tells whether one polynomial divides the other (Euclid,
+one remainder) or the gcd is proper. For a proper gcd Euclid runs while each monic remainder is at
+most twice the size of the pair it comes from; past that (the nested representation can make a
+remainder 50 times larger), the subresultant PRS takes over on the current pair. Neither method is
+faster on every input. Products skip zero coefficients, which are most of a nested coefficient.
 
 Some decisions depend on the sign of a parameter expression: choosing `atan` or `log`, the sign of
 a radicand, which branch of a square root. They are made at fixed values, the `k`-th parameter in
