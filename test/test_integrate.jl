@@ -1195,6 +1195,18 @@ end
         F = Risch.risch_integrate(f, x; sign = oracle(pt))
         @test ok(F, f, pt)
     end
+    # log arguments: c log(w) becomes log(-w) where the oracle says w < 0 (assumptions about x), real there
+    evx(e, t) = ComplexF64(SymEngine.N(SymEngine.subs(e, x => t)))
+    let f = x / (x^2 - 1), F = Risch.risch_integrate(f, x; signs = Dict(x^2 - 1 => :negative))
+        @test all(t -> abs(imag(evx(F, t))) < 1e-12 && isapprox((evx(F, t + 1e-6) - evx(F, t - 1e-6)) / 2e-6, evx(f, t); rtol = 1e-5),
+                  (0.3, 0.6))
+    end
+    let f = 1 / (x * (1 + log(x))), F = Risch.risch_integrate(f, x; sign = p -> (v = evx(p, 0.2); Int(sign(real(v)))))
+        @test all(t -> abs(imag(evx(F, t))) < 1e-12 && isapprox((evx(F, t + 1e-6) - evx(F, t - 1e-6)) / 2e-6, evx(f, t); rtol = 1e-5),
+                  (0.2, 0.3))                                   # (log(-1 - log x): the inner log x is left alone)
+    end
+    @test string(Risch.risch_integrate(x / (x^2 - 1), x; signs = Dict(x^2 - 1 => :positive))) ==
+          string(Risch.risch_integrate(x / (x^2 - 1), x))
     # the deductions: a multiple of a fact, signs of terms, products of facts' expressions
     let F = Risch.SignFacts([:a => :negative, :(b - 2) => :positive, :c => :nonzero])
         @test [Risch.facts_sign(F, t) for t in (:(-3a), :(4 - 2b), :(a^2 + 1), :((b - 2) * a), :((b - 2)^2 * a / c^2),

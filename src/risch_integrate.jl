@@ -16,7 +16,10 @@ or `log`, which square root. Signs can be given, as in GruntzLimit, by `signs`: 
 `ArgumentError`: a zero value is a special case of the parameters, which is not treated. The sign of an expression is then taken from a fact about a rational multiple of it, from
 the signs of its terms, or from a product of the facts' expressions. More generally, `sign(p)` is
 called with the expression `p`, a term built like the answer, and returns `1`, `-1`, `0` or
-`nothing` (undecided); it is asked before `signs`. Undecided signs are taken with the `k`-th
+`nothing` (undecided); it is asked before `signs`. It is also asked about the argument `w` of each
+logarithm `c log(w)` in the answer (an expression in `x`, on the caller's domain): for `-1` the
+answer has `log(-w)`, real there. Otherwise `log(w)` stays, complex where `w < 0` (it differs from a
+real antiderivative by a constant there, as in Mathematica's answers). Undecided signs are taken with the `k`-th
 parameter (alphabetically) set to `k`, or to `-k` when that parameter is known to be negative.
 A `0` for an expression that is not identically zero is a special case of the parameters, not
 treated (`RischNotImplemented`).
@@ -36,7 +39,10 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         o = SignOracle(sign, build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift,
                        x, Dict{Any,Union{Int,Nothing}}())
         return try
-            Base.ScopedValues.with(() -> risch_integrate(f, x; build = build, lift = lift, verify = verify), SIGN_ORACLE => o)
+            Base.ScopedValues.with(SIGN_ORACLE => o) do
+                F = risch_integrate(f, x; build = build, lift = lift, verify = verify)
+                F isa IntegralWithRootSums ? F : oracle_real_logs(F, Builder(o.build, o.lift, x), string(x), o)
+            end
         catch err
             err isa SignOracleZero ? throw(RischNotImplemented(err.msg)) : rethrow()
         end
