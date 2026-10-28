@@ -53,11 +53,29 @@ Base.:-(f::Frac{P}, g::Frac{P}) where {P} = f + (-g)
 # first the images at a point tⱼ = vⱼ. When every coefficient is defined there and neither leading coefficient
 # vanishes, a common factor of degree ≥ 1 keeps its degree in the images (Gauss: it divides the primitive parts),
 # so coprime images mean coprime a, b, the usual case, without Euclid over K (each of whose steps
-# normalises fractions by gcds one level down). Otherwise Euclid.
+# normalises fractions by gcds one level down). When the image gcd has the degree of a or b (one divides the
+# other, as for cancellation in fraction arithmetic), Euclid, whose first remainder is then usually 0. For a
+# proper gcd, Euclid while its remainders stay small: when one is more than twice the size of the pair it
+# comes from (in the nested representation a monic remainder can be 50 times larger), the subresultant PRS (`ff_gcd`) on the pair at hand, which makes
+# only the last remainder monic. Neither is faster on all inputs of this kind.
 function Base.gcd(a::UPoly{T}, b::UPoly{T}) where {T<:Frac}
-    degree(a) > 0 && degree(b) > 0 && coprime_image(a, b) && return one(a)
-    euclid_gcd(a, b)
+    (degree(a) <= 0 || degree(b) <= 0) && return euclid_gcd(a, b)
+    d = image_gcd_degree(a, b)
+    d == 0 && return one(a)
+    d === nothing || d == min(degree(a), degree(b)) ? euclid_gcd(a, b) : guarded_gcd(a, b)
 end
+function guarded_gcd(a::UPoly{T}, b::UPoly{T}) where {T<:Frac}
+    while !iszero(b)
+        r = monic(rem(a, b))
+        nleaves(r) > 2 * max(nleaves(a), nleaves(b)) && return ff_gcd(a, b)
+        a, b = b, r
+    end
+    monic(a)
+end
+# size: the number of coefficients in B of the nested representation
+nleaves(c) = 1
+nleaves(c::Frac) = nleaves(c.num) + nleaves(c.den)
+nleaves(p::UPoly) = isempty(p.c) ? 0 : sum(nleaves, p.c)
 fbase(::Type{Frac{UPoly{S}}}) where {S} = fbase(S)
 fbase(::Type{S}) where {S} = S
 fdepth(::Type{Frac{UPoly{S}}}) where {S} = 1 + fdepth(S)
@@ -79,16 +97,18 @@ function pimage(p::UPoly{S}, k::Int = 0) where {S}
     end
     r
 end
-function coprime_image(a::UPoly{T}, b::UPoly{T}) where {T<:Frac}
+# the degree of the gcd of the images (an upper bound for deg gcd(a, b)), or nothing if an image is undefined
+function image_gcd_degree(a::UPoly{T}, b::UPoly{T}) where {T<:Frac}
     B = fbase(T)
-    applicable(cfromQ, B, Q(1)) || return false
+    applicable(cfromQ, B, Q(1)) || return nothing
     im_(p) = (cs = map(cimage, p.c); (any(isnothing, cs) || iszero(cs[end])) ? nothing : UPoly{B}(B[c for c in cs]))
     ia = im_(a)
-    ia === nothing && return false
+    ia === nothing && return nothing
     ib = im_(b)
-    ib === nothing && return false
-    degree(euclid_gcd(ia, ib)) == 0
+    ib === nothing && return nothing
+    degree(euclid_gcd(ia, ib))
 end
+coprime_image(a::UPoly{T}, b::UPoly{T}) where {T<:Frac} = image_gcd_degree(a, b) == 0
 function Base.:*(f::Frac{P}, g::Frac{P}) where {P}
     (iszero(f) || iszero(g)) && return zero(f)
     a, b, c, d = f.num, f.den, g.num, g.den
@@ -174,6 +194,28 @@ function prem(a::UPoly{T}, b::UPoly{T}) where {T}
         e -= 1
     end
     scale(lb^e, r)
+end
+
+# gcd over K = B(t₁, …, tₖ) by the subresultant PRS in B[t₁, …, tₖ] (as `ff_resultant`): the last nonzero
+# remainder is the gcd up to a factor in K, made monic once, where Euclid makes every remainder monic
+function ff_gcd(a::UPoly{T}, b::UPoly{T}) where {T<:Frac}
+    iszero(a) && return monic(b)
+    iszero(b) && return monic(a)
+    (degree(a) == 0 || degree(b) == 0) && return one(a)
+    ma, mb = integral_multiplier(T, a.c), integral_multiplier(T, b.c)
+    a, b = UPoly{T}(T[c * ma for c in a.c]), UPoly{T}(T[c * mb for c in b.c])
+    degree(a) < degree(b) && ((a, b) = (b, a))
+    g = h = one(T)
+    while true
+        δ = degree(a) - degree(b)
+        r = prem(a, b)
+        iszero(r) && return monic(b)
+        degree(r) == 0 && return one(a)
+        a, d = b, g * h^δ
+        b = UPoly{T}(T[exdiv(c, d) for c in r.c])
+        g = lc(a)
+        h = δ == 0 ? h : exdiv(g^δ, h^(δ - 1))
+    end
 end
 
 # the resultant over an integral domain by the subresultant PRS (Cohen, Algorithm 3.3.7, without contents)
