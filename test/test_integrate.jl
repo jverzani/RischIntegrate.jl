@@ -1132,7 +1132,7 @@ function sy_tests(x, p, q, r, s1, s2, ev, name)
         let f = 1 / (p * x^2 + q * x + r), F = Risch.risch_integrate(f, x)
             @test F isa Risch.IntegralWithRootSums || !isnothing(F)
         end
-        # at most MAX_PARAMS = 4 parameters
+        # residues of a quartic over more than MAX_ROOTSUM_GENS = 4 parameters are refused
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / (p * x^4 + q * x^3 + r * x^2 + s1 * x + s2), x)
     end
 end
@@ -1251,6 +1251,20 @@ end
     end
     f = :(sqrt(a + b * x) * (c + d * x) ^ (1 // 4))                      # 1/2 + 1/4 ∉ ℤ: not rewritten
     @test Risch.rewrite_two_linear(f, :x, Risch.collect_radicals(f, "x"); build = build, lift = identity) === nothing
+end
+
+# more than six parameters (MAX_PARAMS), feasible with the check at two points over ℚ(t₁, …, tₖ) (Rubi 1.2.1)
+@testset "seven parameters" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    vals = (:a => 1.3, :b => 0.6, :c => 1.7, :d => 0.4, :e => 0.9, :A => 1.1, :B => -0.7, :C => 0.3)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), [Expr(:(=), k, v) for (k, v) in vals]...), e))
+    for f in (:(((d + e * x) ^ 3 * (A + B * x + C * x ^ 2)) / (a + c * x ^ 2) ^ 2),
+              :((A + B * x) / ((a + b * x) ^ 2 * (d + e * x) ^ 3)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 1.5)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
 end
 
 # step PL: log of a parameter is a constant generator; step PQ: quadratic residue pairs over a

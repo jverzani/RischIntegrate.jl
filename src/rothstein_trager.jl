@@ -262,4 +262,46 @@ function derivative_of(res::RationalIntegral{C}) where {C}
     end
     tot
 end
-check_result(res::RationalIntegral, f::Frac) = isempty(res.unresolved) && derivative_of(res) == f
+function check_result(res::RationalIntegral{C}, f::Frac) where {C}
+    isempty(res.unresolved) || return false
+    if C <: Frac && isempty(res.quads)
+        r = check_at_points(res, f)
+        r === nothing || return r
+    end
+    derivative_of(res) == f
+end
+
+# The exact check differentiates over the constant field; over ℚ(t₁, …, tₖ) (parameters) its gcds cost more than
+# the integration itself. There the derivative is compared at two points tⱼ = vⱼ instead, over B(x) (images as in
+# `coprime_image`). Specialization is a homomorphism where every denominator stays nonzero, so a mismatch at a
+# point is a wrong answer for certain; a wrong answer passes only if its error vanishes identically in x at both
+# points. Nothing (the exact check) when an image is undefined.
+function check_at_points(res::RationalIntegral{C}, f::Frac) where {C}
+    B = fbase(C)
+    applicable(cfromQ, B, Q(1)) || return nothing
+    for k in 0:1
+        pim(p) = (cs = map(c -> cimage(c, k), p.c); any(isnothing, cs) ? nothing : UPoly{B}(B[c for c in cs]))
+        function fim(g)
+            n, d = pim(g.num), pim(g.den)
+            (n === nothing || d === nothing || iszero(d)) ? nothing : frac(n, d)
+        end
+        tot = fim(res.rational)
+        fk = fim(f)
+        (tot === nothing || fk === nothing) && return nothing
+        tot = dx(tot)
+        for (c, w) in res.logs
+            ck, wk = cimage(c, k), pim(w)
+            (ck === nothing || wk === nothing || iszero(wk)) && return nothing
+            tot = tot + kconst(ck) * frac(deriv(wk), wk)
+        end
+        for (c, u) in res.atans
+            ck, uk = cimage(c, k), fim(u)
+            (ck === nothing || uk === nothing) && return nothing
+            den = one(uk) + uk * uk
+            iszero(den) && return nothing
+            tot = tot + kconst(ck) * dx(uk) / den
+        end
+        tot == fk || return false
+    end
+    true
+end

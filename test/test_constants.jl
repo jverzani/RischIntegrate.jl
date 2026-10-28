@@ -165,6 +165,29 @@ end
     @test r !== nothing && r * r == -4 * t * t
 end
 
+# answers over ℚ(t₁, …, tₖ) are checked at two points tⱼ = vⱼ (exactly only when an image is undefined)
+@testset "parameter fields: the derivative check at two points" begin
+    F = Risch.cfield(2)                                  # ℚ(t₁, t₂)
+    t1, t2 = Risch.tgen(F, 1), Risch.tgen(F, 2)
+    X = Risch.frac(Risch.xpoly(F))
+    k(c) = Risch.kconst(c)
+    f = inv((X + k(t1)) * (X + k(t2))) + k(t1 * t2) * X
+    res = Risch.integrate_rational(f)
+    @test Risch.check_at_points(res, f) === true && Risch.check_result(res, f)
+    wrong(e) = Risch.RationalIntegral(res.rational + e, res.logs, res.atans, res.unresolved, res.quads)
+    @test Risch.check_at_points(wrong(k(t1) * X * X), f) === false
+    # an error (tⱼ - vⱼ)x, zero at the first point, is caught at the second
+    for j in 1:2
+        e = Risch.tgen(F, j) - Risch.cfromQ(F, Risch.image_point(Q, j))
+        @test iszero(Risch.cimage(e))
+        @test Risch.check_at_points(wrong(k(e) * X), f) === false && !Risch.check_result(wrong(k(e) * X), f)
+    end
+    # a pole at the point: no image, the exact check
+    g = k(inv(t1 - Risch.cfromQ(F, Risch.image_point(Q, 1)))) * X
+    resg = Risch.integrate_rational(g)
+    @test Risch.check_at_points(resg, g) === nothing && Risch.check_result(resg, g)
+end
+
 @testset "integration over ℚ(i): rational functions and an exp(ix) tower, verified exactly" begin
     X = Risch.frac(Risch.xpoly(QI))
     kc(c) = Risch.kconst(c isa QI ? c : zi(c, 0))
