@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=657f5adf">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=f39d6a19">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -138,7 +138,7 @@
 <h3 id="Polynomials-and-fractions" class="md-heading">Polynomials and fractions<a href="#Polynomials-and-fractions" class="md-heading-anchor" aria-label="Link to this section">#</a></h3>
 <p><code class="md-code-inline">UPoly{T}</code> is a dense univariate polynomial over a field <code class="md-code-inline">T</code>, coefficients from low to high degree. It has Euclidean division, gcd and extended gcd, squarefree factorization, resultants and the derivative. <code class="md-code-inline">Frac{P}</code> is the fraction field of a polynomial ring, kept normalized: numerator and denominator coprime, denominator monic. The normal form is unique, so equality is structural.</p>
 <p>Over a rational function field <span class="md-math md-math-inline">\(K = B(t_1, …, t_k)\)</span> (parameters, tower monomials) each step of Euclid normalizes fractions by gcds one level down, so a gcd that is <span class="md-math md-math-inline">\(1\)</span>, the usual case when adding and multiplying fractions, can cost much more than its answer. <code class="md-code-inline">gcd</code> first evaluates both polynomials at a fixed point <span class="md-math md-math-inline">\(t_j = v_j\)</span>. When every coefficient is defined there, neither leading coefficient vanishes and the images are coprime over <span class="md-math md-math-inline">\(B\)</span>, the polynomials are coprime: a common factor of degree <span class="md-math md-math-inline">\(≥ 1\)</span> keeps its degree in the images, since it divides the primitive parts. Otherwise Euclid runs as before. The result is the same either way.</p>
-<p>Factoring over <span class="md-math md-math-inline">\(ℚ\)</span> (<code class="md-code-inline">factoring.jl</code>) uses rational roots and Cantor–Zassenhaus. The logarithmic part uses it on the residue polynomial over <span class="md-math md-math-inline">\(ℚ\)</span> to find quadratic and quartic factors; RootSums use dynamic evaluation instead, so the factors left for them need not be irreducible.</p>
+<p>Factoring over <span class="md-math md-math-inline">\(ℚ\)</span> (<code class="md-code-inline">factoring.jl</code>) uses rational roots and Cantor–Zassenhaus. Rational roots come from the same big prime: the roots of <span class="md-math md-math-inline">\(\gcd(x^p - x, F)\)</span> modulo <span class="md-math md-math-inline">\(p\)</span>, lifted to the symmetric range and checked exactly, not from the rational root theorem: the divisors of the end coefficients are out of reach when those are large (<span class="md-math md-math-inline">\(∫ dx/((2x^2 - x + 3)^{5/2}(5x^2 + 3x + 2)^3)\)</span> meets a quartic whose end coefficients have 28 and 40 digits), and trial division up to <span class="md-math md-math-inline">\(10^6\)</span> cannot certify the cofactor it leaves as prime, so roots could be missed. The logarithmic part uses it on the residue polynomial over <span class="md-math md-math-inline">\(ℚ\)</span> to find quadratic and quartic factors; RootSums use dynamic evaluation instead, so the factors left for them need not be irreducible.</p>
 <h3 id="Constant-fields" class="md-heading">Constant fields<a href="#Constant-fields" class="md-heading-anchor" aria-label="Link to this section">#</a></h3>
 <p>The constants of the differential field form a type <code class="md-code-inline">C</code>:</p>
 <div class="md-table-wrap">
@@ -1018,6 +1018,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=657f5adf"></script>
+  <script src="../assets/materialdocs.js?v=f39d6a19"></script>
 </body>
 </html>
