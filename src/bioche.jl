@@ -181,7 +181,7 @@ function bioche(f, x; build = nothing, lift = nothing)
         for (rest, R, Dd) in unres
             append!(rss, root_sums(rest, R, Dd, string(st); arg = st))
         end
-        derivative_of(res) + sum(rootsum_derivative(rs) for rs in rss) == gq ||
+        check_with_rootsums(res, rss, gq) ||
             throw(RischError("internal check failed: derivative of the result (with RootSums) differs from the integrand"))
         if kind !== :tan
             rss = RC === Q ? rss : Any[base_term_rootsum(bs, rs) for rs in rss]

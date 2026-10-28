@@ -166,7 +166,15 @@ end
 # (j·1 in K), each a resultant over K alone; Euclid over K(z) instead normalises nested
 # fractions at every step and is far slower when K is itself ℚ(i)(e)(x)…. A point where A - z·dD
 # drops below degree n is skipped (the evaluated resultant then differs from R(z_j)).
-function residue_resultant(D::UPoly{K}, A::UPoly{K}, dD::UPoly{K}) where {K}
+# Over K = B(t₁, …, tₖ), K a rational function field, a constant multiple of R (callers need only its roots):
+# D, A, dD scaled into the ring B[t₁, …, tₖ] once, fraction-free resultants there (step FR) and no
+# division by the scale factors, whose gcds over K would cost more than the resultants.
+function residue_resultant(D::UPoly{K}, A::UPoly{K}, dD::UPoly{K}) where {K<:Frac}
+    m, n = integral_multiplier(K, D.c), integral_multiplier(K, [A.c; dD.c])
+    sc(p, c) = UPoly{K}(K[a * c for a in p.c])
+    residue_resultant(sc(D, m), sc(A, n), sc(dD, n), ff_resultant)
+end
+function residue_resultant(D::UPoly{K}, A::UPoly{K}, dD::UPoly{K}, res = resultant) where {K}
     n = max(length(A.c), length(dD.c))
     ai(k) = k <= length(A.c) ? A.c[k] : zero(K)
     di(k) = k <= length(dD.c) ? dD.c[k] : zero(K)
@@ -178,7 +186,7 @@ function residue_resultant(D::UPoly{K}, A::UPoly{K}, dD::UPoly{K}) where {K}
         B = UPoly{K}(K[ai(k) - z * di(k) for k in 1:n])
         length(B.c) == n || continue
         push!(zs, z)
-        push!(vs, resultant(D, B))
+        push!(vs, res(D, B))
     end
     interpolate(zs, vs)
 end

@@ -245,6 +245,7 @@ const MAX_CONSTS = 8
 const MAX_PARAMS = 12         # symbolic parameters (steps SY, PF): see the cap in `parse_tower`
 # RootSums over more constant generators than this are refused: their log part (Lazard-Rioboo-Trager over
 # ℚ(t₁, …, t₅)) did not finish in minutes for a general quartic, while other integrals with 5, 6 parameters are fast
+# (with step FR, raising it answers 4 of the Rubi problems it refuses but leaves 12 running past 120 s)
 const MAX_ROOTSUM_GENS = 4
 
 # the value of c at depth `d` of the nested constant field, if c lies in that subfield

@@ -121,7 +121,11 @@ The generators are treated as algebraically independent. That is exact for one o
 that meets a constant needing a new generator throws `NewConstants` with the longer list, and the
 tower is built again over the larger field. Parameters nest the field one level deeper each, so
 their number is capped (`MAX_PARAMS`); residues of a denominator of degree above 2 over more than
-`MAX_ROOTSUM_GENS` generators are refused, since that resultant does not finish.
+`MAX_ROOTSUM_GENS` generators are refused, since the log part does not finish. Resultants over
+these fields are fraction-free (step FR): the coefficients are scaled into ``B[t_1, …, t_k]`` and
+the subresultant PRS runs there, with exact divisions; Euclid over ``B(t_1, …, t_k)`` normalises
+nested fractions by gcds at every step. For the residues only a constant multiple of
+``R(z) = \operatorname{res}_x(D, A - zD')`` is needed, so the scale factors are not divided out.
 
 Some decisions depend on the sign of a parameter expression: choosing `atan` or `log`, the sign of
 a radicand, which branch of a square root. They are made at fixed values, the `k`-th parameter in
@@ -494,8 +498,9 @@ Every answer is checked before it is returned:
   points ``t_j = v_j`` instead, over ``ℚ(x)`` (`check_at_points`): the exact comparison's gcds
   there cost more than the integration. Specialization is a homomorphism wherever the denominators
   stay nonzero, so a mismatch is a wrong answer for certain; a wrong answer passes only if its error
-  vanishes identically in ``x`` at both points. When an image is undefined (a pole at a point), the
-  check is exact.
+  vanishes identically in ``x`` at both points. RootSums are specialized with the rest (their monic
+  ``m`` keeps its degree) and differentiated over ``ℚ(x)``. When an image is undefined (a pole at a
+  point), the check is exact.
 - Real forms and real-log rewrites are checked again after the rewrite.
 - A substitution checks its own identities exactly (``g(s(θ))\,s' = R`` in step MR,
   ``H(x + s/x) = h`` in step RC, ``\tilde U_j(s(θ)) = U_j``) and integrates the substituted integrand,
@@ -661,6 +666,7 @@ failures, and their comments cite the Rubi problem numbers.
 | BQ4 | `quartic_residues.jl` | even quartics ``x^4 + bx^2 + c`` with nested real forms |
 | RC | `reciprocal_subst.jl` | ``u = x + s/x`` |
 | RE, RT, RF | `constant_fields.jl`, `tower_rootsums.jl`, `tower_real_forms.jl` | RootSums over parameter fields and in towers, their real forms |
+| FR | `fractions.jl`, `monomial_integration.jl` | fraction-free resultants over parameter fields |
 | RP, SQ | `factoring.jl`, `radicals.jl` | radicands that are powers; repeated factors |
 | RY | `tower_radicals.jl` | a radical of a tower element |
 | SY | `tower_terms.jl` | parameters and opaque constants |
