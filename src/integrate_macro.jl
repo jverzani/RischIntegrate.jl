@@ -53,14 +53,14 @@ macro integrate(f, args...)
     :(integrate_expr($(esc(Expr(:quote, f))), $(specs...); $(kws...)))
 end
 
-function integrate_expr(f, specs...; build = expr_build, lift = identity, verify::Bool = true)
+function integrate_expr(f, specs...; build = expr_build, lift = identity, verify::Bool = true, signs = (), sign = nothing)
     val = f
     for s in specs
         if s isa Symbol
-            val = risch_integrate(val, s; build = build, lift = lift, verify = verify)
+            val = risch_integrate(val, s; build = build, lift = lift, verify = verify, signs = signs, sign = sign)
         else
             x, a, b = s
-            F = risch_integrate(val, x; build = build, lift = lift, verify = verify)
+            F = risch_integrate(val, x; build = build, lift = lift, verify = verify, signs = signs, sign = sign)
             val = definite_value(F, x, a, b)
         end
     end

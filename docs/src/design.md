@@ -147,6 +147,27 @@ a radicand, which branch of a square root. They are made at fixed values, the `k
 alphabetical order taking the value `k` (`param_value`). Answers therefore hold for the parameter
 values that share those signs, the usual convention of symbolic integrators ("assume `a > 0`").
 
+The caller can decide these signs instead (step SO): `risch_integrate(f, x; sign = p -> …)` is
+called with the parameter expression, a term built like the answer, and returns `1`, `-1`, `0` or
+`nothing`. `param_sign` asks it first, and `csign`, which otherwise leaves the signs of parameter
+expressions undecided, asks it too. What it leaves undecided is taken at the fixed values, with the
+`k`-th parameter set to `-k` when the oracle says that parameter is negative, so that the two agree.
+A `0` for an expression that is not identically zero is a special case of the parameters (a double
+root, say), which is refused: the error passes through the methods that catch
+`RischNotImplemented` to try their own, since those may not ask. Answers are still checked exactly,
+in the field, so the check does not depend on the signs. Forms that assume a sign without a
+decision, such as scalings by ``\sqrt a`` or ``a^{1/3}``, do not ask yet.
+
+Signs can also be given as facts, the way GruntzLimit takes them (`sign_facts.jl`): `signs = Dict(a
+=> :negative, b - a^2/4 => :positive)`, with `:positive`, `:negative` or `:nonzero`. GruntzLimit's
+`:zero`, `:nonnegative` and `:nonpositive` are an `ArgumentError`, not silently taken as strict: a
+zero value is a special case of the parameters, which is not treated. They become an oracle, asked after `sign` when both are given.
+The facts and the expressions asked about are read as quotients of sparse polynomials over ``ℚ`` in
+the parameters, and a sign is decided by a fact about a rational multiple of the expression, by the
+signs of all its terms (from the parameters' signs; even powers are positive), or by exact division
+into a product of the facts' expressions and the parameters. There is no linear deduction:
+``b - 2 > 0`` does not give ``b > 0``, as GruntzLimit's Fourier–Motzkin elimination would.
+
 `sturm.jl` counts real roots and decides signs exactly with Sturm sequences, for ``ℚ`` and the real
 quadratic fields, and numerically to 256 bits for parameter fields.
 
@@ -685,6 +706,7 @@ failures, and their comments cite the Rubi problem numbers.
 | RP, SQ | `factoring.jl`, `radicals.jl` | radicands that are powers; repeated factors |
 | RY | `tower_radicals.jl` | a radical of a tower element |
 | SY | `tower_terms.jl` | parameters and opaque constants |
+| SO | `param_radicals.jl`, `sign_facts.jl` | signs of parameter expressions from the caller: an oracle, or facts |
 | TA | `tower_terms.jl`, `monomial_integration.jl` | `atan` levels |
 | TS | `bioche.jl` | Bioche's rules |
 | TS2 | `risch_integrate.jl` | addition formulas for shifted trigonometric arguments |

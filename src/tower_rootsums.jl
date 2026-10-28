@@ -172,8 +172,8 @@ end
 # W(α) = U + αV, written out. With α = m₀ ± w, m₀ = -p/2, w² = δ = m₀² - q, P₀ = U + m₀V:
 #   Σ α log(U + αV) = m₀ log(U² - pUV + qV²) + w log((P₀ + wV)/(P₀ - wV))
 #                   = m₀ log(…) - 2σ atan(σV/P₀)            (δ = -σ²)
-# σ ∈ C when -δ is a square; else σ = √(-δ) or √δ as a term, the sign of δ taken at the parameter values
-# of `param_value` (a = 1, b = 2, …; either form is an antiderivative, real for its sign of δ).
+# σ ∈ C when -δ is a square; else σ = √(-δ) or √δ as a term, the sign of δ from `param_sign`
+# (the oracle's, else at a = 1, b = 2, …; either form is an antiderivative, real for its sign of δ).
 # U, V are polynomials (in x, or in θ over K); sc(c, P) scales by c ∈ C, tt(P) gives the term.
 function param_quad_term(b::Builder, mq::UPoly{C}, U, V, sc, tt) where {C}
     q, p = monic(mq).c[1], monic(mq).c[2]
@@ -188,8 +188,8 @@ function param_quad_term(b::Builder, mq::UPoly{C}, U, V, sc, tt) where {C}
     # -2σ atan(σV/P₀), or 2σ atan(P₀/(σV)) (the same derivative), continuous when V is a constant
     vconst = degree(V) <= 0
     σ = csqrt(-δ)
-    dv = σ === nothing ? param_value(δ, b.consts) : nothing
-    if σ === nothing && dv !== nothing && dv > 0
+    dv = σ === nothing ? param_sign(δ, b.consts) : nothing
+    if σ === nothing && dv == 1
         st = csqrt_term(b, δ)
         sV = mk(b, :*, st, tt(V))
         push!(ts, mk(b, :*, st, mk(b, :log, mk(b, :/, mk(b, :+, tt(P0), sV),

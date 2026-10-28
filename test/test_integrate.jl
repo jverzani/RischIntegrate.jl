@@ -1141,6 +1141,62 @@ let
     sy_tests(x, p, q, r, s1, s2, (e, a) -> real(ComplexF64(SymEngine.N(SymEngine.subs(e, x => a, p => 0.2)))), "SymEngine")
 end
 
+# step SO: the caller's sign oracle decides the signs of parameter expressions
+@testset "SymEngine: sign oracle (step SO)" begin
+    SymEngine.@vars x a b
+    ev(e, pt, t) = ComplexF64(SymEngine.N(SymEngine.subs(e, x => t, a => pt[1], b => pt[2])))
+    oracle(pt) = p -> (v = ev(p, pt, 0.0); abs(imag(v)) < 1e-12 ? Int(sign(real(v))) : nothing)
+    function ok(F, f, pt)
+        all(t -> isapprox((ev(F, pt, t + 1e-6) - ev(F, pt, t - 1e-6)) / 2e-6, ev(f, pt, t); rtol = 1e-5), (0.37, 0.61))
+    end
+    for (f, pt, form) in ((1 / (x^2 + a * x + b), (3, 1), "log"),   # b - a²/4 < 0
+                          (1 / (x^2 + a * x + b), (1, 2), "atan"),
+                          (1 / (x^2 + a), (-2, 0), "log"),          # a < 0
+                          (1 / (x^2 - a), (-2, 0), "atan"),
+                          (x / (x^4 + a), (-2, 0), "log"),
+                          (1 / (x^3 - a), (-2, 0), ""),
+                          (1 / sqrt(a * x^2 + b), (-1, 2), ""),
+                          (1 / sqrt(a - x^2), (3, 0), "asin"))
+        F = Risch.risch_integrate(f, x; sign = oracle(pt))
+        @test ok(F, f, pt)
+        @test occursin(form, string(F))
+    end
+    # undecided everywhere: the answer without an oracle
+    f = 1 / (x^2 + a * x + b)
+    @test string(Risch.risch_integrate(f, x; sign = p -> nothing)) == string(Risch.risch_integrate(f, x))
+    # only the sign of a itself: the other signs are taken at a = -1, b = 2, consistently
+    F = Risch.risch_integrate(1 / (x^2 - a), x; sign = p -> p == a ? -1 : nothing)
+    @test occursin("atan", string(F)) && ok(F, 1 / (x^2 - a), (-1, 2))
+    # 0 for an expression that is not identically 0: a special case, not treated; other answers are errors
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(1 / (x^2 + a * x + b), x; sign = p -> 0)
+    @test_throws ArgumentError Risch.risch_integrate(1 / (x^2 + a * x + b), x; sign = p -> 2)
+    # integrate passes the keyword on
+    @test occursin("log", string(integrate(1 / (x^2 - a), x; sign = p -> p == a ? 1 : nothing)))
+    # signs, as GruntzLimit takes them: facts about parameter expressions
+    for (f, signs, pt, form) in ((1 / (x^2 + a), Dict(a => :negative), (-2, 0), "log"),
+                                 (1 / (x^2 + a * x + b), Dict(b - a^2 / 4 => :negative), (3, 1), "log"),
+                                 (1 / (x^2 + a * x + b), [4b - a^2 => :positive], (1, 2), "atan"),
+                                 (1 / (x^2 + a * x + b), [a => :positive, b => :negative], (1, -2), "log"),
+                                 (1 / (x^2 - a * b), [a => :negative, b => :positive], (-1, 2), "atan"))
+        F = Risch.risch_integrate(f, x; signs)
+        @test ok(F, f, pt)
+        @test occursin(form, string(F))
+    end
+    @test string(integrate(1 / (x^2 + a), x; signs = Dict(a => :negative))) ==
+          string(Risch.risch_integrate(1 / (x^2 + a), x; sign = p -> p == a ? -1 : nothing))
+    for s in (:zero, :nonnegative, :nonpositive)
+        @test_throws ArgumentError Risch.risch_integrate(1 / (x^2 + a), x; signs = Dict(a => s))
+    end
+    @test_throws ArgumentError Risch.risch_integrate(1 / (x^2 + a), x; signs = Dict(a => :big))
+    @test_throws ArgumentError Risch.risch_integrate(1 / (x^2 + a), x; signs = Dict(sqrt(a) => :positive))
+    # the deductions: a multiple of a fact, signs of terms, products of facts' expressions
+    let F = Risch.SignFacts([:a => :negative, :(b - 2) => :positive, :c => :nonzero])
+        @test [Risch.facts_sign(F, t) for t in (:(-3a), :(4 - 2b), :(a^2 + 1), :((b - 2) * a), :((b - 2)^2 * a / c^2),
+                                                 :(1 / (2 - b)))] == [1, -1, 1, -1, -1, -1]
+        @test all(t -> Risch.facts_sign(F, t) === nothing, (:(a * b), :c, :(c^3), :(b - a^2), :(log(a))))
+    end
+end
+
 # step DL: dilogarithms (PolyLog.li2). SymEngine needs a method for li2: this stand-in is what a package extension
 # would provide (defined here, after the tests above that expect the MethodError of li2(term)).
 import PolyLog

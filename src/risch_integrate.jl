@@ -2,15 +2,45 @@
 # Public API
 # ---------------------------------------------------------------------------
 """
-    risch_integrate(f, x; build = nothing, lift = nothing, verify = true)
+    risch_integrate(f, x; build = nothing, lift = nothing, verify = true, signs = (), sign = nothing)
 
 The antiderivative of the term `f` in the variable `x` (the function behind [`integrate`](@ref)).
 `build` and `lift` control how the answer is built as a term; `verify = false` skips the final
 check of the answer by differentiation (every answer is checked by default). Returns a term, or an
 [`IntegralWithRootSums`](@ref); throws [`NotElementary`](@ref) or [`RischNotImplemented`](@ref).
+
+Some forms depend on the sign of an expression in the parameters (symbols other than `x`): `atan`
+or `log`, which square root. Signs can be given, as in GruntzLimit, by `signs`: pairs `c => s`, with
+`c` a parameter or an expression in the parameters written like `f`, and `s` one of `:positive`,
+`:negative` or `:nonzero`. GruntzLimit's `:zero`, `:nonnegative` and `:nonpositive` are an
+`ArgumentError`: a zero value is a special case of the parameters, which is not treated. The sign of an expression is then taken from a fact about a rational multiple of it, from
+the signs of its terms, or from a product of the facts' expressions. More generally, `sign(p)` is
+called with the expression `p`, a term built like the answer, and returns `1`, `-1`, `0` or
+`nothing` (undecided); it is asked before `signs`. Undecided signs are taken with the `k`-th
+parameter (alphabetically) set to `k`, or to `-k` when that parameter is known to be negative.
+A `0` for an expression that is not identically zero is a special case of the parameters, not
+treated (`RischNotImplemented`).
+
+```julia
+risch_integrate(:(1/(x^2 + a)), :x; signs = Dict(:a => :negative))
+```
 """
 Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize(x); build = nothing, lift = nothing,
-                                                  verify::Bool = true)
+                                                  verify::Bool = true, signs = (), sign = nothing)
+    if !isempty(signs)                                                 # step SO
+        F = SignFacts(signs)
+        g = sign === nothing ? (p -> facts_sign(F, p)) : (p -> (s = sign(p); s === nothing ? facts_sign(F, p) : s))
+        return risch_integrate(f, x; build = build, lift = lift, verify = verify, sign = g)
+    end
+    if sign !== nothing
+        o = SignOracle(sign, build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift,
+                       x, Dict{Any,Union{Int,Nothing}}())
+        return try
+            Base.ScopedValues.with(() -> risch_integrate(f, x; build = build, lift = lift, verify = verify), SIGN_ORACLE => o)
+        catch err
+            err isa SignOracleZero ? throw(RischNotImplemented(err.msg)) : rethrow()
+        end
+    end
     check_leaves(f, string(x))                                         # step WR
     try
         r = integrate_direct(f, x; build = build, lift = lift, verify = verify)
