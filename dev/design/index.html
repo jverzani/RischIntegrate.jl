@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=3eae983d">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=fe270e67">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -715,15 +715,34 @@
 <p>Coverage is measured on the 1680-problem sample from the Rubi test suite, scored by numeric differentiation of each answer; the README has the current numbers and a comparison with Giac and SymPy. Most of the steps after Step 8 in the tables above were added to close specific Rubi failures, and their comments cite the Rubi problem numbers.</p>
 <h2 id="Open-questions-and-limits" class="md-heading">Open questions and limits<a href="#Open-questions-and-limits" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
 <ul class="md-list-tight">
-<li><p><strong>The algebraic Risch algorithm</strong> is implemented only in pieces: one radical of a rational function (substitution, Euler, hyperelliptic Hermite reduction and Liouville without residues), Kummer extensions with a restricted log part, two square roots (biquadratic), and nested square roots in two special forms. General algebraic function fields (Trager&#39;s algorithm) are not.</p>
+<li><p><strong>The algebraic Risch algorithm</strong> is implemented only in pieces: one radical of a rational function (substitution, Euler, hyperelliptic Hermite reduction and Liouville without residues), Kummer extensions with a restricted log part, two square roots (biquadratic), and nested square roots in two special forms. General algebraic function fields are not: integral bases (Trager&#39;s algorithm, or van Hoeij&#39;s), Puiseux expansions and places at infinity, Riemann–Roch spaces for the logarithmic part in general, several radicands of genus ≥ 1 taken as one curve with a primitive element. Bronstein&#39;s lazy Hermite reduction avoids the full integral basis.</p>
+</li>
+<li><p><strong>Mixed algebraic–transcendental towers</strong> (Bronstein 1990): a radical of a non-rational expression such as <span class="md-math md-math-inline">\(\sqrt{\log x}\)</span> is refused (radicals of exponentials, <span class="md-math md-math-inline">\(\sqrt{1 + e^x}\)</span>, are reached by substitution). Not done: the Risch differential equation over <span class="md-math md-math-inline">\(K(θ)[y]\)</span> with its degree and denominator bounds, and structure theorems with algebraic elements.</p>
+</li>
+<li><p><strong>Elliptic answers</strong> are given with <span class="md-math md-math-inline">\({}_2F_1\)</span> (<span class="md-math md-math-inline">\(∫ 1/\sqrt{x^4 + 1} = x\,{}_2F_1(\tfrac12, \tfrac14; \tfrac54; -x^4)\)</span>), not in Legendre or Carlson form (<span class="md-math md-math-inline">\(F\)</span>, <span class="md-math md-math-inline">\(E\)</span>, <span class="md-math md-math-inline">\(Π\)</span>), which needs the roots of the radicand.</p>
 </li>
 <li><p><strong>Cancellation cases</strong> of the Risch differential equation (Bronstein §6.6) are recognized but not solved; integrands that need them are refused.</p>
 </li>
 <li><p><strong>Complex constants</strong> in the input are opaque (<span class="md-math md-math-inline">\(\sqrt{-1}\)</span>) rather than elements of <span class="md-math md-math-inline">\(ℚ(i)\)</span>: answers are correct identities, but <span class="md-math md-math-inline">\(i^2 = -1\)</span> is not used to simplify them.</p>
 </li>
-<li><p><strong>Parameters</strong> are capped in number and take signs from fixed values. Answers that depend on the sign of a parameter expression hold for one choice of signs only.</p>
+<li><p><strong>Parameters</strong> are capped in number. Answers that depend on the sign of a parameter expression hold for one choice of signs: the caller&#39;s, through the sign oracle (step SO), else the signs of fixed positive values.</p>
 </li>
-<li><p><strong>Output form.</strong> Answers are not simplified beyond what the algorithm produces; leaf counts are often larger than Rubi&#39;s optimal answers. Simplification is the caller&#39;s CAS&#39;s job.</p>
+<li><p><strong>Output form.</strong> Answers are not simplified beyond what the algorithm produces; leaf counts are often larger than Rubi&#39;s optimal answers, and forms such as <span class="md-math md-math-inline">\(\sqrt{a^2}\)</span> are left (<span class="md-math md-math-inline">\(∫ 1/\sqrt{a^2 - x^2} = a \operatorname{asin}(x/a)/\sqrt{a^2}\)</span>). Simplification is the caller&#39;s CAS&#39;s job.</p>
+</li>
+</ul>
+<h2 id="References" class="md-heading">References<a href="#References" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
+<ul class="md-list-tight">
+<li><p>M. Bronstein, <em>Symbolic Integration I: Transcendental Functions</em>, Springer (2nd ed. 2005): the transcendental case, which the tower follows.</p>
+</li>
+<li><p>M. Bronstein, <em>Integration of elementary functions</em>, J. Symb. Comp. 9 (1990), and his thesis (Berkeley, 1987): simple radical extensions, mixed towers.</p>
+</li>
+<li><p>M. Bronstein, <em>The lazy Hermite reduction</em>, INRIA RR-3562 (1998).</p>
+</li>
+<li><p>B. Trager, <em>Integration of algebraic functions</em>, PhD thesis, MIT (1984): integral bases, Hermite reduction, the logarithmic part through divisors.</p>
+</li>
+<li><p>J. H. Davenport, <em>On the integration of algebraic functions</em>, LNCS 102 (1981): torsion, reduction mod p.</p>
+</li>
+<li><p>R. Risch, <em>The solution of the problem of integration in finite terms</em>, Bull. AMS 76 (1970).</p>
 </li>
 </ul>
 <h2 id="Step-index" class="md-heading">Step index<a href="#Step-index" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
@@ -1008,6 +1027,7 @@
           <a class="md-toc-link md-toc-h2" href="#A-few-traces">A few traces</a>
           <a class="md-toc-link md-toc-h2" href="#Coverage-and-testing">Coverage and testing</a>
           <a class="md-toc-link md-toc-h2" href="#Open-questions-and-limits">Open questions and limits</a>
+          <a class="md-toc-link md-toc-h2" href="#References">References</a>
           <a class="md-toc-link md-toc-h2" href="#Step-index">Step index</a>
       </div>
     </aside>
@@ -1026,6 +1046,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=3eae983d"></script>
+  <script src="../assets/materialdocs.js?v=fe270e67"></script>
 </body>
 </html>
