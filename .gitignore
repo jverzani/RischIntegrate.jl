@@ -1,6 +1,7 @@
 /Manifest*.toml
 notes.md
 .idea/
+*.iml
 /docs/build/
 /docs/Manifest*.toml
 /test/Manifest*.toml
