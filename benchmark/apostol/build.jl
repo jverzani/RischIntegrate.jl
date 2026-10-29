@@ -5,7 +5,7 @@ const RESULTS = joinpath(HERE, "results")
 const METHODS = [
     ("symengine", "RischIntegrate", "Risch", "SymEngine"),
     ("expr", "RischIntegrate", "Risch", "Expr"),
-    ("simpleexpressions", "RischIntegrate", "Risch", "SimpleExpressions"),
+    ("symj", "RischIntegrate", "Risch", "SymJ"),
     ("symbolicutils", "RischIntegrate", "Risch", "SymbolicUtils"),
     ("giac", "RischIntegrate", "Risch", "Giac"),
     ("si_risch", "SymbolicIntegration", "Risch (RischMethod)", "Symbolics"),

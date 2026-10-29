@@ -2,7 +2,7 @@
 
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://jverzani.github.io/RischIntegrate.jl/dev/)
 [![Build Status](https://github.com/jverzani/RischIntegrate.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/jverzani/RischIntegrate.jl/actions/workflows/CI.yml?query=branch%3Amain)
-[![Apostol, verified of 175: RischIntegrate 174, SymbolicIntegration Risch 97](https://img.shields.io/badge/apostol%2C%20verified%20of%20175-RischIntegrate%20174%20%C2%B7%20SymbolicIntegration%20Risch%2097-2f8a4c)](https://rawcdn.githack.com/jverzani/RischIntegrate.jl/bed5aa02a6d98a833ac6bcbfd986f3ab3c104b01/benchmark/apostol/results/apostol_comparison.html)
+[![Apostol, verified of 175: RischIntegrate 175, SymbolicIntegration Risch 97](https://img.shields.io/badge/apostol%2C%20verified%20of%20175-RischIntegrate%20175%20%C2%B7%20SymbolicIntegration%20Risch%2097-2f8a4c)](https://rawcdn.githack.com/jverzani/RischIntegrate.jl/02aa801380bcde9b050a389d8d28ec04c960dffb/benchmark/apostol/results/apostol_comparison.html)
 
 
 A package for symbolic integration in Julia, for any symbolic term type that implements the `TermInterface.jl` methods `iscall`, `operation` and `arguments` (`SymbolicUtils.jl`, `SymEngine.jl`, `Expr`, ...). Only very light dependencies are required; all algebra is done by this module's own exact, dependency-free polynomial / rational-function types, and results are rebuilt by calling operations as functions.
@@ -61,4 +61,4 @@ Development was greatly aided by a wider set of 1680 sample problems collected b
 
 ² The other two of the 1680 problems, 423 (∫ x²⁰ eˣ dx) and 541 (a rational function times 1/√(x⁴ + 4x³ + 2x² + 1)), fail this check only because it is done in double precision. Their answers involve heavy cancellation: coefficients up to 20! ≈ 2.4·10¹⁸ for 423, and the log of a ratio of nearly cancelling degree-10 polynomials for 541. In 512-bit arithmetic, their derivatives match the integrands to a relative error of about 10⁻⁸⁰.
 
-³ On the 1306 problems all three verify, the totals are 61 s (RischIntegrate), 3.3 s (Giac) and 10.1 min (SymPy). Most of RischIntegrate's time is Julia compiling code the first time a problem reaches it: run again in the same session, the same problems take about 15 s.
+³ On the 1306 problems all three verify, the totals are 61 s (RischIntegrate), 3.3 s (Giac) and 10.1 min (SymPy). Most of RischIntegrate's time is Julia compiling code the first time a problem reaches it: run again in the same session, the same problems take about 7 s.
