@@ -17,12 +17,19 @@ function commit(dir)
         "unknown"
     end
 end
-commits = [("RischIntegrate", commit(joinpath(HERE, "..", "..")))]
+# SymJ: the tip of its main branch, which env_symj is first updated to
+run(`julia --project=$(joinpath(HERE, "env_symj")) -e 'using Pkg; Pkg.update("SymJ")'`)
+symj = try
+    readchomp(`git ls-remote https://github.com/jverzani/SymJ.jl refs/heads/main`)[1:7] * " (main)"
+catch
+    "unknown"
+end
+commits = [("RischIntegrate", commit(joinpath(HERE, "..", ".."))), ("SymJ", symj)]
 open(joinpath(HERE, "results", "commits.tsv"), "w") do io
     foreach(((name, c),) -> println(io, name, "\t", c), commits)
 end
 
-for (name, env) in (("symengine", "env_risch"), ("expr", "env_risch"), ("simpleexpressions", "env_risch"),
+for (name, env) in (("symengine", "env_risch"), ("expr", "env_risch"), ("symj", "env_symj"),
                     ("symbolicutils", "env_risch"), ("giac", "env_giac"), ("si_risch", "env_si"),
                     ("giac_own", "env_giac"))
     @info "running $name"

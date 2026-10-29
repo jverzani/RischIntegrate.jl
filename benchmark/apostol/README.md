@@ -8,7 +8,7 @@ Giac's own `integrate` for reference, on the 175 apostol problems of
 |---|---|---|
 | `symengine` | RischIntegrate (this package) | SymEngine |
 | `expr` | RischIntegrate | Julia `Expr` |
-| `simpleexpressions` | RischIntegrate | SimpleExpressions |
+| `symj` | RischIntegrate | [SymJ](https://github.com/jverzani/SymJ.jl) (its `main` branch) |
 | `symbolicutils` | RischIntegrate | SymbolicUtils |
 | `giac` | RischIntegrate | [Giac.jl](https://github.com/s-celles/Giac.jl) |
 | `si_risch` | [SymbolicIntegration](https://github.com/JuliaSymbolics/SymbolicIntegration.jl), `RischMethod()` | Symbolics |
@@ -20,13 +20,15 @@ problem. Selecting a problem shows the integrand and each method's answer.
 
 ## Running it
 
-RischIntegrate comes from this checkout; everything else from the registry.
+RischIntegrate comes from this checkout, SymJ from its `main` branch on GitHub (`run_all.jl`
+updates `env_symj` to the branch's tip first), everything else from the registry.
 
 ```sh
 cd benchmark/apostol
 julia --project=env_risch -e 'using Pkg; Pkg.instantiate()'   # once, or after changing a package
 julia --project=env_si -e 'using Pkg; Pkg.instantiate()'
 julia --project=env_giac -e 'using Pkg; Pkg.instantiate()'
+julia --project=env_symj -e 'using Pkg; Pkg.instantiate()'
 julia run_all.jl            # or `julia run_all.jl 60` for a 60 s limit per problem
 ```
 
@@ -56,10 +58,10 @@ environment before `Pkg.instantiate()`.
 | `supervise.jl` | runs a worker; if one problem takes longer than the limit, kills the process, records a timeout and restarts at the next problem |
 | `build.jl`, `template.html` | turn the results into the page |
 | `giac_common.jl` | the Giac variables and evaluation, shared by the two Giac workers |
-| `env_risch`, `env_giac`, `env_si` | the environments: `env_risch` for RischIntegrate with SymEngine, `Expr`, SimpleExpressions and SymbolicUtils; `env_giac` for Giac.jl (RischIntegrate on its terms, and its own `integrate`); `env_si` for SymbolicIntegration |
+| `env_risch`, `env_symj`, `env_giac`, `env_si` | the environments: `env_risch` for RischIntegrate with SymEngine, `Expr` and SymbolicUtils; `env_symj` for RischIntegrate with SymJ; `env_giac` for Giac.jl (RischIntegrate on its terms, and its own `integrate`); `env_si` for SymbolicIntegration |
 
 Each integrand is built from its expression with the worker's own variables:
-`SymEngine.@vars`, `SimpleExpressions.@symbolic_variables`, SymbolicUtils
+`SymEngine.@vars`, SymJ `Sym(:x)`, SymbolicUtils
 `@syms x::Real ...`, `Giac.@giac_var`, Symbolics `@variables`. For `expr` the quoted expression is
 the integrand, and the answer is built with
 `build = (op, args...) -> Expr(:call, nameof(op), args...)` and `lift = identity`.
@@ -88,7 +90,7 @@ What is recorded:
 
 How each answer is evaluated: SymEngine with `subs` and `N`; `Expr` by replacing
 the variables with numbers and evaluating it (SpecialFunctions and PolyLog
-loaded); SimpleExpressions with `replace` and calling the result; Giac with
+loaded); SymJ with `subs` and `N`; Giac with
 `substitute` and `evalf`, the values rounded to 12 digits; SymbolicUtils
 and Symbolics with `substitute(...; fold = Val(true))`.
 
@@ -104,7 +106,7 @@ and Symbolics with `substitute(...; fold = Val(true))`.
 | `T` | wall time in seconds, limit in seconds |
 
 `results/commits.tsv` records the git commit of RischIntegrate (and whether it
-had uncommitted changes) when `run_all.jl` ran.
+had uncommitted changes) and of SymJ's `main` when `run_all.jl` ran.
 
 ## Adding a method
 
