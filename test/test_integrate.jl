@@ -1393,6 +1393,22 @@ end
     end
 end
 
+# step TL: arguments r·(e + f x) with a parameter shift e: y = e + f x, so cos e, sin e never enter the
+# constant field (with them, (c + dx)/(a - a sin(e + fx)) was refused by the residue criterion)
+@testset "shifted linear arguments (step TL)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7), :(c = 1.3), :(d = 0.6), :(e = 0.4), :(f = 1.1)), e))
+    for f in (:((c + d * x) / (a - a * sin(e + f * x))), :(sec(c + d * x) ^ 4 / (a + a * sin(c + d * x))),
+              :(cos(c + d * x) ^ 4 / (a + a * cos(c + d * x)) ^ 5), :(sin(e + f * x) * cos(2e + 2f * x)),
+              :(x * cosh(a + d * x) ^ 2), :(sin(x + a) ^ 2))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !occursin("sin(e)", string(F)) && !occursin("cos(c)", string(F)) && !occursin("cosh(a)", string(F))
+        for x0 in (0.4, 1.3)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
 # step PS: f homogeneous in x and a parameter: x = a u, integrate over ℚ (real forms with √3, √2, √5)
 @testset "homogeneous in x and a parameter (step PS)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
