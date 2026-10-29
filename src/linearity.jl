@@ -98,6 +98,8 @@ function merge_exp_powers(f, x, build, lift)
         term_rebuild(bd, t, Any[walk(a) for a in args])
     end
     g = walk(f)
-    changed ? g : nothing
+    # a term type that keeps its own form for powers (Giac writes C^(2/3) as (C^(1/3))^2) gives f back:
+    # no change, or the integrator would rewrite it again without end
+    changed && string(g) != string(f) ? g : nothing
 end
 has_x_radical(t, xk::String) = !isempty(collect_radicals(t, xk))
