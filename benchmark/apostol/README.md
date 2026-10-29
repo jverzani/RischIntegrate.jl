@@ -156,10 +156,22 @@ them in the badge URL and its alt text.
 
 Solved (verified) out of 175. Times are on one machine and only comparable within a run.
 
-| Date | Julia | RischIntegrate | symengine | expr | simpleexpressions | symbolicutils | giac | si_risch | giac_own |
+| Date | Julia | RischIntegrate | symengine | expr | symj¹ | symbolicutils | giac | si_risch | giac_own |
 |---|---|---|---|---|---|---|---|---|---|
 | 2026-10-17 | 1.13.0 | `85c487f` | 150 (147) | 163 (162) | 163 (162) | 162 (161) | 148 (147) | 97 (97) | 172 (171) |
 | 2026-10-22 | 1.13.0 | `0d180a6` | 175 (170) | 175 (175) | 174 (174) | 174 (174) | 172 (170) | 97 (97) | 172 (171) |
+| 2026-10-28 | 1.13.0 | `34693f0` | 175 (172) | 175 (175) | 175 (175) | 175 (175) | 172 (170) | 97 (97) | 172 (171) |
+
+¹ Before 2026-10-28, `simpleexpressions` (RischIntegrate on SimpleExpressions terms); since then SymJ, its `main` branch (`d3d5918` on 2026-10-28).
+
+Notes (2026-10-28 run):
+
+- `symj` takes the place of `simpleexpressions`: 175 (175), in 6 s of integration from a cold start
+  (its RischIntegrate extension precompiles a workload on SymJ terms); the other term types take 32–57 s.
+- `symbolicutils` now solves 165, and `symengine`'s 83 and 84 verify (checked at real points in the
+  domain, `check_points`). `symengine`'s 159, 162 and 172 are still not checked (special-function terms
+  with a parameter).
+- `giac`: apostol 17 looped on Giac terms (since #38; fixed in #73); 83, 84 and 172 as before.
 
 Notes (2026-10-22 run):
 

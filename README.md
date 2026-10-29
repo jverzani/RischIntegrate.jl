@@ -61,4 +61,4 @@ Development was greatly aided by a wider set of 1680 sample problems collected b
 
 ² The other two of the 1680 problems, 423 (∫ x²⁰ eˣ dx) and 541 (a rational function times 1/√(x⁴ + 4x³ + 2x² + 1)), fail this check only because it is done in double precision. Their answers involve heavy cancellation: coefficients up to 20! ≈ 2.4·10¹⁸ for 423, and the log of a ratio of nearly cancelling degree-10 polynomials for 541. In 512-bit arithmetic, their derivatives match the integrands to a relative error of about 10⁻⁸⁰.
 
-³ On the 1306 problems all three verify, the totals are 61 s (RischIntegrate), 3.3 s (Giac) and 10.1 min (SymPy). Most of RischIntegrate's time is Julia compiling code the first time a problem reaches it: run again in the same session, the same problems take about 15 s.
+³ On the 1306 problems all three verify, the totals are 61 s (RischIntegrate), 3.3 s (Giac) and 10.1 min (SymPy). Most of RischIntegrate's time is Julia compiling code the first time a problem reaches it: run again in the same session, the same problems take about 7 s.
