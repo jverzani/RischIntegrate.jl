@@ -10,7 +10,7 @@
 #  * reduction at infinity, d(xᵏ y) = (k x^{k-1} a + xᵏ a′/2)/y: deg P ≤ deg a - 2.
 # The remainder (P + R/D)/y (D squarefree, coprime to a) has only simple poles. If it has no
 # residues it is 0 or not elementary (Liouville: ω = dv with v integral, v = R₁ + R₂ y, and
-# deg(R₂′a + R₂a′/2) ≥ deg a - 1 > deg P). Residues need the log part (phase 2, SI2_PLAN.md).
+# deg(R₂′a + R₂a′/2) ≥ deg a - 1 > deg P). Residues need the log part.
 # ---------------------------------------------------------------------------
 
 # p + q y in F(y), y² = a, F = K(x) (K = ℚ, or ℚ(√d) for the log part)

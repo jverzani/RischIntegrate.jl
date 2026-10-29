@@ -665,15 +665,41 @@ failures, and their comments cite the Rubi problem numbers.
 - **The algebraic Risch algorithm** is implemented only in pieces: one radical of a rational
   function (substitution, Euler, hyperelliptic Hermite reduction and Liouville without residues),
   Kummer extensions with a restricted log part, two square roots (biquadratic), and nested square
-  roots in two special forms. General algebraic function fields (Trager's algorithm) are not.
+  roots in two special forms. General algebraic function fields are not: integral bases (Trager's
+  algorithm, or van Hoeij's), Puiseux expansions and places at infinity, Riemann–Roch spaces for the
+  logarithmic part in general, several radicands of genus ≥ 1 taken as one curve with a primitive
+  element. Bronstein's lazy Hermite reduction avoids the full integral basis.
+- **Mixed algebraic–transcendental towers** (Bronstein 1990): a radical of a non-rational expression
+  such as ``\sqrt{\log x}`` is refused (radicals of exponentials, ``\sqrt{1 + e^x}``, are reached by
+  substitution). Not done: the Risch differential equation over ``K(θ)[y]`` with its degree and
+  denominator bounds, and structure theorems with algebraic elements.
+- **Elliptic answers** are given with ``{}_2F_1`` (``∫ 1/\sqrt{x^4 + 1} = x\,{}_2F_1(\tfrac12,
+  \tfrac14; \tfrac54; -x^4)``), not in Legendre or Carlson form (``F``, ``E``, ``Π``), which needs the
+  roots of the radicand.
 - **Cancellation cases** of the Risch differential equation (Bronstein §6.6) are recognized but not
   solved; integrands that need them are refused.
 - **Complex constants** in the input are opaque (``\sqrt{-1}``) rather than elements of ``ℚ(i)``:
   answers are correct identities, but ``i^2 = -1`` is not used to simplify them.
-- **Parameters** are capped in number and take signs from fixed values. Answers that depend on the
-  sign of a parameter expression hold for one choice of signs only.
+- **Parameters** are capped in number. Answers that depend on the sign of a parameter expression
+  hold for one choice of signs: the caller's, through the sign oracle (step SO), else the signs of
+  fixed positive values.
 - **Output form.** Answers are not simplified beyond what the algorithm produces; leaf counts are
-  often larger than Rubi's optimal answers. Simplification is the caller's CAS's job.
+  often larger than Rubi's optimal answers, and forms such as ``\sqrt{a^2}`` are left
+  (``∫ 1/\sqrt{a^2 - x^2} = a \operatorname{asin}(x/a)/\sqrt{a^2}``). Simplification is the caller's
+  CAS's job.
+
+## References
+
+- M. Bronstein, *Symbolic Integration I: Transcendental Functions*, Springer (2nd ed. 2005): the
+  transcendental case, which the tower follows.
+- M. Bronstein, *Integration of elementary functions*, J. Symb. Comp. 9 (1990), and his thesis
+  (Berkeley, 1987): simple radical extensions, mixed towers.
+- M. Bronstein, *The lazy Hermite reduction*, INRIA RR-3562 (1998).
+- B. Trager, *Integration of algebraic functions*, PhD thesis, MIT (1984): integral bases, Hermite
+  reduction, the logarithmic part through divisors.
+- J. H. Davenport, *On the integration of algebraic functions*, LNCS 102 (1981): torsion, reduction
+  mod p.
+- R. Risch, *The solution of the problem of integration in finite terms*, Bull. AMS 76 (1970).
 
 ## Step index
 
