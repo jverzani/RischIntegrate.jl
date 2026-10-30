@@ -522,7 +522,7 @@ const OPS_HYP = Dict{Symbol,Function}(:sin => sin, :cos => cos, :sinh => sinh, :
 # parameter shift e (sin(e + f x)·cos(2e + 2f x)): y = e + f x, x = (y - e)/f, dx = dy/f, and y = e + f x is
 # substituted back. Before step TS2, whose cos e, sin e are independent constants to the constant field
 # (cos² e + sin² e = 1 is not seen: hidden zero denominators, false residue criteria, slow resultants).
-# Nothing when there is no such form, or inside another step TL: a substitution below can bring the shift
+# Nothing when there is no such form, or inside another step SL: a substitution below can bring the shift
 # back (∫ (a + b asin(c x))^(-3/2): u = sin t, then cos((v - a)/b) for v = a + b t), and the two would undo
 # each other until the stack overflows; the inner one is left to step TS2.
 const LINEAR_SHIFT = Ref(false)
