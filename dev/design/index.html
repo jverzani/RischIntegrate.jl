@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=8b4a64f4">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=4573c5ce">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -308,7 +308,7 @@
 <tr>
 <td style="text-align:left">IH</td>
 <td style="text-align:left"><code class="md-code-inline">atanh</code>, <code class="md-code-inline">acoth</code>, <code class="md-code-inline">asinh</code>, <code class="md-code-inline">acosh</code>, <code class="md-code-inline">acsch</code>, <code class="md-code-inline">asech</code></td>
-<td style="text-align:left">first <span class="md-math md-math-inline">\(A \cdot L\)</span> by parts (step AP), so the answer keeps <span class="md-math md-math-inline">\(L\)</span>: <span class="md-math md-math-inline">\(\int \operatorname{asech} x = x \operatorname{asech} x + \operatorname{asin} x\)</span>. Otherwise as logarithms: <span class="md-math md-math-inline">\(\operatorname{atanh} u = \tfrac12\log\frac{1+u}{1-u}\)</span>, <span class="md-math md-math-inline">\(\operatorname{acoth} u = \tfrac12\log\frac{u+1}{u-1}\)</span>, <span class="md-math md-math-inline">\(\operatorname{asinh} u = \log(u + \sqrt{u^2+1})\)</span>, <span class="md-math md-math-inline">\(\operatorname{acosh} u = \log(u + \sqrt{u^2-1})\)</span>, <span class="md-math md-math-inline">\(\operatorname{acsch} u = \operatorname{asinh}(1/u)\)</span>, <span class="md-math md-math-inline">\(\operatorname{asech} u = \log\frac{1 + \sqrt{1 - u^2}}{u}\)</span> (<span class="md-math md-math-inline">\(0 &lt; u \le 1\)</span>)</td>
+<td style="text-align:left">first <span class="md-math md-math-inline">\(y = cx\)</span> for <span class="md-math md-math-inline">\(L(cx)\)</span> with a parameter <span class="md-math md-math-inline">\(c\)</span> (step AL), then derivative-divides (step US: <span class="md-math md-math-inline">\(\int \operatorname{asinh} x/\sqrt{x^2+1} = \tfrac12\operatorname{asinh}^2 x\)</span>), <span class="md-math md-math-inline">\(A \cdot L\)</span> by parts (step AP) and a factor <span class="md-math md-math-inline">\(a + bL\)</span> term by term, so the answer keeps <span class="md-math md-math-inline">\(L\)</span>: <span class="md-math md-math-inline">\(\int \operatorname{asech} x = x \operatorname{asech} x + \operatorname{asin} x\)</span>. Otherwise as logarithms: <span class="md-math md-math-inline">\(\operatorname{atanh} u = \tfrac12\log\frac{1+u}{1-u}\)</span>, <span class="md-math md-math-inline">\(\operatorname{acoth} u = \tfrac12\log\frac{u+1}{u-1}\)</span>, <span class="md-math md-math-inline">\(\operatorname{asinh} u = \log(u + \sqrt{u^2+1})\)</span>, <span class="md-math md-math-inline">\(\operatorname{acosh} u = \log(u + \sqrt{u^2-1})\)</span>, <span class="md-math md-math-inline">\(\operatorname{acsch} u = \operatorname{asinh}(1/u)\)</span>, <span class="md-math md-math-inline">\(\operatorname{asech} u = \log\frac{1 + \sqrt{1 - u^2}}{u}\)</span> (<span class="md-math md-math-inline">\(0 &lt; u \le 1\)</span>)</td>
 </tr>
 <tr>
 <td style="text-align:left">AS</td>
@@ -317,8 +317,8 @@
 </tr>
 <tr>
 <td style="text-align:left">AL</td>
-<td style="text-align:left"><code class="md-code-inline">asin(u)</code>, <code class="md-code-inline">acos(u)</code>, … with <span class="md-math md-math-inline">\(u = ax + b\)</span> and <span class="md-math md-math-inline">\(a, b\)</span> parameters</td>
-<td style="text-align:left"><span class="md-math md-math-inline">\(y = ax + b\)</span>. The radicands are rewritten as polynomials in <span class="md-math md-math-inline">\(y\)</span>, with constants simplified (<span class="md-math md-math-inline">\(1 - c^2x^2 \mapsto 1 - y^2\)</span>), then step AS is used and <span class="md-math md-math-inline">\(y = ax + b\)</span> is substituted back</td>
+<td style="text-align:left"><code class="md-code-inline">asin(u)</code>, <code class="md-code-inline">acos(u)</code>, …, and the inverse hyperbolic functions, with <span class="md-math md-math-inline">\(u = ax + b\)</span> and <span class="md-math md-math-inline">\(a, b\)</span> parameters</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(y = ax + b\)</span>. The radicands are rewritten as polynomials in <span class="md-math md-math-inline">\(y\)</span>, with constants simplified (<span class="md-math md-math-inline">\(1 - c^2x^2 \mapsto 1 - y^2\)</span>) and a parameter factor taken out (<span class="md-math md-math-inline">\(\sqrt{d + dy^2} = \sqrt d\sqrt{1 + y^2}\)</span>, step RK), then step AS (IH) is used and <span class="md-math md-math-inline">\(y = ax + b\)</span> is substituted back: <span class="md-math md-math-inline">\(\int (a + b\operatorname{asinh} cx)/\sqrt{d + c^2dx^2} = (a + b\operatorname{asinh} cx)^2/(2bc\sqrt d)\)</span></td>
 </tr>
 <tr>
 <td style="text-align:left">PL</td>
@@ -830,7 +830,7 @@
 <tr>
 <td style="text-align:left">AL</td>
 <td style="text-align:left"><code class="md-code-inline">inverse_trig.jl</code></td>
-<td style="text-align:left"><code class="md-code-inline">asin</code>, <code class="md-code-inline">acos</code> of <span class="md-math md-math-inline">\(ax + b\)</span> with parameters</td>
+<td style="text-align:left"><code class="md-code-inline">asin</code>, <code class="md-code-inline">acos</code>, <code class="md-code-inline">asinh</code>, … of <span class="md-math md-math-inline">\(ax + b\)</span> with parameters</td>
 </tr>
 <tr>
 <td style="text-align:left">AT</td>
@@ -1072,6 +1072,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=8b4a64f4"></script>
+  <script src="../assets/materialdocs.js?v=4573c5ce"></script>
 </body>
 </html>
