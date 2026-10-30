@@ -1393,9 +1393,9 @@ end
     end
 end
 
-# step TL: arguments r·(e + f x) with a parameter shift e: y = e + f x, so cos e, sin e never enter the
+# step SL: arguments r·(e + f x) with a parameter shift e: y = e + f x, so cos e, sin e never enter the
 # constant field (with them, (c + dx)/(a - a sin(e + fx)) was refused by the residue criterion)
-@testset "shifted linear arguments (step TL)" begin
+@testset "shifted linear arguments (step SL)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
     ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7), :(c = 1.3), :(d = 0.6), :(e = 0.4), :(f = 1.1)), e))
     for f in (:((c + d * x) / (a - a * sin(e + f * x))), :(sec(c + d * x) ^ 4 / (a + a * sin(c + d * x))),
@@ -1407,7 +1407,7 @@ end
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
         end
     end
-    # not nested: after u = sin t, v = a + b t brings back cos((v - a)/b), which a second step TL would undo
+    # not nested: after u = sin t, v = a + b t brings back cos((v - a)/b), which a second step SL would undo
     # (a stack overflow before)
     @test_throws Risch.NotElementary Risch.risch_integrate(:(1 / (a + b * asin(c * x)) ^ (3 / 2)), :x; build = build, lift = identity)
 end
@@ -1425,6 +1425,29 @@ end
             @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, ev(f, x0); rtol = 1e-5)
         end
     end
+end
+
+# step EQ: Hermite reduction on the conic y² = a before the Euler substitution: the algebraic part g √a is
+# printed in x, only the remainder (P + R/D)/√a takes the substitution
+@testset "Hermite reduction on the conic (step EQ)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for (f, pts, G) in ((:(x / sqrt(1 + x ^ 2)), (-0.6, 0.3, 1.6), "sqrt(1 + x ^ 2)"),
+                        (:(x ^ 3 / sqrt(x ^ 2 - 1)), (1.2, 2.0, 3.1), "(2//3 + 1//3 * x ^ 2) * sqrt(x ^ 2 - 1)"),
+                        (:(1 / (x ^ 2 * sqrt(1 - x ^ 2))), (0.1, 0.4, 0.9), "(-1 / x) * sqrt(1 + -1 * x ^ 2)"),
+                        (:(1 / ((x ^ 2 + 1) ^ 2 * sqrt(x ^ 2 + 2))), (-0.6, 0.3, 1.6), nothing),
+                        (:((1 + x) / sqrt(x ^ 2 + x + 1) + x ^ 2), (-0.6, 0.3, 1.6), nothing),
+                        (:(sqrt(2 + 3x - x ^ 2) / x), (0.3, 1.2, 3.1), nothing),
+                        # (a rational part with poles: one Euler substitution, no log(1 + x) beside it)
+                        (:(1 / (1 + sqrt(x ^ 2 + 2x + 2))), (-0.6, 0.3, 1.6), "2 / (2 + (sqrt(x ^ 2 + 2x + 2) + x)) + log(1 + (sqrt(x ^ 2 + 2x + 2) + x))"))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        G === nothing || @test string(F) == G
+        for x0 in pts
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    # a RootSum part with elementary part 0 adds nothing (was "+ 0 +")
+    @test !occursin("+ 0 +", string(Risch.risch_integrate(:(tanh(x) / sqrt(exp(2x) + exp(x))), :x; build = build, lift = identity)))
 end
 
 # step BQ4: an even quartic x⁴ + b x² + c (b² < 4c) whose residues need nested radicals: (x² ± r x + q),

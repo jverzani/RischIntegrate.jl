@@ -152,7 +152,7 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
                                                                  Any[ScaledRootSum(c, rs) for rs in G.rootsums], G.var)
         return mk(bd, :*, c, G)
     end
-    r = try                                            # sin(e + f x): y = e + f x (step TL)
+    r = try                                            # sin(e + f x): y = e + f x (step SL)
         integrate_linear_shift(f, x; build = build, lift = lift, verify = verify)
     catch e
         e isa RischNotImplemented || rethrow()         # (refused in y: the addition formulas may still do)
@@ -437,6 +437,8 @@ rootsum_subst(r, back, bd::Builder) = nothing
 # the sum of answers, some of them with RootSums
 function add_answers(bd::Builder, Fs, xk::String)
     els = Any[F isa IntegralWithRootSums ? F.elementary : F for F in Fs]
+    nz = Any[e for e in els if leaf_rational(e) != 0]   # (a RootSum's elementary part may be 0)
+    els = isempty(nz) ? els[1:1] : nz
     E = length(els) == 1 ? els[1] : mk(bd, :+, els...)
     any(F -> F isa IntegralWithRootSums, Fs) || return E
     IntegralWithRootSums(E, Any[rs for F in Fs if F isa IntegralWithRootSums for rs in F.rootsums], xk)
@@ -516,11 +518,11 @@ function expand_trig_shifts(f, x, xk::String, build, lift)
 end
 const OPS_HYP = Dict{Symbol,Function}(:sin => sin, :cos => cos, :sinh => sinh, :cosh => cosh)
 
-# step TL: every trigonometric or hyperbolic argument with x is r·(e + f x), r rational, one of them with a
+# step SL: every trigonometric or hyperbolic argument with x is r·(e + f x), r rational, one of them with a
 # parameter shift e (sin(e + f x)·cos(2e + 2f x)): y = e + f x, x = (y - e)/f, dx = dy/f, and y = e + f x is
 # substituted back. Before step TS2, whose cos e, sin e are independent constants to the constant field
 # (cos² e + sin² e = 1 is not seen: hidden zero denominators, false residue criteria, slow resultants).
-# Nothing when there is no such form, or inside another step TL: a substitution below can bring the shift
+# Nothing when there is no such form, or inside another step SL: a substitution below can bring the shift
 # back (∫ (a + b asin(c x))^(-3/2): u = sin t, then cos((v - a)/b) for v = a + b t), and the two would undo
 # each other until the stack overflows; the inner one is left to step TS2.
 const LINEAR_SHIFT = Ref(false)
