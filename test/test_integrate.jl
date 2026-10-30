@@ -1434,13 +1434,17 @@ end
                         (:(1 / (x ^ 2 * sqrt(1 - x ^ 2))), (0.1, 0.4, 0.9), "(-1 / x) * sqrt(1 + -1 * x ^ 2)"),
                         (:(1 / ((x ^ 2 + 1) ^ 2 * sqrt(x ^ 2 + 2))), (-0.6, 0.3, 1.6), nothing),
                         (:((1 + x) / sqrt(x ^ 2 + x + 1) + x ^ 2), (-0.6, 0.3, 1.6), nothing),
-                        (:(sqrt(2 + 3x - x ^ 2) / x), (0.3, 1.2, 3.1), nothing))
+                        (:(sqrt(2 + 3x - x ^ 2) / x), (0.3, 1.2, 3.1), nothing),
+                        # (a rational part with poles: one Euler substitution, no log(1 + x) beside it)
+                        (:(1 / (1 + sqrt(x ^ 2 + 2x + 2))), (-0.6, 0.3, 1.6), "2 / (2 + (sqrt(x ^ 2 + 2x + 2) + x)) + log(1 + (sqrt(x ^ 2 + 2x + 2) + x))"))
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)
         G === nothing || @test string(F) == G
         for x0 in pts
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
         end
     end
+    # a RootSum part with elementary part 0 adds nothing (was "+ 0 +")
+    @test !occursin("+ 0 +", string(Risch.risch_integrate(:(tanh(x) / sqrt(exp(2x) + exp(x))), :x; build = build, lift = identity)))
 end
 
 # step BQ4: an even quartic x⁴ + b x² + c (b² < 4c) whose residues need nested radicals: (x² ± r x + q),
