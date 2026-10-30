@@ -48,6 +48,7 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         end
     end
     check_leaves(f, string(x))                                         # step WR
+    RISCH_DEPTH[] += 1
     try
         r = integrate_direct(f, x; build = build, lift = lift, verify = verify)
         # a RootSum over a parameter field: a homogeneous f scales to ℚ (step PS)
@@ -116,6 +117,13 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         r === nothing || return r
         r = try_sum_split(f, x; build = build, lift = lift, verify = verify)   # term by term (step LS)
         r === nothing || return r
+        # a radical refused for its radicand: a parameter factor of every summand taken out, (a + a sin x)^e =
+        # a^e (1 + sin x)^e for a > 0 (step RK; last, and in the outermost call only, so that the routes that
+        # already work are not changed: a substitution refused inside, step AL or US, leaves the next one its chance)
+        if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg) && RISCH_DEPTH[] == 1
+            g = split_radicand_content(f, x, string(x), build, lift)
+            g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
+        end
         # a u-substitution may have failed only for want of a special function in the term type: once
         # through Expr, keeping the answer when it has special terms
         if !(f isa Expr) && !EXPR_RETRY[]
@@ -131,9 +139,12 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             (r2 isa IntegralWithRootSums && any(t -> t isa ExprTerm, r2.rootsums)) && return r2
         end
         throw(e)
+    finally
+        RISCH_DEPTH[] -= 1
     end
 end
 const EXPR_RETRY = Ref(false)                           # no nested Expr retries
+const RISCH_DEPTH = Ref(0)                              # nested risch_integrate calls (step RK: the outermost only)
 
 function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x

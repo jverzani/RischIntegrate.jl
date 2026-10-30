@@ -1450,6 +1450,21 @@ end
     @test !occursin("+ 0 +", string(Risch.risch_integrate(:(tanh(x) / sqrt(exp(2x) + exp(x))), :x; build = build, lift = identity)))
 end
 
+# step RK: a parameter factor of every summand out of a refused radicand, (a + a sin x)^e = a^e (1 + sin x)^e (a > 0),
+# then step PW for the half-angle square 1 + sin x = (cos(x/2) + sin(x/2))²
+@testset "parameter factor out of a radicand (step RK)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 1.3), :(c = 0.4), :(d = 1.1), :(e = 0.7)), e))
+    for f in (:(sqrt(a + a * sin(x))), :(sqrt(a + a * cos(x))), :(sec(x) ^ 2 / (a + a * sin(x)) ^ (3 / 2)),
+              :((a ^ 2 + a ^ 2 * cos(x)) ^ (3 / 2)), :(cos(x) / sqrt(e - e * sin(x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !occursin("sqrt(a ^ 2)", string(F))
+        for x0 in (0.3, 1.1)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+end
+
 # step BQ4: an even quartic x⁴ + b x² + c (b² < 4c) whose residues need nested radicals: (x² ± r x + q),
 # q = √c, r = √(2q - b), s = √(2q + b), atans and logs continuous on ℝ
 @testset "even quartics with nested real forms (step BQ4)" begin

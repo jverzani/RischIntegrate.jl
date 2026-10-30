@@ -63,6 +63,103 @@ function radicand_element(u, xk::String)
     (isempty(T.levels) && ctype(T) === Q) ? el : nothing
 end
 
+# step RK: a radical (c V)^e whose radicand has a factor c free of x with a parameter in every summand
+# ((a + a sin x)^(3/2), √(d + c²d x²), (e cos x)^(7/2)) is c^e V^e for c > 0, and (-c)^e (-V)^e for c < 0, the
+# sign of c from the caller (step SO) or the positive parameter values. c^e is then a constant (step IT) and V
+# has rational coefficients again, for steps PW, MR and the radicals of x. Nothing when no radical has such a
+# factor or a sign is undecided. Tried when the integrand is refused for a radical of a non-rational radicand.
+function split_radicand_content(f, x, xk::String, build, lift)
+    @nospecialize f x
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    function summands(u, sg, out)
+        if safe_iscall(u) && opname(operation(u)) === :+
+            foreach(a -> summands(a, sg, out), arguments(u))
+        elseif safe_iscall(u) && opname(operation(u)) === :- && length(arguments(u)) == 2
+            summands(arguments(u)[1], sg, out); summands(arguments(u)[2], -sg, out)
+        elseif safe_iscall(u) && opname(operation(u)) === :- && length(arguments(u)) == 1
+            summands(arguments(u)[1], -sg, out)
+        else
+            push!(out, (u, sg))
+        end
+        out
+    end
+    prod_term(ts) = isempty(ts) ? bd.lift(1) : length(ts) == 1 ? ts[1] : mk(bd, :*, ts...)
+    pw(t, k) = k == 1 ? t : mk(bd, :^, t, bd.lift(k))
+    # (|c|, ±V) for the radicand u, or nothing
+    function split(u)
+        ss = summands(u, 1, Tuple{Any,Int}[])
+        fss = [product_factors!(Any[], s, 1) for (s, _) in ss]
+        common = nothing                                # factor string ↦ (factor, least exponent)
+        for fs in fss
+            here = Dict{String,Tuple{Any,Int}}()
+            for (t, k) in fs
+                (k > 0 && !has_x(t, xk) && has_param(t, xk)) || continue
+                s = string(t)
+                here[s] = (t, get(here, s, (t, 0))[2] + k)
+            end
+            common = common === nothing ? here :
+                     Dict(s => (t, min(k, here[s][2])) for (s, (t, k)) in common if haskey(here, s))
+            isempty(common) && return nothing
+        end
+        (common === nothing || isempty(common)) && return nothing
+        c = prod_term(Any[pw(t, k) for (t, k) in values(common)])
+        vs = Any[]
+        for ((_, sg), fs) in zip(ss, fss)
+            left = Dict(s => k for (s, (_, k)) in common)
+            rest = Any[]
+            for (t, k) in fs
+                s = string(t)
+                if haskey(left, s) && k > 0
+                    m = min(k, left[s]); left[s] -= m; k -= m
+                end
+                k == 0 || push!(rest, pw(t, k))
+            end
+            v = prod_term(rest)
+            push!(vs, sg == 1 ? v : mk(bd, :*, bd.lift(-1), v))
+        end
+        V = length(vs) == 1 ? vs[1] : mk(bd, :+, vs...)
+        T, el = try
+            build_tower(c, xk)
+        catch e
+            (e isa RischNotImplemented || e isa RischError) || rethrow()
+            return nothing
+        end
+        sgn = const_sign(c)
+        sgn == 1 && return (collect(values(common)), V)
+        sgn == -1 && return (Any[(mk(bd, :*, bd.lift(-1), c), 1)], mk(bd, :*, bd.lift(-1), V))
+        nothing
+    end
+    function const_sign(c)
+        T, el = try
+            build_tower(c, xk)
+        catch e
+            (e isa RischNotImplemented || e isa RischError) || rethrow()
+            return nothing
+        end
+        (isempty(T.levels) && degree(el.num) <= 0 && degree(el.den) == 0) || return nothing
+        param_sign(el.num.c[1] / el.den.c[1], T.consts)
+    end
+    changed = false
+    function rw(t)
+        safe_iscall(t) && !isempty(arguments(t)) || return t
+        rp = radical_parts(t)
+        if rp !== nothing && has_x(rp[2], xk)
+            cv = split(rp[2])
+            if cv !== nothing
+                changed = true
+                e = rp[1]
+                rad(b) = e == Q(1) // 2 ? mk(bd, :sqrt, b) : mk(bd, :^, b, bd.lift(e))
+                # (tᵏ)^e = t^(k e) for an integer k e and t > 0: √(a²) = a, not a factor a/√(a²) in the answer
+                cs = Any[(isinteger(k * e) && const_sign(t) == 1) ? pw(t, Int(k * e)) : rad(pw(t, k)) for (t, k) in cv[1]]
+                return mk(bd, :*, cs..., rad(cv[2]))
+            end
+        end
+        term_rebuild(bd, t, Any[rw(a) for a in arguments(t)])
+    end
+    g = rw(f)
+    changed ? g : nothing
+end
+
 # φ ∈ S(t) (same representation as S(x); S = ℚ or the tower's constant field) as an element
 # of K_0 of the tower T
 to_K0(T::Tower, φ::Frac{UPoly{Q}}) = (C = ctype(T); P = UPoly{C};
