@@ -77,14 +77,14 @@ function rewrite_acot(f, x, build, lift)
     rw(f)
 end
 
-# [(kind, argument term, whole term)] of the asin / acos / acsc / asec subterms of f
-function collect_arcs(f, xk::String, out = Any[])
+# [(kind, argument term, whole term)] of the asin / acos / acsc / asec subterms of f (`fns`: other functions)
+function collect_arcs(f, xk::String, out = Any[]; fns = (:asin, :acos, :acsc, :asec))
     if safe_iscall(f)
         args = arguments(f)
         n = opname(operation(f))
-        n in (:asin, :acos, :acsc, :asec) && length(args) == 1 && push!(out, (n, args[1], f))
+        n in fns && length(args) == 1 && push!(out, (n, args[1], f))
         for a in args
-            collect_arcs(a, xk, out)
+            collect_arcs(a, xk, out; fns = fns)
         end
     end
     out
@@ -97,6 +97,9 @@ end
 
 # step AL: asin, acos, acsc, asec of a x + b with a, b free of x but not rational (asin(a x), the parameter a): y = a x + b,
 # ∫ f dx = ∫ f((y - b)/a) dy/a with the arcs of y, then y = a x + b. Nothing when the arguments differ or are not linear.
+# The same for the inverse hyperbolic functions (step IH), so (a + b asinh(c x))/√(1 + c²x²) is integrated as
+# (a + b asinh y)/√(1 + y²) (after step RC has taken d out of √(d + c²d x²)).
+const ARC_SCALED = (:asin, :acos, :acsc, :asec, :asinh, :acosh, :atanh, :acoth, :acsch, :asech)
 function integrate_arcs_scaled(f, x, arcs; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     xk = string(x)
@@ -115,7 +118,7 @@ function integrate_arcs_scaled(f, x, arcs; build = nothing, lift = nothing, veri
     function walk(t)
         isnode(t) || return string(t) == xk ? X : t
         n = opname(operation(t))
-        (n in (:asin, :acos, :acsc, :asec) && length(arguments(t)) == 1 && string(arguments(t)[1]) == Ls) &&
+        (n in ARC_SCALED && length(arguments(t)) == 1 && string(arguments(t)[1]) == Ls) &&
             return term_rebuild(bd, t, Any[y])
         rp = radical_parts(t)
         if rp !== nothing && depends_on(rp[2], xk)      # a radicand as a polynomial in y (1 - c²x² ↦ 1 - y²)
@@ -158,6 +161,10 @@ function integrate_arcs_scaled(f, x, arcs; build = nothing, lift = nothing, veri
         end
     end
     g = mk(bd, :*, cs..., gs...)
+    # the radicands rewritten in y keep a parameter factor (d + d y² from d + c²d x²): out (step RK), so that the
+    # radical is u′'s, √(1 + y²) for asinh y
+    g2 = split_radicand_content(g, x, xk, build, lift)
+    (g2 !== nothing && any(a -> a[1] in INV_HYP, arcs)) && (g = g2)
     G = risch_integrate(g, x; build = build, lift = lift, verify = verify)
     back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? L : t)
     subst_answer(G, back, bd)
@@ -506,7 +513,9 @@ function try_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
             dL = term_deriv(bd, L, xk)
             Lk = k == 1 ? L : mk(bd, :^, L, bd.lift(k))
             dLk = k == 1 ? dL : mk(bd, :*, bd.lift(k), k == 2 ? L : mk(bd, :^, L, bd.lift(k - 1)), dL)
-            H = risch_integrate(mk(bd, :*, Qt, dLk), x; build = build, lift = lift, verify = verify)
+            # (one flat product, so that step IT sees a constant factor of Q: b·(…)√(1 + x²)·(1/√(1 + x²)))
+            QdL = Any[e == 1 ? t : mk(bd, :^, t, bd.lift(e)) for (t, e) in product_factors!(product_factors!(Any[], Qt, 1), dLk, 1)]
+            H = risch_integrate(length(QdL) == 1 ? QdL[1] : mk(bd, :*, QdL...), x; build = build, lift = lift, verify = verify)
             H isa IntegralWithRootSums && return nothing
             mk(bd, :+, mk(bd, :*, Qt, Lk), mk(bd, :*, bd.lift(-1), H))
         end
@@ -557,6 +566,30 @@ function numeric_antiderivative(f, G, xk::String)
         (found += 1) == 2 && return true
     end
     true
+end
+
+# f = (s₁ + s₂ + …)·R with a factor that is a sum, one of whose summands has an operation `isop` (a + b asinh x):
+# ∫ f = Σ ∫ sᵢ R, each by the usual route (so by parts where sᵢ = b L). Nothing when f has no such factor, or a
+# term is refused or not elementary (the terms can cancel; the caller's route then sees f whole).
+function distribute_sum_factor(f, x, xk::String, isop; build, lift, verify::Bool)
+    @nospecialize f x
+    fs = product_factors!(Any[], f, 1)
+    hasop(t) = safe_iscall(t) && !isempty(arguments(t)) && (isop(opname(operation(t))) || any(hasop, arguments(t)))
+    j = findfirst(((t, e),) -> e == 1 && safe_iscall(t) && opname(operation(t)) === :+ && hasop(t), fs)
+    j === nothing && return nothing
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    rest = Any[e == 1 ? t : mk(bd, :^, t, bd.lift(e)) for (i, (t, e)) in enumerate(fs) if i != j]
+    Fs = Any[]
+    for s in arguments(fs[j][1])
+        F = try
+            risch_integrate(isempty(rest) ? s : mk(bd, :*, s, rest...), x; build = build, lift = lift, verify = verify)
+        catch e
+            (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+            return nothing
+        end
+        push!(Fs, F)
+    end
+    add_answers(bd, Fs, xk)
 end
 
 # run g() with PARTS set; nothing if it is not elementary or not implemented

@@ -2166,6 +2166,23 @@ end
     @test_throws Risch.NotElementary Risch.risch_integrate(:(x ^ 3 * atanh(x) * log(1 - x ^ 2)), :x; build = build, lift = identity)
 end
 
+# step AL for the inverse hyperbolic functions: y = c x, √(d + d y²) = √d √(1 + y²) (step RK); then step US before
+# by parts, and a factor (a + b L) term by term, so the answers keep asinh
+@testset "asinh(c x) with parameters (steps AL, IH)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7), :(b = 1.3), :(c = 0.9), :(d = 1.6)), e))
+    for (f, G) in ((:((a + b * asinh(c * x)) / sqrt(d + c ^ 2 * d * x ^ 2)), "(a + b * asinh(c * x)) ^ 2"),
+                   (:(x * sqrt(d + c ^ 2 * d * x ^ 2) * (a + b * asinh(c * x))), "asinh(c * x)"),
+                   (:((x ^ 5 * (a + b * asinh(c * x))) / sqrt(d + c ^ 2 * d * x ^ 2)), "asinh(c * x)"),
+                   (:(asinh(x) / sqrt(x ^ 2 + 1)), "1//2 * asinh(x) ^ 2"))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin(G, string(F)) && !occursin("log", string(F))
+        for x0 in (-0.6, 0.4, 1.7)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+end
+
 # step AL: asin, acos, acsc, asec of a x + b with parameters: y = a x + b, the radicands rewritten in y (1 - c²x² ↦ 1 - y²);
 # step RY declines towers over ℚ(i) (a RischError before)
 @testset "asin, acos of a x + b with parameters (step AL)" begin
