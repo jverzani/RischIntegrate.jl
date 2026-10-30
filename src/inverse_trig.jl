@@ -510,9 +510,53 @@ function try_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
             H isa IntegralWithRootSums && return nothing
             mk(bd, :+, mk(bd, :*, Qt, Lk), mk(bd, :*, bd.lift(-1), H))
         end
+        # Q and H are each checked, but in the tower log(w) and log(-w) are one generator: the iπ of a log of a
+        # negative argument in Q (log(x² - 1) where |x| < 1) is dropped in H's integrand Q L′, where it is not a
+        # constant (∫ x³ atanh(x) log(1 - x²)). So G′ = f is checked numerically at real points of f.
+        (G !== nothing && verify && !numeric_antiderivative(f, G, xk)) && (G = nothing)
         G === nothing || return G
     end
     nothing
+end
+
+# G′ = f numerically (central differences) at two points where f is real and finite, with the parameters at
+# fixed positive values; true when no such points are found or a term cannot be evaluated
+function numeric_antiderivative(f, G, xk::String)
+    names = String[]
+    function leaves!(t)
+        if safe_iscall(t) && !isempty(arguments(t))
+            foreach(leaves!, arguments(t))
+        else
+            s = string(t)
+            (s != xk && leaf_rational(t) === nothing && !is_e_const(t) && !(s in ("pi", "π")) && !(s in names)) && push!(names, s)
+        end
+    end
+    leaves!(f); leaves!(G)
+    sort!(names)
+    function ev(t, x0)
+        if safe_iscall(t) && !isempty(arguments(t))
+            return ComplexF64(op_function(t)((ev(a, x0) for a in arguments(t))...))
+        end
+        s = string(t)
+        s == xk && return ComplexF64(x0)
+        k = findfirst(==(s), names)
+        k === nothing || return ComplexF64(0.5 + 0.3k)
+        term_value(t, xk, 0.0)
+    end
+    found = 0
+    for x0 in (0.13, 0.27, 0.41, 0.58, 0.83, 1.21, 1.77, 2.6, -0.37, -1.4)
+        fv, dG = try
+            fv = ev(f, x0)
+            h = 1e-6 * max(1.0, abs(x0))
+            fv, (ev(G, x0 + h) - ev(G, x0 - h)) / (2h)
+        catch
+            continue
+        end
+        (isfinite(fv) && isfinite(dG) && abs(imag(fv)) <= 1e-10 * max(1.0, abs(fv))) || continue
+        abs(dG - fv) <= 1e-4 * max(1.0, abs(fv)) || return false
+        (found += 1) == 2 && return true
+    end
+    true
 end
 
 # run g() with PARTS set; nothing if it is not elementary or not implemented
