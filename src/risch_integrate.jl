@@ -152,6 +152,8 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
                                                                  Any[ScaledRootSum(c, rs) for rs in G.rootsums], G.var)
         return mk(bd, :*, c, G)
     end
+    g = split_radicand_content(f, x, xk, build, lift)  # (a + a sin x)^e = a^e (1 + sin x)^e, a > 0 (step RC)
+    g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
     r = try                                            # sin(e + f x): y = e + f x (step SL)
         integrate_linear_shift(f, x; build = build, lift = lift, verify = verify)
     catch e
