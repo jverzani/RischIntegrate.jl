@@ -1405,6 +1405,20 @@ end
     @test string(integrate((5 - sin(t)) * sqrt(sin(t) ^ 2 + cos(t) ^ 2), t)) == "5*t + cos(t)"
 end
 
+# step HT: a radical refused for its radicand, of trigonometric functions of one linear argument: t = tan(L/2),
+# then √(2/(1 - t²)) = Y/(1 - t²), Y² = 2(1 - t²) (step SQ without repeated factors). Checked where sec > 0
+@testset "half-angle substitution in radicals (step HT)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7), :(c = 0.3), :(d = 1.1)), e))
+    for f in (:(sqrt(1 + sec(x))), :(sqrt(a + a * sec(c + d * x))), :(cos(x) ^ 3 * sqrt(a + a * sec(x))),
+              :(sec(x) / sqrt(a + a * sec(x))), :((csc(x) - sin(x)) ^ (1 / 2)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.2, 0.9)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
 # step SL: arguments r·(e + f x) with a parameter shift e: y = e + f x, so cos e, sin e never enter the
 # constant field (with them, (c + dx)/(a - a sin(e + fx)) was refused by the residue criterion)
 @testset "shifted linear arguments (step SL)" begin
