@@ -1,0 +1,1077 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Design notes — RischIntegrate.jl</title>
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=f6d307cb">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <meta name="title" content="Design notes — RischIntegrate.jl">
+  <meta property="og:title" content="Design notes — RischIntegrate.jl">
+  <meta property="twitter:title" content="Design notes — RischIntegrate.jl">
+  <meta name="description" content="Documentation for RischIntegrate.jl.">
+  <meta property="og:description" content="Documentation for RischIntegrate.jl.">
+  <meta property="twitter:description" content="Documentation for RischIntegrate.jl.">
+  <script>
+    (function(){
+      document.documentElement.classList.add('no-transition');
+      var t=localStorage.getItem('md-theme');if(t)document.documentElement.setAttribute('data-theme',t);
+      window.addEventListener('load',function(){setTimeout(function(){document.documentElement.classList.remove('no-transition');},50);});
+    })()
+  </script>
+</head>
+<body data-warn-outdated>
+  <header class="md-navbar">
+    <button id="md-hamburger" class="md-icon-btn md-hamburger" aria-label="Toggle navigation" aria-expanded="false"><svg class="md-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg></button>
+    <span class="md-navbar-title">RischIntegrate.jl</span>
+    <span class="md-navbar-spacer"></span>
+    <button id="md-search-btn" class="md-search-bar" aria-label="Search documentation" aria-expanded="false">
+      <svg class="md-icon md-search-bar-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+      <span class="md-search-bar-label">Search docs</span>
+      <kbd class="md-search-bar-kbd">Ctrl K</kbd>
+    </button>
+    <div id="md-version" class="md-version" hidden>
+      <button id="md-version-btn" class="md-version-btn" aria-haspopup="listbox" aria-expanded="false" aria-label="Select documentation version">
+        <span id="md-version-current" class="md-version-current"></span>
+        <svg class="md-icon md-version-caret" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M7 10l5 5 5-5z"/></svg>
+      </button>
+      <ul id="md-version-menu" class="md-version-menu" role="listbox" hidden></ul>
+    </div>
+    <a class="md-icon-btn md-repo-link" href="https://github.com/jverzani/RischIntegrate.jl" title="View the repository on GitHub" aria-label="View the repository on GitHub" rel="noopener" target="_blank"><svg class="md-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 .3a12 12 0 00-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 016 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.2v3.3c0 .3.1.7.8.6A12 12 0 0012 .3z"/></svg><span class="md-repo-label">GitHub</span></a>
+    <button id="md-theme-toggle" class="md-icon-btn" title="Toggle dark mode" aria-label="Toggle dark mode"><svg class="md-icon md-icon-light" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58a.996.996 0 00-1.41 0 .996.996 0 000 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37a.996.996 0 00-1.41 0 .996.996 0 000 1.41l1.06 1.06c.39.39 1.03.39 1.41 0a.996.996 0 000-1.41l-1.06-1.06zm1.06-10.96a.996.996 0 000-1.41.996.996 0 00-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06zM7.05 18.36a.996.996 0 000-1.41.996.996 0 00-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06z"/></svg><svg class="md-icon md-icon-dark" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg></button>
+  </header>
+  <div class="md-layout">
+    <nav class="md-sidebar">
+      <a href="../">Home</a>
+      <a href="../usage/">Usage</a>
+      <a href="../algorithm/">How it works</a>
+      <a href="../design/" class="md-nav-active">Design notes</a>
+      <a href="../reference/">Reference</a>
+    </nav>
+    <main class="md-content">
+      <article class="md-article">
+      <div class="md-article-actions"><a class="md-icon-btn md-edit-link" href="https://github.com/jverzani/RischIntegrate.jl/blob/main/docs/src/design.md" title="Edit source on GitHub" aria-label="Edit source on GitHub"><svg class="md-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 000-1.41l-2.34-2.34a.996.996 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></a></div>
+<h1 id="Design-notes" class="md-heading">Design notes<a href="#Design-notes" class="md-heading-anchor" aria-label="Link to this section">#</a></h1>
+<p>RischIntegrate.jl finds antiderivatives of expressions built by other symbolic packages. The core is the transcendental Risch algorithm as presented in Bronstein&#39;s <em>Symbolic Integration I</em>. Around it is a sequence of substitutions, rewrites and special-function steps that bring other integrands to the cases the algorithm handles. This page describes how the pieces fit together and follows an integrand through the steps that look for its antiderivative.</p>
+<p>The source refers to its steps by short codes (step EP, step US, step RC, …). The codes are used here too, so a passage of these notes can be matched with the comment in <code class="md-code-inline">src/</code> that implements it. A table of all of them is at the end.</p>
+<h2 id="Goals" class="md-heading">Goals<a href="#Goals" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
+<ul class="md-list-tight">
+<li><p><strong>Any term type.</strong> The input is any term that implements the <a href="https://github.com/JuliaSymbolics/TermInterface.jl">TermInterface.jl</a> methods <code class="md-code-inline">iscall</code>, <code class="md-code-inline">operation</code> and <code class="md-code-inline">arguments</code>: SymEngine, SymbolicUtils, Symbolics, SimpleExpressions, Giac, or Julia&#39;s <code class="md-code-inline">Expr</code>. The package reads the term, but does no arithmetic with it.</p>
+</li>
+<li><p><strong>Exact algebra of its own.</strong> Every computation is done with the package&#39;s own dense polynomials and rational functions over exact fields: <span class="md-math md-math-inline">\(ℚ\)</span>, <span class="md-math md-math-inline">\(ℚ(i)\)</span>, quadratic fields, and rational function fields of parameters and transcendental constants. No other CAS is called.</p>
+</li>
+<li><p><strong>Answers in the user&#39;s term type.</strong> The result is rebuilt by calling operations as functions (<code class="md-code-inline">+</code>, <code class="md-code-inline">*</code>, <code class="md-code-inline">log</code>, <code class="md-code-inline">atan</code>, …) on the user&#39;s terms. The keywords <code class="md-code-inline">build</code> and <code class="md-code-inline">lift</code> change how that happens.</p>
+</li>
+<li><p><strong>Verified answers.</strong> Every answer is differentiated and compared with the integrand, exactly, in the field where it was computed (rational functions over a parameter field: at two values of the parameters, see Verification). A failed check is a <code class="md-code-inline">RischError</code>, that is, a bug.</p>
+</li>
+<li><p><strong>Honest refusals.</strong> Without an answer, the package says why: <code class="md-code-inline">NotElementary</code> when the integral is proved to have no elementary antiderivative (and no form with the special functions used here was found), <code class="md-code-inline">RischNotImplemented</code> when the integrand is outside the implemented cases.</p>
+</li>
+<li><p><strong>Real answers on the real line.</strong> For a real integrand, the answer is a real expression, continuous where the integrand is, whenever the algorithm can arrange it (real forms of complex logarithms, <code class="md-code-inline">atan</code>s of polynomials instead of rational functions, jump corrections for <code class="md-code-inline">tan</code>-substitutions).</p>
+</li>
+</ul>
+<p>Simplifying expressions in symbolic constants, such as <span class="md-math md-math-inline">\(\cos^2 a + \sin^2 a = 1\)</span>, is left to the caller&#39;s CAS.</p>
+<h2 id="Architecture" class="md-heading">Architecture<a href="#Architecture" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
+<p>An integral goes through three layers:</p>
+<div class="md-code-block">
+<button class="md-copy-btn" title="Copy to clipboard" aria-label="Copy code"><span class="md-copy-icon">⧉</span><span class="md-copy-feedback">Copied!</span></button>
+<pre><code> user&#39;s term ──parse──▶ element of an exact differential field ──integrate──▶ exact answer
+                        (tower ℚ(x)(θ₁)…(θₙ) over a constant field)          (verified there)
+                                                                                    │
+ user&#39;s term ◀──────────────────────────── build ───────────────────────────────────┘</code></pre>
+</div>
+<ol class="md-list-tight">
+<li><p><strong>Parse.</strong> The term is read into an element of a differential field: a rational function in <code class="md-code-inline">x</code> over a constant field, or a <em>tower</em> <span class="md-math md-math-inline">\(K_n = ℚ(x)(θ_1)…(θ_n)\)</span> of transcendental monomials (<code class="md-code-inline">exp</code>, <code class="md-code-inline">log</code>, <code class="md-code-inline">atan</code>). Symbols other than <code class="md-code-inline">x</code> become indeterminates of the constant field.</p>
+</li>
+<li><p><strong>Integrate.</strong> The Risch algorithm runs on that element. Its result (a rational part, sums of logarithms and arctangents, RootSums, special-function terms) is checked by differentiation in the same field.</p>
+</li>
+<li><p><strong>Build.</strong> The result is written out as a term of the user&#39;s package.</p>
+</li>
+</ol>
+<p>Most integrands do not parse directly: radicals, <code class="md-code-inline">asin</code>, compositions such as <span class="md-math md-math-inline">\(f(x + 1/x)\)</span>. For those, a step rewrites or substitutes until the pieces do parse, integrates, and maps the answer back. The chain rule check that comes with each substitution keeps the result verified.</p>
+<h3 id="Source-layout" class="md-heading">Source layout<a href="#Source-layout" class="md-heading-anchor" aria-label="Link to this section">#</a></h3>
+<p><code class="md-code-inline">src/RischIntegrate.jl</code> includes the files in dependency order. Grouped by layer:</p>
+<div class="md-table-wrap">
+<table class="md-table">
+<thead>
+<tr>
+<th style="text-align:left">Layer</th>
+<th style="text-align:left">Files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">exact algebra</td>
+<td style="text-align:left"><code class="md-code-inline">core.jl</code>, <code class="md-code-inline">polynomials.jl</code>, <code class="md-code-inline">fractions.jl</code>, <code class="md-code-inline">factoring.jl</code>, <code class="md-code-inline">number_fields.jl</code>, <code class="md-code-inline">constant_fields.jl</code>, <code class="md-code-inline">sturm.jl</code></td>
+</tr>
+<tr>
+<td style="text-align:left">rational functions</td>
+<td style="text-align:left"><code class="md-code-inline">hermite_reduction.jl</code>, <code class="md-code-inline">rothstein_trager.jl</code>, <code class="md-code-inline">log_to_atan.jl</code>, <code class="md-code-inline">quartic_residues.jl</code>, <code class="md-code-inline">rootsum.jl</code></td>
+</tr>
+<tr>
+<td style="text-align:left">terms ↔ fields</td>
+<td style="text-align:left"><code class="md-code-inline">term_input.jl</code>, <code class="md-code-inline">term_output.jl</code>, <code class="md-code-inline">tower_terms.jl</code>, <code class="md-code-inline">rootsum_numerics.jl</code></td>
+</tr>
+<tr>
+<td style="text-align:left">towers</td>
+<td style="text-align:left"><code class="md-code-inline">tower.jl</code>, <code class="md-code-inline">structure_theorems.jl</code>, <code class="md-code-inline">monomial_integration.jl</code>, <code class="md-code-inline">rde_base.jl</code>, <code class="md-code-inline">risch_de.jl</code>, <code class="md-code-inline">parametric_rde.jl</code>, <code class="md-code-inline">tower_rootsums.jl</code>, <code class="md-code-inline">tower_real_forms.jl</code>, <code class="md-code-inline">real_form.jl</code></td>
+</tr>
+<tr>
+<td style="text-align:left">special functions</td>
+<td style="text-align:left"><code class="md-code-inline">special_functions.jl</code>, <code class="md-code-inline">dilogarithms.jl</code>, <code class="md-code-inline">exp_trig_polynomials.jl</code>, <code class="md-code-inline">clausen.jl</code>, <code class="md-code-inline">polylog_parts.jl</code>, <code class="md-code-inline">hypergeometric.jl</code>, <code class="md-code-inline">hyp_symbolic.jl</code>, <code class="md-code-inline">exp_trig_hyp.jl</code>, <code class="md-code-inline">gamma_terms.jl</code>, <code class="md-code-inline">special_fallback.jl</code></td>
+</tr>
+<tr>
+<td style="text-align:left">algebraic integrands</td>
+<td style="text-align:left"><code class="md-code-inline">radicals.jl</code>, <code class="md-code-inline">euler_substitutions.jl</code>, <code class="md-code-inline">biquadratic.jl</code>, <code class="md-code-inline">hyperelliptic.jl</code>, <code class="md-code-inline">kummer.jl</code>, <code class="md-code-inline">kummer_logs.jl</code>, <code class="md-code-inline">param_radicals.jl</code>, <code class="md-code-inline">denest.jl</code>, <code class="md-code-inline">nested.jl</code>, <code class="md-code-inline">nested_subst.jl</code>, <code class="md-code-inline">constant_scaling.jl</code>, <code class="md-code-inline">monomial_radicals.jl</code>, <code class="md-code-inline">reciprocal_subst.jl</code>, <code class="md-code-inline">tower_radicals.jl</code>, <code class="md-code-inline">real_log_arguments.jl</code></td>
+</tr>
+<tr>
+<td style="text-align:left">substitutions and rewrites</td>
+<td style="text-align:left"><code class="md-code-inline">bioche.jl</code>, <code class="md-code-inline">inverse_trig.jl</code>, <code class="md-code-inline">u_substitution.jl</code>, <code class="md-code-inline">linearity.jl</code></td>
+</tr>
+<tr>
+<td style="text-align:left">entry points</td>
+<td style="text-align:left"><code class="md-code-inline">risch_integrate.jl</code>, <code class="md-code-inline">integrate_macro.jl</code>, <code class="md-code-inline">precompile.jl</code></td>
+</tr>
+</tbody>
+</table>
+</div>
+<h2 id="Exact-algebra" class="md-heading">Exact algebra<a href="#Exact-algebra" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
+<h3 id="Polynomials-and-fractions" class="md-heading">Polynomials and fractions<a href="#Polynomials-and-fractions" class="md-heading-anchor" aria-label="Link to this section">#</a></h3>
+<p><code class="md-code-inline">UPoly{T}</code> is a dense univariate polynomial over a field <code class="md-code-inline">T</code>, coefficients from low to high degree. It has Euclidean division, gcd and extended gcd, squarefree factorization, resultants and the derivative. <code class="md-code-inline">Frac{P}</code> is the fraction field of a polynomial ring, kept normalized: numerator and denominator coprime, denominator monic. The normal form is unique, so equality is structural.</p>
+<p>Over a rational function field <span class="md-math md-math-inline">\(K = B(t_1, …, t_k)\)</span> (parameters, tower monomials) each step of Euclid normalizes fractions by gcds one level down, so a gcd that is <span class="md-math md-math-inline">\(1\)</span>, the usual case when adding and multiplying fractions, can cost much more than its answer. <code class="md-code-inline">gcd</code> first evaluates both polynomials at a fixed point <span class="md-math md-math-inline">\(t_j = v_j\)</span>. When every coefficient is defined there, neither leading coefficient vanishes and the images are coprime over <span class="md-math md-math-inline">\(B\)</span>, the polynomials are coprime: a common factor of degree <span class="md-math md-math-inline">\(≥ 1\)</span> keeps its degree in the images, since it divides the primitive parts. Otherwise Euclid runs as before. The result is the same either way.</p>
+<p>Factoring over <span class="md-math md-math-inline">\(ℚ\)</span> (<code class="md-code-inline">factoring.jl</code>) uses rational roots and Cantor–Zassenhaus. Rational roots come from the same big prime: the roots of <span class="md-math md-math-inline">\(\gcd(x^p - x, F)\)</span> modulo <span class="md-math md-math-inline">\(p\)</span>, lifted to the symmetric range and checked exactly, not from the rational root theorem: the divisors of the end coefficients are out of reach when those are large (<span class="md-math md-math-inline">\(∫ dx/((2x^2 - x + 3)^{5/2}(5x^2 + 3x + 2)^3)\)</span> meets a quartic whose end coefficients have 28 and 40 digits), and trial division up to <span class="md-math md-math-inline">\(10^6\)</span> cannot certify the cofactor it leaves as prime, so roots could be missed. The logarithmic part uses it on the residue polynomial over <span class="md-math md-math-inline">\(ℚ\)</span> to find quadratic and quartic factors; RootSums use dynamic evaluation instead, so the factors left for them need not be irreducible.</p>
+<h3 id="Constant-fields" class="md-heading">Constant fields<a href="#Constant-fields" class="md-heading-anchor" aria-label="Link to this section">#</a></h3>
+<p>The constants of the differential field form a type <code class="md-code-inline">C</code>:</p>
+<div class="md-table-wrap">
+<table class="md-table">
+<thead>
+<tr>
+<th style="text-align:left"><code class="md-code-inline">C</code></th>
+<th style="text-align:left">field</th>
+<th style="text-align:left">when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code class="md-code-inline">Q</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(ℚ\)</span></td>
+<td style="text-align:left">the default</td>
+</tr>
+<tr>
+<td style="text-align:left"><code class="md-code-inline">QI</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(ℚ(i)\)</span></td>
+<td style="text-align:left">trigonometric input (Step 7)</td>
+</tr>
+<tr>
+<td style="text-align:left"><code class="md-code-inline">QS{d}</code>, <code class="md-code-inline">QSB{d,B}</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(ℚ(\sqrt d)\)</span>, <span class="md-math md-math-inline">\(B(\sqrt d)\)</span> with <span class="md-math md-math-inline">\(B = ℚ\)</span> or <span class="md-math md-math-inline">\(ℚ(i)\)</span></td>
+<td style="text-align:left">quadratic residues, square roots of rational constants (step 10e), Euler substitutions without a rational point</td>
+</tr>
+<tr>
+<td style="text-align:left"><code class="md-code-inline">Frac{UPoly{B}}</code>, nested</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(ℚ(t_1, …, t_k)\)</span> or <span class="md-math md-math-inline">\(ℚ(i)(t_1, …, t_k)\)</span></td>
+<td style="text-align:left">parameters and transcendental constants</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Each generator <span class="md-math md-math-inline">\(t_j\)</span> of a rational function field is described by a <code class="md-code-inline">ConstGen</code>:</p>
+<ul class="md-list-tight">
+<li><p><code class="md-code-inline">:sym</code>: a symbolic parameter, any symbol other than the variable (step SY). It is printed back as the user&#39;s own symbol.</p>
+</li>
+<li><p><code class="md-code-inline">:exp</code>: <span class="md-math md-math-inline">\(e^{1/s}\)</span>; at most one, so that <span class="md-math md-math-inline">\(e\)</span> and its rational powers share a generator.</p>
+</li>
+<li><p><code class="md-code-inline">:log</code>: <span class="md-math md-math-inline">\(\log p\)</span> for a prime <span class="md-math md-math-inline">\(p\)</span>; <span class="md-math md-math-inline">\(\log r = \sum v_p(r) \log p\)</span> for <span class="md-math md-math-inline">\(r ∈ ℚ_+\)</span>.</p>
+</li>
+<li><p><code class="md-code-inline">:symlog</code>: <span class="md-math md-math-inline">\(\log a\)</span> for a parameter <span class="md-math md-math-inline">\(a\)</span>.</p>
+</li>
+<li><p><code class="md-code-inline">:expi</code>: <span class="md-math md-math-inline">\(e^{i/s}\)</span> over <span class="md-math md-math-inline">\(ℚ(i)\)</span>, for constants <span class="md-math md-math-inline">\(e^{iq}\)</span> with <span class="md-math md-math-inline">\(q ∈ ℚ\)</span>; conjugation sends it to its inverse.</p>
+</li>
+</ul>
+<p>The generators are treated as algebraically independent. That is exact for one of <span class="md-math md-math-inline">\(e\)</span> or <span class="md-math md-math-inline">\(\log 2\)</span>; for several together it is Schanuel&#39;s conjecture, which every CAS assumes. A computation that meets a constant needing a new generator throws <code class="md-code-inline">NewConstants</code> with the longer list, and the tower is built again over the larger field. Parameters nest the field one level deeper each, so their number is capped (<code class="md-code-inline">MAX_PARAMS</code>); residues of a denominator of degree above 2 over more than <code class="md-code-inline">MAX_ROOTSUM_GENS</code> generators are refused, since the log part does not finish. Resultants over these fields are fraction-free (step FR): the coefficients are scaled into <span class="md-math md-math-inline">\(B[t_1, …, t_k]\)</span> and the subresultant PRS runs there, with exact divisions; Euclid over <span class="md-math md-math-inline">\(B(t_1, …, t_k)\)</span> normalises nested fractions by gcds at every step. For the residues only a constant multiple of <span class="md-math md-math-inline">\(R(z) = \operatorname{res}_x(D, A - zD&#39;)\)</span> is needed, so the scale factors are not divided out. Gcds over these fields first compare images at a point <span class="md-math md-math-inline">\(t_j = v_j\)</span>: coprime images mean coprime polynomials, and the image gcd&#39;s degree tells whether one polynomial divides the other (Euclid, one remainder) or the gcd is proper. For a proper gcd Euclid runs while each monic remainder is at most twice the size of the pair it comes from; past that (the nested representation can make a remainder 50 times larger), the subresultant PRS takes over on the current pair. Neither method is faster on every input. Sums and products skip zero coefficients, which are most of a nested coefficient (in the subresultant PRS for <span class="md-math md-math-inline">\(∫ dx/(x^4(a + bx^2)^2(c + dx^2)^{3/2})\)</span>, 92 nonzero rationals among 5436 entries), and build their result vectors without the defensive copy: each zero added, and each copy, allocates down to the <code class="md-code-inline">BigInt</code>s of the rationals. A product there takes 0.07 s instead of 1.15 s.</p>
+<p>Some decisions depend on the sign of a parameter expression: choosing <code class="md-code-inline">atan</code> or <code class="md-code-inline">log</code>, the sign of a radicand, which branch of a square root. They are made at fixed values, the <code class="md-code-inline">k</code>-th parameter in alphabetical order taking the value <code class="md-code-inline">k</code> (<code class="md-code-inline">param_value</code>). Answers therefore hold for the parameter values that share those signs, the usual convention of symbolic integrators (&quot;assume <code class="md-code-inline">a &gt; 0</code>&quot;).</p>
+<p>The caller can decide these signs instead (step SO): <code class="md-code-inline">risch_integrate(f, x; sign = p -&gt; …)</code> is called with the parameter expression, a term built like the answer, and returns <code class="md-code-inline">1</code>, <code class="md-code-inline">-1</code>, <code class="md-code-inline">0</code> or <code class="md-code-inline">nothing</code>. <code class="md-code-inline">param_sign</code> asks it first, and <code class="md-code-inline">csign</code>, which otherwise leaves the signs of parameter expressions undecided, asks it too. What it leaves undecided is taken at the fixed values, with the <code class="md-code-inline">k</code>-th parameter set to <code class="md-code-inline">-k</code> when the oracle says that parameter is negative, so that the two agree. A <code class="md-code-inline">0</code> for an expression that is not identically zero is a special case of the parameters (a double root, say), which is refused: the error passes through the methods that catch <code class="md-code-inline">RischNotImplemented</code> to try their own, since those may not ask. Answers are still checked exactly, in the field, so the check does not depend on the signs. Forms that took a sign for granted ask too (<code class="md-code-inline">term_oracle_sign</code>, for a term): the derivative of <span class="md-math md-math-inline">\(\operatorname{asin}(N/D)\)</span> in step US is <span class="md-math md-math-inline">\(-N&#39;/\sqrt{D^2 - N^2}\)</span> for <span class="md-math md-math-inline">\(D &lt; 0\)</span>; and step TW (<span class="md-math md-math-inline">\(\tan(x/2)\)</span> with parameters) keeps its answer, valid between the poles, when the oracle decides that there are real poles. Without an oracle these are as before. The Rubi problems with parameters (293 of 1680), with all parameters negative or of mixed signs and the oracle deciding at those values, leave no answer wrong apart from checks outside the integrand&#39;s real domain, and <code class="md-code-inline">log u</code> where <span class="md-math md-math-inline">\(u &lt; 0\)</span> (as with positive parameters).</p>
+<p>Signs can also be given as facts, the way GruntzLimit takes them (<code class="md-code-inline">sign_facts.jl</code>): <code class="md-code-inline">signs = Dict(a =&gt; :negative, b - a^2/4 =&gt; :positive)</code>, with <code class="md-code-inline">:positive</code>, <code class="md-code-inline">:negative</code> or <code class="md-code-inline">:nonzero</code>. GruntzLimit&#39;s <code class="md-code-inline">:zero</code>, <code class="md-code-inline">:nonnegative</code> and <code class="md-code-inline">:nonpositive</code> are an <code class="md-code-inline">ArgumentError</code>, not silently taken as strict: a zero value is a special case of the parameters, which is not treated. They become an oracle, asked after <code class="md-code-inline">sign</code> when both are given. The facts and the expressions asked about are read as quotients of sparse polynomials over <span class="md-math md-math-inline">\(ℚ\)</span> in the parameters, and a sign is decided by a fact about a rational multiple of the expression, by the signs of all its terms (from the parameters&#39; signs; even powers are positive), or by exact division into a product of the facts&#39; expressions and the parameters. There is no linear deduction: <span class="md-math md-math-inline">\(b - 2 &gt; 0\)</span> does not give <span class="md-math md-math-inline">\(b &gt; 0\)</span>, as GruntzLimit&#39;s Fourier–Motzkin elimination would.</p>
+<p>Logarithms in answers are <code class="md-code-inline">log(w)</code>, real where <span class="md-math md-math-inline">\(w &gt; 0\)</span>; on an interval where <span class="md-math md-math-inline">\(w &lt; 0\)</span> such a term <span class="md-math md-math-inline">\(c \log w\)</span> differs from a real antiderivative by the constant <span class="md-math md-math-inline">\(iπc\)</span> (<span class="md-math md-math-inline">\(∫ x/(x^2 - 1) = \tfrac12 \log(x^2 - 1)\)</span>, as in Mathematica). Steps RL, EL and EC write <span class="md-math md-math-inline">\(\log|w|\)</span> where the real domain of a substitution is known. With an oracle, the arguments of the logs that are summands of the answer are asked about too (<code class="md-code-inline">oracle_real_logs</code>, after the answer is checked): <code class="md-code-inline">-1</code>, on the caller&#39;s domain (assumptions about <span class="md-math md-math-inline">\(x\)</span>), gives <span class="md-math md-math-inline">\(\log(-w)\)</span>, real there (<span class="md-math md-math-inline">\(\tfrac12 \log(1 - x^2)\)</span> for <span class="md-math md-math-inline">\(-1 &lt; x &lt; 1\)</span>). Logs inside other functions are left alone: in <span class="md-math md-math-inline">\(\log(1 + \log x)\)</span> the inner <span class="md-math md-math-inline">\(\log x\)</span> is not a summand.</p>
+<p><code class="md-code-inline">sturm.jl</code> counts real roots and decides signs exactly with Sturm sequences, for <span class="md-math md-math-inline">\(ℚ\)</span> and the real quadratic fields, and numerically to 256 bits for parameter fields.</p>
+<h2 id="Towers" class="md-heading">Towers<a href="#Towers" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
+<p>A <code class="md-code-inline">Tower{C}</code> holds the levels <span class="md-math md-math-inline">\(θ_1, …, θ_n\)</span> over <span class="md-math md-math-inline">\(K_0 = C(x)\)</span>. Level <span class="md-math md-math-inline">\(i\)</span> is a <code class="md-code-inline">Level</code> with a kind and an argument <span class="md-math md-math-inline">\(u ∈ K_{i-1}\)</span>:</p>
+<div class="md-table-wrap">
+<table class="md-table">
+<thead>
+<tr>
+<th style="text-align:left">kind</th>
+<th style="text-align:left">monomial</th>
+<th style="text-align:left">derivation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code class="md-code-inline">:exp</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(θ = e^u\)</span></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(θ&#39; = u&#39; θ\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left"><code class="md-code-inline">:log</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(θ = \log u\)</span></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(θ&#39; = u&#39;/u\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left"><code class="md-code-inline">:atan</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(θ = \operatorname{atan} u\)</span></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(θ&#39; = u&#39;/(1 + u^2)\)</span> (step TA)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The field <span class="md-math md-math-inline">\(K_i\)</span> is the type <code class="md-code-inline">Frac{UPoly{K_{i-1}}}</code>, so the level of an element is part of its type, and arithmetic between levels lifts the lower operand (<code class="md-code-inline">liftto</code>, <code class="md-code-inline">unify</code>).</p>
+<p>A new monomial is added only when it is algebraically independent of the levels below; otherwise it is written in terms of them. The structure theorems (Risch; Bronstein ch. 9) decide this by exact linear algebra over <span class="md-math md-math-inline">\(ℚ\)</span>: <span class="md-math md-math-inline">\(e^u\)</span> is not new when <span class="md-math md-math-inline">\(u&#39; = \sum ρ_i b_i&#39;\)</span> with <span class="md-math md-math-inline">\(ρ_i ∈ ℚ\)</span> (<span class="md-math md-math-inline">\(b_i\)</span> the arguments of <code class="md-code-inline">exp</code> levels and the <code class="md-code-inline">log</code> monomials), and then <span class="md-math md-math-inline">\(e^u = e^c \prod θ_i^{ρ_i} \prod \arg_i^{ρ_i}\)</span>. So <span class="md-math md-math-inline">\(e^{2x}\)</span> is <span class="md-math md-math-inline">\(θ^2\)</span> over <span class="md-math md-math-inline">\(θ = e^x\)</span>, <span class="md-math md-math-inline">\(e^{\log x} = x\)</span>, and <span class="md-math md-math-inline">\(\log(x^2 - 1) = \log(x - 1) + \log(x + 1)\)</span>. When <span class="md-math md-math-inline">\(e^{x/2}\)</span> appears after <span class="md-math md-math-inline">\(e^x\)</span>, the generator is refined to <span class="md-math md-math-inline">\(e^{x/2}\)</span> (a <code class="md-code-inline">Restart</code>) and the term is parsed again.</p>
+<h3 id="Parsing-a-term" class="md-heading">Parsing a term<a href="#Parsing-a-term" class="md-heading-anchor" aria-label="Link to this section">#</a></h3>
+<p><code class="md-code-inline">build_tower(f, x)</code> calls <code class="md-code-inline">parse_tower</code> and retries on three signals:</p>
+<ul class="md-list-tight">
+<li><p><code class="md-code-inline">Restart</code>: a finer exponential generator is needed (<span class="md-math md-math-inline">\(e^{x/2}\)</span> after <span class="md-math md-math-inline">\(e^x\)</span>);</p>
+</li>
+<li><p><code class="md-code-inline">NewConstants</code>: a new constant generator;</p>
+</li>
+<li><p><code class="md-code-inline">NeedComplex</code>: a trigonometric function appeared, so the constant field becomes <span class="md-math md-math-inline">\(ℚ(i)\)</span>.</p>
+</li>
+</ul>
+<p><code class="md-code-inline">parse_tower</code> maps operations to field operations:</p>
+<ul class="md-list-tight">
+<li><p><code class="md-code-inline">+</code>, <code class="md-code-inline">-</code>, <code class="md-code-inline">*</code>, <code class="md-code-inline">/</code>, integer powers: field arithmetic.</p>
+</li>
+<li><p><code class="md-code-inline">exp</code>, <code class="md-code-inline">ℯ^u</code>, <code class="md-code-inline">log</code>: new levels, through the structure theorems.</p>
+</li>
+<li><p><code class="md-code-inline">sin</code>, <code class="md-code-inline">cos</code>, <code class="md-code-inline">tan</code>, <code class="md-code-inline">cot</code>, <code class="md-code-inline">sec</code>, <code class="md-code-inline">csc</code> of <span class="md-math md-math-inline">\(u\)</span>: over <span class="md-math md-math-inline">\(ℚ(i)\)</span>, with <span class="md-math md-math-inline">\(E = e^{iu}\)</span>, <span class="md-math md-math-inline">\(\sin u = (E - E^{-1})/(2i)\)</span>, <span class="md-math md-math-inline">\(\cos u = (E + E^{-1})/2\)</span>, and so on (Step 7).</p>
+</li>
+<li><p><code class="md-code-inline">sinh</code>, <code class="md-code-inline">cosh</code>, …: through <span class="md-math md-math-inline">\(e^u\)</span> and <span class="md-math md-math-inline">\(e^{-u}\)</span>.</p>
+</li>
+<li><p><code class="md-code-inline">atan</code>: an <code class="md-code-inline">:atan</code> level (step TA).</p>
+</li>
+<li><p><span class="md-math md-math-inline">\(u^k\)</span> with a non-rational constant exponent <span class="md-math md-math-inline">\(k\)</span> (a parameter, <span class="md-math md-math-inline">\(e\)</span>): <span class="md-math md-math-inline">\(e^{k \log u}\)</span>.</p>
+</li>
+<li><p>Symbols other than <code class="md-code-inline">x</code>: parameters (step SY). A leaf that prints with <code class="md-code-inline">x</code> in it but does not open as a call (a wrapper type) is refused rather than read as a parameter (step WR).</p>
+</li>
+<li><p>Radicals and other functions: <code class="md-code-inline">RischNotImplemented</code>. The steps of the next sections deal with them before the tower is built.</p>
+</li>
+</ul>
+<p>Two mechanisms let the later steps reuse <code class="md-code-inline">parse_tower</code>:</p>
+<ul class="md-list-tight">
+<li><p><strong>Parse hooks.</strong> <code class="md-code-inline">T.subst(t, T)</code> is consulted first for every subterm. A substitution step sets it to map <code class="md-code-inline">x</code> to <span class="md-math md-math-inline">\(φ(t)\)</span> and each radical to a power of <span class="md-math md-math-inline">\(t\)</span>, so the integrand is parsed directly in the new variable.</p>
+</li>
+<li><p><strong>Opaque constants</strong> (step SY). Any subterm can be made a <code class="md-code-inline">:sym</code> constant with <code class="md-code-inline">sym_const</code>. Radicals of parameters (<span class="md-math md-math-inline">\(\sqrt{2h}\)</span>), trigonometric functions of parameters (<span class="md-math md-math-inline">\(\cos a\)</span>), and square roots of negative constants (<span class="md-math md-math-inline">\(\sqrt{-1}\)</span> for <span class="md-math md-math-inline">\(i\)</span>) are opaque by default. Steps such as u-substitution use the same device to test whether an expression is a function of a chosen subterm. This is sound because the opaque constants are formally independent: an identity that holds for an indeterminate still holds after the actual subterm is put back.</p>
+</li>
+</ul>
+<h2 id="Following-an-integrand" class="md-heading">Following an integrand<a href="#Following-an-integrand" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
+<p><code class="md-code-inline">integrate(f, x)</code> calls <code class="md-code-inline">risch_integrate(f, x)</code>. Iterated integrals call it once per variable, definite integrals evaluate the antiderivative at the limits.</p>
+<p><code class="md-code-inline">risch_integrate</code> has two parts. <code class="md-code-inline">integrate_direct</code> sends the integrand to the method that fits its shape, and returns its answer or rethrows its refusal. When that refusal comes back, a <em>fallback chain</em> tries methods that recognize a special structure. Both are described in order below. Each step either returns a verified answer, returns <code class="md-code-inline">nothing</code> (&quot;not my case&quot;, go on), or throws. A step that rewrites the integrand calls <code class="md-code-inline">risch_integrate</code> again on the new form.</p>
+<h3 id="1.-Rewrites-before-parsing-(integrate_direct)" class="md-heading">1. Rewrites before parsing (<code class="md-code-inline">integrate_direct</code>)<a href="#1.-Rewrites-before-parsing-(integrate_direct)" class="md-heading-anchor" aria-label="Link to this section">#</a></h3>
+<div class="md-table-wrap">
+<table class="md-table">
+<thead>
+<tr>
+<th style="text-align:left">Step</th>
+<th style="text-align:left">Recognizes</th>
+<th style="text-align:left">Does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">EP</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\((b^w)^r\)</span> with a positive constant <span class="md-math md-math-inline">\(b\)</span>; <span class="md-math md-math-inline">\((C^s)^n\)</span> with integer <span class="md-math md-math-inline">\(n\)</span> over products and quotients</td>
+<td style="text-align:left">merges exponents: <span class="md-math md-math-inline">\((3^{3x})^{1/4} = 3^{3x/4}\)</span>, so a radicand with even powers of a radical becomes rational; a rewrite the term type undoes (Giac keeps <span class="md-math md-math-inline">\(C^{2/3}\)</span> as <span class="md-math md-math-inline">\((C^{1/3})^2\)</span>) is no change</td>
+</tr>
+<tr>
+<td style="text-align:left">erf</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(\int \operatorname{erf}(ax + b)\)</span></td>
+<td style="text-align:left">by parts</td>
+</tr>
+<tr>
+<td style="text-align:left">IT</td>
+<td style="text-align:left">a factor free of <code class="md-code-inline">x</code> that contains a symbol or a root <span class="md-math md-math-inline">\(c^{p/q}\)</span> with <span class="md-math md-math-inline">\(q &gt; 2\)</span></td>
+<td style="text-align:left">takes it out: <span class="md-math md-math-inline">\(\int c\,g = c \int g\)</span>. This keeps the parameter out of the constant field, and lets an iterated integral see <span class="md-math md-math-inline">\(c(y) \cdot \text{RootSum}(x)\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">SL</td>
+<td style="text-align:left">every trigonometric or hyperbolic argument with <code class="md-code-inline">x</code> is <span class="md-math md-math-inline">\(r(e + fx)\)</span>, <span class="md-math md-math-inline">\(r\)</span> rational, <span class="md-math md-math-inline">\(e\)</span> a parameter; elsewhere <code class="md-code-inline">x</code> only algebraically</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(y = e + fx\)</span>, <span class="md-math md-math-inline">\(x = (y - e)/f\)</span>, integrated in <span class="md-math md-math-inline">\(y\)</span> and <span class="md-math md-math-inline">\(y = e + fx\)</span> substituted back (refused in <span class="md-math md-math-inline">\(y\)</span>: on to TS2). Before TS2, whose <span class="md-math md-math-inline">\(\cos e\)</span>, <span class="md-math md-math-inline">\(\sin e\)</span> are independent constants to the constant field: <span class="md-math md-math-inline">\(\cos^2 e + \sin^2 e = 1\)</span> is not seen, which gives hidden zero denominators, false residue criteria and slow resultants</td>
+</tr>
+<tr>
+<td style="text-align:left">TS2</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(\sin(v + a)\)</span>, <span class="md-math md-math-inline">\(\cosh(v + a)\)</span>, … with <span class="md-math md-math-inline">\(a\)</span> free of <code class="md-code-inline">x</code></td>
+<td style="text-align:left">addition formulas, so <span class="md-math md-math-inline">\(\cos a\)</span>, <span class="md-math md-math-inline">\(\sin a\)</span> become opaque constants. Exact values for multiples of <span class="md-math md-math-inline">\(π/6\)</span> and <span class="md-math md-math-inline">\(π/4\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">AC</td>
+<td style="text-align:left"><code class="md-code-inline">acot</code>, <code class="md-code-inline">acsc</code>, <code class="md-code-inline">asec</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(\operatorname{acot} u = \operatorname{atan}(1/u)\)</span>, <span class="md-math md-math-inline">\(\operatorname{acsc} u = \operatorname{asin}(1/u)\)</span>, …</td>
+</tr>
+<tr>
+<td style="text-align:left">IH</td>
+<td style="text-align:left"><code class="md-code-inline">atanh</code>, <code class="md-code-inline">acoth</code>, <code class="md-code-inline">asinh</code>, <code class="md-code-inline">acosh</code>, <code class="md-code-inline">acsch</code>, <code class="md-code-inline">asech</code></td>
+<td style="text-align:left">first <span class="md-math md-math-inline">\(A \cdot L\)</span> by parts (step AP), so the answer keeps <span class="md-math md-math-inline">\(L\)</span>: <span class="md-math md-math-inline">\(\int \operatorname{asech} x = x \operatorname{asech} x + \operatorname{asin} x\)</span>. Otherwise as logarithms: <span class="md-math md-math-inline">\(\operatorname{atanh} u = \tfrac12\log\frac{1+u}{1-u}\)</span>, <span class="md-math md-math-inline">\(\operatorname{acoth} u = \tfrac12\log\frac{u+1}{u-1}\)</span>, <span class="md-math md-math-inline">\(\operatorname{asinh} u = \log(u + \sqrt{u^2+1})\)</span>, <span class="md-math md-math-inline">\(\operatorname{acosh} u = \log(u + \sqrt{u^2-1})\)</span>, <span class="md-math md-math-inline">\(\operatorname{acsch} u = \operatorname{asinh}(1/u)\)</span>, <span class="md-math md-math-inline">\(\operatorname{asech} u = \log\frac{1 + \sqrt{1 - u^2}}{u}\)</span> (<span class="md-math md-math-inline">\(0 &lt; u \le 1\)</span>)</td>
+</tr>
+<tr>
+<td style="text-align:left">AS</td>
+<td style="text-align:left"><code class="md-code-inline">asin(u)</code> or <code class="md-code-inline">acos(u)</code> with <span class="md-math md-math-inline">\(u\)</span> linear</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(u = \sin t\)</span>: the integrand is rebuilt in <span class="md-math md-math-inline">\(t\)</span> (<code class="md-code-inline">x</code> stands for <span class="md-math md-math-inline">\(t\)</span>), integrated, and mapped back, <span class="md-math md-math-inline">\(\sin kt\)</span>, <span class="md-math md-math-inline">\(\cos kt\)</span> written exactly as <span class="md-math md-math-inline">\(A(u) + B(u)\sqrt{1 - u^2}\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">AL</td>
+<td style="text-align:left"><code class="md-code-inline">asin(u)</code>, <code class="md-code-inline">acos(u)</code>, … with <span class="md-math md-math-inline">\(u = ax + b\)</span> and <span class="md-math md-math-inline">\(a, b\)</span> parameters</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(y = ax + b\)</span>. The radicands are rewritten as polynomials in <span class="md-math md-math-inline">\(y\)</span>, with constants simplified (<span class="md-math md-math-inline">\(1 - c^2x^2 \mapsto 1 - y^2\)</span>), then step AS is used and <span class="md-math md-math-inline">\(y = ax + b\)</span> is substituted back</td>
+</tr>
+<tr>
+<td style="text-align:left">PL</td>
+<td style="text-align:left">no radicals, parameters, denominator a power of one quadratic</td>
+<td style="text-align:left">linearity over a parameter field</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h3 id="2.-Radicals" class="md-heading">2. Radicals<a href="#2.-Radicals" class="md-heading-anchor" aria-label="Link to this section">#</a></h3>
+<p><code class="md-code-inline">collect_radicals</code> finds every <span class="md-math md-math-inline">\(u^{p/q}\)</span> (<code class="md-code-inline">sqrt</code>, <code class="md-code-inline">cbrt</code>, <code class="md-code-inline">^</code> with a non-integer rational exponent). Radicals of parameters are opaque constants and are not counted. Then:</p>
+<div class="md-table-wrap">
+<table class="md-table">
+<thead>
+<tr>
+<th style="text-align:left">Step</th>
+<th style="text-align:left">Recognizes</th>
+<th style="text-align:left">Does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">AS</td>
+<td style="text-align:left">only powers of <span class="md-math md-math-inline">\(\sqrt{1 - u^2}\)</span>, <span class="md-math md-math-inline">\(u\)</span> linear</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(u = \sin t\)</span> first, which gives <code class="md-code-inline">asin(u)</code> instead of logarithms</td>
+</tr>
+<tr>
+<td style="text-align:left">PR (rational)</td>
+<td style="text-align:left">one quadratic radicand <span class="md-math md-math-inline">\(K - \lvert α \rvert (x - h)^2\)</span> whose scaling to <span class="md-math md-math-inline">\(K(1 - u^2)\)</span> is irrational, e.g. <span class="md-math md-math-inline">\(7 - 2x^2\)</span></td>
+<td style="text-align:left">step PR with the constant radicals opaque, so that the <code class="md-code-inline">asin</code> route applies in <span class="md-math md-math-inline">\(u\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">PR</td>
+<td style="text-align:left">parameters in a radicand: <span class="md-math md-math-inline">\(a^2 - x^2\)</span>, <span class="md-math md-math-inline">\((x - a)(b - x)\)</span>, <span class="md-math md-math-inline">\((a + x)/(a - x)\)</span></td>
+<td style="text-align:left">an affine <span class="md-math md-math-inline">\(x = s u + h\)</span> over the parameter field makes the radicand <span class="md-math md-math-inline">\(κ R(u)\)</span> with <span class="md-math md-math-inline">\(R\)</span> free of parameters</td>
+</tr>
+<tr>
+<td style="text-align:left">PM</td>
+<td style="text-align:left">parameters in a radicand with repeated factors, <span class="md-math md-math-inline">\(u = s^n w\)</span>, <span class="md-math md-math-inline">\(n\)</span> even: <span class="md-math md-math-inline">\((a^2 + 2abx + b^2x^2)^{3/2}\)</span>, <span class="md-math md-math-inline">\(((a^2 + x^2)^3)^{1/2}\)</span></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(Y = u^{1/n}/s\)</span> is <span class="md-math md-math-inline">\(\pm w^{1/n}\)</span> on each interval: with <span class="md-math md-math-inline">\(F_\pm\)</span> the integrals for each sign, <span class="md-math md-math-inline">\((F_+ + F_-)/2 + σ (F_+ - F_-)/2\)</span>, <span class="md-math md-math-inline">\(σ = Y/w^{1/n}\)</span>; for constant <span class="md-math md-math-inline">\(w\)</span> the answer is <span class="md-math md-math-inline">\((u^{1/n}/s) F_+\)</span>, as Rubi writes it</td>
+</tr>
+<tr>
+<td style="text-align:left">LL</td>
+<td style="text-align:left">two linear radicands with parameters whose exponents add up to an integer in each product: <span class="md-math md-math-inline">\((a + bx)^{-3/4}(c + dx)^{-1/4}\)</span></td>
+<td style="text-align:left">one radicand on the real domain: <span class="md-math md-math-inline">\((L_1L_2)^{E_1} L_2^{E_2 - E_1}\)</span> for square roots, <span class="md-math md-math-inline">\((L_1/L_2)^{E_1} L_2^{E_1 + E_2}\)</span> otherwise; then step PR</td>
+</tr>
+<tr>
+<td style="text-align:left">NR</td>
+<td style="text-align:left">several radicands, one innermost radical of a linear radicand</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(u = \sqrt{\text{linear}}\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">MR</td>
+<td style="text-align:left">radicands that are functions of one <span class="md-math md-math-inline">\(e^{kx}\)</span>, <span class="md-math md-math-inline">\(\cos kx\)</span>, <span class="md-math md-math-inline">\(\sin kx\)</span> or <span class="md-math md-math-inline">\(\tan kx\)</span> (<span class="md-math md-math-inline">\(\sqrt{1 + e^x}\)</span>)</td>
+<td style="text-align:left">substitute that function. The radicals are opaque constants while the identities <span class="md-math md-math-inline">\(g(s(θ))\,s&#39; = R\)</span> and <span class="md-math md-math-inline">\(\tilde U_j(s(θ)) = U_j\)</span> are checked exactly. Before that, a cheap derivative-divides test with a radicand as <span class="md-math md-math-inline">\(u\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">PW</td>
+<td style="text-align:left">radicands that are perfect powers at a finer monomial</td>
+<td style="text-align:left">rewrite at <span class="md-math md-math-inline">\(e^{ckx/m}\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">DN</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(\sqrt{a + b\sqrt c}\)</span> with <span class="md-math md-math-inline">\(a^2 - b^2 c\)</span> a square</td>
+<td style="text-align:left">denest: <span class="md-math md-math-inline">\(\sqrt{p_1} + s\sqrt{p_2}\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">nested</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(\sqrt{a + b\sqrt c}\)</span> with <span class="md-math md-math-inline">\(a^2 - b^2c = -s^2\)</span></td>
+<td style="text-align:left">a biquadratic field over <span class="md-math md-math-inline">\(ℚ(i)\)</span>, real parts taken exactly</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>What is left goes to <code class="md-code-inline">integrate_radical</code>. Its cases, in order:</p>
+<ul class="md-list-tight">
+<li><p><strong>NP</strong>: a square root of a radicand <span class="md-math md-math-inline">\(u ≤ 0\)</span> on all of <span class="md-math md-math-inline">\(ℝ\)</span> (checked exactly: no real root of odd multiplicity of <span class="md-math md-math-inline">\(N D\)</span>, <span class="md-math md-math-inline">\(\operatorname{lc}(ND) &lt; 0\)</span>). On the principal branch <span class="md-math md-math-inline">\(u^{p/2} = i^p (-u)^{p/2}\)</span>, with <span class="md-math md-math-inline">\(i = \sqrt{-1}\)</span> an opaque constant, and the rewritten integrand starts over.</p>
+</li>
+<li><p><strong>10e</strong>: square roots of rational constants (<span class="md-math md-math-inline">\(\sqrt 2\)</span>, <span class="md-math md-math-inline">\(8^{3/2}\)</span>) become constants of <span class="md-math md-math-inline">\(ℚ(i)(\sqrt d)\)</span>; they must share one <span class="md-math md-math-inline">\(d\)</span>.</p>
+</li>
+<li><p><strong>RP</strong>: a radicand <span class="md-math md-math-inline">\(c\,w^m\)</span> is read as a power of <span class="md-math md-math-inline">\(w\)</span>.</p>
+</li>
+<li><p><strong>BQ</strong>: two square roots, not both of linear polynomials: the biquadratic field <span class="md-math md-math-inline">\(ℚ(x)(\sqrt a, \sqrt b)\)</span> splits into the three quadratic subfields by its Galois group, so <span class="md-math md-math-inline">\(\int f\)</span> is elementary exactly when each projection is, and each is a one-radicand problem.</p>
+</li>
+<li><p><strong>10d</strong>: square roots of two linear polynomials: <span class="md-math md-math-inline">\(y = \sqrt{u_1}\)</span>, then an Euler substitution for <span class="md-math md-math-inline">\(\sqrt{u_2}\)</span> (a conic).</p>
+</li>
+<li><p>One radicand <span class="md-math md-math-inline">\(u\)</span>, index <span class="md-math md-math-inline">\(n\)</span>:</p>
+<ul class="md-list-tight">
+<li><p><strong>SQ</strong>: repeated factors, <span class="md-math md-math-inline">\(u = c\,S^2 W/(T^2 V)\)</span>: the variable is <span class="md-math md-math-inline">\(Y = \sqrt u/s\)</span>, with <span class="md-math md-math-inline">\(Y^2 = w\)</span> on every interval, whatever the sign of <span class="md-math md-math-inline">\(s\)</span>. For <span class="md-math md-math-inline">\(n ≥ 3\)</span>, a radicand <span class="md-math md-math-inline">\(s^n (x - a)^j (x - b)^k\)</span> reduces to a linear-fractional one.</p>
+</li>
+<li><p><strong>10a</strong>: <span class="md-math md-math-inline">\(u = (ax + b)/(cx + d)\)</span>: <span class="md-math md-math-inline">\(t = u^{1/n}\)</span>, <span class="md-math md-math-inline">\(x = (b - d t^n)/(c t^n - a)\)</span>.</p>
+</li>
+<li><p><strong>10b/10c</strong>: <span class="md-math md-math-inline">\(\sqrt{Ax^2 + Bx + C}\)</span>: an Euler substitution, a rational parametrization of the conic <span class="md-math md-math-inline">\(R^2 = Q\)</span> over <span class="md-math md-math-inline">\(ℚ\)</span>, or over <span class="md-math md-math-inline">\(ℚ(i)(\sqrt d)\)</span> when there is no small rational point. Several candidates are tried, one per constant field. First, <strong>step EQ</strong> splits <span class="md-math md-math-inline">\(f = p + q\sqrt a\)</span> by the hyperelliptic Hermite reduction, which needs no genus: <span class="md-math md-math-inline">\(\int q \sqrt a = g\sqrt a + \int (P + R/D)/\sqrt a\)</span> with <span class="md-math md-math-inline">\(P\)</span> constant and <span class="md-math md-math-inline">\(D\)</span> squarefree. <span class="md-math md-math-inline">\(\int p\)</span> is a rational integral, <span class="md-math md-math-inline">\(g\sqrt a\)</span> is printed in <code class="md-code-inline">x</code>, and only the remainder takes the Euler substitution: <span class="md-math md-math-inline">\(\int x/\sqrt{x^2+1} = \sqrt{x^2+1}\)</span>, not a rational function of <span class="md-math md-math-inline">\(t = \sqrt{x^2+1} + x\)</span>.</p>
+</li>
+<li><p><strong>hyperelliptic</strong> (SI2 phase 1): <span class="md-math md-math-inline">\(\sqrt a\)</span> with <span class="md-math md-math-inline">\(\deg a ≥ 3\)</span> (genus ≥ 1). Hermite reduction on the curve, reduction at infinity; a residue-free remainder is zero or the integral is not elementary (Liouville).</p>
+</li>
+</ul>
+</li>
+<li><p><strong>Kummer</strong> (SI2 phases 3a and 3b): products of radicals of any index, through the integral basis of the Kummer extension. The log part uses Riemann–Roch on the curve and yields a RootSum over the roots of unity. This runs when <code class="md-code-inline">integrate_radical</code> refuses.</p>
+</li>
+</ul>
+<p>A substitution step parses the integrand in the new variable <span class="md-math md-math-inline">\(t\)</span> through a parse hook, multiplies by <span class="md-math md-math-inline">\(φ&#39;(t)\)</span>, integrates in the tower over <span class="md-math md-math-inline">\(ℚ(t)\)</span> (or a larger constant field), and verifies there. The answer is printed with <span class="md-math md-math-inline">\(t\)</span> written as a term in <code class="md-code-inline">x</code>, so no substitution back is needed at the term level. Steps RL and EL then make the arguments of logarithms real on the real points of the substitution: <span class="md-math md-math-inline">\(\log(-w)\)</span> for a negative <span class="md-math md-math-inline">\(w\)</span>, <span class="md-math md-math-inline">\(\log\lvert w \rvert\)</span> for a <span class="md-math md-math-inline">\(w\)</span> of both signs.</p>
+<p>Principal branches are used throughout: answers with <span class="md-math md-math-inline">\(u^{p/q}\)</span> hold where <span class="md-math md-math-inline">\(u &gt; 0\)</span>.</p>
+<h3 id="3.-Trigonometric-integrands" class="md-heading">3. Trigonometric integrands<a href="#3.-Trigonometric-integrands" class="md-heading-anchor" aria-label="Link to this section">#</a></h3>
+<p>Two shortcuts before the general tower:</p>
+<ul class="md-list-tight">
+<li><p><strong>Stage 5c</strong>: polynomials times <span class="md-math md-math-inline">\(e^{ax}\)</span> times <span class="md-math md-math-inline">\(\sin\)</span>, <span class="md-math md-math-inline">\(\cos\)</span>, <span class="md-math md-math-inline">\(\sinh\)</span>, <span class="md-math md-math-inline">\(\cosh\)</span> of linear arguments. In complex exponentials the integrand is <span class="md-math md-math-inline">\(\sum_λ P_λ(x) e^{λx}\)</span> with <span class="md-math md-math-inline">\(λ ∈ ℚ(i)\)</span>, and <span class="md-math md-math-inline">\(\int P e^{λx} = e^{λx} \sum_k (-1)^k P^{(k)}/λ^{k+1}\)</span>. Conjugate pairs fold back to <span class="md-math md-math-inline">\(e^{ax}(A \cos bx + B \sin bx)\)</span>.</p>
+</li>
+<li><p><strong>TS</strong> (Bioche&#39;s rules): <span class="md-math md-math-inline">\(f\)</span> rational in <span class="md-math md-math-inline">\(\sin u\)</span>, <span class="md-math md-math-inline">\(\cos u\)</span>. If <span class="md-math md-math-inline">\(f\,du\)</span> is invariant under <span class="md-math md-math-inline">\(u ↦ -u\)</span>, <span class="md-math md-math-inline">\(π - u\)</span> or <span class="md-math md-math-inline">\(π + u\)</span>, the substitution <span class="md-math md-math-inline">\(s = \cos u\)</span>, <span class="md-math md-math-inline">\(\sin u\)</span> or <span class="md-math md-math-inline">\(\tan u\)</span> gives a rational integral in <span class="md-math md-math-inline">\(s\)</span>. The <span class="md-math md-math-inline">\(\tan\)</span> substitution&#39;s answer jumps where <span class="md-math md-math-inline">\(\tan u = ±∞\)</span>; each <span class="md-math md-math-inline">\(c \operatorname{atan}(p)\)</span> with <span class="md-math md-math-inline">\(p\)</span> of odd degree gets the correction <span class="md-math md-math-inline">\(J π \lfloor (u + π/2)/π \rfloor\)</span>.</p>
+</li>
+</ul>
+<h3 id="4.-The-tower" class="md-heading">4. The tower<a href="#4.-The-tower" class="md-heading-anchor" aria-label="Link to this section">#</a></h3>
+<p>The general route: <code class="md-code-inline">build_tower</code>, then <code class="md-code-inline">integrate_built</code>, which calls <code class="md-code-inline">integrate_el(T, n, f)</code> on the top level. A rational function (<span class="md-math md-math-inline">\(n = 0\)</span>) is integrated directly:</p>
+<ol class="md-list-tight">
+<li><p><strong>Hermite reduction</strong> (Bronstein §2.2) gives the rational part and a remainder with a squarefree denominator.</p>
+</li>
+<li><p><strong>The logarithmic part.</strong> The Rothstein–Trager resultant <span class="md-math md-math-inline">\(R(z) = \operatorname{res}_x(D, A - zD&#39;)\)</span> is computed, and its roots in the constant field give <span class="md-math md-math-inline">\(c \log \gcd(D, A - cD&#39;)\)</span>. Over <span class="md-math md-math-inline">\(ℚ\)</span> the factor that remains is factored. A quadratic factor, with residues <span class="md-math md-math-inline">\(a ± b\sqrt d\)</span>, gives logarithms over <span class="md-math md-math-inline">\(ℚ(\sqrt d)\)</span>, or <code class="md-code-inline">atan</code> terms for a complex pair. Rioboo&#39;s LogToAtan (§2.8) turns <span class="md-math md-math-inline">\(\operatorname{atan}(A/B)\)</span>, which jumps at the zeros of <span class="md-math md-math-inline">\(B\)</span>, into a sum of <code class="md-code-inline">atan</code>s of polynomials, continuous on the real line. Quartic residues are written with real radicals when their roots lie in one <span class="md-math md-math-inline">\(ℚ(i, \sqrt d)\)</span> (step R2). Step BQ4 handles an even quartic factor <span class="md-math md-math-inline">\(G = x^4 + bx^2 + c\)</span> of the denominator with <span class="md-math md-math-inline">\(b^2 &lt; 4c\)</span> whose residues need nested radicals. Partial fractions split it off, and the factorization <span class="md-math md-math-inline">\(G = (x^2 + rx + q)(x^2 - rx + q)\)</span>, with <span class="md-math md-math-inline">\(q = \sqrt c\)</span> and <span class="md-math md-math-inline">\(r = \sqrt{2q - b}\)</span>, gives continuous <code class="md-code-inline">atan</code>s and a <code class="md-code-inline">log</code> with nested constants, as in <span class="md-math md-math-inline">\(1/(x^8 + 4)\)</span>. Other residues of degree greater than 2 give a <strong>RootSum</strong> <span class="md-math md-math-inline">\(\sum_{Q(α) = 0} α \log W(α, x)\)</span>, with <span class="md-math md-math-inline">\(W\)</span> computed by dynamic evaluation (<code class="md-code-inline">d5_gcd</code>), which splits <span class="md-math md-math-inline">\(Q\)</span> when a leading coefficient turns out to be a zero divisor, so no factorization is needed.</p>
+</li>
+</ol>
+<p>A RootSum answer is not final. <code class="md-code-inline">risch_integrate</code> tries two rescalings <span class="md-math md-math-inline">\(x = ρu\)</span> that move the denominator to one over <span class="md-math md-math-inline">\(ℚ\)</span>, where the real forms above apply:</p>
+<ul class="md-list-tight">
+<li><p><strong>Step PS.</strong> If <span class="md-math md-math-inline">\(f\)</span> is homogeneous in <span class="md-math md-math-inline">\(x\)</span> and a parameter <span class="md-math md-math-inline">\(a\)</span>, then <span class="md-math md-math-inline">\(ρ = a\)</span>. For example, <span class="md-math md-math-inline">\(1/(x^3 + a^3) = a^{-3}/(u^3 + 1)\)</span>.</p>
+</li>
+<li><p><strong>Step BN.</strong> If the denominator is <span class="md-math md-math-inline">\(λ x^j (x^n + c)^k\)</span> with <span class="md-math md-math-inline">\(n ≥ 3\)</span>, then <span class="md-math md-math-inline">\(ρ = |c|^{1/n}\)</span>, kept as an opaque constant. For example, <span class="md-math md-math-inline">\(1/(x^3 - 2)\)</span> and <span class="md-math md-math-inline">\(1/(a x^3 - b)\)</span>. Here <span class="md-math md-math-inline">\(x^n + c = |c|(u^n ± 1)\)</span>. The numerator is split into monomials <span class="md-math md-math-inline">\(u^i\)</span>, and powers of <span class="md-math md-math-inline">\(ρ\)</span> are reduced with <span class="md-math md-math-inline">\(ρ^n = |c|\)</span>. That leaves one integral <span class="md-math md-math-inline">\(\int u^{i-j}/(u^n ± 1)^k\)</span> over <span class="md-math md-math-inline">\(ℚ\)</span> for each monomial. The factors of <span class="md-math md-math-inline">\(u^n ± 1\)</span> are cyclotomic, so for <span class="md-math md-math-inline">\(n = 3, 4, 5, 6\)</span> the answer has only <code class="md-code-inline">log</code> and <code class="md-code-inline">atan</code>, with <span class="md-math md-math-inline">\(\sqrt 3\)</span>, <span class="md-math md-math-inline">\(\sqrt 2\)</span> or <span class="md-math md-math-inline">\(\sqrt 5\)</span>. For <span class="md-math md-math-inline">\(u^8 + 1\)</span> the integral stays a RootSum. If <span class="md-math md-math-inline">\(|c|\)</span> is an <span class="md-math md-math-inline">\(n\)</span>-th power in the constant field, <span class="md-math md-math-inline">\(ρ\)</span> is that root rather than an opaque constant: <span class="md-math md-math-inline">\(ρ = a\)</span> for <span class="md-math md-math-inline">\(c = a^3\)</span>.</p>
+</li>
+</ul>
+<p>Either way the answer is <span class="md-math md-math-inline">\(G(x/ρ)\)</span>, which matches the <span class="md-math md-math-inline">\(b^{1/3}\)</span> form Rubi gives.</p>
+<p>Step BN is also tried inside the radical substitutions (<code class="md-code-inline">integrate_subst</code>), on the rational function of <span class="md-math md-math-inline">\(t\)</span>. There <span class="md-math md-math-inline">\(t = x^{1/3}\)</span> turns <span class="md-math md-math-inline">\(1/((a^3 - x) x^{4/3})\)</span> into <span class="md-math md-math-inline">\(3/(t^2 (a^3 - t^3))\)</span>. Together with step US (<span class="md-math md-math-inline">\(u = \cos^n x\)</span>) this handles <span class="md-math md-math-inline">\(\tan x/(a^3 - b^3\cos^n x)^{4/3}\)</span>.</p>
+<p>At a level <span class="md-math md-math-inline">\(i ≥ 1\)</span> with monomial <span class="md-math md-math-inline">\(θ\)</span> over <span class="md-math md-math-inline">\(K = K_{i-1}\)</span> (Bronstein ch. 5):</p>
+<ol class="md-list-tight">
+<li><p><strong>Special part</strong> (exp only): <span class="md-math md-math-inline">\(θ^m\)</span> in the denominator splits off as Laurent terms.</p>
+</li>
+<li><p><strong>Hermite reduction</strong> with the tower derivation.</p>
+</li>
+<li><p><strong>Residue criterion</strong> (Thm 5.6.1): <span class="md-math md-math-inline">\(R(z) = \operatorname{res}_θ(D, A - z\,δD)\)</span> must have constant roots, or the integral is not elementary. The roots give <span class="md-math md-math-inline">\(\sum c \log \gcd(D, A - c\,δD)\)</span>. For exp levels <span class="md-math md-math-inline">\(\int v&#39;/v\)</span> carries an extra <span class="md-math md-math-inline">\(-\deg(v)\,u\)</span>. Non-rational residues give RootSums inside the tower (step RT), with real forms for quartics (step RF).</p>
+</li>
+<li><p><strong>Polynomial part.</strong></p>
+<ul class="md-list-tight">
+<li><p><code class="md-code-inline">log</code> and <code class="md-code-inline">atan</code> levels (primitive): top-down reduction, each coefficient by <em>limited integration</em> in <span class="md-math md-math-inline">\(K\)</span> (§5.8), recursively calling <code class="md-code-inline">integrate_el</code> at level <span class="md-math md-math-inline">\(i - 1\)</span>. When that is impossible because of <span class="md-math md-math-inline">\(θ \log(ax + b)\)</span> times simple rational poles, the dilogarithm step DL writes those terms with <span class="md-math md-math-inline">\(\operatorname{Li}_2\)</span>; step LF handles logs of products of linear factors. These include the roots of quadratics in one real <span class="md-math md-math-inline">\(ℚ(\sqrt d)\)</span>, for example <span class="md-math md-math-inline">\(\log(x^2 + x - 1) = \log(x - r_+) + \log(x - r_-)\)</span>. Poles of order <span class="md-math md-math-inline">\(j ≥ 2\)</span> are moved by parts: <span class="md-math md-math-inline">\(θ\,c/(x - c_0)^j = (Eθ)&#39; - Eθ&#39;\)</span> with <span class="md-math md-math-inline">\(E = -c/((j - 1)(x - c_0)^{j-1})\)</span>, and the rational term <span class="md-math md-math-inline">\(-Eθ&#39;\)</span> joins the coefficient of <span class="md-math md-math-inline">\(θ^0\)</span>. <strong>Step DC</strong> handles a quadratic factor <span class="md-math md-math-inline">\(Q = (x - α)^2 + β^2\)</span> with complex roots <span class="md-math md-math-inline">\(c = α ± iβ\)</span> and poles of the coefficient at those roots. Its integral is <span class="md-math md-math-inline">\(2\operatorname{Re}[γ(\tfrac12\log^2(x - c) + \log(x - \bar c)\log w + \operatorname{Li}_2(\bar w))]\)</span> with <span class="md-math md-math-inline">\(w = ½ + i(x - α)/(2β)\)</span>. Since <span class="md-math md-math-inline">\(\operatorname{Re} w = ½\)</span>, no <code class="md-code-inline">log</code> or <span class="md-math md-math-inline">\(\operatorname{Li}_2\)</span> crosses a branch cut, and the real form (<code class="md-code-inline">atan</code>, <code class="md-code-inline">repolylog</code>, <code class="md-code-inline">impolylog</code>) is continuous on <span class="md-math md-math-inline">\(ℝ\)</span>. An example is <span class="md-math md-math-inline">\(\int \log(x^2 + 2)^2\)</span>. Each pair of complex poles <span class="md-math md-math-inline">\(c, \bar c\)</span> contributes twice the real part of <span class="md-math md-math-inline">\(\int ρ \log v/(x - c)\)</span>. That real part uses <span class="md-math md-math-inline">\(\operatorname{Re}\operatorname{Li}_2\)</span> and <span class="md-math md-math-inline">\(\operatorname{Im}\operatorname{Li}_2\)</span> (<code class="md-code-inline">repolylog</code>, <code class="md-code-inline">impolylog</code>), and works over a parameter field too. The poles come from <span class="md-math md-math-inline">\(ℚ(i)\)</span>, or from a quadratic factor with <span class="md-math md-math-inline">\(-Δ\)</span> a square, as in <span class="md-math md-math-inline">\(a ± i\)</span> for <span class="md-math md-math-inline">\(1/(1 + (x - a)^2)\)</span>. That is how <span class="md-math md-math-inline">\(\int \operatorname{atan}(x - a)/(x + a)\)</span> is done, by parts (step AP).</p>
+</li>
+<li><p><code class="md-code-inline">exp</code> levels: <span class="md-math md-math-inline">\(\int a_j θ^j\)</span> needs <span class="md-math md-math-inline">\(y\)</span> with <span class="md-math md-math-inline">\(y&#39; + j u&#39; y = a_j\)</span>, the <strong>Risch differential equation</strong> (ch. 6). <code class="md-code-inline">rde</code> dispatches: <code class="md-code-inline">rde_base</code> over <span class="md-math md-math-inline">\(C(x)\)</span> (bounds on poles and degree, then exact linear algebra), and <code class="md-code-inline">rde_general</code> for arbitrary denominators (weak normalization, normal and special denominators, degree bound, SPDE, then the no-cancellation, decoupled or triangular cases). Cancellation cases (§6.6) are recognized but not solved: if one cannot be excluded and no solution is found, the answer is <code class="md-code-inline">RischNotImplemented</code>, not <code class="md-code-inline">NotElementary</code>.</p>
+</li>
+</ul>
+</li>
+<li><p><strong>Special functions</strong> (Step 8a). Where step 4 proves <span class="md-math md-math-inline">\(\int a θ^j\)</span> (<span class="md-math md-math-inline">\(θ = e^U\)</span>) not elementary, the parametric Risch equation (ch. 7, <code class="md-code-inline">prde</code>) looks for <span class="md-math md-math-inline">\(a = y&#39; + jU&#39;y + \sum c_t U&#39;/(U - t) + \sum d_l θ_l^{-j} W_l&#39;/W_l [+ k]\)</span>, which integrates with <code class="md-code-inline">Ei</code> terms, and <code class="md-code-inline">erf</code>/<code class="md-code-inline">erfi</code> for a quadratic exponent at the base. At a log level with non-constant residues, <span class="md-math md-math-inline">\(\int c\,u^m u&#39;/(\log u + b)\)</span> gives <span class="md-math md-math-inline">\(\operatorname{Ei}\)</span> of a log (<code class="md-code-inline">li</code>). When the denominator has several factors, partial fractions first split off each factor <span class="md-math md-math-inline">\(θ - r\)</span> with <span class="md-math md-math-inline">\(r\)</span> constant (<code class="md-code-inline">special_log_split</code>). These factors are found as the common roots of the denominator and its coefficientwise derivative. Each such piece is integrated by the usual log part if possible (for example <span class="md-math md-math-inline">\(-\log\log x\)</span>), and otherwise as <code class="md-code-inline">Ei</code>. The rest goes to the usual log part. For example, <span class="md-math md-math-inline">\(\int (2θ^2 - θ - x^2)/(θ^3 - x^2 θ)\)</span> with <span class="md-math md-math-inline">\(θ = \log x\)</span> is <span class="md-math md-math-inline">\(\operatorname{Ei}(\log x) + \tfrac12\log(x + \log x) - \tfrac12\log(\log x - x)\)</span>. These terms keep their exact derivatives, so the usual check still applies.</p>
+</li>
+</ol>
+<p>Over <span class="md-math md-math-inline">\(ℚ(i)\)</span> (trigonometric input) the integral is computed there and then put in <strong>real form</strong> (Step 7). Conjugation <span class="md-math md-math-inline">\(σ\)</span> (<span class="md-math md-math-inline">\(i ↦ -i\)</span>, with <span class="md-math md-math-inline">\(σθ = θ\)</span> for real generators and <span class="md-math md-math-inline">\(σθ = 1/θ\)</span> for <span class="md-math md-math-inline">\(θ = e^{iw}\)</span>) commutes with the derivation, so <span class="md-math md-math-inline">\(\operatorname{Re} F = (F + σF)/2\)</span> is also an antiderivative. Its real form uses <span class="md-math md-math-inline">\(\cos kw\)</span>, <span class="md-math md-math-inline">\(\sin kw\)</span>, and <span class="md-math md-math-inline">\((c \log w + σc \log σw)/2 = (c_r/2) \log(w\,σw) - c_i \operatorname{atan}(V/U)\)</span>, with <span class="md-math md-math-inline">\(c_r = (c + σc)/2\)</span>, <span class="md-math md-math-inline">\(c_i = (c - σc)/(2i)\)</span>, <span class="md-math md-math-inline">\(U = (w + σw)/2\)</span> and <span class="md-math md-math-inline">\(V = (w - σw)/(2i)\)</span>. The real form is verified again in the tower.</p>
+<p>A <code class="md-code-inline">NotElementary</code> from a tower with an <code class="md-code-inline">atan</code> level is demoted to <code class="md-code-inline">RischNotImplemented</code>, since the structure-theorem arguments behind some decisions are for <code class="md-code-inline">exp</code>/<code class="md-code-inline">log</code> towers only.</p>
+<h3 id="5.-When-the-direct-route-fails:-the-fallback-chain" class="md-heading">5. When the direct route fails: the fallback chain<a href="#5.-When-the-direct-route-fails:-the-fallback-chain" class="md-heading-anchor" aria-label="Link to this section">#</a></h3>
+<p>If <code class="md-code-inline">integrate_direct</code> throws <code class="md-code-inline">NotElementary</code> or <code class="md-code-inline">RischNotImplemented</code>, <code class="md-code-inline">risch_integrate</code> tries, in order:</p>
+<div class="md-table-wrap">
+<table class="md-table">
+<thead>
+<tr>
+<th style="text-align:left">Step</th>
+<th style="text-align:left">When</th>
+<th style="text-align:left">Recognizes</th>
+<th style="text-align:left">Does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">CL</td>
+<td style="text-align:left"><code class="md-code-inline">NotElementary</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(x^p R(\sin kx, \cos kx)\)</span></td>
+<td style="text-align:left">by parts, with Clausen functions <span class="md-math md-math-inline">\(\operatorname{Cl}_m\)</span> and <span class="md-math md-math-inline">\(\operatorname{Re}\operatorname{Li}_m\)</span>: <span class="md-math md-math-inline">\(\int x \tan x\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">LP</td>
+<td style="text-align:left">any</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(\log^j(x)\, L(wx)/x\)</span>, <span class="md-math md-math-inline">\(L\)</span> = <code class="md-code-inline">atan</code>, <code class="md-code-inline">log</code>, <code class="md-code-inline">li2</code></td>
+<td style="text-align:left">polylogarithms by parts: <span class="md-math md-math-inline">\(\int \operatorname{atan}(x)/x = \operatorname{Ti}_2(x)\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">AT</td>
+<td style="text-align:left">any</td>
+<td style="text-align:left"><code class="md-code-inline">atan(u)</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(u = \tan t\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">AP</td>
+<td style="text-align:left">any</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(A \cdot L^k\)</span> with <span class="md-math md-math-inline">\(L\)</span> an inverse function or <code class="md-code-inline">log</code></td>
+<td style="text-align:left">by parts, <span class="md-math md-math-inline">\(\int A L^k = Q L^k - k\int Q L^{k-1} L&#39;\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">HS</td>
+<td style="text-align:left"><code class="md-code-inline">NotElementary</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(x^m(α + βx^n)^q\)</span>, <span class="md-math md-math-inline">\(\sin^p \cos^r\)</span>, symbolic exponents</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\({}_2F_1\)</span> terms</td>
+</tr>
+<tr>
+<td style="text-align:left">EH</td>
+<td style="text-align:left"><code class="md-code-inline">NotElementary</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(e^{ax} R(\cos bx, \sin bx)\)</span> with the poles of <span class="md-math md-math-inline">\(R(E)\)</span>, <span class="md-math md-math-inline">\(E = e^{ibx}\)</span>, in <span class="md-math md-math-inline">\(ℚ(i)\)</span></td>
+<td style="text-align:left">partial fractions in <span class="md-math md-math-inline">\(E\)</span>. Each pole gives <span class="md-math md-math-inline">\(\int e^{ax}/(1 - E/r)^k = e^{ax}\,{}_2F_1(k, s; s+1; E/r)/a\)</span> with <span class="md-math md-math-inline">\(s = a/(ib)\)</span>. The real part is printed with <code class="md-code-inline">rehyp2f1</code> and <code class="md-code-inline">imhyp2f1</code> (<span class="md-math md-math-inline">\(\int e^x/(1 + \cos x)\)</span>)</td>
+</tr>
+<tr>
+<td style="text-align:left">H3, H4</td>
+<td style="text-align:left"><code class="md-code-inline">NotElementary</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(x^s e^{bx + d}\)</span>, <span class="md-math md-math-inline">\(x^s \sin\)</span>, <span class="md-math md-math-inline">\(x^s \cos\)</span></td>
+<td style="text-align:left">incomplete <span class="md-math md-math-inline">\(Γ\)</span> terms</td>
+</tr>
+<tr>
+<td style="text-align:left">US</td>
+<td style="text-align:left">any</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(f = G(u)\,u&#39;\)</span> for a subterm <span class="md-math md-math-inline">\(u\)</span> (and the partner <span class="md-math md-math-inline">\(\sinh v\)</span> of <span class="md-math md-math-inline">\(\cosh v\)</span>, <span class="md-math md-math-inline">\(\sin v\)</span> of <span class="md-math md-math-inline">\(\cos v\)</span>, …)</td>
+<td style="text-align:left">derivative-divides, below. With <span class="md-math md-math-inline">\(u = \sinh v\)</span>, even powers of <span class="md-math md-math-inline">\(\cosh v\)</span> are <span class="md-math md-math-inline">\((1 + u^2)^k\)</span>, and so on</td>
+</tr>
+<tr>
+<td style="text-align:left">NS</td>
+<td style="text-align:left">any</td>
+<td style="text-align:left">a radical with an inner radical <span class="md-math md-math-inline">\(\sqrt{R(x)}\)</span></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(x = X(u)\)</span> that rationalizes the inner radical</td>
+</tr>
+<tr>
+<td style="text-align:left">CS</td>
+<td style="text-align:left">any</td>
+<td style="text-align:left">nested radicals with coefficients in <span class="md-math md-math-inline">\(ℚ(\sqrt d)\)</span></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(x = σy\)</span> (<span class="md-math md-math-inline">\(σ = 1, d, 1/d\)</span>). Each radicand is written as <span class="md-math md-math-inline">\(κ P_0\)</span> with <span class="md-math md-math-inline">\(P_0\)</span> over <span class="md-math md-math-inline">\(ℚ\)</span>, so <span class="md-math md-math-inline">\(\sqrt{κ}\)</span> comes out: in <span class="md-math md-math-inline">\(ℚ(\sqrt d)\)</span>, or <span class="md-math md-math-inline">\(\sqrt b\, d^{1/4}\)</span> for <span class="md-math md-math-inline">\(κ = b\sqrt d\)</span>. Step IT then takes out <span class="md-math md-math-inline">\(d^{1/4}\)</span>. Example: <span class="md-math md-math-inline">\(\sqrt{\sqrt2 + \sqrt x + \sqrt{2 + \sqrt8\sqrt x + 2x}}\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">PP</td>
+<td style="text-align:left">any</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(\sqrt{g + c_1}\)</span>, <span class="md-math md-math-inline">\(\sqrt{g + c_2}\)</span> of one term <span class="md-math md-math-inline">\(g\)</span></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(w = \sqrt{x + c_1} - \sqrt{x + c_2}\)</span> for <span class="md-math md-math-inline">\(g = x\)</span>. Then <span class="md-math md-math-inline">\(\sqrt{x + c_1} = (w + k/w)/2\)</span> and <span class="md-math md-math-inline">\(\sqrt{x + c_2} = (k/w - w)/2\)</span>, with <span class="md-math md-math-inline">\(k = c_1 - c_2\)</span>. For <span class="md-math md-math-inline">\(g = h(ax + b)\)</span> (<span class="md-math md-math-inline">\(h\)</span> = sec, csc, sin, cos, tan, cot, exp, sinh, cosh), first <span class="md-math md-math-inline">\(u = g\)</span>. Example: <span class="md-math md-math-inline">\(\sqrt{\sqrt{\sec x + 1} - \sqrt{\sec x - 1}}\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">RC</td>
+<td style="text-align:left">any</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(R(x)\sqrt{P}^k\)</span>, <span class="md-math md-math-inline">\(P(x) = x^m S(x + s/x)\)</span></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(u = x + s/x\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">RY</td>
+<td style="text-align:left">any</td>
+<td style="text-align:left">one radical <span class="md-math md-math-inline">\(y = P^{1/n}\)</span> with <span class="md-math md-math-inline">\(P\)</span> in an <code class="md-code-inline">exp</code>/<code class="md-code-inline">log</code> tower</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(\int A_r y^r = B_r y^r\)</span> with <span class="md-math md-math-inline">\(B_r&#39; + (r/n)(P&#39;/P) B_r = A_r\)</span>, a Risch differential equation in the tower</td>
+</tr>
+<tr>
+<td style="text-align:left">LS</td>
+<td style="text-align:left">any</td>
+<td style="text-align:left">a sum, or a quotient with a sum on top</td>
+<td style="text-align:left">term by term, grouping terms with the same radicals</td>
+</tr>
+<tr>
+<td style="text-align:left">RK</td>
+<td style="text-align:left">a radical refused for its radicand, in the outermost call</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\((cV)^e\)</span> with a factor <span class="md-math md-math-inline">\(c\)</span> free of <code class="md-code-inline">x</code>, with a parameter, in every summand of the radicand</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(c^e V^e\)</span> for <span class="md-math md-math-inline">\(c &gt; 0\)</span> (<span class="md-math md-math-inline">\((-c)^e(-V)^e\)</span> for <span class="md-math md-math-inline">\(c &lt; 0\)</span>; the sign from step SO or the positive parameter values), <span class="md-math md-math-inline">\((t^k)^e = t^{ke}\)</span> for an integer <span class="md-math md-math-inline">\(ke\)</span> and <span class="md-math md-math-inline">\(t &gt; 0\)</span>. Then <span class="md-math md-math-inline">\(V\)</span> has rational coefficients: <span class="md-math md-math-inline">\(\sqrt{a + a\sin x} = \sqrt a \sqrt{1 + \sin x}\)</span> for step PW. Last, and not inside another call, so that a substitution refused inside (steps AL, US) leaves the next route its chance</td>
+</tr>
+<tr>
+<td style="text-align:left">Expr retry</td>
+<td style="text-align:left">term type without special functions</td>
+<td style="text-align:left"></td>
+<td style="text-align:left">the integrand as an <code class="md-code-inline">Expr</code>, special terms evaluated numerically</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>If none of them answers, the original exception is rethrown.</p>
+<p>The order matters in a few places. LP comes before AT because <span class="md-math md-math-inline">\(\int \operatorname{atan}(x)/x\)</span> is one <span class="md-math md-math-inline">\(\operatorname{Ti}_2\)</span>, not eight Clausen terms. CL, HS, H3 and H4 run only after a proof that the integral is not elementary, since they produce special functions. LS comes last: the terms of a sum can need different routes (<span class="md-math md-math-inline">\(\int 1/x + (1 + 1/x)/(x + \log x)^{3/2}\)</span>: a log, then <span class="md-math md-math-inline">\(u = x + \log x\)</span>; Rubi 219), but splitting can also separate terms whose sum is elementary while the parts are not, so it is tried only when the whole integrand has failed.</p>
+<h4 id="u-substitution-(step-US)" class="md-heading">u-substitution (step US)<a href="#u-substitution-(step-US)" class="md-heading-anchor" aria-label="Link to this section">#</a></h4>
+<p>For a subterm <span class="md-math md-math-inline">\(u\)</span> of <span class="md-math md-math-inline">\(f\)</span>, compute <span class="md-math md-math-inline">\(q = f/u&#39;\)</span> (<span class="md-math md-math-inline">\(u&#39;\)</span> by the chain rule on terms). Parse <span class="md-math md-math-inline">\(q\)</span> into a tower in which <span class="md-math md-math-inline">\(u\)</span>, and every subterm whose <code class="md-code-inline">x</code> occurs only inside <span class="md-math md-math-inline">\(u\)</span>, is an opaque constant. If <span class="md-math md-math-inline">\(q\)</span> is a constant there, then <span class="md-math md-math-inline">\(f = G(u)u&#39;\)</span> with <span class="md-math md-math-inline">\(G\)</span> the constant printed with <span class="md-math md-math-inline">\(u ↦ x\)</span>: integrate <span class="md-math md-math-inline">\(G\)</span> in <span class="md-math md-math-inline">\(x\)</span> and substitute <span class="md-math md-math-inline">\(x ↦ u\)</span> in the answer. Radicals extend the test: for <span class="md-math md-math-inline">\(u = v^e\)</span> also <span class="md-math md-math-inline">\(v = U^{1/e}\)</span>, and for <span class="md-math md-math-inline">\(u = x^k\)</span> also <span class="md-math md-math-inline">\(x^{mk} = U^m\)</span>. For <span class="md-math md-math-inline">\(v = a + bθ\)</span> with <span class="md-math md-math-inline">\(θ\)</span> a log or exp, <span class="md-math md-math-inline">\(θ\)</span> is replaced by <span class="md-math md-math-inline">\((U^m - a)/b\)</span> wherever it occurs, so <span class="md-math md-math-inline">\(v\)</span> written another way is still seen as <span class="md-math md-math-inline">\(U^m\)</span>.</p>
+<h4 id="Substituting-back" class="md-heading">Substituting back<a href="#Substituting-back" class="md-heading-anchor" aria-label="Link to this section">#</a></h4>
+<p>A substitution step integrates in <span class="md-math md-math-inline">\(u\)</span> and maps the answer back with <span class="md-math md-math-inline">\(u ↦ \text{back}(x)\)</span> (<code class="md-code-inline">subst_answer</code>). The elementary part is a term and is mapped directly; RootSums are mapped by attaching the back-substitution as their argument (<code class="md-code-inline">RootSum</code>) or to their coefficients (<code class="md-code-inline">TermRootSum</code>, <code class="md-code-inline">ScaledRootSum</code>).</p>
+<h2 id="Answers" class="md-heading">Answers<a href="#Answers" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
+<h3 id="Exact-results" class="md-heading">Exact results<a href="#Exact-results" class="md-heading-anchor" aria-label="Link to this section">#</a></h3>
+<p><code class="md-code-inline">integrate_el</code> returns an <code class="md-code-inline">ElemIntegral</code>:</p>
+<ul class="md-list-tight">
+<li><p><code class="md-code-inline">v</code>, the rational part, an element of the tower;</p>
+</li>
+<li><p><code class="md-code-inline">logs</code>, pairs <span class="md-math md-math-inline">\((c, w)\)</span> for <span class="md-math md-math-inline">\(c \log w\)</span>;</p>
+</li>
+<li><p><code class="md-code-inline">atans</code>, pairs <span class="md-math md-math-inline">\((c, u)\)</span> for <span class="md-math md-math-inline">\(c \operatorname{atan} u\)</span>;</p>
+</li>
+<li><p><code class="md-code-inline">quads</code>, the terms with irrational constants: <code class="md-code-inline">TowerQuadLog</code>, <span class="md-math md-math-inline">\(β\sqrt d \log((U + \sqrt d V)/(U - \sqrt d V))\)</span>; <code class="md-code-inline">TowerQuadAtan</code>; RootSums (<code class="md-code-inline">TowerRootSum</code>, <code class="md-code-inline">BaseRootSum</code>); real forms of quartic RootSums (<code class="md-code-inline">TowerRealForm</code>); special-function terms (<code class="md-code-inline">SpecialTerm</code>, <code class="md-code-inline">DilogTerm</code>, <code class="md-code-inline">DilogPairTerm</code>, <code class="md-code-inline">DilogQuadTerm</code>, <code class="md-code-inline">DilogGroup</code>).</p>
+</li>
+</ul>
+<p>For a rational function, <code class="md-code-inline">integrate_rational</code> returns a <code class="md-code-inline">RationalIntegral</code> with the same parts over <span class="md-math md-math-inline">\(C(x)\)</span> plus the unresolved residue factors that become RootSums.</p>
+<h3 id="Building-terms" class="md-heading">Building terms<a href="#Building-terms" class="md-heading-anchor" aria-label="Link to this section">#</a></h3>
+<p>A <code class="md-code-inline">Builder</code> carries <code class="md-code-inline">build(op, args...)</code>, <code class="md-code-inline">lift(n)</code>, the variable term, and the constant generators. <code class="md-code-inline">to_term</code> writes each part with <code class="md-code-inline">mk(b, :log, …)</code> and friends; <code class="md-code-inline">cterm</code> writes constants, with <span class="md-math md-math-inline">\(\sqrt d\)</span> kept symbolic and each generator printed as what it stands for (the user&#39;s symbol, <span class="md-math md-math-inline">\(e\)</span>, <span class="md-math md-math-inline">\(\log 2\)</span>). <code class="md-code-inline">auto_build</code> and <code class="md-code-inline">auto_lift</code> choose defaults for the term type of the integrand: operations are called as functions, and for SymbolicUtils, constants such as <span class="md-math md-math-inline">\(\sqrt 2\)</span> are built with <code class="md-code-inline">TermInterface.maketerm</code> so they stay unevaluated.</p>
+<h3 id="RootSums-and-numerically-evaluated-terms" class="md-heading">RootSums and numerically evaluated terms<a href="#RootSums-and-numerically-evaluated-terms" class="md-heading-anchor" aria-label="Link to this section">#</a></h3>
+<p>The user&#39;s packages have no RootSum, and many have no <span class="md-math md-math-inline">\({}_2F_1\)</span> or <span class="md-math md-math-inline">\(Γ(s, x)\)</span>. When an answer needs one, <code class="md-code-inline">risch_integrate</code> returns an <code class="md-code-inline">IntegralWithRootSums</code>: an elementary part (a term) plus a list of objects that the package evaluates numerically:</p>
+<ul class="md-list-tight">
+<li><p><code class="md-code-inline">RootSum{C}</code>: over the base field, <span class="md-math md-math-inline">\(\sum α \log W(α, x)\)</span>, evaluated at the roots of <span class="md-math md-math-inline">\(Q\)</span>.</p>
+</li>
+<li><p><code class="md-code-inline">TermRootSum</code>: a RootSum inside a tower, its coefficients written as terms.</p>
+</li>
+<li><p><code class="md-code-inline">ScaledRootSum</code>: a RootSum times a term (from step IT or substitutions).</p>
+</li>
+<li><p><code class="md-code-inline">HypTerm</code>, <code class="md-code-inline">GammaTerm</code>, <code class="md-code-inline">KummerTerm</code>, <code class="md-code-inline">TrigPowerTerm</code>: <span class="md-math md-math-inline">\({}_2F_1\)</span> and <span class="md-math md-math-inline">\(Γ\)</span> terms.</p>
+</li>
+<li><p><code class="md-code-inline">ExprTerm</code>: a special-function term of an answer built through <code class="md-code-inline">Expr</code> (the <code class="md-code-inline">Expr</code> retry).</p>
+</li>
+</ul>
+<p>The object is callable: <code class="md-code-inline">F(a)</code> evaluates the whole antiderivative at <span class="md-math md-math-inline">\(x = a\)</span>, and <code class="md-code-inline">rs_value_continuous</code> follows a continuous branch along the real line.</p>
+<h3 id="Real-forms-of-logarithms" class="md-heading">Real forms of logarithms<a href="#Real-forms-of-logarithms" class="md-heading-anchor" aria-label="Link to this section">#</a></h3>
+<p>Besides the Step 7 real forms, steps RL, EL and TL choose the arguments of logarithms in answers of substitutions so that they are real where the substitution is real. Step EC does the same at the base of real forms over <span class="md-math md-math-inline">\(ℚ(i)(\sqrt d)\)</span>.</p>
+<h2 id="Verification" class="md-heading">Verification<a href="#Verification" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
+<p>Every answer is checked before it is returned:</p>
+<ul class="md-list-tight">
+<li><p>In a tower: <code class="md-code-inline">check_tower(T, n, res, f)</code> differentiates the <code class="md-code-inline">ElemIntegral</code> with the tower derivation and compares with <span class="md-math md-math-inline">\(f\)</span>, exactly.</p>
+</li>
+<li><p>For a rational function: <code class="md-code-inline">check_result</code>. With RootSums, the derivative of <span class="md-math md-math-inline">\(\sum α \log W(α, x)\)</span> is computed exactly in <span class="md-math md-math-inline">\(ℚ(x)\)</span> as <span class="md-math md-math-inline">\(\operatorname{Tr}(z\,∂_xW\,N/W)/N\)</span> with <span class="md-math md-math-inline">\(N = \operatorname{res}_z(Q, W)\)</span>, the trace computed from power sums of the roots. Over a parameter field <span class="md-math md-math-inline">\(ℚ(t_1, …, t_k)\)</span> (no <code class="md-code-inline">QuadLog</code> terms) the derivative is compared at two points <span class="md-math md-math-inline">\(t_j = v_j\)</span> instead, over <span class="md-math md-math-inline">\(ℚ(x)\)</span> (<code class="md-code-inline">check_at_points</code>): the exact comparison&#39;s gcds there cost more than the integration. Specialization is a homomorphism wherever the denominators stay nonzero, so a mismatch is a wrong answer for certain; a wrong answer passes only if its error vanishes identically in <span class="md-math md-math-inline">\(x\)</span> at both points. RootSums are specialized with the rest (their monic <span class="md-math md-math-inline">\(m\)</span> keeps its degree) and differentiated over <span class="md-math md-math-inline">\(ℚ(x)\)</span>. When an image is undefined (a pole at a point), the check is exact.</p>
+</li>
+<li><p>Real forms and real-log rewrites are checked again after the rewrite.</p>
+</li>
+<li><p>A substitution checks its own identities exactly (<span class="md-math md-math-inline">\(g(s(θ))\,s&#39; = R\)</span> in step MR, <span class="md-math md-math-inline">\(H(x + s/x) = h\)</span> in step RC, <span class="md-math md-math-inline">\(\tilde U_j(s(θ)) = U_j\)</span>) and integrates the substituted integrand, which is itself checked. The chain rule then makes the composed answer an antiderivative.</p>
+</li>
+<li><p>Special-function terms carry their exact derivatives into the check.</p>
+</li>
+</ul>
+<p><code class="md-code-inline">verify = false</code> skips the final checks (not the internal identity checks of substitutions).</p>
+<p>The checks are formal: they hold as identities of expressions. Branch questions (which square root, which logarithm) are handled by the conventions above, not by the check.</p>
+<h2 id="Errors" class="md-heading">Errors<a href="#Errors" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
+<div class="md-table-wrap">
+<table class="md-table">
+<thead>
+<tr>
+<th style="text-align:left">Exception</th>
+<th style="text-align:left">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code class="md-code-inline">NotElementary</code></td>
+<td style="text-align:left">the integral was proved to have no elementary antiderivative, and no special-function form used by the package was found</td>
+</tr>
+<tr>
+<td style="text-align:left"><code class="md-code-inline">RischNotImplemented</code></td>
+<td style="text-align:left">the integrand is outside the cases implemented; no decision</td>
+</tr>
+<tr>
+<td style="text-align:left"><code class="md-code-inline">RischError</code></td>
+<td style="text-align:left">an internal check failed: a bug</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><code class="md-code-inline">NotElementary</code> is thrown only from decision procedures that are complete for their case: the residue criterion, the Risch differential equation without unresolved cancellation, Liouville&#39;s theorem on a hyperelliptic or Kummer curve. A substitution that fails does not prove anything, so substitution steps return <code class="md-code-inline">nothing</code> or rethrow <code class="md-code-inline">RischNotImplemented</code>.</p>
+<p>Internally, <code class="md-code-inline">Restart</code>, <code class="md-code-inline">NewConstants</code> and <code class="md-code-inline">NeedComplex</code> are control flow for <code class="md-code-inline">build_tower</code>.</p>
+<h2 id="Recursion-and-global-switches" class="md-heading">Recursion and global switches<a href="#Recursion-and-global-switches" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
+<p>Several steps call <code class="md-code-inline">risch_integrate</code> on a transformed integrand. Re-entry into the same step is blocked by a flag:</p>
+<div class="md-table-wrap">
+<table class="md-table">
+<thead>
+<tr>
+<th style="text-align:left">Flag</th>
+<th style="text-align:left">Prevents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code class="md-code-inline">USUB_DEPTH</code></td>
+<td style="text-align:left">u-substitutions nested more than two deep</td>
+</tr>
+<tr>
+<td style="text-align:left"><code class="md-code-inline">RECIPROCAL</code></td>
+<td style="text-align:left">a reciprocal substitution inside another</td>
+</tr>
+<tr>
+<td style="text-align:left"><code class="md-code-inline">TOWER_RADICAL</code></td>
+<td style="text-align:left">step RY inside step RY</td>
+</tr>
+<tr>
+<td style="text-align:left"><code class="md-code-inline">EXPR_RETRY</code></td>
+<td style="text-align:left">nested <code class="md-code-inline">Expr</code> retries</td>
+</tr>
+<tr>
+<td style="text-align:left"><code class="md-code-inline">OPAQUE_CONST_RADICALS</code></td>
+<td style="text-align:left">(set) constant radicals as opaque constants inside step PR</td>
+</tr>
+<tr>
+<td style="text-align:left"><code class="md-code-inline">HYP_ANSWERS</code></td>
+<td style="text-align:left">(switch) set to <code class="md-code-inline">false</code> to get <code class="md-code-inline">NotElementary</code> instead of <span class="md-math md-math-inline">\({}_2F_1\)</span>/<span class="md-math md-math-inline">\(Γ\)</span> answers</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h2 id="A-few-traces" class="md-heading">A few traces<a href="#A-few-traces" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
+<p><strong><span class="md-math md-math-inline">\(\int 1/(x^3 + 1)\)</span>.</strong> No radicals, no trigonometry: the tower is <span class="md-math md-math-inline">\(ℚ(x)\)</span>. Hermite reduction leaves <span class="md-math md-math-inline">\(1/(x^3 + 1)\)</span>. The resultant has the rational root <span class="md-math md-math-inline">\(1/3\)</span>, giving <span class="md-math md-math-inline">\(\frac13 \log(x + 1)\)</span>, and a quadratic factor with roots <span class="md-math md-math-inline">\(-\frac16 ± \frac{\sqrt 3}{6} i\)</span>, giving <span class="md-math md-math-inline">\(-\frac16 \log(x^2 - x + 1) + \frac{\sqrt3}{3}\operatorname{atan}\frac{2x - 1}{\sqrt 3}\)</span>. With <code class="md-code-inline">Expr</code> terms:</p>
+<div class="md-code-block">
+<button class="md-copy-btn" title="Copy to clipboard" aria-label="Copy code"><span class="md-copy-icon">⧉</span><span class="md-copy-feedback">Copied!</span></button>
+<pre><code>1//3 * log(1 + x) + -1//6 * log(1 + -1x + x ^ 2) + 1//3 * sqrt(3) * atan(sqrt(3) * (-1//3 + 2//3 * x))</code></pre>
+</div>
+<p><strong><span class="md-math md-math-inline">\(\int x e^x/(1 + x)^2\)</span>.</strong> The tower is <span class="md-math md-math-inline">\(ℚ(x)(θ)\)</span>, <span class="md-math md-math-inline">\(θ = e^x\)</span>. The integrand is <span class="md-math md-math-inline">\(a θ\)</span> with <span class="md-math md-math-inline">\(a = x/(1 + x)^2\)</span>; the Risch equation <span class="md-math md-math-inline">\(y&#39; + y = a\)</span> has the rational solution <span class="md-math md-math-inline">\(y = 1/(1 + x)\)</span>, so the integral is <span class="md-math md-math-inline">\(e^x/(1 + x)\)</span>, printed <code class="md-code-inline">(1 / (1 + x)) * exp(x)</code>.</p>
+<p><strong><span class="md-math md-math-inline">\(\int e^{x^2}\)</span>.</strong> The Risch equation <span class="md-math md-math-inline">\(y&#39; + 2xy = 1\)</span> has no rational solution, so the integral is not elementary. Step 8a finds the quadratic exponent at the base: <span class="md-math md-math-inline">\(\frac{\sqrt π}{2}\operatorname{erfi}(x)\)</span>, printed <code class="md-code-inline">(sqrt(π) / (2 * sqrt(1))) * erfi(sqrt(1) * x)</code> (the general formula <span class="md-math md-math-inline">\(\sqrt π/(2\sqrt{\lvert A \rvert}) \operatorname{erfi}(\sqrt{\lvert A \rvert}(x + h))\)</span> with <span class="md-math md-math-inline">\(A = 1\)</span>, <span class="md-math md-math-inline">\(h = 0\)</span>, not simplified).</p>
+<p><strong><span class="md-math md-math-inline">\(\int \sqrt{x^2 + 1}\)</span>.</strong> One quadratic radicand: an Euler substitution <span class="md-math md-math-inline">\(\sqrt{x^2 + 1} = t - x\)</span> over <span class="md-math md-math-inline">\(ℚ\)</span>, a rational integral in <span class="md-math md-math-inline">\(t\)</span>, with <span class="md-math md-math-inline">\(t\)</span> printed as <span class="md-math md-math-inline">\(\sqrt{x^2 + 1} + x\)</span>. Step EL keeps the logarithm&#39;s argument positive:</p>
+<div class="md-code-block">
+<button class="md-copy-btn" title="Copy to clipboard" aria-label="Copy code"><span class="md-copy-icon">⧉</span><span class="md-copy-feedback">Copied!</span></button>
+<pre><code>(-1//8 + 1//8 * (sqrt(x ^ 2 + 1) + x) ^ 4) / (sqrt(x ^ 2 + 1) + x) ^ 2 + 1//2 * log(sqrt(x ^ 2 + 1) + x)</code></pre>
+</div>
+<p><strong>Rubi 218.</strong> <span class="md-math md-math-inline">\(\int \big(3(x + e^x)^{1/3} + (2x^2 + 3x)e^x + 5x^2\big)/\big(x(x + e^x)^{1/3}\big)\)</span>. The radicand <span class="md-math md-math-inline">\(x + e^x\)</span> is not rational in <code class="md-code-inline">x</code>, so <code class="md-code-inline">integrate_radical</code> refuses, and none of MR, NR, PW or DN apply. In the fallback chain, step RY splits the integrand as <span class="md-math md-math-inline">\(3/x + A\,y^{-1}\)</span> with <span class="md-math md-math-inline">\(y = (x + e^x)^{1/3}\)</span>, rewrites <span class="md-math md-math-inline">\(y^{-1} = y^2/(x + e^x)\)</span>, and solves <span class="md-math md-math-inline">\(B&#39; + \frac23 \frac{1 + e^x}{x + e^x} B = \frac{(2x + 3)e^x + 5x}{x + e^x}\)</span> in <span class="md-math md-math-inline">\(ℚ(x)(e^x)\)</span>: <span class="md-math md-math-inline">\(B = 3x\)</span>. The radical-free part <span class="md-math md-math-inline">\(3/x\)</span> integrates as usual: <span class="md-math md-math-inline">\(3x(x + e^x)^{2/3} + 3\log x\)</span>.</p>
+<p><strong><span class="md-math md-math-inline">\(\int \sqrt{-1 - x^2}\)</span>.</strong> The radicand is never positive (step NP): <span class="md-math md-math-inline">\(\sqrt{-1 - x^2} = i\sqrt{1 + x^2}\)</span> with <span class="md-math md-math-inline">\(i = \sqrt{-1}\)</span> opaque. The Euler substitution handles <span class="md-math md-math-inline">\(\sqrt{1 + x^2}\)</span>, and <span class="md-math md-math-inline">\(\sqrt{-1}\)</span> stays a factor of the answer: the previous answer times <code class="md-code-inline">sqrt(-1)</code>, with <span class="md-math md-math-inline">\(\sqrt{1 + x^2}\)</span> written <code class="md-code-inline">sqrt(-1 * (-1 - x ^ 2))</code>.</p>
+<p><strong><span class="md-math md-math-inline">\(\int \operatorname{atan}(x)/x\)</span>.</strong> The tower <span class="md-math md-math-inline">\(ℚ(x)(\operatorname{atan} x)\)</span> proves the integral not elementary. In the fallback chain, step LP writes <span class="md-math md-math-inline">\(\operatorname{atan} x\)</span> as <span class="md-math md-math-inline">\(\operatorname{Im} \operatorname{Li}_1(ix)\)</span>, so the integral is <span class="md-math md-math-inline">\(\operatorname{Im}\operatorname{Li}_2(ix) = \operatorname{Ti}_2(x)\)</span>, printed <code class="md-code-inline">impolylog(2, x, 1//2 * π)</code>.</p>
+<p><strong><span class="md-math md-math-inline">\(\int x \tan x\)</span>.</strong> Not elementary. Step CL integrates by parts over <span class="md-math md-math-inline">\(ℚ(i)\)</span>, <span class="md-math md-math-inline">\(θ = e^{2ix}\)</span>: <span class="md-math md-math-inline">\(G_1 = \int \tan x\)</span> has the logarithm of <span class="md-math md-math-inline">\(θ + 1\)</span>, whose root <span class="md-math md-math-inline">\(-1\)</span> is on the unit circle, and <span class="md-math md-math-inline">\(\int G_1\)</span> gives a Clausen function:</p>
+<div class="md-code-block">
+<button class="md-copy-btn" title="Copy to clipboard" aria-label="Copy code"><span class="md-copy-icon">⧉</span><span class="md-copy-feedback">Copied!</span></button>
+<pre><code>-1//2 * (x * log(2 + 2 * cos(2x))) + -1//2 * clausen2(2x + -1 * π)</code></pre>
+</div>
+<h2 id="Coverage-and-testing" class="md-heading">Coverage and testing<a href="#Coverage-and-testing" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
+<p>The test suite (<code class="md-code-inline">test/</code>) runs most cases with SymEngine terms (<code class="md-code-inline">run_tests</code>) and the newer steps with <code class="md-code-inline">Expr</code> terms, checking answers numerically at points of their domain, and checks refusals by exception type. It also covers the tower machinery directly (<code class="md-code-inline">test_tower.jl</code>, <code class="md-code-inline">test_risch.jl</code>), the problems from Apostol&#39;s <em>Calculus</em> (<code class="md-code-inline">test_apostol.jl</code>), the <code class="md-code-inline">@integrate</code> macro, and compilation of the first call.</p>
+<p>Coverage is measured on the 1680-problem sample from the Rubi test suite, scored by numeric differentiation of each answer; the README has the current numbers and a comparison with Giac and SymPy. Most of the steps after Step 8 in the tables above were added to close specific Rubi failures, and their comments cite the Rubi problem numbers.</p>
+<h2 id="Open-questions-and-limits" class="md-heading">Open questions and limits<a href="#Open-questions-and-limits" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
+<ul class="md-list-tight">
+<li><p><strong>The algebraic Risch algorithm</strong> is implemented only in pieces: one radical of a rational function (substitution, Euler, hyperelliptic Hermite reduction and Liouville without residues), Kummer extensions with a restricted log part, two square roots (biquadratic), and nested square roots in two special forms. General algebraic function fields are not: integral bases (Trager&#39;s algorithm, or van Hoeij&#39;s), Puiseux expansions and places at infinity, Riemann–Roch spaces for the logarithmic part in general, several radicands of genus ≥ 1 taken as one curve with a primitive element. Bronstein&#39;s lazy Hermite reduction avoids the full integral basis.</p>
+</li>
+<li><p><strong>Mixed algebraic–transcendental towers</strong> (Bronstein 1990): a radical of a non-rational expression such as <span class="md-math md-math-inline">\(\sqrt{\log x}\)</span> is refused (radicals of exponentials, <span class="md-math md-math-inline">\(\sqrt{1 + e^x}\)</span>, are reached by substitution). Not done: the Risch differential equation over <span class="md-math md-math-inline">\(K(θ)[y]\)</span> with its degree and denominator bounds, and structure theorems with algebraic elements.</p>
+</li>
+<li><p><strong>Elliptic answers</strong> are given with <span class="md-math md-math-inline">\({}_2F_1\)</span> (<span class="md-math md-math-inline">\(∫ 1/\sqrt{x^4 + 1} = x\,{}_2F_1(\tfrac12, \tfrac14; \tfrac54; -x^4)\)</span>), not in Legendre or Carlson form (<span class="md-math md-math-inline">\(F\)</span>, <span class="md-math md-math-inline">\(E\)</span>, <span class="md-math md-math-inline">\(Π\)</span>), which needs the roots of the radicand.</p>
+</li>
+<li><p><strong>Cancellation cases</strong> of the Risch differential equation (Bronstein §6.6) are recognized but not solved; integrands that need them are refused.</p>
+</li>
+<li><p><strong>Complex constants</strong> in the input are opaque (<span class="md-math md-math-inline">\(\sqrt{-1}\)</span>) rather than elements of <span class="md-math md-math-inline">\(ℚ(i)\)</span>: answers are correct identities, but <span class="md-math md-math-inline">\(i^2 = -1\)</span> is not used to simplify them.</p>
+</li>
+<li><p><strong>Parameters</strong> are capped in number. Answers that depend on the sign of a parameter expression hold for one choice of signs: the caller&#39;s, through the sign oracle (step SO), else the signs of fixed positive values.</p>
+</li>
+<li><p><strong>Output form.</strong> Answers are not simplified beyond what the algorithm produces; leaf counts are often larger than Rubi&#39;s optimal answers, and forms such as <span class="md-math md-math-inline">\(\sqrt{a^2}\)</span> are left (<span class="md-math md-math-inline">\(∫ 1/\sqrt{a^2 - x^2} = a \operatorname{asin}(x/a)/\sqrt{a^2}\)</span>). Simplification is the caller&#39;s CAS&#39;s job.</p>
+</li>
+</ul>
+<h2 id="References" class="md-heading">References<a href="#References" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
+<ul class="md-list-tight">
+<li><p>M. Bronstein, <em>Symbolic Integration I: Transcendental Functions</em>, Springer (2nd ed. 2005): the transcendental case, which the tower follows.</p>
+</li>
+<li><p>M. Bronstein, <em>Integration of elementary functions</em>, J. Symb. Comp. 9 (1990), and his thesis (Berkeley, 1987): simple radical extensions, mixed towers.</p>
+</li>
+<li><p>M. Bronstein, <em>The lazy Hermite reduction</em>, INRIA RR-3562 (1998).</p>
+</li>
+<li><p>B. Trager, <em>Integration of algebraic functions</em>, PhD thesis, MIT (1984): integral bases, Hermite reduction, the logarithmic part through divisors.</p>
+</li>
+<li><p>J. H. Davenport, <em>On the integration of algebraic functions</em>, LNCS 102 (1981): torsion, reduction mod p.</p>
+</li>
+<li><p>R. Risch, <em>The solution of the problem of integration in finite terms</em>, Bull. AMS 76 (1970).</p>
+</li>
+</ul>
+<h2 id="Step-index" class="md-heading">Step index<a href="#Step-index" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
+<div class="md-table-wrap">
+<table class="md-table">
+<thead>
+<tr>
+<th style="text-align:left">Code</th>
+<th style="text-align:left">Where</th>
+<th style="text-align:left">Short description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">7</td>
+<td style="text-align:left"><code class="md-code-inline">real_form.jl</code></td>
+<td style="text-align:left">trigonometric input over <span class="md-math md-math-inline">\(ℚ(i)\)</span>, real forms of answers</td>
+</tr>
+<tr>
+<td style="text-align:left">8a</td>
+<td style="text-align:left"><code class="md-code-inline">special_functions.jl</code></td>
+<td style="text-align:left"><code class="md-code-inline">Ei</code>, <code class="md-code-inline">erf</code>, <code class="md-code-inline">erfi</code>, <code class="md-code-inline">li</code> for non-elementary exp/log integrals</td>
+</tr>
+<tr>
+<td style="text-align:left">9a</td>
+<td style="text-align:left"><code class="md-code-inline">risch_de.jl</code></td>
+<td style="text-align:left">Risch differential equation with arbitrary denominators</td>
+</tr>
+<tr>
+<td style="text-align:left">9d</td>
+<td style="text-align:left"><code class="md-code-inline">parametric_rde.jl</code></td>
+<td style="text-align:left">parametric Risch differential equation</td>
+</tr>
+<tr>
+<td style="text-align:left">10a</td>
+<td style="text-align:left"><code class="md-code-inline">radicals.jl</code></td>
+<td style="text-align:left">radicals of a linear-fractional radicand</td>
+</tr>
+<tr>
+<td style="text-align:left">10b, 10c</td>
+<td style="text-align:left"><code class="md-code-inline">euler_substitutions.jl</code></td>
+<td style="text-align:left">square roots of quadratics (Euler)</td>
+</tr>
+<tr>
+<td style="text-align:left">10d</td>
+<td style="text-align:left"><code class="md-code-inline">euler_substitutions.jl</code></td>
+<td style="text-align:left">square roots of two linear polynomials</td>
+</tr>
+<tr>
+<td style="text-align:left">10e</td>
+<td style="text-align:left"><code class="md-code-inline">radicals.jl</code></td>
+<td style="text-align:left">square roots of rational constants</td>
+</tr>
+<tr>
+<td style="text-align:left">AC</td>
+<td style="text-align:left"><code class="md-code-inline">inverse_trig.jl</code></td>
+<td style="text-align:left"><code class="md-code-inline">acot</code>, <code class="md-code-inline">acsc</code>, <code class="md-code-inline">asec</code> rewritten</td>
+</tr>
+<tr>
+<td style="text-align:left">IH</td>
+<td style="text-align:left"><code class="md-code-inline">inverse_trig.jl</code></td>
+<td style="text-align:left">inverse hyperbolic functions by parts or as logarithms</td>
+</tr>
+<tr>
+<td style="text-align:left">AP</td>
+<td style="text-align:left"><code class="md-code-inline">inverse_trig.jl</code></td>
+<td style="text-align:left">by parts for <span class="md-math md-math-inline">\(A L^k\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">AS</td>
+<td style="text-align:left"><code class="md-code-inline">inverse_trig.jl</code></td>
+<td style="text-align:left"><code class="md-code-inline">asin</code>, <code class="md-code-inline">acos</code> by <span class="md-math md-math-inline">\(u = \sin t\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">AL</td>
+<td style="text-align:left"><code class="md-code-inline">inverse_trig.jl</code></td>
+<td style="text-align:left"><code class="md-code-inline">asin</code>, <code class="md-code-inline">acos</code> of <span class="md-math md-math-inline">\(ax + b\)</span> with parameters</td>
+</tr>
+<tr>
+<td style="text-align:left">AT</td>
+<td style="text-align:left"><code class="md-code-inline">inverse_trig.jl</code></td>
+<td style="text-align:left"><code class="md-code-inline">atan(u)</code> by <span class="md-math md-math-inline">\(u = \tan t\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">BQ</td>
+<td style="text-align:left"><code class="md-code-inline">biquadratic.jl</code></td>
+<td style="text-align:left">two square roots, biquadratic splitting</td>
+</tr>
+<tr>
+<td style="text-align:left">CL</td>
+<td style="text-align:left"><code class="md-code-inline">clausen.jl</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(x^p R(\sin, \cos)\)</span> with Clausen functions</td>
+</tr>
+<tr>
+<td style="text-align:left">DL, LF, DC</td>
+<td style="text-align:left"><code class="md-code-inline">dilogarithms.jl</code></td>
+<td style="text-align:left">dilogarithms; logs of quadratics with complex roots</td>
+</tr>
+<tr>
+<td style="text-align:left">DN</td>
+<td style="text-align:left"><code class="md-code-inline">denest.jl</code></td>
+<td style="text-align:left">denesting square roots</td>
+</tr>
+<tr>
+<td style="text-align:left">EC, EL, RL, TL</td>
+<td style="text-align:left"><code class="md-code-inline">real_log_arguments.jl</code></td>
+<td style="text-align:left">real arguments of logarithms</td>
+</tr>
+<tr>
+<td style="text-align:left">EP, LS</td>
+<td style="text-align:left"><code class="md-code-inline">linearity.jl</code></td>
+<td style="text-align:left">exponent merging; term-by-term integration</td>
+</tr>
+<tr>
+<td style="text-align:left">H1, HS</td>
+<td style="text-align:left"><code class="md-code-inline">hypergeometric.jl</code>, <code class="md-code-inline">hyp_symbolic.jl</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\({}_2F_1\)</span> answers</td>
+</tr>
+<tr>
+<td style="text-align:left">H3, H4</td>
+<td style="text-align:left"><code class="md-code-inline">gamma_terms.jl</code></td>
+<td style="text-align:left">incomplete <span class="md-math md-math-inline">\(Γ\)</span> answers</td>
+</tr>
+<tr>
+<td style="text-align:left">EH</td>
+<td style="text-align:left"><code class="md-code-inline">exp_trig_hyp.jl</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(e^{ax} R(\cos bx, \sin bx)\)</span> with <span class="md-math md-math-inline">\({}_2F_1\)</span> terms</td>
+</tr>
+<tr>
+<td style="text-align:left">EQ</td>
+<td style="text-align:left"><code class="md-code-inline">euler_substitutions.jl</code></td>
+<td style="text-align:left">Hermite reduction on the conic before the Euler substitution</td>
+</tr>
+<tr>
+<td style="text-align:left">IT</td>
+<td style="text-align:left"><code class="md-code-inline">risch_integrate.jl</code></td>
+<td style="text-align:left">constant factors out; iterated integrals</td>
+</tr>
+<tr>
+<td style="text-align:left">LP</td>
+<td style="text-align:left"><code class="md-code-inline">polylog_parts.jl</code></td>
+<td style="text-align:left">polylogarithms by parts</td>
+</tr>
+<tr>
+<td style="text-align:left">MR, PW, NR</td>
+<td style="text-align:left"><code class="md-code-inline">monomial_radicals.jl</code></td>
+<td style="text-align:left">radicals of functions of a monomial; inner linear radicals</td>
+</tr>
+<tr>
+<td style="text-align:left">NP</td>
+<td style="text-align:left"><code class="md-code-inline">radicals.jl</code></td>
+<td style="text-align:left">square roots of never-positive radicands</td>
+</tr>
+<tr>
+<td style="text-align:left">NS</td>
+<td style="text-align:left"><code class="md-code-inline">nested_subst.jl</code></td>
+<td style="text-align:left">nested radicals by substitution</td>
+</tr>
+<tr>
+<td style="text-align:left">CS</td>
+<td style="text-align:left"><code class="md-code-inline">constant_scaling.jl</code></td>
+<td style="text-align:left">nested radicals over <span class="md-math md-math-inline">\(ℚ(\sqrt d)\)</span>: scaling and constant factors out of radicands</td>
+</tr>
+<tr>
+<td style="text-align:left">PP</td>
+<td style="text-align:left"><code class="md-code-inline">nested_subst.jl</code></td>
+<td style="text-align:left">pairs of square roots <span class="md-math md-math-inline">\(\sqrt{g + c_1}\)</span>, <span class="md-math md-math-inline">\(\sqrt{g + c_2}\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">PL, PR, PM, LL, PS</td>
+<td style="text-align:left"><code class="md-code-inline">param_radicals.jl</code></td>
+<td style="text-align:left">parameters: linearity, radicands, repeated factors, two linear radicands, scaling</td>
+</tr>
+<tr>
+<td style="text-align:left">BN</td>
+<td style="text-align:left"><code class="md-code-inline">param_radicals.jl</code></td>
+<td style="text-align:left">binomial denominators <span class="md-math md-math-inline">\(x^n + c\)</span>: <span class="md-math md-math-inline">\(x = \lvert c\rvert^{1/n} u\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">PC</td>
+<td style="text-align:left"><code class="md-code-inline">precompile.jl</code></td>
+<td style="text-align:left">precompile workload</td>
+</tr>
+<tr>
+<td style="text-align:left">R2, NR</td>
+<td style="text-align:left"><code class="md-code-inline">quartic_residues.jl</code></td>
+<td style="text-align:left">real forms of quartic residues, nested radicals in them</td>
+</tr>
+<tr>
+<td style="text-align:left">BQ4</td>
+<td style="text-align:left"><code class="md-code-inline">quartic_residues.jl</code></td>
+<td style="text-align:left">even quartics <span class="md-math md-math-inline">\(x^4 + bx^2 + c\)</span> with nested real forms</td>
+</tr>
+<tr>
+<td style="text-align:left">RC</td>
+<td style="text-align:left"><code class="md-code-inline">reciprocal_subst.jl</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(u = x + s/x\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">RK</td>
+<td style="text-align:left"><code class="md-code-inline">radicals.jl</code></td>
+<td style="text-align:left">a parameter factor out of a radicand</td>
+</tr>
+<tr>
+<td style="text-align:left">RE, RT, RF</td>
+<td style="text-align:left"><code class="md-code-inline">constant_fields.jl</code>, <code class="md-code-inline">tower_rootsums.jl</code>, <code class="md-code-inline">tower_real_forms.jl</code></td>
+<td style="text-align:left">RootSums over parameter fields and in towers, their real forms</td>
+</tr>
+<tr>
+<td style="text-align:left">FR</td>
+<td style="text-align:left"><code class="md-code-inline">fractions.jl</code>, <code class="md-code-inline">monomial_integration.jl</code></td>
+<td style="text-align:left">fraction-free resultants over parameter fields</td>
+</tr>
+<tr>
+<td style="text-align:left">RP, SQ</td>
+<td style="text-align:left"><code class="md-code-inline">factoring.jl</code>, <code class="md-code-inline">radicals.jl</code></td>
+<td style="text-align:left">radicands that are powers; repeated factors</td>
+</tr>
+<tr>
+<td style="text-align:left">RY</td>
+<td style="text-align:left"><code class="md-code-inline">tower_radicals.jl</code></td>
+<td style="text-align:left">a radical of a tower element</td>
+</tr>
+<tr>
+<td style="text-align:left">SY</td>
+<td style="text-align:left"><code class="md-code-inline">tower_terms.jl</code></td>
+<td style="text-align:left">parameters and opaque constants</td>
+</tr>
+<tr>
+<td style="text-align:left">SL</td>
+<td style="text-align:left"><code class="md-code-inline">risch_integrate.jl</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(y = e + fx\)</span> for shifted linear trigonometric arguments</td>
+</tr>
+<tr>
+<td style="text-align:left">SO</td>
+<td style="text-align:left"><code class="md-code-inline">param_radicals.jl</code>, <code class="md-code-inline">sign_facts.jl</code></td>
+<td style="text-align:left">signs of parameter expressions from the caller: an oracle, or facts</td>
+</tr>
+<tr>
+<td style="text-align:left">TA</td>
+<td style="text-align:left"><code class="md-code-inline">tower_terms.jl</code>, <code class="md-code-inline">monomial_integration.jl</code></td>
+<td style="text-align:left"><code class="md-code-inline">atan</code> levels</td>
+</tr>
+<tr>
+<td style="text-align:left">TS</td>
+<td style="text-align:left"><code class="md-code-inline">bioche.jl</code></td>
+<td style="text-align:left">Bioche&#39;s rules</td>
+</tr>
+<tr>
+<td style="text-align:left">TS2</td>
+<td style="text-align:left"><code class="md-code-inline">risch_integrate.jl</code></td>
+<td style="text-align:left">addition formulas for shifted trigonometric arguments</td>
+</tr>
+<tr>
+<td style="text-align:left">US</td>
+<td style="text-align:left"><code class="md-code-inline">u_substitution.jl</code></td>
+<td style="text-align:left">u-substitution</td>
+</tr>
+<tr>
+<td style="text-align:left">WR</td>
+<td style="text-align:left"><code class="md-code-inline">tower_terms.jl</code></td>
+<td style="text-align:left">wrapped leaves refused</td>
+</tr>
+</tbody>
+</table>
+</div>
+      </article>
+      <footer class="md-footer">
+<p>Built with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and <a href="https://github.com/mthelm85/MaterialDocs.jl">MaterialDocs.jl</a>.</p>
+      </footer>
+    </main>
+    <aside class="md-toc">
+      <div class="md-toc-inner">
+        <p class="md-toc-title">On this page</p>
+          <a class="md-toc-link md-toc-h2" href="#Goals">Goals</a>
+          <a class="md-toc-link md-toc-h2" href="#Architecture">Architecture</a>
+            <a class="md-toc-link md-toc-h3" href="#Source-layout">Source layout</a>
+          <a class="md-toc-link md-toc-h2" href="#Exact-algebra">Exact algebra</a>
+            <a class="md-toc-link md-toc-h3" href="#Polynomials-and-fractions">Polynomials and fractions</a>
+            <a class="md-toc-link md-toc-h3" href="#Constant-fields">Constant fields</a>
+          <a class="md-toc-link md-toc-h2" href="#Towers">Towers</a>
+            <a class="md-toc-link md-toc-h3" href="#Parsing-a-term">Parsing a term</a>
+          <a class="md-toc-link md-toc-h2" href="#Following-an-integrand">Following an integrand</a>
+            <a class="md-toc-link md-toc-h3" href="#1.-Rewrites-before-parsing-(integrate_direct)">1. Rewrites before parsing (integrate_direct)</a>
+            <a class="md-toc-link md-toc-h3" href="#2.-Radicals">2. Radicals</a>
+            <a class="md-toc-link md-toc-h3" href="#3.-Trigonometric-integrands">3. Trigonometric integrands</a>
+            <a class="md-toc-link md-toc-h3" href="#4.-The-tower">4. The tower</a>
+            <a class="md-toc-link md-toc-h3" href="#5.-When-the-direct-route-fails:-the-fallback-chain">5. When the direct route fails: the fallback chain</a>
+          <a class="md-toc-link md-toc-h2" href="#Answers">Answers</a>
+            <a class="md-toc-link md-toc-h3" href="#Exact-results">Exact results</a>
+            <a class="md-toc-link md-toc-h3" href="#Building-terms">Building terms</a>
+            <a class="md-toc-link md-toc-h3" href="#RootSums-and-numerically-evaluated-terms">RootSums and numerically evaluated terms</a>
+            <a class="md-toc-link md-toc-h3" href="#Real-forms-of-logarithms">Real forms of logarithms</a>
+          <a class="md-toc-link md-toc-h2" href="#Verification">Verification</a>
+          <a class="md-toc-link md-toc-h2" href="#Errors">Errors</a>
+          <a class="md-toc-link md-toc-h2" href="#Recursion-and-global-switches">Recursion and global switches</a>
+          <a class="md-toc-link md-toc-h2" href="#A-few-traces">A few traces</a>
+          <a class="md-toc-link md-toc-h2" href="#Coverage-and-testing">Coverage and testing</a>
+          <a class="md-toc-link md-toc-h2" href="#Open-questions-and-limits">Open questions and limits</a>
+          <a class="md-toc-link md-toc-h2" href="#References">References</a>
+          <a class="md-toc-link md-toc-h2" href="#Step-index">Step index</a>
+      </div>
+    </aside>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/julia.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/julia-repl.min.js"></script>
+  <script>hljs.highlightAll();</script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.18.6/katex.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.18.6/katex.min.js"></script>
+  <script>var MD_KATEX_OPTIONS = {};
+document.querySelectorAll('.md-math').forEach(function (el) {
+  var tex = el.textContent.trim().replace(/^\\[\[(]/, '').replace(/\\[\])]$/, '');
+  katex.render(tex, el, Object.assign({ throwOnError: false }, MD_KATEX_OPTIONS,
+    { displayMode: el.classList.contains('md-math-display') }));
+});</script>
+  <script src="../siteinfo.js"></script>
+  <script src="../../versions.js"></script>
+  <script src="../assets/materialdocs.js?v=f6d307cb"></script>
+</body>
+</html>
