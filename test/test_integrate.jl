@@ -2105,12 +2105,21 @@ end
     for (f, pts) in ((:(atanh(x)), (0.1, 0.3, 0.6)), (:(x * atanh(x) ^ 2), (0.1, 0.3, 0.6)), (:(atanh(a * x) / x), (0.1, 0.3, 0.6)),
                      (:(atanh(x) / (1 - x ^ 2)), (0.1, 0.3, 0.6)), (:(asinh(x)), (-0.6, 0.3, 1.6)), (:(asinh(x) ^ 2), (-0.6, 0.3, 1.6)),
                      (:(x ^ 2 * asinh(a * x)), (-0.6, 0.3, 1.6)), (:(acosh(x)), (1.2, 2.0, 3.1)), (:(x * acosh(x)), (1.2, 2.0, 3.1)),
-                     (:(acoth(x)), (1.2, 2.0, 3.1)), (:(acoth(x) / x ^ 2), (1.2, 2.0, 3.1)))
+                     (:(acoth(x)), (1.2, 2.0, 3.1)), (:(acoth(x) / x ^ 2), (1.2, 2.0, 3.1)),
+                     (:(asech(x)), (0.1, 0.4, 0.9)), (:(x * asech(a * x)), (0.1, 0.4, 0.7)), (:(asech(x) / x ^ 2), (0.1, 0.4, 0.9)),
+                     (:(acsch(x)), (-1.6, 0.3, 1.6)), (:(x ^ 2 * acsch(a * x)), (-1.6, 0.3, 1.6)), (:(acsch(x) / x ^ 3), (-1.6, 0.3, 1.6)))
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)
         for x0 in pts
             @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, ev(f, x0); rtol = 1e-6)
         end
     end
+    # by parts first (step AP): the answer keeps the function
+    build2(op, args...) = Expr(:call, nameof(op), args...)
+    for (f, L) in ((:(asinh(x)), "asinh(x)"), (:(asech(x)), "asech(x)"), (:(x * acsch(x)), "acsch(x)"))
+        @test occursin(L, string(Risch.risch_integrate(f, :x; build = build2, lift = identity)))
+    end
+    # ∫ asech(a x)/x needs polylogarithms; u′ = 0 in step US's tower was a DivideError
+    @test_throws NotElementary Risch.risch_integrate(:(asech(a * x) / x), :x; build = build, lift = identity)
 end
 
 # step AL: asin, acos, acsc, asec of a x + b with parameters: y = a x + b, the radicands rewritten in y (1 - c²x² ↦ 1 - y²);
