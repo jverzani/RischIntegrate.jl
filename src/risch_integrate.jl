@@ -152,7 +152,12 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
                                                                  Any[ScaledRootSum(c, rs) for rs in G.rootsums], G.var)
         return mk(bd, :*, c, G)
     end
-    r = integrate_linear_shift(f, x; build = build, lift = lift, verify = verify)   # sin(e + f x): y = e + f x (step TL)
+    r = try                                            # sin(e + f x): y = e + f x (step TL)
+        integrate_linear_shift(f, x; build = build, lift = lift, verify = verify)
+    catch e
+        e isa RischNotImplemented || rethrow()         # (refused in y: the addition formulas may still do)
+        nothing
+    end
     r === nothing || return r
     g = expand_trig_shifts(f, x, xk, build, lift)      # sin(v + a) = sin v cos a + cos v sin a (step TS2)
     g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
