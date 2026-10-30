@@ -152,6 +152,13 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
                                                                  Any[ScaledRootSum(c, rs) for rs in G.rootsums], G.var)
         return mk(bd, :*, c, G)
     end
+    r = try                                            # sin(e + f x): y = e + f x (step TL)
+        integrate_linear_shift(f, x; build = build, lift = lift, verify = verify)
+    catch e
+        e isa RischNotImplemented || rethrow()         # (refused in y: the addition formulas may still do)
+        nothing
+    end
+    r === nothing || return r
     g = expand_trig_shifts(f, x, xk, build, lift)      # sin(v + a) = sin v cos a + cos v sin a (step TS2)
     g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
     has_op(f, :acot) && return risch_integrate(rewrite_acot(f, x, build, lift), x; build = build, lift = lift,
@@ -503,6 +510,71 @@ function expand_trig_shifts(f, x, xk::String, build, lift)
     rw(f)
 end
 const OPS_HYP = Dict{Symbol,Function}(:sin => sin, :cos => cos, :sinh => sinh, :cosh => cosh)
+
+# step TL: every trigonometric or hyperbolic argument with x is r·(e + f x), r rational, one of them with a
+# parameter shift e (sin(e + f x)·cos(2e + 2f x)): y = e + f x, x = (y - e)/f, dx = dy/f, and y = e + f x is
+# substituted back. Before step TS2, whose cos e, sin e are independent constants to the constant field
+# (cos² e + sin² e = 1 is not seen: hidden zero denominators, false residue criteria, slow resultants).
+# Nothing when there is no such form.
+function integrate_linear_shift(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    # the arguments; x elsewhere only algebraically (exp(c x) would become exp(c (y - e)/f))
+    args = Any[]
+    function collect_args(t)
+        (safe_iscall(t) && !isempty(arguments(t))) || return true
+        n = opname(operation(t))
+        if n in SHIFT_TRIG && length(arguments(t)) == 1 && has_x(arguments(t)[1], xk)
+            push!(args, arguments(t)[1])
+            return true
+        end
+        (n in (:+, :-, :*, :/, :^, :sqrt, :cbrt) || !has_x(t, xk)) || return false
+        all(collect_args, arguments(t))
+    end
+    collect_args(f) || return nothing
+    j = findfirst(a -> (sp = shift_split(a, xk); sp !== nothing && pi_multiple(sp[2]) === nothing), args)
+    j === nothing && return nothing
+    L = args[j]
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    pp = poly_parts(bd, L, xk)
+    (pp === nothing || !haskey(pp, 1) || !haskey(pp, 0) || maximum(keys(pp)) != 1) && return nothing
+    a, b = pp[1], pp[0]
+    # the ratio of each argument to L: a rational constant
+    ratio = Dict{String,Q}()
+    for u in args
+        haskey(ratio, string(u)) && continue
+        T, el = try
+            build_tower(mk(bd, :/, u, L), xk)
+        catch e
+            (e isa RischNotImplemented || e isa RischError) || rethrow()
+            return nothing
+        end
+        (isempty(T.levels) && degree(el.num) == 0 && degree(el.den) == 0) || return nothing
+        r = rational_const(el.num.c[1] / el.den.c[1])
+        r === nothing && return nothing
+        ratio[string(u)] = r
+    end
+    y = bd.x
+    X = mk(bd, :/, mk(bd, :+, y, mk(bd, :*, bd.lift(-1), b)), a)
+    function walk(t)
+        isnode(t) || return string(t) == xk ? X : t
+        if opname(operation(t)) in SHIFT_TRIG && length(arguments(t)) == 1 && haskey(ratio, string(arguments(t)[1]))
+            r = ratio[string(arguments(t)[1])]
+            return term_rebuild(bd, t, Any[isone(r) ? y : mk(bd, :*, cterm(bd, r), y)])
+        end
+        term_rebuild(bd, t, Any[walk(s) for s in arguments(t)])
+    end
+    g = mk(bd, :*, mk(bd, :^, a, bd.lift(-1)), walk(f))
+    G = risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? L : t)
+    subst_answer(G, back, bd)
+end
+# an element of a constant field (ℚ, ℚ(i), parameter fractions over them) that is rational, else nothing
+rational_const(v::Q) = v
+rational_const(v::QI) = iszero(v.im) ? v.re : nothing
+rational_const(v::Frac{<:UPoly}) = (degree(v.num) == 0 && degree(v.den) == 0) ?
+    (n = rational_const(v.num.c[1]); d = rational_const(v.den.c[1]); n === nothing || d === nothing ? nothing : n / d) : nothing
+rational_const(v) = nothing
 # u = v + c with v ∋ x and c ≠ 0 free of x with a parameter: the summands of (v, c), else nothing
 function shift_split(u, xk::String)
     (safe_iscall(u) && opname(operation(u)) in (:+, :-)) || return nothing
