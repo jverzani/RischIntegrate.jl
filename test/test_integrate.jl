@@ -1393,9 +1393,9 @@ end
     end
 end
 
-# step TL: arguments r·(e + f x) with a parameter shift e: y = e + f x, so cos e, sin e never enter the
+# step SL: arguments r·(e + f x) with a parameter shift e: y = e + f x, so cos e, sin e never enter the
 # constant field (with them, (c + dx)/(a - a sin(e + fx)) was refused by the residue criterion)
-@testset "shifted linear arguments (step TL)" begin
+@testset "shifted linear arguments (step SL)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
     ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7), :(c = 1.3), :(d = 0.6), :(e = 0.4), :(f = 1.1)), e))
     for f in (:((c + d * x) / (a - a * sin(e + f * x))), :(sec(c + d * x) ^ 4 / (a + a * sin(c + d * x))),
@@ -1420,6 +1420,25 @@ end
         @test !occursin("0 * log", string(F))
         for x0 in (0.4, 1.3)
             @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
+# step EQ: Hermite reduction on the conic y² = a before the Euler substitution: the algebraic part g √a is
+# printed in x, only the remainder (P + R/D)/√a takes the substitution
+@testset "Hermite reduction on the conic (step EQ)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for (f, pts, G) in ((:(x / sqrt(1 + x ^ 2)), (-0.6, 0.3, 1.6), "sqrt(1 + x ^ 2)"),
+                        (:(x ^ 3 / sqrt(x ^ 2 - 1)), (1.2, 2.0, 3.1), "(2//3 + 1//3 * x ^ 2) * sqrt(x ^ 2 - 1)"),
+                        (:(1 / (x ^ 2 * sqrt(1 - x ^ 2))), (0.1, 0.4, 0.9), "(-1 / x) * sqrt(1 + -1 * x ^ 2)"),
+                        (:(1 / ((x ^ 2 + 1) ^ 2 * sqrt(x ^ 2 + 2))), (-0.6, 0.3, 1.6), nothing),
+                        (:((1 + x) / sqrt(x ^ 2 + x + 1) + x ^ 2), (-0.6, 0.3, 1.6), nothing),
+                        (:(sqrt(2 + 3x - x ^ 2) / x), (0.3, 1.2, 3.1), nothing))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        G === nothing || @test string(F) == G
+        for x0 in pts
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
         end
     end
 end

@@ -152,7 +152,7 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
                                                                  Any[ScaledRootSum(c, rs) for rs in G.rootsums], G.var)
         return mk(bd, :*, c, G)
     end
-    r = try                                            # sin(e + f x): y = e + f x (step TL)
+    r = try                                            # sin(e + f x): y = e + f x (step SL)
         integrate_linear_shift(f, x; build = build, lift = lift, verify = verify)
     catch e
         e isa RischNotImplemented || rethrow()         # (refused in y: the addition formulas may still do)
@@ -511,7 +511,7 @@ function expand_trig_shifts(f, x, xk::String, build, lift)
 end
 const OPS_HYP = Dict{Symbol,Function}(:sin => sin, :cos => cos, :sinh => sinh, :cosh => cosh)
 
-# step TL: every trigonometric or hyperbolic argument with x is r·(e + f x), r rational, one of them with a
+# step SL: every trigonometric or hyperbolic argument with x is r·(e + f x), r rational, one of them with a
 # parameter shift e (sin(e + f x)·cos(2e + 2f x)): y = e + f x, x = (y - e)/f, dx = dy/f, and y = e + f x is
 # substituted back. Before step TS2, whose cos e, sin e are independent constants to the constant field
 # (cos² e + sin² e = 1 is not seen: hidden zero denominators, false residue criteria, slow resultants).

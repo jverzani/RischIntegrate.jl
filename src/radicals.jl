@@ -211,6 +211,11 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         # over ℚ, or over ℚ(i)(√d) when the conic R² = Q has no small rational point);
         # Q^(k/2) = ψ(t)^k
         # real points: ψ(t) = √Q > 0 (step EL)
+        # step EQ first: the algebraic part g √Q and the rational part split off, so they are printed in x
+        if sq === nothing && cfix === nothing && isempty(pmap)
+            r = integrate_conic_hermite(f, x, xk, u, uterm, b0; build = build, lift = lift, verify = verify)
+            r === nothing || return r
+        end
         cands = Any[(S, φ, k -> ψ^k, tterm, sq === nothing ? real_pos(Any[ψ]) : Any[])
                     for (S, φ, ψ, tterm) in euler_substitution(co(N, 3), co(N, 2), co(N, 1), b0, uterm;
                                                                pref = cfix_d(cfix), R = Yterm)]

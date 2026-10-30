@@ -41,6 +41,39 @@ function integrate_two_radicals(f, xk::String, groups, b0::Builder, verify::Bool
     try_substitutions(f, xk, cands, b0, verify, cfix, pmap)
 end
 
+# Step EQ: f = p + q y over the conic y² = a, a ∈ ℚ[x] of degree 2, before the Euler substitution. The
+# hyperelliptic Hermite reduction (`hyp_reduce`, which needs no genus) gives ∫ q y = g y + ∫ (P + R/D)/y with
+# P constant and D squarefree, so
+#   ∫ f = ∫ p + g √a + ∫ (P + R/D)/√a,
+# ∫ p as a rational function and only the remainder through the Euler substitution (it comes back here
+# with nothing to split off). The algebraic part is then g √a in x, not a rational function of the Euler
+# variable t = √a + s x: ∫ x/√(x² + 1) = √(x² + 1). Nothing when there is nothing to split off, or f is
+# not rational in x and √a.
+function integrate_conic_hermite(f, x, xk::String, u::Frac{UPoly{Q}}, uterm, b0::Builder; build, lift, verify::Bool)
+    @nospecialize f x
+    a = u.num
+    radval = (ue, e) -> (ue == u && isone(denominator(2e))) ? Int(numerator(2e)) : nothing
+    el = try
+        parse_hyp(f, xk, u, radval)
+    catch e
+        (e isa RischNotImplemented || e isa DivideError) || rethrow()
+        return nothing
+    end
+    g, P, R, D = hyp_reduce(a, el.q.num * a, el.q.den)
+    (iszero(g) && iszero(el.p)) && return nothing
+    if verify                                           # d(g y) = (q a - P - R/D)/y
+        dx(g) * u + g * frac(scale(Q(1) // 2, deriv(a))) == el.q * u - frac(P) - frac(R, D) ||
+            throw(RischError("internal check failed: Hermite reduction on the conic"))
+    end
+    y = mk(b0, :sqrt, uterm)
+    Fs = Any[]
+    iszero(el.p) || push!(Fs, risch_integrate(frac_term(b0, el.p), x; build = build, lift = lift, verify = verify))
+    iszero(g) || push!(Fs, isone(g) ? y : mk(b0, :*, frac_term(b0, g), y))
+    W = frac(P) + frac(R, D)
+    iszero(W) || push!(Fs, risch_integrate(mk(b0, :/, frac_term(b0, W), y), x; build = build, lift = lift, verify = verify))
+    add_answers(b0, Fs, xk)
+end
+
 # Euler substitutions for R = √(A x² + B x + C): (S, φ, ψ, t-term) with x = φ(t), R = ψ(t),
 # φ, ψ ∈ S(t) (identities for the principal root). Over S = ℚ (10b):
 #   √A = s ∈ ℚ₊:    R = t - s x,        t = R + s x,        x = (t² - C)/(B + 2 s t)
