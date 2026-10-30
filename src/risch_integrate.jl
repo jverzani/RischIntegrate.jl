@@ -432,6 +432,8 @@ rootsum_subst(r, back, bd::Builder) = nothing
 # the sum of answers, some of them with RootSums
 function add_answers(bd::Builder, Fs, xk::String)
     els = Any[F isa IntegralWithRootSums ? F.elementary : F for F in Fs]
+    nz = Any[e for e in els if leaf_rational(e) != 0]   # (a RootSum's elementary part may be 0)
+    els = isempty(nz) ? els[1:1] : nz
     E = length(els) == 1 ? els[1] : mk(bd, :+, els...)
     any(F -> F isa IntegralWithRootSums, Fs) || return E
     IntegralWithRootSums(E, Any[rs for F in Fs if F isa IntegralWithRootSums for rs in F.rootsums], xk)

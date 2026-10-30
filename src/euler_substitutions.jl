@@ -59,6 +59,9 @@ function integrate_conic_hermite(f, x, xk::String, u::Frac{UPoly{Q}}, uterm, b0:
         (e isa RischNotImplemented || e isa DivideError) || rethrow()
         return nothing
     end
+    # (p with poles: its logs, apart from those of the Euler substitution, would not combine with them;
+    # 1/(1 + √(x² + 2x + 2)) = (1 - √Q)/(1 - Q) is shorter in one substitution)
+    isone(el.p.den) || return nothing
     g, P, R, D = hyp_reduce(a, el.q.num * a, el.q.den)
     (iszero(g) && iszero(el.p)) && return nothing
     if verify                                           # d(g y) = (q a - P - R/D)/y
