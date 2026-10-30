@@ -164,6 +164,8 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
                                                                  Any[ScaledRootSum(c, rs) for rs in G.rootsums], G.var)
         return mk(bd, :*, c, G)
     end
+    g = constant_radicands(f, x, xk, build, lift)      # √(sin²x + cos²x) = √1 (step KR)
+    g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
     r = try                                            # sin(e + f x): y = e + f x (step SL)
         integrate_linear_shift(f, x; build = build, lift = lift, verify = verify)
     catch e

@@ -63,6 +63,39 @@ function radicand_element(u, xk::String)
     (isempty(T.levels) && ctype(T) === Q) ? el : nothing
 end
 
+# step KR: a radical whose radicand is written with x but is constant (√(sin²x + cos²x), the speed of a circle in
+# a line integral): the radicand is replaced by its value in the constant field, √1 = 1. Only radicands with a
+# transcendental function are tried (a rational radicand is not constant in disguise). Nothing when there is none.
+function constant_radicands(f, x, xk::String, build, lift)
+    @nospecialize f x
+    transc(t) = safe_iscall(t) && !isempty(arguments(t)) &&
+                (opname(operation(t)) in (:sin, :cos, :tan, :cot, :sec, :csc, :sinh, :cosh, :tanh, :coth, :sech, :csch, :exp, :log) ||
+                 any(transc, arguments(t)))
+    any(((_, u),) -> has_x(u, xk) && transc(u), collect_radicals(f, xk)) || return nothing
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    changed = false
+    function rw(t)
+        safe_iscall(t) && !isempty(arguments(t)) || return t
+        rp = radical_parts(t)
+        if rp !== nothing && has_x(rp[2], xk) && transc(rp[2])
+            T, el = try
+                build_tower(rp[2], xk)
+            catch e
+                (e isa RischNotImplemented || e isa RischError || e isa NeedComplex) || rethrow()
+                (nothing, nothing)
+            end
+            if T !== nothing && levelof(T, el) == 0 && degree(el.num) <= 0 && degree(el.den) == 0
+                c = cterm(Builder(bd.build, bd.lift, bd.x, T.consts), el.num.c[1] / el.den.c[1])
+                changed = true
+                return rp[1] == Q(1) // 2 ? mk(bd, :sqrt, c) : mk(bd, :^, c, bd.lift(rp[1]))
+            end
+        end
+        term_rebuild(bd, t, Any[rw(a) for a in arguments(t)])
+    end
+    g = rw(f)
+    changed ? g : nothing
+end
+
 # step RK: a radical (c V)^e whose radicand has a factor c free of x with a parameter in every summand
 # ((a + a sin x)^(3/2), √(d + c²d x²), (e cos x)^(7/2)) is c^e V^e for c > 0, and (-c)^e (-V)^e for c < 0, the
 # sign of c from the caller (step SO) or the positive parameter values. c^e is then a constant (step IT) and V

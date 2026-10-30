@@ -23,7 +23,8 @@ function integrate_monomial_radicals(f, x; build = nothing, lift = nothing, veri
             r = try
                 integrate_usub(f, x, u, bd0; build = build, lift = lift, verify = verify)
             catch e
-                (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+                # (DivideError: u′ is zero in the tower, u = sin²x + cos²x: not a substitution)
+                (e isa RischNotImplemented || e isa NotElementary || e isa DivideError) || rethrow()
                 nothing
             finally
                 USUB_DEPTH[] -= 1

@@ -259,6 +259,7 @@ throws. A step that rewrites the integrand calls `risch_integrate` again on the 
 | EP | ``(b^w)^r`` with a positive constant ``b``; ``(C^s)^n`` with integer ``n`` over products and quotients | merges exponents: ``(3^{3x})^{1/4} = 3^{3x/4}``, so a radicand with even powers of a radical becomes rational; a rewrite the term type undoes (Giac keeps ``C^{2/3}`` as ``(C^{1/3})^2``) is no change |
 | erf | ``\int \operatorname{erf}(ax + b)`` | by parts |
 | IT | a factor free of `x` that contains a symbol or a root ``c^{p/q}`` with ``q > 2`` | takes it out: ``\int c\,g = c \int g``. This keeps the parameter out of the constant field, and lets an iterated integral see ``c(y) \cdot \text{RootSum}(x)`` |
+| KR | a radical whose radicand has a transcendental function | if the radicand is constant in its tower (``\sin^2 x + \cos^2 x``, the speed of a circle in a line integral), it is replaced by its value: ``\sqrt{\sin^2 x + \cos^2 x} = 1`` |
 | SL | every trigonometric or hyperbolic argument with `x` is ``r(e + fx)``, ``r`` rational, ``e`` a parameter; elsewhere `x` only algebraically | ``y = e + fx``, ``x = (y - e)/f``, integrated in ``y`` and ``y = e + fx`` substituted back (refused in ``y``: on to TS2). Before TS2, whose ``\cos e``, ``\sin e`` are independent constants to the constant field: ``\cos^2 e + \sin^2 e = 1`` is not seen, which gives hidden zero denominators, false residue criteria and slow resultants |
 | TS2 | ``\sin(v + a)``, ``\cosh(v + a)``, … with ``a`` free of `x` | addition formulas, so ``\cos a``, ``\sin a`` become opaque constants. Exact values for multiples of ``π/6`` and ``π/4`` |
 | AC | `acot`, `acsc`, `asec` | ``\operatorname{acot} u = \operatorname{atan}(1/u)``, ``\operatorname{acsc} u = \operatorname{asin}(1/u)``, … |
@@ -736,6 +737,7 @@ failures, and their comments cite the Rubi problem numbers.
 | EH | `exp_trig_hyp.jl` | ``e^{ax} R(\cos bx, \sin bx)`` with ``{}_2F_1`` terms |
 | EQ | `euler_substitutions.jl` | Hermite reduction on the conic before the Euler substitution |
 | IT | `risch_integrate.jl` | constant factors out; iterated integrals |
+| KR | `radicals.jl` | constant radicands written with `x` |
 | LP | `polylog_parts.jl` | polylogarithms by parts |
 | MR, PW, NR | `monomial_radicals.jl` | radicals of functions of a monomial; inner linear radicals |
 | NP | `radicals.jl` | square roots of never-positive radicands |
