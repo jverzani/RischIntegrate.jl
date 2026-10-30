@@ -63,11 +63,11 @@ function radicand_element(u, xk::String)
     (isempty(T.levels) && ctype(T) === Q) ? el : nothing
 end
 
-# step RC: a radical (c V)^e whose radicand has a factor c free of x with a parameter in every summand
+# step RK: a radical (c V)^e whose radicand has a factor c free of x with a parameter in every summand
 # ((a + a sin x)^(3/2), √(d + c²d x²), (e cos x)^(7/2)) is c^e V^e for c > 0, and (-c)^e (-V)^e for c < 0, the
 # sign of c from the caller (step SO) or the positive parameter values. c^e is then a constant (step IT) and V
 # has rational coefficients again, for steps PW, MR and the radicals of x. Nothing when no radical has such a
-# factor or a sign is undecided.
+# factor or a sign is undecided. Tried when the integrand is refused for a radical of a non-rational radicand.
 function split_radicand_content(f, x, xk::String, build, lift)
     @nospecialize f x
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
@@ -124,11 +124,20 @@ function split_radicand_content(f, x, xk::String, build, lift)
             (e isa RischNotImplemented || e isa RischError) || rethrow()
             return nothing
         end
-        (isempty(T.levels) && degree(el.num) <= 0 && degree(el.den) == 0) || return nothing
-        sgn = param_sign(el.num.c[1] / el.den.c[1], T.consts)
-        sgn == 1 && return (c, V)
-        sgn == -1 && return (mk(bd, :*, bd.lift(-1), c), mk(bd, :*, bd.lift(-1), V))
+        sgn = const_sign(c)
+        sgn == 1 && return (collect(values(common)), V)
+        sgn == -1 && return (Any[(mk(bd, :*, bd.lift(-1), c), 1)], mk(bd, :*, bd.lift(-1), V))
         nothing
+    end
+    function const_sign(c)
+        T, el = try
+            build_tower(c, xk)
+        catch e
+            (e isa RischNotImplemented || e isa RischError) || rethrow()
+            return nothing
+        end
+        (isempty(T.levels) && degree(el.num) <= 0 && degree(el.den) == 0) || return nothing
+        param_sign(el.num.c[1] / el.den.c[1], T.consts)
     end
     changed = false
     function rw(t)
@@ -140,7 +149,9 @@ function split_radicand_content(f, x, xk::String, build, lift)
                 changed = true
                 e = rp[1]
                 rad(b) = e == Q(1) // 2 ? mk(bd, :sqrt, b) : mk(bd, :^, b, bd.lift(e))
-                return mk(bd, :*, rad(cv[1]), rad(cv[2]))
+                # (tᵏ)^e = t^(k e) for an integer k e and t > 0: √(a²) = a, not a factor a/√(a²) in the answer
+                cs = Any[(isinteger(k * e) && const_sign(t) == 1) ? pw(t, Int(k * e)) : rad(pw(t, k)) for (t, k) in cv[1]]
+                return mk(bd, :*, cs..., rad(cv[2]))
             end
         end
         term_rebuild(bd, t, Any[rw(a) for a in arguments(t)])

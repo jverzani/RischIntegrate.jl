@@ -68,6 +68,12 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             return integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
         end
         (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        # a radical refused for its radicand: a parameter factor of every summand taken out, (a + a sin x)^e =
+        # a^e (1 + sin x)^e for a > 0 (step RK; only here, so that the routes that already work are not changed)
+        if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg)
+            g = split_radicand_content(f, x, string(x), build, lift)
+            g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
+        end
         g = try
             # x·R(sin, cos): Clausen's function (step CL); logʲ(x) L(w x)/x, L = atan, log or li2: polylogarithms
             # by parts (step LP, before step AT: ∫ atan(x)/x = Ti₂(x), not eight Clausen terms); atan(u): u = tan t
@@ -152,8 +158,6 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
                                                                  Any[ScaledRootSum(c, rs) for rs in G.rootsums], G.var)
         return mk(bd, :*, c, G)
     end
-    g = split_radicand_content(f, x, xk, build, lift)  # (a + a sin x)^e = a^e (1 + sin x)^e, a > 0 (step RC)
-    g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
     r = try                                            # sin(e + f x): y = e + f x (step SL)
         integrate_linear_shift(f, x; build = build, lift = lift, verify = verify)
     catch e
