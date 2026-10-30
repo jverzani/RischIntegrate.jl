@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=4573c5ce">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=e566ce75">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -289,6 +289,11 @@
 <td style="text-align:left">IT</td>
 <td style="text-align:left">a factor free of <code class="md-code-inline">x</code> that contains a symbol or a root <span class="md-math md-math-inline">\(c^{p/q}\)</span> with <span class="md-math md-math-inline">\(q &gt; 2\)</span></td>
 <td style="text-align:left">takes it out: <span class="md-math md-math-inline">\(\int c\,g = c \int g\)</span>. This keeps the parameter out of the constant field, and lets an iterated integral see <span class="md-math md-math-inline">\(c(y) \cdot \text{RootSum}(x)\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">KR</td>
+<td style="text-align:left">a radical whose radicand has a transcendental function</td>
+<td style="text-align:left">if the radicand is constant in its tower (<span class="md-math md-math-inline">\(\sin^2 x + \cos^2 x\)</span>, the speed of a circle in a line integral), it is replaced by its value: <span class="md-math md-math-inline">\(\sqrt{\sin^2 x + \cos^2 x} = 1\)</span></td>
 </tr>
 <tr>
 <td style="text-align:left">SL</td>
@@ -893,6 +898,11 @@
 <td style="text-align:left">constant factors out; iterated integrals</td>
 </tr>
 <tr>
+<td style="text-align:left">KR</td>
+<td style="text-align:left"><code class="md-code-inline">radicals.jl</code></td>
+<td style="text-align:left">constant radicands written with <code class="md-code-inline">x</code></td>
+</tr>
+<tr>
 <td style="text-align:left">LP</td>
 <td style="text-align:left"><code class="md-code-inline">polylog_parts.jl</code></td>
 <td style="text-align:left">polylogarithms by parts</td>
@@ -1072,6 +1082,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=4573c5ce"></script>
+  <script src="../assets/materialdocs.js?v=e566ce75"></script>
 </body>
 </html>
