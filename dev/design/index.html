@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=a72fd9f1">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=e6c38d3f">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -289,6 +289,11 @@
 <td style="text-align:left">IT</td>
 <td style="text-align:left">a factor free of <code class="md-code-inline">x</code> that contains a symbol or a root <span class="md-math md-math-inline">\(c^{p/q}\)</span> with <span class="md-math md-math-inline">\(q &gt; 2\)</span></td>
 <td style="text-align:left">takes it out: <span class="md-math md-math-inline">\(\int c\,g = c \int g\)</span>. This keeps the parameter out of the constant field, and lets an iterated integral see <span class="md-math md-math-inline">\(c(y) \cdot \text{RootSum}(x)\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">TL</td>
+<td style="text-align:left">every trigonometric or hyperbolic argument with <code class="md-code-inline">x</code> is <span class="md-math md-math-inline">\(r(e + fx)\)</span>, <span class="md-math md-math-inline">\(r\)</span> rational, <span class="md-math md-math-inline">\(e\)</span> a parameter; elsewhere <code class="md-code-inline">x</code> only algebraically</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(y = e + fx\)</span>, <span class="md-math md-math-inline">\(x = (y - e)/f\)</span>, integrated in <span class="md-math md-math-inline">\(y\)</span> and <span class="md-math md-math-inline">\(y = e + fx\)</span> substituted back (refused in <span class="md-math md-math-inline">\(y\)</span>: on to TS2). Before TS2, whose <span class="md-math md-math-inline">\(\cos e\)</span>, <span class="md-math md-math-inline">\(\sin e\)</span> are independent constants to the constant field: <span class="md-math md-math-inline">\(\cos^2 e + \sin^2 e = 1\)</span> is not seen, which gives hidden zero denominators, false residue criteria and slow resultants</td>
 </tr>
 <tr>
 <td style="text-align:left">TS2</td>
@@ -977,6 +982,11 @@
 <td style="text-align:left">Bioche&#39;s rules</td>
 </tr>
 <tr>
+<td style="text-align:left">TL</td>
+<td style="text-align:left"><code class="md-code-inline">risch_integrate.jl</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(y = e + fx\)</span> for shifted linear trigonometric arguments</td>
+</tr>
+<tr>
 <td style="text-align:left">TS2</td>
 <td style="text-align:left"><code class="md-code-inline">risch_integrate.jl</code></td>
 <td style="text-align:left">addition formulas for shifted trigonometric arguments</td>
@@ -1046,6 +1056,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=a72fd9f1"></script>
+  <script src="../assets/materialdocs.js?v=e6c38d3f"></script>
 </body>
 </html>
