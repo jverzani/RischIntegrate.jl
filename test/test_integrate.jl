@@ -1407,6 +1407,9 @@ end
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
         end
     end
+    # not nested: after u = sin t, v = a + b t brings back cos((v - a)/b), which a second step TL would undo
+    # (a stack overflow before)
+    @test_throws Risch.NotElementary Risch.risch_integrate(:(1 / (a + b * asin(c * x)) ^ (3 / 2)), :x; build = build, lift = identity)
 end
 
 # step PS: f homogeneous in x and a parameter: x = a u, integrate over ℚ (real forms with √3, √2, √5)
