@@ -465,6 +465,7 @@ order:
 | RC | any | ``R(x)\sqrt{P}^k``, ``P(x) = x^m S(x + s/x)`` | ``u = x + s/x`` |
 | RY | any | one radical ``y = P^{1/n}`` with ``P`` in an `exp`/`log` tower | ``\int A_r y^r = B_r y^r`` with ``B_r' + (r/n)(P'/P) B_r = A_r``, a Risch differential equation in the tower |
 | LS | any | a sum, or a quotient with a sum on top | term by term, grouping terms with the same radicals |
+| RK | a radical refused for its radicand, in the outermost call | ``(cV)^e`` with a factor ``c`` free of `x`, with a parameter, in every summand of the radicand | ``c^e V^e`` for ``c > 0`` (``(-c)^e(-V)^e`` for ``c < 0``; the sign from step SO or the positive parameter values), ``(t^k)^e = t^{ke}`` for an integer ``ke`` and ``t > 0``. Then ``V`` has rational coefficients: ``\sqrt{a + a\sin x} = \sqrt a \sqrt{1 + \sin x}`` for step PW. Last, and not inside another call, so that a substitution refused inside (steps AL, US) leaves the next route its chance |
 | Expr retry | term type without special functions | | the integrand as an `Expr`, special terms evaluated numerically |
 
 If none of them answers, the original exception is rethrown.
@@ -747,6 +748,7 @@ failures, and their comments cite the Rubi problem numbers.
 | R2, NR | `quartic_residues.jl` | real forms of quartic residues, nested radicals in them |
 | BQ4 | `quartic_residues.jl` | even quartics ``x^4 + bx^2 + c`` with nested real forms |
 | RC | `reciprocal_subst.jl` | ``u = x + s/x`` |
+| RK | `radicals.jl` | a parameter factor out of a radicand |
 | RE, RT, RF | `constant_fields.jl`, `tower_rootsums.jl`, `tower_real_forms.jl` | RootSums over parameter fields and in towers, their real forms |
 | FR | `fractions.jl`, `monomial_integration.jl` | fraction-free resultants over parameter fields |
 | RP, SQ | `factoring.jl`, `radicals.jl` | radicands that are powers; repeated factors |
