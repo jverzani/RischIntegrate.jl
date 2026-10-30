@@ -2161,6 +2161,9 @@ end
     end
     # ∫ asech(a x)/x needs polylogarithms; u′ = 0 in step US's tower was a DivideError
     @test_throws Risch.NotElementary Risch.risch_integrate(:(asech(a * x) / x), :x; build = build, lift = identity)
+    # by parts, Q = ∫ x³ log(1 - x²) has log(x² - 1): its iπ (|x| < 1) times atanh x was lost in ∫ Q L′, a wrong
+    # answer; the numeric check G′ = f rejects it (dilogarithms are needed)
+    @test_throws Risch.NotElementary Risch.risch_integrate(:(x ^ 3 * atanh(x) * log(1 - x ^ 2)), :x; build = build, lift = identity)
 end
 
 # step AL: asin, acos, acsc, asec of a x + b with parameters: y = a x + b, the radicands rewritten in y (1 - c²x² ↦ 1 - y²);
