@@ -2119,7 +2119,7 @@ end
         @test occursin(L, string(Risch.risch_integrate(f, :x; build = build2, lift = identity)))
     end
     # ∫ asech(a x)/x needs polylogarithms; u′ = 0 in step US's tower was a DivideError
-    @test_throws NotElementary Risch.risch_integrate(:(asech(a * x) / x), :x; build = build, lift = identity)
+    @test_throws Risch.NotElementary Risch.risch_integrate(:(asech(a * x) / x), :x; build = build, lift = identity)
 end
 
 # step AL: asin, acos, acsc, asec of a x + b with parameters: y = a x + b, the radicands rewritten in y (1 - c²x² ↦ 1 - y²);
