@@ -164,7 +164,7 @@ function integrate_arcs_scaled(f, x, arcs; build = nothing, lift = nothing, veri
     # the radicands rewritten in y keep a parameter factor (d + d y² from d + c²d x²): out (step RK), so that the
     # radical is u′'s, √(1 + y²) for asinh y
     g2 = split_radicand_content(g, x, xk, build, lift)
-    g2 === nothing || (g = g2)
+    (g2 !== nothing && any(a -> a[1] in INV_HYP, arcs)) && (g = g2)
     G = risch_integrate(g, x; build = build, lift = lift, verify = verify)
     back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? L : t)
     subst_answer(G, back, bd)
@@ -513,7 +513,9 @@ function try_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
             dL = term_deriv(bd, L, xk)
             Lk = k == 1 ? L : mk(bd, :^, L, bd.lift(k))
             dLk = k == 1 ? dL : mk(bd, :*, bd.lift(k), k == 2 ? L : mk(bd, :^, L, bd.lift(k - 1)), dL)
-            H = risch_integrate(mk(bd, :*, Qt, dLk), x; build = build, lift = lift, verify = verify)
+            # (one flat product, so that step IT sees a constant factor of Q: b·(…)√(1 + x²)·(1/√(1 + x²)))
+            QdL = Any[e == 1 ? t : mk(bd, :^, t, bd.lift(e)) for (t, e) in product_factors!(product_factors!(Any[], Qt, 1), dLk, 1)]
+            H = risch_integrate(length(QdL) == 1 ? QdL[1] : mk(bd, :*, QdL...), x; build = build, lift = lift, verify = verify)
             H isa IntegralWithRootSums && return nothing
             mk(bd, :+, mk(bd, :*, Qt, Lk), mk(bd, :*, bd.lift(-1), H))
         end

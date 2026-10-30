@@ -262,9 +262,9 @@ throws. A step that rewrites the integrand calls `risch_integrate` again on the 
 | SL | every trigonometric or hyperbolic argument with `x` is ``r(e + fx)``, ``r`` rational, ``e`` a parameter; elsewhere `x` only algebraically | ``y = e + fx``, ``x = (y - e)/f``, integrated in ``y`` and ``y = e + fx`` substituted back (refused in ``y``: on to TS2). Before TS2, whose ``\cos e``, ``\sin e`` are independent constants to the constant field: ``\cos^2 e + \sin^2 e = 1`` is not seen, which gives hidden zero denominators, false residue criteria and slow resultants |
 | TS2 | ``\sin(v + a)``, ``\cosh(v + a)``, … with ``a`` free of `x` | addition formulas, so ``\cos a``, ``\sin a`` become opaque constants. Exact values for multiples of ``π/6`` and ``π/4`` |
 | AC | `acot`, `acsc`, `asec` | ``\operatorname{acot} u = \operatorname{atan}(1/u)``, ``\operatorname{acsc} u = \operatorname{asin}(1/u)``, … |
-| IH | `atanh`, `acoth`, `asinh`, `acosh`, `acsch`, `asech` | first ``A \cdot L`` by parts (step AP), so the answer keeps ``L``: ``\int \operatorname{asech} x = x \operatorname{asech} x + \operatorname{asin} x``. Otherwise as logarithms: ``\operatorname{atanh} u = \tfrac12\log\frac{1+u}{1-u}``, ``\operatorname{acoth} u = \tfrac12\log\frac{u+1}{u-1}``, ``\operatorname{asinh} u = \log(u + \sqrt{u^2+1})``, ``\operatorname{acosh} u = \log(u + \sqrt{u^2-1})``, ``\operatorname{acsch} u = \operatorname{asinh}(1/u)``, ``\operatorname{asech} u = \log\frac{1 + \sqrt{1 - u^2}}{u}`` (``0 < u \le 1``) |
+| IH | `atanh`, `acoth`, `asinh`, `acosh`, `acsch`, `asech` | first ``y = cx`` for ``L(cx)`` with a parameter ``c`` (step AL), then derivative-divides (step US: ``\int \operatorname{asinh} x/\sqrt{x^2+1} = \tfrac12\operatorname{asinh}^2 x``), ``A \cdot L`` by parts (step AP) and a factor ``a + bL`` term by term, so the answer keeps ``L``: ``\int \operatorname{asech} x = x \operatorname{asech} x + \operatorname{asin} x``. Otherwise as logarithms: ``\operatorname{atanh} u = \tfrac12\log\frac{1+u}{1-u}``, ``\operatorname{acoth} u = \tfrac12\log\frac{u+1}{u-1}``, ``\operatorname{asinh} u = \log(u + \sqrt{u^2+1})``, ``\operatorname{acosh} u = \log(u + \sqrt{u^2-1})``, ``\operatorname{acsch} u = \operatorname{asinh}(1/u)``, ``\operatorname{asech} u = \log\frac{1 + \sqrt{1 - u^2}}{u}`` (``0 < u \le 1``) |
 | AS | `asin(u)` or `acos(u)` with ``u`` linear | ``u = \sin t``: the integrand is rebuilt in ``t`` (`x` stands for ``t``), integrated, and mapped back, ``\sin kt``, ``\cos kt`` written exactly as ``A(u) + B(u)\sqrt{1 - u^2}`` |
-| AL | `asin(u)`, `acos(u)`, … with ``u = ax + b`` and ``a, b`` parameters | ``y = ax + b``. The radicands are rewritten as polynomials in ``y``, with constants simplified (``1 - c^2x^2 \mapsto 1 - y^2``), then step AS is used and ``y = ax + b`` is substituted back |
+| AL | `asin(u)`, `acos(u)`, …, and the inverse hyperbolic functions, with ``u = ax + b`` and ``a, b`` parameters | ``y = ax + b``. The radicands are rewritten as polynomials in ``y``, with constants simplified (``1 - c^2x^2 \mapsto 1 - y^2``) and a parameter factor taken out (``\sqrt{d + dy^2} = \sqrt d\sqrt{1 + y^2}``, step RK), then step AS (IH) is used and ``y = ax + b`` is substituted back: ``\int (a + b\operatorname{asinh} cx)/\sqrt{d + c^2dx^2} = (a + b\operatorname{asinh} cx)^2/(2bc\sqrt d)`` |
 | PL | no radicals, parameters, denominator a power of one quadratic | linearity over a parameter field |
 
 ### 2. Radicals
@@ -723,7 +723,7 @@ failures, and their comments cite the Rubi problem numbers.
 | IH | `inverse_trig.jl` | inverse hyperbolic functions by parts or as logarithms |
 | AP | `inverse_trig.jl` | by parts for ``A L^k`` |
 | AS | `inverse_trig.jl` | `asin`, `acos` by ``u = \sin t`` |
-| AL | `inverse_trig.jl` | `asin`, `acos` of ``ax + b`` with parameters |
+| AL | `inverse_trig.jl` | `asin`, `acos`, `asinh`, … of ``ax + b`` with parameters |
 | AT | `inverse_trig.jl` | `atan(u)` by ``u = \tan t`` |
 | BQ | `biquadratic.jl` | two square roots, biquadratic splitting |
 | CL | `clausen.jl` | ``x^p R(\sin, \cos)`` with Clausen functions |

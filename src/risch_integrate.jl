@@ -398,21 +398,17 @@ has_symbol(t) = safe_iscall(t) && !isempty(arguments(t)) ? any(has_symbol, argum
 # a root c^(p/q) with q > 2 of a constant (2^(1/4) from step CS): the constant fields hold square roots only
 has_high_root(t) = safe_iscall(t) && !isempty(arguments(t)) &&
                    ((rp = radical_parts(t); rp !== nothing && denominator(rp[1]) > 2) || any(has_high_root, arguments(t)))
-# f = c·g with c ≠ 1 the product of the factors of f (of its products and quotients, nested ones too:
-# (b·(1 + x²)√(1 + x²))·(1/√(1 + x²)) from step AP) that are free of x but contain a symbol or a root c^(p/q),
-# q > 2: (c, g, builder), or nothing
+# f = c·g with c ≠ 1 the product of the factors of f (numerator and denominator of a top-level
+# product or quotient) that are free of x but contain a symbol or a root c^(p/q), q > 2: (c, g, builder), or nothing
 function split_free_factor(f, x, xk::String, build, lift)
     @nospecialize f x
     (safe_iscall(f) && !isempty(arguments(f))) || return nothing
     n = opname(operation(f))
     n in (:*, :/) || return nothing
-    (n === :/ && length(arguments(f)) != 2) && return nothing
-    nums, dens = Any[], Any[]
-    for (t, e) in product_factors!(Any[], f, 1)
-        p = abs(e) == 1 ? t : mk(Builder(build === nothing ? auto_build(f, x) : build,
-                                         lift === nothing ? auto_lift(f, x) : lift, x), :^, t, abs(e))
-        push!(e > 0 ? nums : dens, p)
-    end
+    factors(t) = (safe_iscall(t) && !isempty(arguments(t)) && opname(operation(t)) === :*) ? arguments(t) : Any[t]
+    nums, dens = n === :* ? (Any[arguments(f)...], Any[]) :
+                 length(arguments(f)) == 2 ? (Any[factors(arguments(f)[1])...], Any[factors(arguments(f)[2])...]) :
+                 return nothing
     isfree(t) = !has_leaf(t, xk) && (has_symbol(t) || has_high_root(t))
     cn, cd = filter(isfree, nums), filter(isfree, dens)
     (isempty(cn) && isempty(cd)) && return nothing
