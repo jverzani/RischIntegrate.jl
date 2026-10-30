@@ -34,8 +34,9 @@ end
 
 # step IH: the inverse hyperbolic functions as logarithms (Julia's definitions, real where the function is):
 #   atanh u = ½ log((1 + u)/(1 - u)),  acoth u = ½ log((u + 1)/(u - 1)),
-#   asinh u = log(u + √(u² + 1)),      acosh u = log(u + √(u² - 1))  (u ≥ 1)
-const INV_HYP = (:atanh, :acoth, :asinh, :acosh)
+#   asinh u = log(u + √(u² + 1)),      acosh u = log(u + √(u² - 1))  (u ≥ 1),
+#   acsch u = asinh(1/u),              asech u = acosh(1/u) = log((1 + √(1 - u²))/u)  (0 < u ≤ 1)
+const INV_HYP = (:atanh, :acoth, :asinh, :acosh, :acsch, :asech)
 function rewrite_invhyp(f, x, build, lift)
     @nospecialize f x
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
@@ -47,10 +48,12 @@ function rewrite_invhyp(f, x, build, lift)
         args = Any[rw(a) for a in arguments(t)]
         n = opname(operation(t))
         if n in INV_HYP && length(args) == 1
-            u = args[1]
+            n === :asech && return mk(bd, :log, mk(bd, :/, mk(bd, :+, bd.lift(1), mk(bd, :sqrt, mk(bd, :+, bd.lift(1), neg(sq(args[1]))))),
+                                                   args[1]))
+            u = n === :acsch ? mk(bd, :/, bd.lift(1), args[1]) : args[1]
             n === :atanh && return half(mk(bd, :log, mk(bd, :/, mk(bd, :+, bd.lift(1), u), mk(bd, :+, bd.lift(1), neg(u)))))
             n === :acoth && return half(mk(bd, :log, mk(bd, :/, mk(bd, :+, u, bd.lift(1)), mk(bd, :+, u, bd.lift(-1)))))
-            n === :asinh && return mk(bd, :log, mk(bd, :+, u, mk(bd, :sqrt, mk(bd, :+, sq(u), bd.lift(1)))))
+            n in (:asinh, :acsch) && return mk(bd, :log, mk(bd, :+, u, mk(bd, :sqrt, mk(bd, :+, sq(u), bd.lift(1)))))
             return mk(bd, :log, mk(bd, :+, u, mk(bd, :sqrt, mk(bd, :+, sq(u), bd.lift(-1)))))
         end
         term_rebuild(bd, t, args)
@@ -476,7 +479,7 @@ end
 # by steps DL, LF).
 # ---------------------------------------------------------------------------
 const PARTS = Ref(false)                                # no nested integration by parts
-const PARTS_FNS = (:atan, :acot, :asin, :acos, :asec, :acsc, :asinh, :acosh, :atanh, :log)
+const PARTS_FNS = (:atan, :acot, :asin, :acos, :asec, :acsc, :asinh, :acosh, :atanh, :acoth, :acsch, :asech, :log)
 
 function try_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x

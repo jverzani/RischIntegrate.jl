@@ -82,7 +82,11 @@ function term_deriv(bd::Builder, t, xk::String)
         n === :acos && return neg(mk(bd, :/, d[1], sq(1, a[1])))
         n === :asinh && return mk(bd, :/, d[1], mk(bd, :sqrt, mk(bd, :+, bd.lift(1), mk(bd, :^, a[1], bd.lift(2)))))
         n === :acosh && return mk(bd, :/, d[1], mk(bd, :sqrt, mk(bd, :+, mk(bd, :^, a[1], bd.lift(2)), bd.lift(-1))))
-        n === :atanh && return mk(bd, :/, d[1], mk(bd, :+, bd.lift(1), neg(mk(bd, :^, a[1], bd.lift(2)))))
+        n in (:atanh, :acoth) && return mk(bd, :/, d[1], mk(bd, :+, bd.lift(1), neg(mk(bd, :^, a[1], bd.lift(2)))))
+        # asech u = acosh(1/u), 0 < u ≤ 1: -u′/(u √(1 - u²)); acsch u = asinh(1/u): -u′/(u² √(1 + 1/u²))
+        n === :asech && return neg(mk(bd, :/, d[1], mul(a[1], sq(1, a[1]))))
+        n === :acsch && return neg(mk(bd, :/, d[1], mul(mk(bd, :^, a[1], bd.lift(2)),
+                                                        mk(bd, :sqrt, mk(bd, :+, bd.lift(1), mk(bd, :^, a[1], bd.lift(-2)))))))
         # asec u = acos(1/u), acsc u = asin(1/u): ∓u′/(u² √(1 - 1/u²))
         n === :asec && return mk(bd, :/, d[1], mul(mk(bd, :^, a[1], bd.lift(2)), sq(1, mk(bd, :/, bd.lift(1), a[1]))))
         n === :acsc && return neg(mk(bd, :/, d[1], mul(mk(bd, :^, a[1], bd.lift(2)), sq(1, mk(bd, :/, bd.lift(1), a[1])))))
@@ -295,7 +299,8 @@ function try_usub(f, x; build, lift, verify::Bool)
             r = try
                 integrate_usub(f, x, u, bd; build = build, lift = lift, verify = verify)
             catch e
-                (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+                # (DivideError: u′ is zero in the tower where u is opaque, ∫ asech(a x)/x: not a substitution)
+                (e isa RischNotImplemented || e isa NotElementary || e isa DivideError) || rethrow()
                 nothing
             end
             r === nothing || return r
