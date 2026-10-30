@@ -237,6 +237,8 @@ function integrate_usub(f, x, u, bd::Builder; build, lift, verify::Bool)
     @nospecialize f x
     xk = string(x)
     du = term_deriv(bd, u, xk)
+    # u constant in x though written with x (sin²t + cos²t, whose u′ the term type cancels to 0): not a substitution
+    (du === nothing || leaf_rational(du) == 0) && return nothing
     r = integrate_usub_trig(f, x, u, du, bd; build = build, lift = lift, verify = verify)   # u = sech v, …
     r === nothing || return r
     r = integrate_usub_pyth(f, x, u, du, bd; build = build, lift = lift, verify = verify)   # u = sinh v, cosh² = 1 + u²
@@ -444,6 +446,7 @@ end
 # √(x² + 1) and √(1 + x²)) cancelled: a radical of the integrand that is also in u′ (√(a² - x²) for u = asin(x/a))
 # does not reach the tower, which has no algebraic generators here
 function cancel_quotient(bd::Builder, f, g)
+    leaf_rational(g) == 0 && throw(RischNotImplemented("division by a zero derivative"))
     fs, gs = product_factors!(Any[], f, 1), product_factors!(Any[], g, 1)
     xk = string(bd.x)
     function key(t)

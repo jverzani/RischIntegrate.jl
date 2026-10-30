@@ -1393,6 +1393,18 @@ end
     end
 end
 
+# step KR: a radicand constant in disguise (the speed √(sin²t + cos²t) of a line integral) is its value; u = sin²t + cos²t
+# as a substitution has u′ = 0 (a DivideError with SymJ terms, which cancel u′ to 0, and with Expr in the tower)
+@testset "constant radicands (step KR)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    for (f, G) in ((:(sqrt(sin(t) ^ 2 + cos(t) ^ 2)), "t"), (:((5 - sin(t)) * sqrt(sin(t) ^ 2 + cos(t) ^ 2)), "5t + cos(t)"),
+                   (:(sin(t) * sqrt(sin(t) ^ 2 + cos(t) ^ 2)), "-1 * cos(t)"), (:(t * sqrt(cosh(t) ^ 2 - sinh(t) ^ 2)), "1//2 * t ^ 2"))
+        @test string(Risch.risch_integrate(f, :t; build = build, lift = identity)) == G
+    end
+    SymEngine.@vars t
+    @test string(integrate((5 - sin(t)) * sqrt(sin(t) ^ 2 + cos(t) ^ 2), t)) == "5*t + cos(t)"
+end
+
 # step SL: arguments r·(e + f x) with a parameter shift e: y = e + f x, so cos e, sin e never enter the
 # constant field (with them, (c + dx)/(a - a sin(e + fx)) was refused by the residue criterion)
 @testset "shifted linear arguments (step SL)" begin
