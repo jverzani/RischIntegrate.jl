@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=64766970">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=ac8881b8">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -291,7 +291,7 @@
 <td style="text-align:left">takes it out: <span class="md-math md-math-inline">\(\int c\,g = c \int g\)</span>. This keeps the parameter out of the constant field, and lets an iterated integral see <span class="md-math md-math-inline">\(c(y) \cdot \text{RootSum}(x)\)</span></td>
 </tr>
 <tr>
-<td style="text-align:left">TL</td>
+<td style="text-align:left">SL</td>
 <td style="text-align:left">every trigonometric or hyperbolic argument with <code class="md-code-inline">x</code> is <span class="md-math md-math-inline">\(r(e + fx)\)</span>, <span class="md-math md-math-inline">\(r\)</span> rational, <span class="md-math md-math-inline">\(e\)</span> a parameter; elsewhere <code class="md-code-inline">x</code> only algebraically</td>
 <td style="text-align:left"><span class="md-math md-math-inline">\(y = e + fx\)</span>, <span class="md-math md-math-inline">\(x = (y - e)/f\)</span>, integrated in <span class="md-math md-math-inline">\(y\)</span> and <span class="md-math md-math-inline">\(y = e + fx\)</span> substituted back (refused in <span class="md-math md-math-inline">\(y\)</span>: on to TS2). Before TS2, whose <span class="md-math md-math-inline">\(\cos e\)</span>, <span class="md-math md-math-inline">\(\sin e\)</span> are independent constants to the constant field: <span class="md-math md-math-inline">\(\cos^2 e + \sin^2 e = 1\)</span> is not seen, which gives hidden zero denominators, false residue criteria and slow resultants</td>
 </tr>
@@ -411,7 +411,7 @@
 </li>
 <li><p><strong>10a</strong>: <span class="md-math md-math-inline">\(u = (ax + b)/(cx + d)\)</span>: <span class="md-math md-math-inline">\(t = u^{1/n}\)</span>, <span class="md-math md-math-inline">\(x = (b - d t^n)/(c t^n - a)\)</span>.</p>
 </li>
-<li><p><strong>10b/10c</strong>: <span class="md-math md-math-inline">\(\sqrt{Ax^2 + Bx + C}\)</span>: an Euler substitution, a rational parametrization of the conic <span class="md-math md-math-inline">\(R^2 = Q\)</span> over <span class="md-math md-math-inline">\(ℚ\)</span>, or over <span class="md-math md-math-inline">\(ℚ(i)(\sqrt d)\)</span> when there is no small rational point. Several candidates are tried, one per constant field.</p>
+<li><p><strong>10b/10c</strong>: <span class="md-math md-math-inline">\(\sqrt{Ax^2 + Bx + C}\)</span>: an Euler substitution, a rational parametrization of the conic <span class="md-math md-math-inline">\(R^2 = Q\)</span> over <span class="md-math md-math-inline">\(ℚ\)</span>, or over <span class="md-math md-math-inline">\(ℚ(i)(\sqrt d)\)</span> when there is no small rational point. Several candidates are tried, one per constant field. First, <strong>step EQ</strong> splits <span class="md-math md-math-inline">\(f = p + q\sqrt a\)</span> by the hyperelliptic Hermite reduction, which needs no genus: <span class="md-math md-math-inline">\(\int q \sqrt a = g\sqrt a + \int (P + R/D)/\sqrt a\)</span> with <span class="md-math md-math-inline">\(P\)</span> constant and <span class="md-math md-math-inline">\(D\)</span> squarefree. <span class="md-math md-math-inline">\(\int p\)</span> is a rational integral, <span class="md-math md-math-inline">\(g\sqrt a\)</span> is printed in <code class="md-code-inline">x</code>, and only the remainder takes the Euler substitution: <span class="md-math md-math-inline">\(\int x/\sqrt{x^2+1} = \sqrt{x^2+1}\)</span>, not a rational function of <span class="md-math md-math-inline">\(t = \sqrt{x^2+1} + x\)</span>.</p>
 </li>
 <li><p><strong>hyperelliptic</strong> (SI2 phase 1): <span class="md-math md-math-inline">\(\sqrt a\)</span> with <span class="md-math md-math-inline">\(\deg a ≥ 3\)</span> (genus ≥ 1). Hermite reduction on the curve, reduction at infinity; a residue-free remainder is zero or the integral is not elementary (Liouville).</p>
 </li>
@@ -877,6 +877,11 @@
 <td style="text-align:left"><span class="md-math md-math-inline">\(e^{ax} R(\cos bx, \sin bx)\)</span> with <span class="md-math md-math-inline">\({}_2F_1\)</span> terms</td>
 </tr>
 <tr>
+<td style="text-align:left">EQ</td>
+<td style="text-align:left"><code class="md-code-inline">euler_substitutions.jl</code></td>
+<td style="text-align:left">Hermite reduction on the conic before the Euler substitution</td>
+</tr>
+<tr>
 <td style="text-align:left">IT</td>
 <td style="text-align:left"><code class="md-code-inline">risch_integrate.jl</code></td>
 <td style="text-align:left">constant factors out; iterated integrals</td>
@@ -967,6 +972,11 @@
 <td style="text-align:left">parameters and opaque constants</td>
 </tr>
 <tr>
+<td style="text-align:left">SL</td>
+<td style="text-align:left"><code class="md-code-inline">risch_integrate.jl</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(y = e + fx\)</span> for shifted linear trigonometric arguments</td>
+</tr>
+<tr>
 <td style="text-align:left">SO</td>
 <td style="text-align:left"><code class="md-code-inline">param_radicals.jl</code>, <code class="md-code-inline">sign_facts.jl</code></td>
 <td style="text-align:left">signs of parameter expressions from the caller: an oracle, or facts</td>
@@ -980,11 +990,6 @@
 <td style="text-align:left">TS</td>
 <td style="text-align:left"><code class="md-code-inline">bioche.jl</code></td>
 <td style="text-align:left">Bioche&#39;s rules</td>
-</tr>
-<tr>
-<td style="text-align:left">TL</td>
-<td style="text-align:left"><code class="md-code-inline">risch_integrate.jl</code></td>
-<td style="text-align:left"><span class="md-math md-math-inline">\(y = e + fx\)</span> for shifted linear trigonometric arguments</td>
 </tr>
 <tr>
 <td style="text-align:left">TS2</td>
@@ -1056,6 +1061,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=64766970"></script>
+  <script src="../assets/materialdocs.js?v=ac8881b8"></script>
 </body>
 </html>
