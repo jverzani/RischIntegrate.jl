@@ -159,6 +159,7 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     if cg !== nothing
         c, g, bd = cg
         G = risch_integrate(g, x; build = build, lift = lift, verify = verify)
+        leaf_rational(c) == 1 && return G
         G isa IntegralWithRootSums && return IntegralWithRootSums(mk(bd, :*, c, G.elementary),
                                                                  Any[ScaledRootSum(c, rs) for rs in G.rootsums], G.var)
         return mk(bd, :*, c, G)
@@ -175,9 +176,18 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     has_op(f, :acot) && return risch_integrate(rewrite_acot(f, x, build, lift), x; build = build, lift = lift,
                                                verify = verify)     # acot(u) = atan(1/u) (step AC)
     if any(n -> has_op(f, n), INV_HYP)
-        # A·L by parts first, so the answer keeps L (∫ asinh x = x asinh x - √(x² + 1), step AP), else
+        # asinh(c x): y = c x first (step AL); then derivative-divides (∫ asinh(x)/√(1 + x²) = asinh(x)²/2, step
+        # US) and A·L by parts (∫ asinh x = x asinh x - √(x² + 1), step AP), so the answer keeps L; else
         # atanh, acoth, asinh, acosh, acsch, asech as logs (step IH)
+        hs = collect_arcs(f, xk; fns = INV_HYP)
+        r = isempty(hs) ? nothing : integrate_arcs_scaled(f, x, hs; build = build, lift = lift, verify = verify)
+        r === nothing || return r
+        r = try_usub(f, x; build = build, lift = lift, verify = verify)
+        r === nothing || return r
         r = try_parts(f, x; build = build, lift = lift, verify = verify)
+        r === nothing || return r
+        # a factor (a + b L): term by term, each by parts (x √(1 + x²) (a + b asinh x)); else on to the logs
+        r = distribute_sum_factor(f, x, xk, n -> n in INV_HYP; build = build, lift = lift, verify = verify)
         r === nothing || return r
         return risch_integrate(rewrite_invhyp(f, x, build, lift), x; build = build, lift = lift, verify = verify)
     end
@@ -388,17 +398,21 @@ has_symbol(t) = safe_iscall(t) && !isempty(arguments(t)) ? any(has_symbol, argum
 # a root c^(p/q) with q > 2 of a constant (2^(1/4) from step CS): the constant fields hold square roots only
 has_high_root(t) = safe_iscall(t) && !isempty(arguments(t)) &&
                    ((rp = radical_parts(t); rp !== nothing && denominator(rp[1]) > 2) || any(has_high_root, arguments(t)))
-# f = c·g with c ≠ 1 the product of the factors of f (numerator and denominator of a top-level
-# product or quotient) that are free of x but contain a symbol or a root c^(p/q), q > 2: (c, g, builder), or nothing
+# f = c·g with c ≠ 1 the product of the factors of f (of its products and quotients, nested ones too:
+# (b·(1 + x²)√(1 + x²))·(1/√(1 + x²)) from step AP) that are free of x but contain a symbol or a root c^(p/q),
+# q > 2: (c, g, builder), or nothing
 function split_free_factor(f, x, xk::String, build, lift)
     @nospecialize f x
     (safe_iscall(f) && !isempty(arguments(f))) || return nothing
     n = opname(operation(f))
     n in (:*, :/) || return nothing
-    factors(t) = (safe_iscall(t) && !isempty(arguments(t)) && opname(operation(t)) === :*) ? arguments(t) : Any[t]
-    nums, dens = n === :* ? (Any[arguments(f)...], Any[]) :
-                 length(arguments(f)) == 2 ? (Any[factors(arguments(f)[1])...], Any[factors(arguments(f)[2])...]) :
-                 return nothing
+    (n === :/ && length(arguments(f)) != 2) && return nothing
+    nums, dens = Any[], Any[]
+    for (t, e) in product_factors!(Any[], f, 1)
+        p = abs(e) == 1 ? t : mk(Builder(build === nothing ? auto_build(f, x) : build,
+                                         lift === nothing ? auto_lift(f, x) : lift, x), :^, t, abs(e))
+        push!(e > 0 ? nums : dens, p)
+    end
     isfree(t) = !has_leaf(t, xk) && (has_symbol(t) || has_high_root(t))
     cn, cd = filter(isfree, nums), filter(isfree, dens)
     (isempty(cn) && isempty(cd)) && return nothing
@@ -408,6 +422,17 @@ function split_free_factor(f, x, xk::String, build, lift)
     prod_(ts) = isempty(ts) ? bd.lift(1) : length(ts) == 1 ? ts[1] : mk(bd, :*, ts...)
     c = isempty(cd) ? prod_(cn) : mk(bd, :/, prod_(cn), prod_(cd))
     g = isempty(gd) ? prod_(gn) : mk(bd, :/, prod_(gn), prod_(gd))
+    # a rational value in the constant field (a/a from √(a²) = a and 1/a, step RK): printed as that rational
+    T, el = try
+        build_tower(c, xk)
+    catch e
+        (e isa RischNotImplemented || e isa RischError) || rethrow()
+        (nothing, nothing)
+    end
+    if T !== nothing && isempty(T.levels) && degree(el.num) == 0 && degree(el.den) == 0
+        r = rational_const(el.num.c[1] / el.den.c[1])
+        r === nothing || (c = bd.lift(r))
+    end
     (c, g, bd)
 end
 

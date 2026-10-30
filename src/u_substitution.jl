@@ -440,20 +440,29 @@ function param_quotient(bd::Builder, t, xk::String)
     (N, mk(bd, :/, bd.lift(1), c))
 end
 
-# f/g with the factors common to both (the same printed term) cancelled: a radical of the integrand that is also
-# in u′ (√(a² - x²) for u = asin(x/a)) does not reach the tower, which has no algebraic generators here
+# f/g with the factors common to both (the same printed term, or radicals of the same rational radicand:
+# √(x² + 1) and √(1 + x²)) cancelled: a radical of the integrand that is also in u′ (√(a² - x²) for u = asin(x/a))
+# does not reach the tower, which has no algebraic generators here
 function cancel_quotient(bd::Builder, f, g)
     fs, gs = product_factors!(Any[], f, 1), product_factors!(Any[], g, 1)
+    xk = string(bd.x)
+    function key(t)
+        rp = radical_parts(t)
+        rp === nothing && return string(t)
+        ue = radicand_element(rp[2], xk)
+        ue === nothing ? string(t) : string("radical ", rp[1], " of ", ue)
+    end
     ex = Dict{String,Tuple{Any,Int}}()
     for (t, e) in fs
-        k = string(t)
+        k = key(t)
         ex[k] = (t, get(ex, k, (t, 0))[2] + e)
     end
     for (t, e) in gs
-        k = string(t)
+        k = key(t)
         ex[k] = (t, get(ex, k, (t, 0))[2] - e)
     end
-    any(((t, e),) -> any(((s, _),) -> string(s) == string(t), gs), fs) || return mk(bd, :/, f, g)
+    gk = Set(key(s) for (s, _) in gs)
+    any(((t, _),) -> key(t) in gk, fs) || return mk(bd, :/, f, g)
     num, den = Any[], Any[]
     for (t, e) in values(ex)
         e == 0 && continue
