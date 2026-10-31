@@ -2574,3 +2574,10 @@ end
     err = try Risch.risch_integrate(:(0 ^ (x - 1)), :x; build = build, lift = identity) catch e; e end
     @test err isa Risch.RischNotImplemented && occursin("constant 0 is undefined", err.msg) && !occursin("negative", err.msg)
 end
+
+# a part of an IntegralWithRootSums with a leading minus is printed after " - " (∫ x/sin x, SymEngine)
+@testset "IntegralWithRootSums printing: minus signs" begin
+    x = SymEngine.symbols("x")
+    s = string(Risch.risch_integrate(x / sin(x), x))
+    @test occursin("- clausen2", s) && !occursin("+ -1 * clausen2", s)
+end

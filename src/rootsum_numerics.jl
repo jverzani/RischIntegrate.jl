@@ -26,7 +26,19 @@ end
 function Base.show(io::IO, F::IntegralWithRootSums)
     ts = Any[rs for rs in F.rootsums]
     string(F.elementary) == "0" || pushfirst!(ts, F.elementary)
-    join(io, ts, " + ")
+    # a part with a leading minus sign after " - ", not " + -1 * " (-1 * clausen2(x - π))
+    for (i, t) in enumerate(ts)
+        s = string(t)
+        if i == 1
+            print(io, s)
+        elseif startswith(s, "-1 * ")
+            print(io, " - ", s[6:end])
+        elseif startswith(s, "-")
+            print(io, " - ", s[2:end])
+        else
+            print(io, " + ", s)
+        end
+    end
 end
 
 # all complex roots of a polynomial with complex coefficients (Aberth–Ehrlich iteration)
