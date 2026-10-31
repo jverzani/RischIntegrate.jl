@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usage — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=fff9d9c4">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=a2d5522f">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Usage — RischIntegrate.jl">
   <meta property="og:title" content="Usage — RischIntegrate.jl">
@@ -100,18 +100,19 @@ integrate(x * exp(x), x)</code></pre>
 \[\frac{1}{4} x^{2} y^{2}\]
 </div>
 </div>
-<h2 id="SimpleExpressions.jl" class="md-heading">SimpleExpressions.jl<a href="#SimpleExpressions.jl" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
+<h2 id="SymJ.jl" class="md-heading">SymJ.jl<a href="#SymJ.jl" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
+<p><a href="https://github.com/jverzani/SymJ.jl">SymJ.jl</a> loads an extension with RischIntegrate. Its <code class="md-code-inline">integrate</code> method adds piecewise functions (<code class="md-code-inline">abs</code>, <code class="md-code-inline">sign</code>, <code class="md-code-inline">heaviside</code>), assumptions on the parameters (<code class="md-code-inline">assume = …</code>), and definite integrals split at the integrand&#39;s singular points:</p>
 <div class="md-multi-output">
 <div class="md-code-block">
 <button class="md-copy-btn" title="Copy to clipboard" aria-label="Copy code"><span class="md-copy-icon">⧉</span><span class="md-copy-feedback">Copied!</span></button>
-<pre><code class="language-julia">using SimpleExpressions
+<pre><code class="language-julia">using SymJ
 using RischIntegrate: integrate
-@symbolic x
+@syms x
 
 integrate(log(x)^2, x)</code></pre>
 </div>
 <div class="md-math md-math-display">
-\[2 x -2 x \log\left( x \right) + x \left( \log\left( x \right) \right)^{2}\]
+\[-2 \cdot \log\left( x \right) \cdot x + \left( \log\left( x \right) \right)^{2} \cdot x + 2 \cdot x\]
 </div>
 </div>
 <div class="md-multi-output">
@@ -120,7 +121,16 @@ integrate(log(x)^2, x)</code></pre>
 <pre><code class="language-julia">integrate(1 / (x * sqrt(x^2 + 1)), x)</code></pre>
 </div>
 <div class="md-math md-math-display">
-\[\frac{\log\left( \left( -1 + \sqrt{1 + x^{2}} + x \right)^{2} \right)}{2} -1 \log\left( 1 + \sqrt{1 + x^{2}} + x \right)\]
+\[\frac{\log\left( \left( \sqrt{x^{2} + 1} + x - 1 \right)^{2} \right)}{2} - \log\left( \sqrt{x^{2} + 1} + x + 1 \right)\]
+</div>
+</div>
+<div class="md-multi-output">
+<div class="md-code-block">
+<button class="md-copy-btn" title="Copy to clipboard" aria-label="Copy code"><span class="md-copy-icon">⧉</span><span class="md-copy-feedback">Copied!</span></button>
+<pre><code class="language-julia">integrate((5 - sin(x)) * sqrt(sin(x)^2 + cos(x)^2), (x, 0, π))   # mass of a half circle</code></pre>
+</div>
+<div class="md-math md-math-display">
+\[5 \cdot \pi - 2\]
 </div>
 </div>
 <h2 id="SymbolicUtils.jl" class="md-heading">SymbolicUtils.jl<a href="#SymbolicUtils.jl" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
@@ -300,7 +310,7 @@ end</code></pre>
       <div class="md-toc-inner">
         <p class="md-toc-title">On this page</p>
           <a class="md-toc-link md-toc-h2" href="#SymEngine.jl">SymEngine.jl</a>
-          <a class="md-toc-link md-toc-h2" href="#SimpleExpressions.jl">SimpleExpressions.jl</a>
+          <a class="md-toc-link md-toc-h2" href="#SymJ.jl">SymJ.jl</a>
           <a class="md-toc-link md-toc-h2" href="#SymbolicUtils.jl">SymbolicUtils.jl</a>
           <a class="md-toc-link md-toc-h2" href="#Symbolics.jl">Symbolics.jl</a>
           <a class="md-toc-link md-toc-h2" href="#Giac.jl">Giac.jl</a>
@@ -325,6 +335,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=fff9d9c4"></script>
+  <script src="../assets/materialdocs.js?v=a2d5522f"></script>
 </body>
 </html>

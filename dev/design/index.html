@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=e566ce75">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=f186c15f">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -56,7 +56,7 @@
 <p>The source refers to its steps by short codes (step EP, step US, step RC, …). The codes are used here too, so a passage of these notes can be matched with the comment in <code class="md-code-inline">src/</code> that implements it. A table of all of them is at the end.</p>
 <h2 id="Goals" class="md-heading">Goals<a href="#Goals" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
 <ul class="md-list-tight">
-<li><p><strong>Any term type.</strong> The input is any term that implements the <a href="https://github.com/JuliaSymbolics/TermInterface.jl">TermInterface.jl</a> methods <code class="md-code-inline">iscall</code>, <code class="md-code-inline">operation</code> and <code class="md-code-inline">arguments</code>: SymEngine, SymbolicUtils, Symbolics, SimpleExpressions, Giac, or Julia&#39;s <code class="md-code-inline">Expr</code>. The package reads the term, but does no arithmetic with it.</p>
+<li><p><strong>Any term type.</strong> The input is any term that implements the <a href="https://github.com/JuliaSymbolics/TermInterface.jl">TermInterface.jl</a> methods <code class="md-code-inline">iscall</code>, <code class="md-code-inline">operation</code> and <code class="md-code-inline">arguments</code>: SymEngine, SymbolicUtils, Symbolics, SymJ, Giac, or Julia&#39;s <code class="md-code-inline">Expr</code>. The package reads the term, but does no arithmetic with it.</p>
 </li>
 <li><p><strong>Exact algebra of its own.</strong> Every computation is done with the package&#39;s own dense polynomials and rational functions over exact fields: <span class="md-math md-math-inline">\(ℚ\)</span>, <span class="md-math md-math-inline">\(ℚ(i)\)</span>, quadratic fields, and rational function fields of parameters and transcendental constants. No other CAS is called.</p>
 </li>
@@ -1082,6 +1082,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=e566ce75"></script>
+  <script src="../assets/materialdocs.js?v=f186c15f"></script>
 </body>
 </html>
