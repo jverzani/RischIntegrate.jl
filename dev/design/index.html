@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=67249939">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=db8166b6">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -412,7 +412,7 @@
 </li>
 <li><p>One radicand <span class="md-math md-math-inline">\(u\)</span>, index <span class="md-math md-math-inline">\(n\)</span>:</p>
 <ul class="md-list-tight">
-<li><p><strong>SQ</strong>: repeated factors, <span class="md-math md-math-inline">\(u = c\,S^2 W/(T^2 V)\)</span>: the variable is <span class="md-math md-math-inline">\(Y = \sqrt u/s\)</span>, with <span class="md-math md-math-inline">\(Y^2 = w\)</span> on every interval, whatever the sign of <span class="md-math md-math-inline">\(s\)</span>. Also a rational <span class="md-math md-math-inline">\(u\)</span> without repeated factors that is not linear over linear: <span class="md-math md-math-inline">\(\sqrt{2/(1 - t^2)} = Y/(1 - t^2)\)</span>, <span class="md-math md-math-inline">\(Y^2 = 2(1 - t^2)\)</span>. For <span class="md-math md-math-inline">\(n ≥ 3\)</span>, a radicand <span class="md-math md-math-inline">\(s^n (x - a)^j (x - b)^k\)</span> reduces to a linear-fractional one.</p>
+<li><p><strong>SQ</strong>: repeated factors, <span class="md-math md-math-inline">\(u = c\,S^2 W/(T^2 V)\)</span>: the variable is <span class="md-math md-math-inline">\(Y = \sqrt u/s\)</span>, with <span class="md-math md-math-inline">\(Y^2 = w\)</span> on every interval, whatever the sign of <span class="md-math md-math-inline">\(s\)</span>. When <span class="md-math md-math-inline">\(w\)</span> is a constant <span class="md-math md-math-inline">\(c\)</span>, <span class="md-math md-math-inline">\(Y = ±\sqrt c\)</span> on each interval: <span class="md-math md-math-inline">\(f = f_0 + f_1 Y\)</span> gives <span class="md-math md-math-inline">\(\int f_0 + Y \int f_1\)</span>, or, with parameters in <span class="md-math md-math-inline">\(f\)</span> (<span class="md-math md-math-inline">\(\sqrt{x^2}\,(a + x)\)</span>, after step RK <span class="md-math md-math-inline">\((c x^2)^{3/2}\)</span>), the two branches <span class="md-math md-math-inline">\(F_±\)</span> combined with <span class="md-math md-math-inline">\(σ = (\sqrt u/s)/\sqrt c\)</span>. Also a rational <span class="md-math md-math-inline">\(u\)</span> without repeated factors that is not linear over linear: <span class="md-math md-math-inline">\(\sqrt{2/(1 - t^2)} = Y/(1 - t^2)\)</span>, <span class="md-math md-math-inline">\(Y^2 = 2(1 - t^2)\)</span>. For <span class="md-math md-math-inline">\(n ≥ 3\)</span>, a radicand <span class="md-math md-math-inline">\(s^n (x - a)^j (x - b)^k\)</span> reduces to a linear-fractional one.</p>
 </li>
 <li><p><strong>10a</strong>: <span class="md-math md-math-inline">\(u = (ax + b)/(cx + d)\)</span>: <span class="md-math md-math-inline">\(t = u^{1/n}\)</span>, <span class="md-math md-math-inline">\(x = (b - d t^n)/(c t^n - a)\)</span>.</p>
 </li>
@@ -1104,6 +1104,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=67249939"></script>
+  <script src="../assets/materialdocs.js?v=db8166b6"></script>
 </body>
 </html>
