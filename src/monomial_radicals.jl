@@ -427,3 +427,57 @@ function integrate_inner_linear_radical(f, x; build = nothing, lift = nothing, v
     back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? root : t)
     subst_answer(G, back, bd)
 end
+
+# Step HT: radicals of trigonometric functions of one linear argument L = a x + b, after the other routes have
+# refused them: t = tan(L/2), sin L = 2t/(1 + t²), cos L = (1 - t²)/(1 + t²), dx = 2 dt/(a (1 + t²)). Every
+# radicand becomes a rational function of t with the same value (1 + sec x = 2/(1 - t²)), so its principal
+# root is the same, and the integrand is algebraic in t; t = tan(L/2) is put back (an antiderivative on each
+# interval between the poles of tan(L/2)). Nothing when x occurs outside the trigonometric functions, the
+# arguments differ, or there is no radical of one.
+const HT_TRIG = (:sin, :cos, :tan, :cot, :sec, :csc)
+function integrate_halfangle_radicals(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    args = Any[]
+    function scan(t)                                    # the trigonometric arguments; false for x elsewhere
+        safe_iscall(t) && !isempty(arguments(t)) || return string(t) != xk
+        if opname(operation(t)) in HT_TRIG && length(arguments(t)) == 1 && has_x(arguments(t)[1], xk)
+            push!(args, arguments(t)[1])
+            return true
+        end
+        all(scan, arguments(t))
+    end
+    (scan(f) && !isempty(args)) || return nothing
+    L = args[1]
+    all(a -> string(a) == string(L), args) || return nothing
+    any(((_, u),) -> any(n -> has_op(u, n), HT_TRIG), collect_radicals(f, xk)) || return nothing
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    pp = poly_parts(bd, L, xk)
+    (pp === nothing || !haskey(pp, 1) || maximum(keys(pp)) != 1) && return nothing
+    a = pp[1]
+    t = bd.x
+    one_ = bd.lift(1)
+    t2 = mk(bd, :^, t, bd.lift(2))
+    S = mk(bd, :/, mk(bd, :*, bd.lift(2), t), mk(bd, :+, one_, t2))
+    C = mk(bd, :/, mk(bd, :+, one_, mk(bd, :*, bd.lift(-1), t2)), mk(bd, :+, one_, t2))
+    vals = Dict(:sin => S, :cos => C, :tan => mk(bd, :/, S, C), :cot => mk(bd, :/, C, S),
+                :sec => mk(bd, :/, one_, C), :csc => mk(bd, :/, one_, S))
+    walk(u) = !(safe_iscall(u) && !isempty(arguments(u))) ? u :
+              (opname(operation(u)) in HT_TRIG && length(arguments(u)) == 1 && string(arguments(u)[1]) == string(L)) ?
+              vals[opname(operation(u))] : term_rebuild(bd, u, Any[walk(s) for s in arguments(u)])
+    g = mk(bd, :*, mk(bd, :/, bd.lift(2), mk(bd, :*, a, mk(bd, :+, one_, t2))), walk(f))
+    G = risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    tL = mk(bd, :tan, mk(bd, :*, bd.lift(1 // 2), L))
+    # the radicals of f in t (as the answer prints them) back to the radicals of f: √(1 + sec x), not its t form
+    radmap = Dict{String,Any}()
+    function radicals!(u)
+        isnode(u) || return
+        rp = radical_parts(u)
+        rp !== nothing && has_x(rp[2], xk) && (radmap[string(walk(u))] = u)
+        foreach(radicals!, arguments(u))
+    end
+    radicals!(f)
+    back(u) = haskey(radmap, string(u)) ? radmap[string(u)] :
+              isnode(u) ? term_rebuild(bd, u, Any[back(s) for s in arguments(u)]) : (string(u) == xk ? tL : u)
+    subst_answer(G, back, bd)
+end

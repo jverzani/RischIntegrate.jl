@@ -302,7 +302,8 @@ What is left goes to `integrate_radical`. Its cases, in order:
   for ``\sqrt{u_2}`` (a conic).
 - One radicand ``u``, index ``n``:
   - **SQ**: repeated factors, ``u = c\,S^2 W/(T^2 V)``: the variable is ``Y = \sqrt u/s``, with
-    ``Y^2 = w`` on every interval, whatever the sign of ``s``. For ``n ≥ 3``, a radicand
+    ``Y^2 = w`` on every interval, whatever the sign of ``s``. Also a rational ``u`` without repeated
+    factors that is not linear over linear: ``\sqrt{2/(1 - t^2)} = Y/(1 - t^2)``, ``Y^2 = 2(1 - t^2)``. For ``n ≥ 3``, a radicand
     ``s^n (x - a)^j (x - b)^k`` reduces to a linear-fractional one.
   - **10a**: ``u = (ax + b)/(cx + d)``: ``t = u^{1/n}``, ``x = (b - d t^n)/(c t^n - a)``.
   - **10b/10c**: ``\sqrt{Ax^2 + Bx + C}``: an Euler substitution, a rational parametrization of the
@@ -467,6 +468,7 @@ order:
 | RY | any | one radical ``y = P^{1/n}`` with ``P`` in an `exp`/`log` tower | ``\int A_r y^r = B_r y^r`` with ``B_r' + (r/n)(P'/P) B_r = A_r``, a Risch differential equation in the tower |
 | LS | any | a sum, or a quotient with a sum on top | term by term, grouping terms with the same radicals |
 | RK | a radical refused for its radicand, in the outermost call | ``(cV)^e`` with a factor ``c`` free of `x`, with a parameter, in every summand of the radicand | ``c^e V^e`` for ``c > 0`` (``(-c)^e(-V)^e`` for ``c < 0``; the sign from step SO or the positive parameter values), ``(t^k)^e = t^{ke}`` for an integer ``ke`` and ``t > 0``. Then ``V`` has rational coefficients: ``\sqrt{a + a\sin x} = \sqrt a \sqrt{1 + \sin x}`` for step PW. Last, and not inside another call, so that a substitution refused inside (steps AL, US) leaves the next route its chance |
+| HT | a radical refused for its radicand, in the outermost call, after RK | trigonometric functions of one linear argument ``L`` (no `x` outside them), in radicals | ``t = \tan(L/2)``: ``\sin L = 2t/(1 + t^2)``, ``\cos L = (1 - t^2)/(1 + t^2)``, ``dx = 2\,dt/(a(1 + t^2))``; integrated in ``t`` (the radicals of rational functions of ``t``: steps SQ, EQ) and ``t = \tan(L/2)`` substituted back, with the original radicals for their ``t`` forms: ``\int \sqrt{a + a\sec x}``. The answer holds where the radicands it merged are positive (``\sec x > 0`` for ``\sqrt{\sec x}\sqrt{a + a \sec x}``) |
 | Expr retry | term type without special functions | | the integrand as an `Expr`, special terms evaluated numerically |
 
 If none of them answers, the original exception is rethrown.
@@ -751,6 +753,7 @@ failures, and their comments cite the Rubi problem numbers.
 | BQ4 | `quartic_residues.jl` | even quartics ``x^4 + bx^2 + c`` with nested real forms |
 | RC | `reciprocal_subst.jl` | ``u = x + s/x`` |
 | RK | `radicals.jl` | a parameter factor out of a radicand |
+| HT | `monomial_radicals.jl` | radicals of trigonometric functions by ``t = \tan(L/2)`` |
 | RE, RT, RF | `constant_fields.jl`, `tower_rootsums.jl`, `tower_real_forms.jl` | RootSums over parameter fields and in towers, their real forms |
 | FR | `fractions.jl`, `monomial_integration.jl` | fraction-free resultants over parameter fields |
 | RP, SQ | `factoring.jl`, `radicals.jl` | radicands that are powers; repeated factors |

@@ -120,9 +120,23 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         # a radical refused for its radicand: a parameter factor of every summand taken out, (a + a sin x)^e =
         # a^e (1 + sin x)^e for a > 0 (step RK; last, and in the outermost call only, so that the routes that
         # already work are not changed: a substitution refused inside, step AL or US, leaves the next one its chance)
+        # Then radicals of trigonometric functions of one linear argument by t = tan(L/2) (step HT).
         if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg) && RISCH_DEPTH[] == 1
             g = split_radicand_content(f, x, string(x), build, lift)
-            g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
+            r = g === nothing ? nothing : try
+                risch_integrate(g, x; build = build, lift = lift, verify = verify)
+            catch e2
+                e2 isa RischNotImplemented || rethrow()
+                nothing
+            end
+            r === nothing || return r
+            r = try
+                integrate_halfangle_radicals(g === nothing ? f : g, x; build = build, lift = lift, verify = verify)
+            catch e2
+                e2 isa RischNotImplemented || rethrow()
+                nothing
+            end
+            r === nothing || return r
         end
         # a u-substitution may have failed only for want of a special function in the term type: once
         # through Expr, keeping the answer when it has special terms

@@ -284,7 +284,8 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
     # step SQ: square roots of a polynomial with repeated factors, u = s² w (w squarefree): the variable
     # is Y = √u/s (Y² = w on every interval, whatever the sign of s), u^(k/2) = sᵏ Yᵏ, and the answer is
     # printed with √u/s for √w. A rational u = c S² W/(T² V) (W, V squarefree): s = S/(T V), w = c W V
-    # (√(x²(2 - x²))/(1 - x²) from ∫ sec x/√(sec⁴x - 1) by s = sin x, Rubi 260)
+    # (√(x²(2 - x²))/(1 - x²) from ∫ sec x/√(sec⁴x - 1) by s = sin x, Rubi 260). Also without repeated factors
+    # when u is not linear over linear (step 10a): √(2/(1 - t²)) = Y/(1 - t²), Y² = 2(1 - t²) (step HT for √(1 + sec x))
     uo, sq, Yterm = u, nothing, nothing
     if n == 2 && isone(Dd) && isempty(pmap) && degree(N) >= 2
         sf = squarefree(N)
@@ -300,7 +301,7 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         end
     elseif n == 2 && degree(Dd) >= 1 && isempty(pmap)
         sfN, sfD = squarefree(N), squarefree(Dd)
-        if any(((_, m),) -> m >= 2, sfN) || any(((_, m),) -> m >= 2, sfD)
+        if any(((_, m),) -> m >= 2, sfN) || any(((_, m),) -> m >= 2, sfD) || degree(N) >= 2 || degree(Dd) >= 2
             V = prod((p for (p, m) in sfD if isodd(m)); init = one(P))
             w = scale(lc(N) / lc(Dd), prod((p for (p, m) in sfN if isodd(m)); init = one(P)) * V)
             if degree(w) >= 1
