@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=f186c15f">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=5122e47c">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -412,7 +412,7 @@
 </li>
 <li><p>One radicand <span class="md-math md-math-inline">\(u\)</span>, index <span class="md-math md-math-inline">\(n\)</span>:</p>
 <ul class="md-list-tight">
-<li><p><strong>SQ</strong>: repeated factors, <span class="md-math md-math-inline">\(u = c\,S^2 W/(T^2 V)\)</span>: the variable is <span class="md-math md-math-inline">\(Y = \sqrt u/s\)</span>, with <span class="md-math md-math-inline">\(Y^2 = w\)</span> on every interval, whatever the sign of <span class="md-math md-math-inline">\(s\)</span>. For <span class="md-math md-math-inline">\(n ≥ 3\)</span>, a radicand <span class="md-math md-math-inline">\(s^n (x - a)^j (x - b)^k\)</span> reduces to a linear-fractional one.</p>
+<li><p><strong>SQ</strong>: repeated factors, <span class="md-math md-math-inline">\(u = c\,S^2 W/(T^2 V)\)</span>: the variable is <span class="md-math md-math-inline">\(Y = \sqrt u/s\)</span>, with <span class="md-math md-math-inline">\(Y^2 = w\)</span> on every interval, whatever the sign of <span class="md-math md-math-inline">\(s\)</span>. Also a rational <span class="md-math md-math-inline">\(u\)</span> without repeated factors that is not linear over linear: <span class="md-math md-math-inline">\(\sqrt{2/(1 - t^2)} = Y/(1 - t^2)\)</span>, <span class="md-math md-math-inline">\(Y^2 = 2(1 - t^2)\)</span>. For <span class="md-math md-math-inline">\(n ≥ 3\)</span>, a radicand <span class="md-math md-math-inline">\(s^n (x - a)^j (x - b)^k\)</span> reduces to a linear-fractional one.</p>
 </li>
 <li><p><strong>10a</strong>: <span class="md-math md-math-inline">\(u = (ax + b)/(cx + d)\)</span>: <span class="md-math md-math-inline">\(t = u^{1/n}\)</span>, <span class="md-math md-math-inline">\(x = (b - d t^n)/(c t^n - a)\)</span>.</p>
 </li>
@@ -575,6 +575,12 @@
 <td style="text-align:left">a radical refused for its radicand, in the outermost call</td>
 <td style="text-align:left"><span class="md-math md-math-inline">\((cV)^e\)</span> with a factor <span class="md-math md-math-inline">\(c\)</span> free of <code class="md-code-inline">x</code>, with a parameter, in every summand of the radicand</td>
 <td style="text-align:left"><span class="md-math md-math-inline">\(c^e V^e\)</span> for <span class="md-math md-math-inline">\(c &gt; 0\)</span> (<span class="md-math md-math-inline">\((-c)^e(-V)^e\)</span> for <span class="md-math md-math-inline">\(c &lt; 0\)</span>; the sign from step SO or the positive parameter values), <span class="md-math md-math-inline">\((t^k)^e = t^{ke}\)</span> for an integer <span class="md-math md-math-inline">\(ke\)</span> and <span class="md-math md-math-inline">\(t &gt; 0\)</span>. Then <span class="md-math md-math-inline">\(V\)</span> has rational coefficients: <span class="md-math md-math-inline">\(\sqrt{a + a\sin x} = \sqrt a \sqrt{1 + \sin x}\)</span> for step PW. Last, and not inside another call, so that a substitution refused inside (steps AL, US) leaves the next route its chance</td>
+</tr>
+<tr>
+<td style="text-align:left">HT</td>
+<td style="text-align:left">a radical refused for its radicand, in the outermost call, after RK</td>
+<td style="text-align:left">trigonometric functions of one linear argument <span class="md-math md-math-inline">\(L\)</span> (no <code class="md-code-inline">x</code> outside them), in radicals</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(t = \tan(L/2)\)</span>: <span class="md-math md-math-inline">\(\sin L = 2t/(1 + t^2)\)</span>, <span class="md-math md-math-inline">\(\cos L = (1 - t^2)/(1 + t^2)\)</span>, <span class="md-math md-math-inline">\(dx = 2\,dt/(a(1 + t^2))\)</span>; integrated in <span class="md-math md-math-inline">\(t\)</span> (the radicals of rational functions of <span class="md-math md-math-inline">\(t\)</span>: steps SQ, EQ) and <span class="md-math md-math-inline">\(t = \tan(L/2)\)</span> substituted back, with the original radicals for their <span class="md-math md-math-inline">\(t\)</span> forms: <span class="md-math md-math-inline">\(\int \sqrt{a + a\sec x}\)</span>. The answer holds where the radicands it merged are positive (<span class="md-math md-math-inline">\(\sec x &gt; 0\)</span> for <span class="md-math md-math-inline">\(\sqrt{\sec x}\sqrt{a + a \sec x}\)</span>)</td>
 </tr>
 <tr>
 <td style="text-align:left">Expr retry</td>
@@ -968,6 +974,11 @@
 <td style="text-align:left">a parameter factor out of a radicand</td>
 </tr>
 <tr>
+<td style="text-align:left">HT</td>
+<td style="text-align:left"><code class="md-code-inline">monomial_radicals.jl</code></td>
+<td style="text-align:left">radicals of trigonometric functions by <span class="md-math md-math-inline">\(t = \tan(L/2)\)</span></td>
+</tr>
+<tr>
 <td style="text-align:left">RE, RT, RF</td>
 <td style="text-align:left"><code class="md-code-inline">constant_fields.jl</code>, <code class="md-code-inline">tower_rootsums.jl</code>, <code class="md-code-inline">tower_real_forms.jl</code></td>
 <td style="text-align:left">RootSums over parameter fields and in towers, their real forms</td>
@@ -1082,6 +1093,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=f186c15f"></script>
+  <script src="../assets/materialdocs.js?v=5122e47c"></script>
 </body>
 </html>
