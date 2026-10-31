@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=be80fa07">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=67249939">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -583,6 +583,12 @@
 <td style="text-align:left"><span class="md-math md-math-inline">\(t = \tan(L/2)\)</span>: <span class="md-math md-math-inline">\(\sin L = 2t/(1 + t^2)\)</span>, <span class="md-math md-math-inline">\(\cos L = (1 - t^2)/(1 + t^2)\)</span>, <span class="md-math md-math-inline">\(dx = 2\,dt/(a(1 + t^2))\)</span>; integrated in <span class="md-math md-math-inline">\(t\)</span> (the radicals of rational functions of <span class="md-math md-math-inline">\(t\)</span>: steps SQ, EQ) and <span class="md-math md-math-inline">\(t = \tan(L/2)\)</span> substituted back, with the original radicals for their <span class="md-math md-math-inline">\(t\)</span> forms: <span class="md-math md-math-inline">\(\int \sqrt{a + a\sec x}\)</span>.</td>
 </tr>
 <tr>
+<td style="text-align:left">RM</td>
+<td style="text-align:left">a radical refused for its radicand, in the outermost call, after RK and HT</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(h \prod u_i^{k_i/2}\)</span>: square roots of two or more radicands with a trigonometric or hyperbolic function, <span class="md-math md-math-inline">\(h\)</span> free of radicals</td>
+<td style="text-align:left">after step RK&#39;s parameter factors, the radicals of odd <span class="md-math md-math-inline">\(k_i\)</span> merged: <span class="md-math md-math-inline">\(\prod u_i^{k_i/2} = σ \prod u_i^{(k_i - 1)/2} \sqrt{\prod u_i}\)</span>, integrated (then steps RK, HT), and the answer times <span class="md-math md-math-inline">\(σ = \prod \sqrt{u_i}/\sqrt{\prod u_i} = ±1\)</span>, constant on each interval (not when <span class="md-math md-math-inline">\(\prod u_i\)</span> is nowhere positive: the integrand is then nowhere real): <span class="md-math md-math-inline">\((a + a\sec x)^{5/2}/\cos^{5/2} x\)</span> by <span class="md-math md-math-inline">\(\sqrt{(1 + \sec x)\cos x}\)</span>, <span class="md-math md-math-inline">\((a + a \sin x)^{3/2}(c - c\sin x)^{7/2}\)</span> by <span class="md-math md-math-inline">\(\sqrt{(1 + \sin x)(1 - \sin x)}\)</span></td>
+</tr>
+<tr>
 <td style="text-align:left">Expr retry</td>
 <td style="text-align:left">term type without special functions</td>
 <td style="text-align:left"></td>
@@ -979,6 +985,11 @@
 <td style="text-align:left">radicals of trigonometric functions by <span class="md-math md-math-inline">\(t = \tan(L/2)\)</span></td>
 </tr>
 <tr>
+<td style="text-align:left">RM</td>
+<td style="text-align:left"><code class="md-code-inline">radicals.jl</code></td>
+<td style="text-align:left">several square roots merged into one, times <span class="md-math md-math-inline">\(σ = ±1\)</span></td>
+</tr>
+<tr>
 <td style="text-align:left">RE, RT, RF</td>
 <td style="text-align:left"><code class="md-code-inline">constant_fields.jl</code>, <code class="md-code-inline">tower_rootsums.jl</code>, <code class="md-code-inline">tower_real_forms.jl</code></td>
 <td style="text-align:left">RootSums over parameter fields and in towers, their real forms</td>
@@ -1093,6 +1104,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=be80fa07"></script>
+  <script src="../assets/materialdocs.js?v=67249939"></script>
 </body>
 </html>
