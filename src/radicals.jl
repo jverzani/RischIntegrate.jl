@@ -332,7 +332,8 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         w = scale(lc(N), prod((p for (p, m) in sf if isodd(m)); init = one(P)))
         if any(((_, m),) -> m >= 2, sf)
             sp = prod((p^(m ÷ 2) for (p, m) in sf); init = one(P))
-            degree(w) == 0 && cfix === nothing &&
+            # (with parameters in f, √x² (a + x): the branches, whose integrands the usual route takes)
+            degree(w) == 0 && cfix === nothing && !has_param(f, xk) &&
                 return integrate_const_times_square(f, xk, uo, uterm, sp, w, b0, verify)
             degree(w) == 0 && return integrate_square_branches(f, x, xk, uo, uterm, sp, w, b0, verify)
             sq = frac(sp)

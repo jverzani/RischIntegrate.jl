@@ -1423,6 +1423,20 @@ end
                                                                 build = build, lift = identity)
 end
 
+# step SQ, u = c s²: √u/s = ±√c on each interval; with parameters in f, the two branches (sample 133-139:
+# (c x²)^(3/2) (a + b x)/x after step RK's √c). Checked on both sides of 0
+@testset "constant times a square, with parameters (step SQ)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x0))), :(a = 0.7), :(b = 1.3), :(c = 1.1)), e))
+    for f in (:(sqrt(x ^ 2) / (1 + c * x)), :(sqrt(x ^ 2) * (a + x)), :(((c * x ^ 2) ^ (3 / 2) * (a + b * x)) / x),
+              :((x * sqrt(c * x ^ 2)) / (a + b * x)), :((a + b * x) ^ 2 / (x ^ 3 * (c * x ^ 2) ^ (3 / 2))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (-1.7, -0.3, 0.4, 2.1)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
 # step HT: a radical refused for its radicand, of trigonometric functions of one linear argument: t = tan(L/2),
 # then √(2/(1 - t²)) = Y/(1 - t²), Y² = 2(1 - t²) (step SQ without repeated factors). Checked where sec > 0
 @testset "half-angle substitution in radicals (step HT)" begin

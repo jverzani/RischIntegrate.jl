@@ -302,7 +302,7 @@ What is left goes to `integrate_radical`. Its cases, in order:
   for ``\sqrt{u_2}`` (a conic).
 - One radicand ``u``, index ``n``:
   - **SQ**: repeated factors, ``u = c\,S^2 W/(T^2 V)``: the variable is ``Y = \sqrt u/s``, with
-    ``Y^2 = w`` on every interval, whatever the sign of ``s``. Also a rational ``u`` without repeated
+    ``Y^2 = w`` on every interval, whatever the sign of ``s``. When ``w`` is a constant ``c``, ``Y = ±\sqrt c`` on each interval: ``f = f_0 + f_1 Y`` gives ``\int f_0 + Y \int f_1``, or, with parameters in ``f`` (``\sqrt{x^2}\,(a + x)``, after step RK ``(c x^2)^{3/2}``), the two branches ``F_±`` combined with ``σ = (\sqrt u/s)/\sqrt c``. Also a rational ``u`` without repeated
     factors that is not linear over linear: ``\sqrt{2/(1 - t^2)} = Y/(1 - t^2)``, ``Y^2 = 2(1 - t^2)``. For ``n ≥ 3``, a radicand
     ``s^n (x - a)^j (x - b)^k`` reduces to a linear-fractional one.
   - **10a**: ``u = (ax + b)/(cx + d)``: ``t = u^{1/n}``, ``x = (b - d t^n)/(c t^n - a)``.
