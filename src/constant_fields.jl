@@ -336,6 +336,8 @@ function const_log(T::Tower, c)
     mono === nothing && throw(RischNotImplemented(
         "log of the constant $c: only logs of rationals times powers of e and of parameters are implemented"))
     r, ks = mono
+    # (0 from a power 0^u, SymPy #30756: log 0 is undefined, not complex)
+    iszero(r) && throw(RischNotImplemented("log of the constant 0 is undefined (a power with base 0, such as 0^(x - 1))"))
     r > 0 || throw(RischNotImplemented("log of the negative constant $r is complex"))
     val = zero(C)
     missing_ = ConstGen[]

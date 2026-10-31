@@ -2567,3 +2567,10 @@ end
     end
     @test_throws Risch.NotElementary Risch.risch_integrate(:(x ^ 2 / (exp(x) - 1)), :x; build = build, lift = identity)
 end
+
+# SymPy #30756: a power with base 0 is refused with log 0 undefined, not "the negative constant 0"
+@testset "power with base 0: the refusal's message" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    err = try Risch.risch_integrate(:(0 ^ (x - 1)), :x; build = build, lift = identity) catch e; e end
+    @test err isa Risch.RischNotImplemented && occursin("constant 0 is undefined", err.msg) && !occursin("negative", err.msg)
+end
