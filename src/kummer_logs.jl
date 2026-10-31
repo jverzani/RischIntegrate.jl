@@ -465,11 +465,16 @@ end
 # ℚ(σ^(1/q)) ∩ ℚ(ζ_q) = ℚ (sufficient): for odd q always (L has a real embedding, odd-order abelian
 # subfields of a pure field are trivial); for even q, σ > 0 and the only possible abelian subfield ℚ(√σ)
 # (after taking σ = s² to s^(1/(q/2))) not inside ℚ(ζ_q): its conductor (|d| or 4|d|) does not divide q.
+# σ < 0 too at q = 2, where the field is ℚ(√σ) itself (classes -1 and 5: x²/((1 + 2x²)√(3 + 5x²))).
 function kum_cyclo_disjoint(σ::Int, q::Int, q0::Int = q)
     isodd(q) && return true
-    σ <= 0 && return false
-    s = isqrt(σ)
-    s * s == σ && return s == 1 || kum_cyclo_disjoint(s, q ÷ 2, q0)
+    σ == 0 && return false
+    if σ > 0
+        s = isqrt(σ)
+        s * s == σ && return s == 1 || kum_cyclo_disjoint(s, q ÷ 2, q0)
+    else
+        q == 2 || return false
+    end
     _, d = sqfree_split(big(σ))
     f = mod(d, 4) == 1 ? abs(d) : 4 * abs(d)
     q0 % f != 0

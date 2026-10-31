@@ -100,6 +100,11 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
             aσ = sr !== nothing ? cterm(b0, abs(sr)) : iseven(kk) ? cterm(b0, σ) :
                  mk(b0, :sqrt, mk(b0, :^, cterm(b0, σ), b0.lift(2)))
             kk == 1 ? aσ : mk(b0, :^, aσ, b0.lift(kk))
+        elseif isone(denominator(k))
+            # (√κ as in s = √(D/A), not κ^(1/2): the two would be independent constants of the tower, and
+            # x²/((1 + 2x²)√(c + x²)) needed a RootSum)
+            kk = Int(numerator(k))
+            kk == 1 ? mk(b0, :sqrt, cterm(b0, κ)) : mk(b0, :^, mk(b0, :sqrt, cterm(b0, κ)), b0.lift(kk))
         else
             mk(b0, :^, cterm(b0, κ), b0.lift(e))
         end
@@ -118,11 +123,26 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
         b0.build(op_function(t), (walk(a) for a in args)...)
     end
     g = mk(b0, :*, walk(f), st)                         # f(s x + h) · s
+    # the factors free of x out (√κ and s, also inside a denominator: x²/((1 + 2x²)√(c + d x²)) gives
+    # √c √(1 + u²) there, and with √c inside the integrand the residues needed a RootSum)
+    fs = product_factors!(Any[], g, 1)
+    pw(t, e) = e == 1 ? t : mk(b0, :^, t, b0.lift(e))
+    cf = Any[pw(t, e) for (t, e) in fs if !has_leaf(t, xk)]
+    if !isempty(cf) && length(cf) < length(fs)
+        rest = Any[pw(t, e) for (t, e) in fs if has_leaf(t, xk)]
+        cg = length(cf) == 1 ? cf[1] : mk(b0, :*, cf...)
+        g = length(rest) == 1 ? rest[1] : mk(b0, :*, rest...)
+    else
+        cg = nothing
+    end
     G = risch_integrate(g, x; build = b0.build, lift = b0.lift, verify = verify)
     if G isa IntegralWithRootSums                       # a RootSum over ℚ(a, …): scale by a parameter (step PS)
         G = integrate_scaled_radicals(g, x; build = b0.build, lift = b0.lift, verify = verify)
         G === nothing && return nothing
     end
+    cg === nothing || (G = G isa IntegralWithRootSums ?
+        IntegralWithRootSums(mk(b0, :*, cg, G.elementary), Any[ScaledRootSum(cg, rs) for rs in G.rootsums], G.var) :
+        mk(b0, :*, cg, G))
     xh = iszero(h) ? b0.x : mk(b0, :+, b0.x, mk(b0, :*, b0.lift(-1), ht))
     back = sone ? xh : mk(b0, :/, xh, st)               # x ↦ (x - h)/s
     function walk_back(t)
