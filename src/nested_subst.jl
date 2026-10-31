@@ -122,8 +122,10 @@ end
 # For g = x, w = √(x + c₁) - √(x + c₂) rationalizes both (their sum is k/w):
 #   √(x + c₁) = (w + k/w)/2,  √(x + c₂) = (k/w - w)/2,  x = ((w + k/w)/2)² - c₁,
 # so a radicand √(x + c₁) - √(x + c₂) becomes w. For g = h(a x + b), h = sec, csc, sin, cos, tan, cot, exp, sinh, cosh,
-# first u = g (every x of f inside g), dx = du/(a h′(u)) with h′ written in u (sec: u √(u + 1) √(u - 1), u > 1, tan > 0;
-# the answer holds there), integrated as usual (then the case g = x), and u = g put back.
+# first u = g (every x of f inside g), dx = du/(a h′(u)) with h′ written in u (sec: u √(u + 1) √(u - 1), which is h′ only
+# where tan > 0), integrated as usual (then the case g = x), and u = g put back. The answer G is then times
+# σ = h′/(h′ written in u) = ±1 (sec: tan x/(√(sec x + 1) √(sec x - 1))), constant on each interval, so (σ G)′ = σ² f = f
+# where tan < 0 too (u = cos x: sin x < 0).
 # ---------------------------------------------------------------------------
 const PAIR_SUBST = Ref(0)                               # nesting depth (u = g, then w)
 
@@ -166,7 +168,8 @@ function try_pair_radical(f, x; build = nothing, lift = nothing, verify::Bool = 
         (c1, g), (c2, _) = v[1][1] > v[2][1] ? (v[1], v[2]) : (v[2], v[1])
         sub = gk == xk ? pair_subst(f, bd, xk, c1, c2) : pair_function_subst(f, bd, xk, g)
         sub === nothing && continue
-        integrand, back = sub
+        integrand, back = sub[1], sub[2]
+        σ = length(sub) == 3 ? sub[3] : nothing
         PAIR_SUBST[] += 1
         G = try
             risch_integrate(integrand, x; build = build, lift = lift, verify = verify)
@@ -179,7 +182,10 @@ function try_pair_radical(f, x; build = nothing, lift = nothing, verify::Bool = 
         G === nothing && continue
         bk(t) = isnode(t) ? term_rebuild(bd, t, Any[bk(a) for a in arguments(t)]) : (string(t) == xk ? back : t)
         r = subst_answer(G, bk, bd)
-        r === nothing || return r
+        r === nothing && continue
+        σ === nothing && return r
+        r isa IntegralWithRootSums || return mk(bd, :*, σ, r)
+        return IntegralWithRootSums(mk(bd, :*, σ, r.elementary), Any[ScaledRootSum(σ, rs) for rs in r.rootsums], r.var)
     end
     nothing
 end
@@ -277,5 +283,14 @@ function pair_function_subst(f, bd::Builder, xk::String, g)
     end
     fu = walk(f)
     ok[] || return nothing
-    (mk(bd, :/, fu, mk(bd, :*, a, hp)), g)
+    # σ = h′/(h′ written in u), with the factor u of sec, csc cancelled; nothing when h′ written in u is h′ (tan, exp, sinh)
+    L = arguments(g)[1]
+    pm(c) = sq(mk(bd, :+, g, bd.lift(c)))                # √(g + c)
+    mp(c) = sq(mk(bd, :+, bd.lift(c), neg(g)))           # √(c - g)
+    σ = h === :sec ? mk(bd, :/, mk(bd, :tan, L), mk(bd, :*, pm(1), pm(-1))) :
+        h === :csc ? mk(bd, :/, mk(bd, :cot, L), mk(bd, :*, pm(1), pm(-1))) :
+        h === :sin ? mk(bd, :/, mk(bd, :cos, L), mk(bd, :*, mp(1), pm(1))) :
+        h === :cos ? mk(bd, :/, mk(bd, :sin, L), mk(bd, :*, mp(1), pm(1))) :
+        h === :cosh ? mk(bd, :/, mk(bd, :sinh, L), mk(bd, :*, pm(1), pm(-1))) : nothing
+    (mk(bd, :/, fu, mk(bd, :*, a, hp)), g, σ)
 end
