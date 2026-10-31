@@ -69,7 +69,7 @@ answer back. The chain rule check that comes with each substitution keeps the re
 | rational functions | `hermite_reduction.jl`, `rothstein_trager.jl`, `log_to_atan.jl`, `quartic_residues.jl`, `rootsum.jl` |
 | terms ↔ fields | `term_input.jl`, `term_output.jl`, `tower_terms.jl`, `rootsum_numerics.jl` |
 | towers | `tower.jl`, `structure_theorems.jl`, `monomial_integration.jl`, `rde_base.jl`, `risch_de.jl`, `parametric_rde.jl`, `tower_rootsums.jl`, `tower_real_forms.jl`, `real_form.jl` |
-| special functions | `special_functions.jl`, `dilogarithms.jl`, `exp_trig_polynomials.jl`, `clausen.jl`, `polylog_parts.jl`, `hypergeometric.jl`, `hyp_symbolic.jl`, `exp_trig_hyp.jl`, `gamma_terms.jl`, `special_fallback.jl` |
+| special functions | `special_functions.jl`, `dilogarithms.jl`, `exp_trig_polynomials.jl`, `clausen.jl`, `polylog_parts.jl`, `hypergeometric.jl`, `hyp_symbolic.jl`, `exp_trig_hyp.jl`, `gamma_terms.jl`, `lambertw.jl`, `special_fallback.jl` |
 | algebraic integrands | `radicals.jl`, `euler_substitutions.jl`, `biquadratic.jl`, `hyperelliptic.jl`, `kummer.jl`, `kummer_logs.jl`, `param_radicals.jl`, `denest.jl`, `nested.jl`, `nested_subst.jl`, `constant_scaling.jl`, `monomial_radicals.jl`, `reciprocal_subst.jl`, `tower_radicals.jl`, `real_log_arguments.jl` |
 | substitutions and rewrites | `bioche.jl`, `inverse_trig.jl`, `u_substitution.jl`, `linearity.jl` |
 | entry points | `risch_integrate.jl`, `integrate_macro.jl`, `precompile.jl` |
@@ -458,6 +458,7 @@ order:
 | CL | `NotElementary` | ``x^p R(\sin kx, \cos kx)`` | by parts, with Clausen functions ``\operatorname{Cl}_m`` and ``\operatorname{Re}\operatorname{Li}_m``: ``\int x \tan x`` |
 | LP | any | ``\log^j(x)\, L(wx)/x``, ``L`` = `atan`, `log`, `li2` | polylogarithms by parts: ``\int \operatorname{atan}(x)/x = \operatorname{Ti}_2(x)`` |
 | AT | any | `atan(u)` | ``u = \tan t`` |
+| LW | `RischNotImplemented` | Lambert's ``W(ax + b)``, one argument | ``x = (w e^w - b)/a``, ``dx = (1 + w) e^w/a\,dw``, integrated in ``w``, then ``e^{kw} = ((ax + b)/W)^k``: ``\int W(x) = x(W - 1 + 1/W)`` |
 | AP | any | ``A \cdot L^k`` with ``L`` an inverse function or `log` | by parts, ``\int A L^k = Q L^k - k\int Q L^{k-1} L'`` |
 | HS | `NotElementary` | ``x^m(α + βx^n)^q``, ``\sin^p \cos^r``, symbolic exponents | ``{}_2F_1`` terms |
 | EH | `NotElementary` | ``e^{ax} R(\cos bx, \sin bx)`` with the poles of ``R(E)``, ``E = e^{ibx}``, in ``ℚ(i)`` | partial fractions in ``E``. Each pole gives ``\int e^{ax}/(1 - E/r)^k = e^{ax}\,{}_2F_1(k, s; s+1; E/r)/a`` with ``s = a/(ib)``. The real part is printed with `rehyp2f1` and `imhyp2f1` (``\int e^x/(1 + \cos x)``) |
@@ -744,6 +745,7 @@ failures, and their comments cite the Rubi problem numbers.
 | IT | `risch_integrate.jl` | constant factors out; iterated integrals |
 | KR | `radicals.jl` | constant radicands written with `x` |
 | LP | `polylog_parts.jl` | polylogarithms by parts |
+| LW | `lambertw.jl` | Lambert's ``W(ax + b)`` by ``x = (w e^w - b)/a`` |
 | MR, PW, NR | `monomial_radicals.jl` | radicals of functions of a monomial; inner linear radicals |
 | NP | `radicals.jl` | square roots of never-positive radicands |
 | NS | `nested_subst.jl` | nested radicals by substitution |

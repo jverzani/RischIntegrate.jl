@@ -95,7 +95,9 @@ function merge_exp_powers(f, x, build, lift)
                 end
             end
         end
-        term_rebuild(bd, t, Any[walk(a) for a in args])
+        nargs = Any[walk(a) for a in args]
+        # (unchanged: t itself, not rebuilt; SymEngine has no operation for lambertw(x))
+        all(i -> nargs[i] === args[i], eachindex(args)) ? t : term_rebuild(bd, t, nargs)
     end
     g = walk(f)
     # a term type that keeps its own form for powers (Giac writes C^(2/3) as (C^(1/3))^2) gives f back:

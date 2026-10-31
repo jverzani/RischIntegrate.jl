@@ -229,7 +229,7 @@ function tower_to_term(b::Builder, T::Tower, f)
 end
 
 function describe(T::Tower)
-    b = Builder((op, args...) -> Expr(:call, nameof(op), args...), identity, Symbol(T.xk))
+    b = Builder(expr_build, identity, Symbol(T.xk))
     join(("θ$i = " * string(theta_term(b, T, i)) for i in eachindex(T.levels)), ", ")
 end
 

@@ -2476,3 +2476,42 @@ end
         end
     end
 end
+
+# SymPy #30412, #30413: an operation without a function of that name (loggamma, digamma, polygamma, lambertw from
+# SpecialFunctions' names) is a Symbol for the internal Expr builder; merge_exp_powers no longer rebuilds unchanged
+# terms (SymEngine has no operation for lambertw(x)). These are refused, not a MethodError
+@testset "special-function names refused cleanly" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    for f in (:(loggamma(x)), :(digamma(x)), :(polygamma(1, x)), :(cosint(x) * besselj(0, 2 * sqrt(7x))), :(lambertw(x ^ 2)))
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(f, :x; build = build, lift = identity)
+    end
+    x = SymEngine.symbols("x")
+    for s in ("loggamma(x)", "digamma(x)", "polygamma(1, x)", "lambertw(x^2)")
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(SymEngine.Basic(s), x)
+    end
+end
+
+# step LW: x = (w eʷ - b)/a for W(a x + b), then eʷ = (a x + b)/W; ∫ W(x) = x (W - 1 + 1/W). W by Newton
+@testset "Lambert W (step LW)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    function W(y)
+        w = log1p(y)
+        for _ in 1:60
+            w -= (w * exp(w) - y) / (exp(w) * (1 + w))
+        end
+        w
+    end
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(c = 1.3), :(lambertw = $W)), e))
+    for f in (:(lambertw(x)), :(x * lambertw(x)), :(lambertw(x) / x), :(lambertw(x) ^ 2), :(1 / (1 + lambertw(x))),
+              :(sin(lambertw(x))), :(lambertw(c * x)), :(x * lambertw(c * x + 3)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 1.7, 5.0)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    @test string(Risch.risch_integrate(:(lambertw(x)), :x; build = build, lift = identity)) ==
+          "(1 + -1 * lambertw(x) + lambertw(x) ^ 2) * (x / lambertw(x))"
+    # SymEngine (lambertw without an operation there)
+    x = SymEngine.symbols("x")
+    @test occursin("lambertw", string(Risch.risch_integrate(SymEngine.Basic("lambertw(x)"), x)))
+end

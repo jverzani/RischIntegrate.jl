@@ -1,7 +1,8 @@
 # ---------------------------------------------------------------------------
 # A front end for Julia expressions: `@integrate`, as GruntzLimit's `@limit`
 # ---------------------------------------------------------------------------
-expr_build(op, args...) = Expr(:call, nameof(op), args...)
+# (an operation without a function of that name, a SpecialFunctions name in the input such as loggamma, is a Symbol)
+expr_build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
 
 """
     @integrate(f, x)

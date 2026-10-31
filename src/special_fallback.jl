@@ -60,8 +60,7 @@ function integrate_special_fallback(f, x; build = nothing, lift = nothing, verif
     xk = string(x)
     leaves = Dict{String,Any}()                         # the user's leaves (x, parameters) by name
     collect_leaves!(leaves, f)
-    ebuild(op, args...) = Expr(:call, nameof(op), args...)
-    F = risch_integrate(term_to_expr(f), Symbol(xk); build = ebuild, lift = identity, verify = verify)
+    F = risch_integrate(term_to_expr(f), Symbol(xk); build = expr_build, lift = identity, verify = verify)
     E, rss = F isa IntegralWithRootSums ? (F.elementary, Any[F.rootsums...]) : (F, Any[])
     b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     function back(ex)                                   # Expr → the user's term type
