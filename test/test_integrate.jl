@@ -2515,3 +2515,25 @@ end
     x = SymEngine.symbols("x")
     @test occursin("lambertw", string(Risch.risch_integrate(SymEngine.Basic("lambertw(x)"), x)))
 end
+
+# SymPy #29882: sinᵖ cosʳ with a fractional exponent, not elementary (an elliptic integral after step HT, or a
+# radical refused beside a symbolic exponent): the ₂F₁ of step HS, u = sin x. ₂F₁ by its series (|z| < 1)
+@testset "fractional powers of sin and cos (step HS)" begin
+    Risch.HYP_ANSWERS[] = true
+    try
+        build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+        F21(a, b, c, z) = sum(prod((a + j) * (b + j) / ((c + j) * (1 + j)) for j in 0:k-1; init = 1.0) * z^k for k in 0:6000)
+        ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(m = 1.7), :(_₂F₁ = $F21)), e))
+        for f in (:(sin(x) ^ $(7 // 2) * cos(x) ^ $(3 // 2)), :(sin(x) ^ $(3 // 2)), :(sin(x) ^ $(7 // 2) * cos(x) ^ m),
+                  :(sin(x) ^ $(5 // 2) * cos(x) ^ 2))
+            F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+            for x0 in (0.3, 0.9, 1.3)
+                @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+            end
+        end
+        x = SymEngine.symbols("x")
+        @test occursin("₂F₁", string(Risch.risch_integrate(sin(x) ^ (3 // 2), x)))
+    finally
+        Risch.HYP_ANSWERS[] = false
+    end
+end

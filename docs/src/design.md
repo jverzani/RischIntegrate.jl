@@ -460,7 +460,7 @@ order:
 | AT | any | `atan(u)` | ``u = \tan t`` |
 | LW | `RischNotImplemented` | Lambert's ``W(ax + b)``, one argument | ``x = (w e^w - b)/a``, ``dx = (1 + w) e^w/a\,dw``, integrated in ``w``, then ``e^{kw} = ((ax + b)/W)^k``: ``\int W(x) = x(W - 1 + 1/W)`` |
 | AP | any | ``A \cdot L^k`` with ``L`` an inverse function or `log` | by parts, ``\int A L^k = Q L^k - k\int Q L^{k-1} L'`` |
-| HS | `NotElementary` | ``x^m(α + βx^n)^q``, ``\sin^p \cos^r``, symbolic exponents | ``{}_2F_1`` terms |
+| HS | `NotElementary`; for ``\sin^p \cos^r`` also a radical refused for its radicand, or not elementary after step HT | ``x^m(α + βx^n)^q``, ``\sin^p \cos^r``, symbolic exponents (for ``\sin^p \cos^r`` also fractional ones: ``\sin^{7/2} x \cos^{3/2} x``) | ``{}_2F_1`` terms |
 | EH | `NotElementary` | ``e^{ax} R(\cos bx, \sin bx)`` with the poles of ``R(E)``, ``E = e^{ibx}``, in ``ℚ(i)`` | partial fractions in ``E``. Each pole gives ``\int e^{ax}/(1 - E/r)^k = e^{ax}\,{}_2F_1(k, s; s+1; E/r)/a`` with ``s = a/(ib)``. The real part is printed with `rehyp2f1` and `imhyp2f1` (``\int e^x/(1 + \cos x)``) |
 | H3, H4 | `NotElementary` | ``x^s e^{bx + d}``, ``x^s \sin``, ``x^s \cos`` | incomplete ``Γ`` terms |
 | US | any | ``f = G(u)\,u'`` for a subterm ``u`` (and the partner ``\sinh v`` of ``\cosh v``, ``\sin v`` of ``\cos v``, …) | derivative-divides, below. With ``u = \sinh v``, even powers of ``\cosh v`` are ``(1 + u^2)^k``, and so on |

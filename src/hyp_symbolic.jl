@@ -215,7 +215,8 @@ function quadratic_answer(bd::Builder, f, cs, lin, A, q::SymExp)
     length(ts) == 1 ? ts[1] : mk(bd, :+, ts...)
 end
 
-# ∫ c sinᵖ(w) cosʳ(w), w = kx + d, p or r symbolic, by u = sin w (du = k cos w dx):
+# ∫ c sinᵖ(w) cosʳ(w), w = kx + d, p or r symbolic or not an integer (sin^(7/2) cos^(3/2), SymPy #29882), by
+# u = sin w (du = k cos w dx):
 #   (1/k) ∫ uᵖ (1 - u²)^((r-1)/2) du · cos^(r-1)(w)/(cos² w)^((r-1)/2)
 # the last factor locally constant (1 when (r-1)/2 is an integer), as in Rubi's cos w/√(cos² w) (Rubi 350, 1371)
 function try_trig_symbolic(f, x; build = nothing, lift = nothing, verify::Bool = true)
@@ -240,7 +241,7 @@ function try_trig_symbolic(f, x; build = nothing, lift = nothing, verify::Bool =
         s = opname(operation(base)) === :sin ? p : r
         E === nothing ? (s.r += e) : add_exp!(bd, s, E, e)
     end
-    (w !== nothing && (symbolic(p) || symbolic(r))) || return nothing
+    (w !== nothing && (symbolic(p) || symbolic(r) || !isinteger(p.r) || !isinteger(r.r))) || return nothing
     u = radicand_element(w, xk)
     (u !== nothing && isone(u.den) && degree(u.num) == 1) || return nothing
     k = u.num.c[2] / u.den.c[1]
