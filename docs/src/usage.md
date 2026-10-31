@@ -12,8 +12,9 @@ greater than 2.
 
 ```@setup latex
 # show the answers of the examples as typeset math
-using Latexify, SymEngine, SimpleExpressions, SymbolicUtils
-for T in (SymEngine.Basic, SimpleExpressions.AbstractSymbolic, SymbolicUtils.BasicSymbolic)
+# (SymJ shows its terms as typeset math itself, through its Latexify extension)
+using Latexify, SymEngine, SymbolicUtils
+for T in (SymEngine.Basic, SymbolicUtils.BasicSymbolic)
     @eval Base.show(io::IO, ::MIME"text/latex", ex::$T) =
         print(io, latexify(replace(string(ex), r"\b[A-Za-z]\w*\." => ""); cdot = false))   # SpecialFunctions.erf → erf
 end
@@ -41,18 +42,26 @@ integrate(sqrt(x) / (x - 1), x)           # radicals by substitution
 integrate(x * y, x, y)                     # iterated
 ```
 
-## SimpleExpressions.jl
+## SymJ.jl
 
-```@example simpleexpressions
-using SimpleExpressions
+[SymJ.jl](https://github.com/jverzani/SymJ.jl) loads an extension with RischIntegrate. Its
+`integrate` method adds piecewise functions (`abs`, `sign`, `heaviside`), assumptions on the
+parameters (`assume = …`), and definite integrals split at the integrand's singular points:
+
+```@example symj
+using SymJ
 using RischIntegrate: integrate
-@symbolic x
+@syms x
 
 integrate(log(x)^2, x)
 ```
 
-```@example simpleexpressions
+```@example symj
 integrate(1 / (x * sqrt(x^2 + 1)), x)
+```
+
+```@example symj
+integrate((5 - sin(x)) * sqrt(sin(x)^2 + cos(x)^2), (x, 0, π))   # mass of a half circle
 ```
 
 ## SymbolicUtils.jl

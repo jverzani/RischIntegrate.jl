@@ -14,7 +14,7 @@ A table of all of them is at the end.
 
 - **Any term type.** The input is any term that implements the
   [TermInterface.jl](https://github.com/JuliaSymbolics/TermInterface.jl) methods `iscall`,
-  `operation` and `arguments`: SymEngine, SymbolicUtils, Symbolics, SimpleExpressions, Giac, or
+  `operation` and `arguments`: SymEngine, SymbolicUtils, Symbolics, SymJ, Giac, or
   Julia's `Expr`. The package reads the term, but does no arithmetic with it.
 - **Exact algebra of its own.** Every computation is done with the package's own dense polynomials
   and rational functions over exact fields: ``ℚ``, ``ℚ(i)``, quadratic fields, and rational
