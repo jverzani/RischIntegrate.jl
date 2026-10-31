@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=5122e47c">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=be80fa07">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -550,7 +550,7 @@
 <td style="text-align:left">PP</td>
 <td style="text-align:left">any</td>
 <td style="text-align:left"><span class="md-math md-math-inline">\(\sqrt{g + c_1}\)</span>, <span class="md-math md-math-inline">\(\sqrt{g + c_2}\)</span> of one term <span class="md-math md-math-inline">\(g\)</span></td>
-<td style="text-align:left"><span class="md-math md-math-inline">\(w = \sqrt{x + c_1} - \sqrt{x + c_2}\)</span> for <span class="md-math md-math-inline">\(g = x\)</span>. Then <span class="md-math md-math-inline">\(\sqrt{x + c_1} = (w + k/w)/2\)</span> and <span class="md-math md-math-inline">\(\sqrt{x + c_2} = (k/w - w)/2\)</span>, with <span class="md-math md-math-inline">\(k = c_1 - c_2\)</span>. For <span class="md-math md-math-inline">\(g = h(ax + b)\)</span> (<span class="md-math md-math-inline">\(h\)</span> = sec, csc, sin, cos, tan, cot, exp, sinh, cosh), first <span class="md-math md-math-inline">\(u = g\)</span>. Example: <span class="md-math md-math-inline">\(\sqrt{\sqrt{\sec x + 1} - \sqrt{\sec x - 1}}\)</span></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(w = \sqrt{x + c_1} - \sqrt{x + c_2}\)</span> for <span class="md-math md-math-inline">\(g = x\)</span>. Then <span class="md-math md-math-inline">\(\sqrt{x + c_1} = (w + k/w)/2\)</span> and <span class="md-math md-math-inline">\(\sqrt{x + c_2} = (k/w - w)/2\)</span>, with <span class="md-math md-math-inline">\(k = c_1 - c_2\)</span>. For <span class="md-math md-math-inline">\(g = h(ax + b)\)</span> (<span class="md-math md-math-inline">\(h\)</span> = sec, csc, sin, cos, tan, cot, exp, sinh, cosh), first <span class="md-math md-math-inline">\(u = g\)</span>, <span class="md-math md-math-inline">\(dx = du/(a h&#39;(u))\)</span> with <span class="md-math md-math-inline">\(h&#39;\)</span> written in <span class="md-math md-math-inline">\(u\)</span> (<span class="md-math md-math-inline">\(\sec x \tan x = u\sqrt{u + 1}\sqrt{u - 1}\)</span> only where <span class="md-math md-math-inline">\(\tan x &gt; 0\)</span>), and the answer times <span class="md-math md-math-inline">\(σ = h&#39;/(h&#39; \text{ written in } u) = ±1\)</span> (<span class="md-math md-math-inline">\(\tan x/(\sqrt{\sec x + 1}\sqrt{\sec x - 1})\)</span>), constant on each interval. Example: <span class="md-math md-math-inline">\(\sqrt{\sqrt{\sec x + 1} - \sqrt{\sec x - 1}}\)</span></td>
 </tr>
 <tr>
 <td style="text-align:left">RC</td>
@@ -580,7 +580,7 @@
 <td style="text-align:left">HT</td>
 <td style="text-align:left">a radical refused for its radicand, in the outermost call, after RK</td>
 <td style="text-align:left">trigonometric functions of one linear argument <span class="md-math md-math-inline">\(L\)</span> (no <code class="md-code-inline">x</code> outside them), in radicals</td>
-<td style="text-align:left"><span class="md-math md-math-inline">\(t = \tan(L/2)\)</span>: <span class="md-math md-math-inline">\(\sin L = 2t/(1 + t^2)\)</span>, <span class="md-math md-math-inline">\(\cos L = (1 - t^2)/(1 + t^2)\)</span>, <span class="md-math md-math-inline">\(dx = 2\,dt/(a(1 + t^2))\)</span>; integrated in <span class="md-math md-math-inline">\(t\)</span> (the radicals of rational functions of <span class="md-math md-math-inline">\(t\)</span>: steps SQ, EQ) and <span class="md-math md-math-inline">\(t = \tan(L/2)\)</span> substituted back, with the original radicals for their <span class="md-math md-math-inline">\(t\)</span> forms: <span class="md-math md-math-inline">\(\int \sqrt{a + a\sec x}\)</span>. The answer holds where the radicands it merged are positive (<span class="md-math md-math-inline">\(\sec x &gt; 0\)</span> for <span class="md-math md-math-inline">\(\sqrt{\sec x}\sqrt{a + a \sec x}\)</span>)</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(t = \tan(L/2)\)</span>: <span class="md-math md-math-inline">\(\sin L = 2t/(1 + t^2)\)</span>, <span class="md-math md-math-inline">\(\cos L = (1 - t^2)/(1 + t^2)\)</span>, <span class="md-math md-math-inline">\(dx = 2\,dt/(a(1 + t^2))\)</span>; integrated in <span class="md-math md-math-inline">\(t\)</span> (the radicals of rational functions of <span class="md-math md-math-inline">\(t\)</span>: steps SQ, EQ) and <span class="md-math md-math-inline">\(t = \tan(L/2)\)</span> substituted back, with the original radicals for their <span class="md-math md-math-inline">\(t\)</span> forms: <span class="md-math md-math-inline">\(\int \sqrt{a + a\sec x}\)</span>.</td>
 </tr>
 <tr>
 <td style="text-align:left">Expr retry</td>
@@ -1093,6 +1093,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=5122e47c"></script>
+  <script src="../assets/materialdocs.js?v=be80fa07"></script>
 </body>
 </html>
