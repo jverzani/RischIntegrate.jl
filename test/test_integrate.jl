@@ -2537,3 +2537,19 @@ end
         Risch.HYP_ANSWERS[] = false
     end
 end
+
+# SymPy #29909: A(x) erf(ax + b) by parts with Q = ∫ A, then ∫ Q e^(∓u²) with Q's exponentials merged
+# (eˣ e^(-x²) as e^(x - x²), whose erf term step SF finds)
+@testset "erf and erfi times a factor (by parts)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7), :(erf = $(SpecialFunctions.erf)),
+                                                :(erfi = $(SpecialFunctions.erfi))), e))
+    for f in (:(exp(x) * erf(x)), :(x * exp(x) * erf(x)), :(x * erf(x)), :(exp(-x) * erfi(x)), :(x * exp(x) * erfi(2x)),
+              :(exp(a * x) * erf(x)), :(exp(2x) * erf(x) + x))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (-0.7, 0.4, 1.3)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(erf(x) / x), :x; build = build, lift = identity)
+end

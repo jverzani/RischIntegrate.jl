@@ -366,8 +366,32 @@ function trig_factors!(t, xk, sign, cs, sq, trig, ssym)
     false
 end
 
+# Q eᵛ with the exponentials of each summand of Q merged into eᵛ: (x - 1)eˣ e^(-x²) as x e^(x - x²) - e^(x - x²),
+# whose erf terms step SF finds (eˣ e^(-x²) is two exponentials there)
+function times_exp(b0::Builder, Q, ex)
+    v = arguments(ex)[1]
+    ss = (safe_iscall(Q) && opname(operation(Q)) === :+) ? arguments(Q) : Any[Q]
+    ts = Any[]
+    for s in ss
+        args, rest = Any[v], Any[]
+        for (t, e) in product_factors!(Any[], s, 1)
+            if safe_iscall(t) && opname(operation(t)) === :exp && length(arguments(t)) == 1
+                push!(args, e == 1 ? arguments(t)[1] : mk(b0, :*, b0.lift(e), arguments(t)[1]))
+            else
+                push!(rest, e == 1 ? t : mk(b0, :^, t, b0.lift(e)))
+            end
+        end
+        E = mk(b0, :exp, length(args) == 1 ? v : mk(b0, :+, args...))
+        push!(ts, isempty(rest) ? E : mk(b0, :*, rest..., E))
+    end
+    length(ts) == 1 ? ts[1] : mk(b0, :+, ts...)
+end
+
 # ∫ c·erf(ax + b) = c (x + b/a) erf(ax + b) + c e^(-(ax+b)²)/(a√π); erfi: c (x + b/a) erfi(ax + b) - c e^((ax+b)²)/(a√π)
-# (by parts). A sum of such terms and terms free of erf; nothing when f has another use of erf.
+# (by parts). With a factor A(x) free of erf (SymPy #29909, eˣ erf x), by parts with Q = ∫ A:
+#   ∫ A erf(u) = Q erf(u) - (2a/√π) ∫ Q e^(-u²),   erfi: Q erfi(u) - (2a/√π) ∫ Q e^(u²)
+# when Q is elementary (no RootSum) and the second integral is found (erf terms: step SF). A sum of such terms and
+# terms free of erf; nothing when f has another use of erf, or a part is refused.
 function try_erf(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     xk = string(x)
@@ -388,7 +412,9 @@ function try_erf(f, x; build = nothing, lift = nothing, verify::Bool = true)
         e = es[1]
         (opname(operation(e)) in (:erf, :erfi) && length(arguments(e)) == 1) || return nothing
         cs = [u for u in facs if u !== e]
-        any(u -> depends_on(u, xk), cs) && return nothing
+        xs = [u for u in cs if depends_on(u, xk)]       # A(x)
+        any(haserf, xs) && return nothing
+        cs = [u for u in cs if !depends_on(u, xk)]
         u = arguments(e)[1]
         T, ue = try                                     # a x + b, a and b constants (parameters allowed)
             build_tower(u, xk)
@@ -401,8 +427,24 @@ function try_erf(f, x; build = nothing, lift = nothing, verify::Bool = true)
         bc = Builder(b0.build, b0.lift, b0.x, T.consts)
         isf = opname(operation(e)) === :erf
         c = isempty(cs) ? (sg == 1 ? nothing : b0.lift(-1)) : mk(b0, :*, b0.lift(sg), cs...)
-        xb = iszero(b) ? b0.x : mk(b0, :+, b0.x, cterm(bc, b / a))
         ex = mk(b0, :exp, isf ? mk(b0, :*, b0.lift(-1), mk(b0, :^, u, b0.lift(2))) : mk(b0, :^, u, b0.lift(2)))
+        if !isempty(xs)
+            A = length(xs) == 1 ? xs[1] : mk(b0, :*, xs...)
+            tt = try
+                Qt = risch_integrate(A, x; build = build, lift = lift, verify = verify)
+                Qt isa IntegralWithRootSums && return nothing
+                H = risch_integrate(times_exp(b0, Qt, ex), x; build = build, lift = lift, verify = verify)
+                H isa IntegralWithRootSums && return nothing
+                k = mk(b0, :/, isone(a) ? b0.lift(2) : mk(b0, :*, b0.lift(2), cterm(bc, a)), mk(b0, :sqrt, b0.lift(π)))
+                mk(b0, :+, mk(b0, :*, Qt, e), mk(b0, :*, b0.lift(-1), k, H))
+            catch err
+                (err isa RischNotImplemented || err isa NotElementary) || rethrow()
+                return nothing
+            end
+            push!(terms, c === nothing ? tt : mk(b0, :*, c, tt))
+            continue
+        end
+        xb = iszero(b) ? b0.x : mk(b0, :+, b0.x, cterm(bc, b / a))
         q = mk(b0, :/, ex, isone(a) ? mk(b0, :sqrt, b0.lift(π)) : mk(b0, :*, cterm(bc, a), mk(b0, :sqrt, b0.lift(π))))
         tt = mk(b0, :+, mk(b0, :*, xb, e), isf ? q : mk(b0, :*, b0.lift(-1), q))
         push!(terms, c === nothing ? tt : mk(b0, :*, c, tt))
