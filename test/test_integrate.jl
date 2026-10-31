@@ -2292,6 +2292,15 @@ end
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
         end
     end
+    # where h′ is the negative of h′ written in u (tan x < 0 for sec, sin x < 0 for cos): the factor σ = ±1
+    for f in (:(sqrt(sqrt(sec(x) + 1) - sqrt(sec(x) - 1))), :(1 / (sec(x) ^ (3 / 2) * sqrt(1 + sec(x)))),
+              :(1 / (sqrt(cos(x)) * sqrt(1 + cos(x)))), :(sqrt(1 + cos(3x + 1)) / sqrt(cos(3x + 1))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (-0.4, -0.1, 0.1, 6.0)
+            ev(f, x0) isa Real || continue
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
 end
 
 # step MR, then step SQ for a rational radicand with square factors: s = sin x, √(s²(2 - s²))/(1 - s²) (Rubi 260);
