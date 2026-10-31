@@ -528,9 +528,9 @@ function try_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
     nothing
 end
 
-# G′ = f numerically (central differences) at two points where f is real and finite, with the parameters at
-# fixed positive values; true when no such points are found or a term cannot be evaluated
-function numeric_antiderivative(f, G, xk::String)
+# ev(t, x0): the value (ComplexF64) of a term t of the terms ts at x = x0, with the k-th parameter (sorted by
+# name) at 0.5 + 0.3k
+function numeric_evaluator(xk::String, ts...)
     names = String[]
     function leaves!(t)
         if safe_iscall(t) && !isempty(arguments(t))
@@ -540,7 +540,7 @@ function numeric_antiderivative(f, G, xk::String)
             (s != xk && leaf_rational(t) === nothing && !is_e_const(t) && !(s in ("pi", "π")) && !(s in names)) && push!(names, s)
         end
     end
-    leaves!(f); leaves!(G)
+    foreach(leaves!, ts)
     sort!(names)
     function ev(t, x0)
         if safe_iscall(t) && !isempty(arguments(t))
@@ -552,6 +552,12 @@ function numeric_antiderivative(f, G, xk::String)
         k === nothing || return ComplexF64(0.5 + 0.3k)
         term_value(t, xk, 0.0)
     end
+end
+
+# G′ = f numerically (central differences) at two points where f is real and finite, with the parameters at
+# fixed positive values; true when no such points are found or a term cannot be evaluated
+function numeric_antiderivative(f, G, xk::String)
+    ev = numeric_evaluator(xk, f, G)
     found = 0
     for x0 in (0.13, 0.27, 0.41, 0.58, 0.83, 1.21, 1.77, 2.6, -0.37, -1.4)
         fv, dG = try

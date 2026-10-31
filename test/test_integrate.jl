@@ -1418,6 +1418,9 @@ end
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
         end
     end
+    # (1 + sec x)(1 - sec x) = -tan² x ≤ 0: nowhere real, not merged (the answer for √U had a sign change)
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(sec(x) * (a + a * sec(x)) ^ (3 / 2) * (c - c * sec(x)) ^ (3 / 2)), :x;
+                                                                build = build, lift = identity)
 end
 
 # step HT: a radical refused for its radicand, of trigonometric functions of one linear argument: t = tan(L/2),

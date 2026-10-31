@@ -223,6 +223,11 @@ function merge_square_roots(f, x, xk::String, build, lift)
         k == 0 || push!(hs, pw(u, k))
     end
     U = mk(bd, :*, odd...)
+    # (U ≤ 0 everywhere: f is nowhere real, and the answer for √U, written for U > 0, need not continue to it:
+    # sec x (a + a sec x)^(3/2) (c - c sec x)^(3/2), U = -tan² x)
+    ev = numeric_evaluator(xk, U)
+    any(x0 -> (v = try ev(U, x0) catch; NaN end; isfinite(v) && real(v) > 0 && abs(imag(v)) <= 1e-10 * abs(v)),
+        (0.13, 0.41, 0.83, 1.21, 1.77, 2.6, 3.3, 4.4, 5.1, 5.9, -0.37, -1.4)) || return nothing
     push!(hs, mk(bd, :sqrt, U))
     σ = mk(bd, :/, mk(bd, :*, Any[mk(bd, :sqrt, u) for u in odd]...), mk(bd, :sqrt, U))
     (length(hs) == 1 ? hs[1] : mk(bd, :*, hs...), σ)
