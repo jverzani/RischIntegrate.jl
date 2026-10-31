@@ -121,22 +121,27 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         # a^e (1 + sin x)^e for a > 0 (step RK; last, and in the outermost call only, so that the routes that
         # already work are not changed: a substitution refused inside, step AL or US, leaves the next one its chance)
         # Then radicals of trigonometric functions of one linear argument by t = tan(L/2) (step HT).
+        # Last, two or more square roots merged into one, the answer times σ = ±1 (step RM), and the same again.
         if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg) && RISCH_DEPTH[] == 1
-            g = split_radicand_content(f, x, string(x), build, lift)
-            r = g === nothing ? nothing : try
-                risch_integrate(g, x; build = build, lift = lift, verify = verify)
-            catch e2
-                e2 isa RischNotImplemented || rethrow()
-                nothing
-            end
+            r = radicand_fallbacks(f, x; build = build, lift = lift, verify = verify)
             r === nothing || return r
-            r = try
-                integrate_halfangle_radicals(g === nothing ? f : g, x; build = build, lift = lift, verify = verify)
-            catch e2
-                e2 isa RischNotImplemented || rethrow()
-                nothing
+            # (after step RK's parameter factors, which a merged radicand (a + a sec x) cos x would hide)
+            fk = split_radicand_content(f, x, string(x), build, lift)
+            m = merge_square_roots(fk === nothing ? f : fk, x, string(x), build, lift)
+            if m !== nothing
+                g, σ = m
+                r = try
+                    risch_integrate(g, x; build = build, lift = lift, verify = verify)
+                catch e2
+                    e2 isa RischNotImplemented || rethrow()
+                    radicand_fallbacks(g, x; build = build, lift = lift, verify = verify)
+                end
+                if r !== nothing
+                    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+                    r isa IntegralWithRootSums || return mk(bd, :*, σ, r)
+                    return IntegralWithRootSums(mk(bd, :*, σ, r.elementary), Any[ScaledRootSum(σ, rs) for rs in r.rootsums], r.var)
+                end
             end
-            r === nothing || return r
         end
         # a u-substitution may have failed only for want of a special function in the term type: once
         # through Expr, keeping the answer when it has special terms
@@ -463,6 +468,25 @@ rs_value_continuous(s::ScaledRootSum, xk::String, a::Real) = term_value(s.factor
 # an answer with its variable substituted (a substitution step putting u back): the elementary part by the term
 # map `back`, a RootSum with its variable standing for back(x) (`arg`), a TermRootSum with `back` applied to its
 # coefficients; nothing when a part cannot be substituted (an `ExprTerm`)
+# steps RK, HT for a radical refused for its radicand, or nothing
+function radicand_fallbacks(f, x; build, lift, verify::Bool)
+    @nospecialize f x
+    g = split_radicand_content(f, x, string(x), build, lift)
+    r = g === nothing ? nothing : try
+        risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    catch e
+        e isa RischNotImplemented || rethrow()
+        nothing
+    end
+    r === nothing || return r
+    try
+        integrate_halfangle_radicals(g === nothing ? f : g, x; build = build, lift = lift, verify = verify)
+    catch e
+        e isa RischNotImplemented || rethrow()
+        nothing
+    end
+end
+
 function subst_answer(F, back, bd::Builder)
     F isa IntegralWithRootSums || return back(F)
     rss = Any[rootsum_subst(r, back, bd) for r in F.rootsums]

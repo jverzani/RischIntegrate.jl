@@ -1405,6 +1405,21 @@ end
     @test string(integrate((5 - sin(t)) * sqrt(sin(t) ^ 2 + cos(t) ^ 2), t)) == "5*t + cos(t)"
 end
 
+# step RM: square roots of several radicands merged into one, the answer times σ = ∏ √uᵢ/√(∏ uᵢ) = ±1: √((1 + sec x) cos x)
+# = √(1 + cos x) to step HT after step RK's a^(5/2); (1 + sin x)(1 - sin x) = cos² x (step SQ). Checked where cos x > 0
+@testset "merged square roots (step RM)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7), :(c = 0.3), :(d = 1.1), :(A = 0.9), :(C = 1.3)), e))
+    for f in (:((a + a * sec(x)) ^ (5 / 2) / cos(x) ^ (5 / 2)), :(sec(x) ^ (1 / 2) / sqrt(a + a * cos(x))),
+              :((a + a * sin(x)) ^ (3 / 2) * (c - c * sin(x)) ^ (7 / 2)), :(1 / ((a + a * sin(x)) ^ (5 / 2) * (c - c * sin(x)) ^ (3 / 2))),
+              :((A + C * cos(x) ^ 2) * sqrt(a + a * cos(x)) / cos(x) ^ (7 / 2)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (-0.4, 0.3, 6.0)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
 # step HT: a radical refused for its radicand, of trigonometric functions of one linear argument: t = tan(L/2),
 # then √(2/(1 - t²)) = Y/(1 - t²), Y² = 2(1 - t²) (step SQ without repeated factors). Checked where sec > 0
 @testset "half-angle substitution in radicals (step HT)" begin
