@@ -79,3 +79,62 @@ function try_log_polylog(f, x; build = nothing, lift = nothing, verify::Bool = t
     end
     length(terms) == 1 ? terms[1] : mk(bd, :+, terms...)
 end
+
+# Step XP: ∫ P(x) R(e^(kx)) not elementary (P a polynomial, R rational in exponentials of x with x nowhere else:
+# x/(eˣ - 1), SymPy #30167), by parts with Q = ∫ R elementary: P Q - ∫ P′ Q, the second integral by the usual
+# route (∫ log(1 - eˣ) = -Li₂(eˣ), step 8a). ∫ x/(eˣ - 1) = x (log(eˣ - 1) - x) + x²/2 - ∫ log(eˣ - 1).
+# Nothing when f is not of that kind or a part is refused.
+const XPARTS = Ref(false)                               # no nested step XP
+function try_poly_exp_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    XPARTS[] && return nothing
+    xk = string(x)
+    # x only inside exp
+    bare(t) = safe_iscall(t) && !isempty(arguments(t)) ?
+              (opname(operation(t)) === :exp ? false : any(bare, arguments(t))) : string(t) == xk
+    hasexp(t) = safe_iscall(t) && !isempty(arguments(t)) &&
+                ((opname(operation(t)) === :exp && depends_on(arguments(t)[1], xk)) || any(hasexp, arguments(t)))
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    pw(t, e) = e == 1 ? t : mk(bd, :^, t, bd.lift(e))
+    Ps, Rs = Any[], Any[]
+    for (t, e) in product_factors!(Any[], f, 1)
+        if hasexp(t)
+            bare(t) && return nothing
+            push!(Rs, pw(t, e))
+        elseif depends_on(t, xk)
+            e >= 1 || return nothing
+            T, el = try                                 # a polynomial in x
+                build_tower(t, xk)
+            catch err
+                (err isa RischNotImplemented || err isa RischError) || rethrow()
+                return nothing
+            end
+            (isempty(T.levels) && degree(el.den) == 0) || return nothing
+            push!(Ps, pw(t, e))
+        else
+            push!(Ps, pw(t, e))
+        end
+    end
+    (isempty(Rs) || !any(t -> depends_on(t, xk), Ps)) && return nothing
+    P = length(Ps) == 1 ? Ps[1] : mk(bd, :*, Ps...)
+    R = length(Rs) == 1 ? Rs[1] : mk(bd, :*, Rs...)
+    # (step AP stays on: ∫ log(eˣ - 1) is its)
+    XPARTS[] = true
+    try
+        Qt = risch_integrate(R, x; build = build, lift = lift, verify = verify)
+        Qt isa IntegralWithRootSums && return nothing
+        # P′ Q with P′ distributed over the summands of Q (the dilogarithm step takes log(1 + eˣ) as a summand)
+        dP = term_deriv(bd, P, xk)
+        qs = (safe_iscall(Qt) && opname(operation(Qt)) === :+) ? arguments(Qt) : Any[Qt]
+        one_ = leaf_rational(dP) == 1
+        hs = Any[one_ ? q : mk(bd, :*, dP, q) for q in qs]
+        H = risch_integrate(length(hs) == 1 ? hs[1] : mk(bd, :+, hs...), x; build = build, lift = lift, verify = verify)
+        H isa IntegralWithRootSums && return nothing
+        mk(bd, :+, mk(bd, :*, P, Qt), mk(bd, :*, bd.lift(-1), H))
+    catch err
+        (err isa RischNotImplemented || err isa NotElementary) || rethrow()
+        nothing
+    finally
+        XPARTS[] = false
+    end
+end

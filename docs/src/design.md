@@ -458,6 +458,7 @@ order:
 | CL | `NotElementary` | ``x^p R(\sin kx, \cos kx)`` | by parts, with Clausen functions ``\operatorname{Cl}_m`` and ``\operatorname{Re}\operatorname{Li}_m``: ``\int x \tan x`` |
 | LP | any | ``\log^j(x)\, L(wx)/x``, ``L`` = `atan`, `log`, `li2` | polylogarithms by parts: ``\int \operatorname{atan}(x)/x = \operatorname{Ti}_2(x)`` |
 | AT | any | `atan(u)` | ``u = \tan t`` |
+| XP | `NotElementary` | ``P(x) R(e^{kx})``, ``P`` a polynomial, ``x`` nowhere else | by parts with ``Q = \int R`` elementary: ``P Q - \int P' Q`` (``\int x/(e^x - 1)`` with ``\operatorname{Li}_2``) |
 | LW | `RischNotImplemented` | Lambert's ``W(ax + b)``, one argument | ``x = (w e^w - b)/a``, ``dx = (1 + w) e^w/a\,dw``, integrated in ``w``, then ``e^{kw} = ((ax + b)/W)^k``: ``\int W(x) = x(W - 1 + 1/W)`` |
 | AP | any | ``A \cdot L^k`` with ``L`` an inverse function or `log` | by parts, ``\int A L^k = Q L^k - k\int Q L^{k-1} L'`` |
 | HS | `NotElementary`; for ``\sin^p \cos^r`` also a radical refused for its radicand, or not elementary after step HT | ``x^m(α + βx^n)^q``, ``\sin^p \cos^r``, symbolic exponents (for ``\sin^p \cos^r`` also fractional ones: ``\sin^{7/2} x \cos^{3/2} x``) | ``{}_2F_1`` terms |
@@ -745,6 +746,7 @@ failures, and their comments cite the Rubi problem numbers.
 | IT | `risch_integrate.jl` | constant factors out; iterated integrals |
 | KR | `radicals.jl` | constant radicands written with `x` |
 | LP | `polylog_parts.jl` | polylogarithms by parts |
+| XP | `polylog_parts.jl` | ``P(x) R(e^{kx})`` by parts |
 | LW | `lambertw.jl` | Lambert's ``W(ax + b)`` by ``x = (w e^w - b)/a`` |
 | MR, PW, NR | `monomial_radicals.jl` | radicals of functions of a monomial; inner linear radicals |
 | NP | `radicals.jl` | square roots of never-positive radicands |

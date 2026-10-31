@@ -2553,3 +2553,17 @@ end
     end
     @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(erf(x) / x), :x; build = build, lift = identity)
 end
+
+# SymPy #30167, step XP: P(x) R(eˣ) by parts with Q = ∫ R, then ∫ P′ Q (log(1 + c eᵏˣ): Li₂). x²/(eˣ - 1) needs Li₃
+@testset "polynomial times a rational function of exp (step XP)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x0))), :(li2 = z -> $(PolyLog.li2)(complex(z)))), e))
+    for f in (:(x / (exp(x) - 1)), :(x / (exp(x) + 1)), :((2x + 1) / (exp(x) - 1)), :(x / (exp(2x) + 3)), :(x * exp(x) / (exp(x) + 1)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("li2", string(F))
+        for x0 in (0.4, 1.3, 2.2)
+            @test isapprox(real((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6), real(ev(f, x0)); rtol = 1e-5)
+        end
+    end
+    @test_throws Risch.NotElementary Risch.risch_integrate(:(x ^ 2 / (exp(x) - 1)), :x; build = build, lift = identity)
+end

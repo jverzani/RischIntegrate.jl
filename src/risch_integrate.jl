@@ -75,6 +75,8 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             # (step AT), else by parts (step AP)
             g1 = e isa NotElementary ? try_x_trig(f, x; build = build, lift = lift, verify = verify) : nothing
             g1 === nothing && (g1 = try_log_polylog(f, x; build = build, lift = lift, verify = verify))
+            # P(x) R(e^(kx)) by parts, Q = ∫ R (step XP: x/(eˣ - 1) with Li₂)
+            (g1 === nothing && e isa NotElementary) && (g1 = try_poly_exp_parts(f, x; build = build, lift = lift, verify = verify))
             g1 === nothing && (g1 = try_atan_subst(f, x; build = build, lift = lift, verify = verify))
             # Lambert's W(x): x = w eʷ (step LW)
             g1 === nothing && e isa RischNotImplemented && (g1 = try_lambertw(f, x; build = build, lift = lift, verify = verify))
