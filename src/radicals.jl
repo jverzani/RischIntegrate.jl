@@ -193,6 +193,46 @@ function split_radicand_content(f, x, xk::String, build, lift)
     changed ? g : nothing
 end
 
+# step RM: f = h ∏ uᵢ^(kᵢ/2), square roots of two or more radicands with a trigonometric or hyperbolic function, h free
+# of radicals: the radicals of odd kᵢ merged into one, ∏ uᵢ^(kᵢ/2) = σ ∏ uᵢ^((kᵢ-1)/2) √(∏ uᵢ), σ = ∏ √uᵢ/√(∏ uᵢ).
+# σ = ±1 is constant on each interval, so σ ∫ g is ∫ f there. (g, σ), or nothing. (a + a sec x)^(5/2)/cos(x)^(5/2):
+# √((a + a sec x) cos x) = √(a + a cos x) to step HT; (a + a sin x)^(3/2) (c - c sin x)^(7/2): √(ac cos² x)
+const RM_FUNCS = (:sin, :cos, :tan, :cot, :sec, :csc, :sinh, :cosh, :tanh, :coth, :sech, :csch)
+function merge_square_roots(f, x, xk::String, build, lift)
+    @nospecialize f x
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    pw(t, k) = k == 1 ? t : mk(bd, :^, t, bd.lift(k))
+    hs = Any[]
+    rads = Dict{String,Tuple{Any,Q}}()                  # radicand string ↦ (radicand, total exponent)
+    for (t, e) in product_factors!(Any[], f, 1)
+        rp = radical_parts(t)
+        if rp !== nothing && has_x(rp[2], xk)
+            denominator(rp[1]) == 2 || return nothing
+            k = string(rp[2])
+            rads[k] = (rp[2], get(rads, k, (rp[2], Q(0)))[2] + e * rp[1])
+        else
+            isempty(collect_radicals(t, xk)) || return nothing
+            push!(hs, pw(t, e))
+        end
+    end
+    odd = Any[u for (u, E) in values(rads) if !isinteger(E)]
+    length(odd) >= 2 || return nothing
+    any(u -> any(n -> has_op(u, n), RM_FUNCS), odd) || return nothing
+    for (u, E) in values(rads)
+        k = Int(isinteger(E) ? E : E - Q(1) // 2)
+        k == 0 || push!(hs, pw(u, k))
+    end
+    U = mk(bd, :*, odd...)
+    # (U ≤ 0 everywhere: f is nowhere real, and the answer for √U, written for U > 0, need not continue to it:
+    # sec x (a + a sec x)^(3/2) (c - c sec x)^(3/2), U = -tan² x)
+    ev = numeric_evaluator(xk, U)
+    any(x0 -> (v = try ev(U, x0) catch; NaN end; isfinite(v) && real(v) > 0 && abs(imag(v)) <= 1e-10 * abs(v)),
+        (0.13, 0.41, 0.83, 1.21, 1.77, 2.6, 3.3, 4.4, 5.1, 5.9, -0.37, -1.4)) || return nothing
+    push!(hs, mk(bd, :sqrt, U))
+    σ = mk(bd, :/, mk(bd, :*, Any[mk(bd, :sqrt, u) for u in odd]...), mk(bd, :sqrt, U))
+    (length(hs) == 1 ? hs[1] : mk(bd, :*, hs...), σ)
+end
+
 # φ ∈ S(t) (same representation as S(x); S = ℚ or the tower's constant field) as an element
 # of K_0 of the tower T
 to_K0(T::Tower, φ::Frac{UPoly{Q}}) = (C = ctype(T); P = UPoly{C};
