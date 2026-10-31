@@ -277,7 +277,7 @@ rational exponent). Radicals of parameters are opaque constants and are not coun
 |:-----|:-----------|:-----|
 | AS | only powers of ``\sqrt{1 - u^2}``, ``u`` linear | ``u = \sin t`` first, which gives `asin(u)` instead of logarithms |
 | PR (rational) | one quadratic radicand ``K - \lvert α \rvert (x - h)^2`` whose scaling to ``K(1 - u^2)`` is irrational, e.g. ``7 - 2x^2`` | step PR with the constant radicals opaque, so that the `asin` route applies in ``u`` |
-| PR | parameters in a radicand: ``a^2 - x^2``, ``(x - a)(b - x)``, ``(a + x)/(a - x)`` | an affine ``x = s u + h`` over the parameter field makes the radicand ``κ R(u)`` with ``R`` free of parameters |
+| PR | parameters in a radicand: ``a^2 - x^2``, ``(x - a)(b - x)``, ``(a + x)/(a - x)`` | an affine ``x = s u + h`` over the parameter field makes the radicand ``κ R(u)`` with ``R`` free of parameters; ``κ^{k/2}`` is written with ``\sqrt κ``, as ``s`` is, so that the tower has one constant for both, and the factors free of ``x`` (also in a denominator) are taken out of the integrand in ``u`` |
 | PM | parameters in a radicand with repeated factors, ``u = s^n w``, ``n`` even: ``(a^2 + 2abx + b^2x^2)^{3/2}``, ``((a^2 + x^2)^3)^{1/2}`` | ``Y = u^{1/n}/s`` is ``\pm w^{1/n}`` on each interval: with ``F_\pm`` the integrals for each sign, ``(F_+ + F_-)/2 + σ (F_+ - F_-)/2``, ``σ = Y/w^{1/n}``; for constant ``w`` the answer is ``(u^{1/n}/s) F_+``, as Rubi writes it |
 | LL | two linear radicands with parameters whose exponents add up to an integer in each product: ``(a + bx)^{-3/4}(c + dx)^{-1/4}`` | one radicand on the real domain: ``(L_1L_2)^{E_1} L_2^{E_2 - E_1}`` for square roots, ``(L_1/L_2)^{E_1} L_2^{E_1 + E_2}`` otherwise; then step PR |
 | NR | several radicands, one innermost radical of a linear radicand | ``u = \sqrt{\text{linear}}`` |
@@ -318,7 +318,9 @@ What is left goes to `integrate_radical`. Its cases, in order:
     elementary (Liouville).
 - **Kummer** (SI2 phases 3a and 3b): products of radicals of any index, through the integral basis
   of the Kummer extension. The log part uses Riemann–Roch on the curve and yields a RootSum over
-  the roots of unity. This runs when `integrate_radical` refuses.
+  the roots of unity. This runs when `integrate_radical` refuses. Residue classes ``σ_i`` are independent
+  when no ``σ_i/σ_j`` is a ``q``-th power in ``ℚ(ζ_q)``; for ``q = 2`` that field is ``ℚ``, so negative classes count
+  too (``-1`` and ``5`` in ``\int x^2/((1 + 2x^2)\sqrt{3 + 5x^2})``).
 
 A substitution step parses the integrand in the new variable ``t`` through a parse hook,
 multiplies by ``φ'(t)``, integrates in the tower over ``ℚ(t)`` (or a larger constant field), and

@@ -437,6 +437,13 @@ function run_tests(x, evalat, name)
                 @test isapprox(fd(t -> val(F, t), a), real(evalat(f, a)); rtol = 1e-5)
             end
         end
+        # q = 2 with classes -1 and 5: √-1 and √5 are independent over ℚ (the log of x²/((1 + 2x²)√(3 + 5x²)))
+        let f = x^2 / ((1 + 2x^2) * sqrt(3 + 5x^2))
+            F = Risch.risch_integrate(f, x)
+            for a in (-1.3, 0.4, 2.0)
+                @test isapprox(fd(t -> val(F, t), a), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
         # one class of infinite order is enough
         @test_throws Risch.NotElementary Risch.risch_integrate(1 / (x^3 + 1)^(1 // 3) + 1 / ((x - 2) * (x^3 + 1)^(1 // 3)), x)
         # q = 4 with classes -1 and 8: (-4)^(1/4) ∈ ℚ(i), they may be dependent: no decision for the sum, but
@@ -1432,6 +1439,21 @@ end
               :((x * sqrt(c * x ^ 2)) / (a + b * x)), :((a + b * x) ^ 2 / (x ^ 3 * (c * x ^ 2) ^ (3 / 2))))
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)
         for x0 in (-1.7, -0.3, 0.4, 2.1)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
+# step PR with √κ written as s is (√c, not c^(1/2): two constants of the tower), and the factors free of x
+# taken out of the integrand in u (√c √(1 + u²) in a denominator): sample 399, x²/((a + b x²)√(c + d x²))
+@testset "parameters in a radicand and a rational factor (step PR)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x0))), :(a = complex(0.7)), :(b = complex(1.3)),
+                                                :(c = complex(1.1)), :(d = complex(0.6))), e))
+    for f in (:(x ^ 2 / ((1 + 2 * x ^ 2) * sqrt(c + x ^ 2))), :(x ^ 2 / ((a + b * x ^ 2) * sqrt(c + d * x ^ 2))),
+              :(x ^ 5 / ((d + b * x) ^ 2 * sqrt(a + c * x ^ 2))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (-1.7, 0.4, 2.1)
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
         end
     end
