@@ -69,7 +69,7 @@ answer back. The chain rule check that comes with each substitution keeps the re
 | rational functions | `hermite_reduction.jl`, `rothstein_trager.jl`, `log_to_atan.jl`, `quartic_residues.jl`, `rootsum.jl` |
 | terms ↔ fields | `term_input.jl`, `term_output.jl`, `tower_terms.jl`, `rootsum_numerics.jl` |
 | towers | `tower.jl`, `structure_theorems.jl`, `monomial_integration.jl`, `rde_base.jl`, `risch_de.jl`, `parametric_rde.jl`, `tower_rootsums.jl`, `tower_real_forms.jl`, `real_form.jl` |
-| special functions | `special_functions.jl`, `dilogarithms.jl`, `exp_trig_polynomials.jl`, `clausen.jl`, `polylog_parts.jl`, `hypergeometric.jl`, `hyp_symbolic.jl`, `exp_trig_hyp.jl`, `gamma_terms.jl`, `special_fallback.jl` |
+| special functions | `special_functions.jl`, `dilogarithms.jl`, `exp_trig_polynomials.jl`, `clausen.jl`, `polylog_parts.jl`, `hypergeometric.jl`, `hyp_symbolic.jl`, `exp_trig_hyp.jl`, `gamma_terms.jl`, `lambertw.jl`, `special_fallback.jl` |
 | algebraic integrands | `radicals.jl`, `euler_substitutions.jl`, `biquadratic.jl`, `hyperelliptic.jl`, `kummer.jl`, `kummer_logs.jl`, `param_radicals.jl`, `denest.jl`, `nested.jl`, `nested_subst.jl`, `constant_scaling.jl`, `monomial_radicals.jl`, `reciprocal_subst.jl`, `tower_radicals.jl`, `real_log_arguments.jl` |
 | substitutions and rewrites | `bioche.jl`, `inverse_trig.jl`, `u_substitution.jl`, `linearity.jl` |
 | entry points | `risch_integrate.jl`, `integrate_macro.jl`, `precompile.jl` |
@@ -257,7 +257,7 @@ throws. A step that rewrites the integrand calls `risch_integrate` again on the 
 | Step | Recognizes | Does |
 |:-----|:-----------|:-----|
 | EP | ``(b^w)^r`` with a positive constant ``b``; ``(C^s)^n`` with integer ``n`` over products and quotients | merges exponents: ``(3^{3x})^{1/4} = 3^{3x/4}``, so a radicand with even powers of a radical becomes rational; a rewrite the term type undoes (Giac keeps ``C^{2/3}`` as ``(C^{1/3})^2``) is no change |
-| erf | ``\int \operatorname{erf}(ax + b)`` | by parts |
+| erf | ``\int A(x) \operatorname{erf}(ax + b)`` (or `erfi`), ``A`` free of `erf` | by parts with ``Q = \int A``: ``Q \operatorname{erf}(u) - (2a/\sqrt π)\int Q e^{-u^2}``, the exponentials of ``Q`` merged into ``e^{-u^2}`` (``\int e^x \operatorname{erf} x``) |
 | IT | a factor free of `x` that contains a symbol or a root ``c^{p/q}`` with ``q > 2`` | takes it out: ``\int c\,g = c \int g``. This keeps the parameter out of the constant field, and lets an iterated integral see ``c(y) \cdot \text{RootSum}(x)`` |
 | KR | a radical whose radicand has a transcendental function | if the radicand is constant in its tower (``\sin^2 x + \cos^2 x``, the speed of a circle in a line integral), it is replaced by its value: ``\sqrt{\sin^2 x + \cos^2 x} = 1`` |
 | SL | every trigonometric or hyperbolic argument with `x` is ``r(e + fx)``, ``r`` rational, ``e`` a parameter; elsewhere `x` only algebraically | ``y = e + fx``, ``x = (y - e)/f``, integrated in ``y`` and ``y = e + fx`` substituted back (refused in ``y``: on to TS2). Before TS2, whose ``\cos e``, ``\sin e`` are independent constants to the constant field: ``\cos^2 e + \sin^2 e = 1`` is not seen, which gives hidden zero denominators, false residue criteria and slow resultants |
@@ -458,8 +458,10 @@ order:
 | CL | `NotElementary` | ``x^p R(\sin kx, \cos kx)`` | by parts, with Clausen functions ``\operatorname{Cl}_m`` and ``\operatorname{Re}\operatorname{Li}_m``: ``\int x \tan x`` |
 | LP | any | ``\log^j(x)\, L(wx)/x``, ``L`` = `atan`, `log`, `li2` | polylogarithms by parts: ``\int \operatorname{atan}(x)/x = \operatorname{Ti}_2(x)`` |
 | AT | any | `atan(u)` | ``u = \tan t`` |
+| XP | `NotElementary` | ``P(x) R(e^{kx})``, ``P`` a polynomial, ``x`` nowhere else | by parts with ``Q = \int R`` elementary: ``P Q - \int P' Q`` (``\int x/(e^x - 1)`` with ``\operatorname{Li}_2``) |
+| LW | `RischNotImplemented` | Lambert's ``W(ax + b)``, one argument | ``x = (w e^w - b)/a``, ``dx = (1 + w) e^w/a\,dw``, integrated in ``w``, then ``e^{kw} = ((ax + b)/W)^k``: ``\int W(x) = x(W - 1 + 1/W)`` |
 | AP | any | ``A \cdot L^k`` with ``L`` an inverse function or `log` | by parts, ``\int A L^k = Q L^k - k\int Q L^{k-1} L'`` |
-| HS | `NotElementary` | ``x^m(α + βx^n)^q``, ``\sin^p \cos^r``, symbolic exponents | ``{}_2F_1`` terms |
+| HS | `NotElementary`; for ``\sin^p \cos^r`` also a radical refused for its radicand, or not elementary after step HT | ``x^m(α + βx^n)^q``, ``\sin^p \cos^r``, symbolic exponents (for ``\sin^p \cos^r`` also fractional ones: ``\sin^{7/2} x \cos^{3/2} x``) | ``{}_2F_1`` terms |
 | EH | `NotElementary` | ``e^{ax} R(\cos bx, \sin bx)`` with the poles of ``R(E)``, ``E = e^{ibx}``, in ``ℚ(i)`` | partial fractions in ``E``. Each pole gives ``\int e^{ax}/(1 - E/r)^k = e^{ax}\,{}_2F_1(k, s; s+1; E/r)/a`` with ``s = a/(ib)``. The real part is printed with `rehyp2f1` and `imhyp2f1` (``\int e^x/(1 + \cos x)``) |
 | H3, H4 | `NotElementary` | ``x^s e^{bx + d}``, ``x^s \sin``, ``x^s \cos`` | incomplete ``Γ`` terms |
 | US | any | ``f = G(u)\,u'`` for a subterm ``u`` (and the partner ``\sinh v`` of ``\cosh v``, ``\sin v`` of ``\cos v``, …) | derivative-divides, below. With ``u = \sinh v``, even powers of ``\cosh v`` are ``(1 + u^2)^k``, and so on |
@@ -744,6 +746,8 @@ failures, and their comments cite the Rubi problem numbers.
 | IT | `risch_integrate.jl` | constant factors out; iterated integrals |
 | KR | `radicals.jl` | constant radicands written with `x` |
 | LP | `polylog_parts.jl` | polylogarithms by parts |
+| XP | `polylog_parts.jl` | ``P(x) R(e^{kx})`` by parts |
+| LW | `lambertw.jl` | Lambert's ``W(ax + b)`` by ``x = (w e^w - b)/a`` |
 | MR, PW, NR | `monomial_radicals.jl` | radicals of functions of a monomial; inner linear radicals |
 | NP | `radicals.jl` | square roots of never-positive radicands |
 | NS | `nested_subst.jl` | nested radicals by substitution |

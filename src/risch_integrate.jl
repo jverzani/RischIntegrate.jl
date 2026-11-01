@@ -75,7 +75,11 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             # (step AT), else by parts (step AP)
             g1 = e isa NotElementary ? try_x_trig(f, x; build = build, lift = lift, verify = verify) : nothing
             g1 === nothing && (g1 = try_log_polylog(f, x; build = build, lift = lift, verify = verify))
+            # P(x) R(e^(kx)) by parts, Q = ∫ R (step XP: x/(eˣ - 1) with Li₂)
+            (g1 === nothing && e isa NotElementary) && (g1 = try_poly_exp_parts(f, x; build = build, lift = lift, verify = verify))
             g1 === nothing && (g1 = try_atan_subst(f, x; build = build, lift = lift, verify = verify))
+            # Lambert's W(x): x = w eʷ (step LW)
+            g1 === nothing && e isa RischNotImplemented && (g1 = try_lambertw(f, x; build = build, lift = lift, verify = verify))
             g1 === nothing ? try_parts(f, x; build = build, lift = lift, verify = verify) : g1
         catch e2
             # (raised here, inside the catch, these miss the special-function fallback above)
@@ -123,7 +127,15 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         # Then radicals of trigonometric functions of one linear argument by t = tan(L/2) (step HT).
         # Last, two or more square roots merged into one, the answer times σ = ±1 (step RM), and the same again.
         if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg) && RISCH_DEPTH[] == 1
-            r = radicand_fallbacks(f, x; build = build, lift = lift, verify = verify)
+            r = try
+                radicand_fallbacks(f, x; build = build, lift = lift, verify = verify)
+            catch e2
+                # not elementary after step HT (sin^(7/2) cos^(3/2), an elliptic integral): step HS's ₂F₁ first
+                (e2 isa NotElementary && HYP_ANSWERS[]) || rethrow()
+                g = trig_symbolic_or_fallback(f, x; build = build, lift = lift, verify = verify)
+                g === nothing && rethrow()
+                g
+            end
             r === nothing || return r
             # (after step RK's parameter factors, which a merged radicand (a + a sec x) cos x would hide)
             fk = split_radicand_content(f, x, string(x), build, lift)
@@ -142,6 +154,12 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
                     return IntegralWithRootSums(mk(bd, :*, σ, r.elementary), Any[ScaledRootSum(σ, rs) for rs in r.rootsums], r.var)
                 end
             end
+        end
+        # sinᵖ cosʳ with a fractional exponent beside a symbolic one (sin^(7/2) cosᵐ), or a term type that keeps
+        # sin^(3/2) as a radical: the ₂F₁ of step HS (at any depth: the special-function fallback's Expr call)
+        if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg) && HYP_ANSWERS[]
+            g = trig_symbolic_or_fallback(f, x; build = build, lift = lift, verify = verify)
+            g === nothing || return g
         end
         # a u-substitution may have failed only for want of a special function in the term type: once
         # through Expr, keeping the answer when it has special terms
@@ -469,6 +487,16 @@ rs_value_continuous(s::ScaledRootSum, xk::String, a::Real) = term_value(s.factor
 # map `back`, a RootSum with its variable standing for back(x) (`arg`), a TermRootSum with `back` applied to its
 # coefficients; nothing when a part cannot be substituted (an `ExprTerm`)
 # steps RK, HT for a radical refused for its radicand, or nothing
+# step HS for sinᵖ cosʳ, through Expr when the term type has no ₂F₁ (SymEngine)
+function trig_symbolic_or_fallback(f, x; build, lift, verify::Bool)
+    try
+        try_trig_symbolic(f, x; build = build, lift = lift, verify = verify)
+    catch e
+        (e isa MethodError && any(fn -> e.f === fn, SPECIAL_FNS) && !(f isa Expr)) || rethrow()
+        integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
+    end
+end
+
 function radicand_fallbacks(f, x; build, lift, verify::Bool)
     @nospecialize f x
     g = split_radicand_content(f, x, string(x), build, lift)

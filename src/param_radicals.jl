@@ -267,7 +267,7 @@ function param_value(c, consts)
     syms = sort([g for g in consts if g.kind === :sym]; by = g -> string(g.term))
     names = [string(g.term) for g in syms]
     sgs = [oracle_sym_sign(g) for g in syms]           # (outside the try: the oracle's special case is thrown)
-    eb = Builder((op, args...) -> Expr(:call, nameof(op), args...), identity, :x, consts)
+    eb = Builder(expr_build, identity, :x, consts)
     function ev(e)
         if e isa Expr && e.head === :call
             return op_function(e)(map(ev, e.args[2:end])...)

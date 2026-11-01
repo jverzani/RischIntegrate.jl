@@ -2476,3 +2476,108 @@ end
         end
     end
 end
+
+# SymPy #30412, #30413: an operation without a function of that name (loggamma, digamma, polygamma, lambertw from
+# SpecialFunctions' names) is a Symbol for the internal Expr builder; merge_exp_powers no longer rebuilds unchanged
+# terms (SymEngine has no operation for lambertw(x)). These are refused, not a MethodError
+@testset "special-function names refused cleanly" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    for f in (:(loggamma(x)), :(digamma(x)), :(polygamma(1, x)), :(cosint(x) * besselj(0, 2 * sqrt(7x))), :(lambertw(x ^ 2)))
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(f, :x; build = build, lift = identity)
+    end
+    x = SymEngine.symbols("x")
+    for s in ("loggamma(x)", "digamma(x)", "polygamma(1, x)", "lambertw(x^2)")
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(SymEngine.Basic(s), x)
+    end
+end
+
+# step LW: x = (w eʷ - b)/a for W(a x + b), then eʷ = (a x + b)/W; ∫ W(x) = x (W - 1 + 1/W). W by Newton
+@testset "Lambert W (step LW)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    function W(y)
+        w = log1p(y)
+        for _ in 1:60
+            w -= (w * exp(w) - y) / (exp(w) * (1 + w))
+        end
+        w
+    end
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(c = 1.3), :(lambertw = $W)), e))
+    for f in (:(lambertw(x)), :(x * lambertw(x)), :(lambertw(x) / x), :(lambertw(x) ^ 2), :(1 / (1 + lambertw(x))),
+              :(sin(lambertw(x))), :(lambertw(c * x)), :(x * lambertw(c * x + 3)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 1.7, 5.0)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    @test string(Risch.risch_integrate(:(lambertw(x)), :x; build = build, lift = identity)) ==
+          "(1 + -1 * lambertw(x) + lambertw(x) ^ 2) * (x / lambertw(x))"
+    # SymEngine (lambertw without an operation there)
+    x = SymEngine.symbols("x")
+    @test occursin("lambertw", string(Risch.risch_integrate(SymEngine.Basic("lambertw(x)"), x)))
+end
+
+# SymPy #29882: sinᵖ cosʳ with a fractional exponent, not elementary (an elliptic integral after step HT, or a
+# radical refused beside a symbolic exponent): the ₂F₁ of step HS, u = sin x. ₂F₁ by its series (|z| < 1)
+@testset "fractional powers of sin and cos (step HS)" begin
+    Risch.HYP_ANSWERS[] = true
+    try
+        build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+        F21(a, b, c, z) = sum(prod((a + j) * (b + j) / ((c + j) * (1 + j)) for j in 0:k-1; init = 1.0) * z^k for k in 0:6000)
+        ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(m = 1.7), :(_₂F₁ = $F21)), e))
+        for f in (:(sin(x) ^ $(7 // 2) * cos(x) ^ $(3 // 2)), :(sin(x) ^ $(3 // 2)), :(sin(x) ^ $(7 // 2) * cos(x) ^ m),
+                  :(sin(x) ^ $(5 // 2) * cos(x) ^ 2))
+            F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+            for x0 in (0.3, 0.9, 1.3)
+                @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+            end
+        end
+        x = SymEngine.symbols("x")
+        @test occursin("₂F₁", string(Risch.risch_integrate(sin(x) ^ (3 // 2), x)))
+    finally
+        Risch.HYP_ANSWERS[] = false
+    end
+end
+
+# SymPy #29909: A(x) erf(ax + b) by parts with Q = ∫ A, then ∫ Q e^(∓u²) with Q's exponentials merged
+# (eˣ e^(-x²) as e^(x - x²), whose erf term step SF finds)
+@testset "erf and erfi times a factor (by parts)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7), :(erf = $(SpecialFunctions.erf)),
+                                                :(erfi = $(SpecialFunctions.erfi))), e))
+    for f in (:(exp(x) * erf(x)), :(x * exp(x) * erf(x)), :(x * erf(x)), :(exp(-x) * erfi(x)), :(x * exp(x) * erfi(2x)),
+              :(exp(a * x) * erf(x)), :(exp(2x) * erf(x) + x))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (-0.7, 0.4, 1.3)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(erf(x) / x), :x; build = build, lift = identity)
+end
+
+# SymPy #30167, step XP: P(x) R(eˣ) by parts with Q = ∫ R, then ∫ P′ Q (log(1 + c eᵏˣ): Li₂). x²/(eˣ - 1) needs Li₃
+@testset "polynomial times a rational function of exp (step XP)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x0))), :(li2 = z -> $(PolyLog.li2)(complex(z)))), e))
+    for f in (:(x / (exp(x) - 1)), :(x / (exp(x) + 1)), :((2x + 1) / (exp(x) - 1)), :(x / (exp(2x) + 3)), :(x * exp(x) / (exp(x) + 1)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("li2", string(F))
+        for x0 in (0.4, 1.3, 2.2)
+            @test isapprox(real((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6), real(ev(f, x0)); rtol = 1e-5)
+        end
+    end
+    @test_throws Risch.NotElementary Risch.risch_integrate(:(x ^ 2 / (exp(x) - 1)), :x; build = build, lift = identity)
+end
+
+# SymPy #30756: a power with base 0 is refused with log 0 undefined, not "the negative constant 0"
+@testset "power with base 0: the refusal's message" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    err = try Risch.risch_integrate(:(0 ^ (x - 1)), :x; build = build, lift = identity) catch e; e end
+    @test err isa Risch.RischNotImplemented && occursin("constant 0 is undefined", err.msg) && !occursin("negative", err.msg)
+end
+
+# a part of an IntegralWithRootSums with a leading minus is printed after " - " (∫ x/sin x, SymEngine)
+@testset "IntegralWithRootSums printing: minus signs" begin
+    x = SymEngine.symbols("x")
+    s = string(Risch.risch_integrate(x / sin(x), x))
+    @test occursin("- clausen2", s) && !occursin("+ -1 * clausen2", s)
+end
