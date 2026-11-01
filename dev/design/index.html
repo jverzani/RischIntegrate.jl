@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=5ae1e880">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=bdc439b0">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -117,7 +117,7 @@
 </tr>
 <tr>
 <td style="text-align:left">special functions</td>
-<td style="text-align:left"><code class="md-code-inline">special_functions.jl</code>, <code class="md-code-inline">dilogarithms.jl</code>, <code class="md-code-inline">exp_trig_polynomials.jl</code>, <code class="md-code-inline">clausen.jl</code>, <code class="md-code-inline">polylog_parts.jl</code>, <code class="md-code-inline">hypergeometric.jl</code>, <code class="md-code-inline">hyp_symbolic.jl</code>, <code class="md-code-inline">exp_trig_hyp.jl</code>, <code class="md-code-inline">gamma_terms.jl</code>, <code class="md-code-inline">special_fallback.jl</code></td>
+<td style="text-align:left"><code class="md-code-inline">special_functions.jl</code>, <code class="md-code-inline">dilogarithms.jl</code>, <code class="md-code-inline">exp_trig_polynomials.jl</code>, <code class="md-code-inline">clausen.jl</code>, <code class="md-code-inline">polylog_parts.jl</code>, <code class="md-code-inline">hypergeometric.jl</code>, <code class="md-code-inline">hyp_symbolic.jl</code>, <code class="md-code-inline">exp_trig_hyp.jl</code>, <code class="md-code-inline">gamma_terms.jl</code>, <code class="md-code-inline">lambertw.jl</code>, <code class="md-code-inline">special_fallback.jl</code></td>
 </tr>
 <tr>
 <td style="text-align:left">algebraic integrands</td>
@@ -282,8 +282,8 @@
 </tr>
 <tr>
 <td style="text-align:left">erf</td>
-<td style="text-align:left"><span class="md-math md-math-inline">\(\int \operatorname{erf}(ax + b)\)</span></td>
-<td style="text-align:left">by parts</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(\int A(x) \operatorname{erf}(ax + b)\)</span> (or <code class="md-code-inline">erfi</code>), <span class="md-math md-math-inline">\(A\)</span> free of <code class="md-code-inline">erf</code></td>
+<td style="text-align:left">by parts with <span class="md-math md-math-inline">\(Q = \int A\)</span>: <span class="md-math md-math-inline">\(Q \operatorname{erf}(u) - (2a/\sqrt π)\int Q e^{-u^2}\)</span>, the exponentials of <span class="md-math md-math-inline">\(Q\)</span> merged into <span class="md-math md-math-inline">\(e^{-u^2}\)</span> (<span class="md-math md-math-inline">\(\int e^x \operatorname{erf} x\)</span>)</td>
 </tr>
 <tr>
 <td style="text-align:left">IT</td>
@@ -505,6 +505,18 @@
 <td style="text-align:left"><span class="md-math md-math-inline">\(u = \tan t\)</span></td>
 </tr>
 <tr>
+<td style="text-align:left">XP</td>
+<td style="text-align:left"><code class="md-code-inline">NotElementary</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(P(x) R(e^{kx})\)</span>, <span class="md-math md-math-inline">\(P\)</span> a polynomial, <span class="md-math md-math-inline">\(x\)</span> nowhere else</td>
+<td style="text-align:left">by parts with <span class="md-math md-math-inline">\(Q = \int R\)</span> elementary: <span class="md-math md-math-inline">\(P Q - \int P&#39; Q\)</span> (<span class="md-math md-math-inline">\(\int x/(e^x - 1)\)</span> with <span class="md-math md-math-inline">\(\operatorname{Li}_2\)</span>)</td>
+</tr>
+<tr>
+<td style="text-align:left">LW</td>
+<td style="text-align:left"><code class="md-code-inline">RischNotImplemented</code></td>
+<td style="text-align:left">Lambert&#39;s <span class="md-math md-math-inline">\(W(ax + b)\)</span>, one argument</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(x = (w e^w - b)/a\)</span>, <span class="md-math md-math-inline">\(dx = (1 + w) e^w/a\,dw\)</span>, integrated in <span class="md-math md-math-inline">\(w\)</span>, then <span class="md-math md-math-inline">\(e^{kw} = ((ax + b)/W)^k\)</span>: <span class="md-math md-math-inline">\(\int W(x) = x(W - 1 + 1/W)\)</span></td>
+</tr>
+<tr>
 <td style="text-align:left">AP</td>
 <td style="text-align:left">any</td>
 <td style="text-align:left"><span class="md-math md-math-inline">\(A \cdot L^k\)</span> with <span class="md-math md-math-inline">\(L\)</span> an inverse function or <code class="md-code-inline">log</code></td>
@@ -512,8 +524,8 @@
 </tr>
 <tr>
 <td style="text-align:left">HS</td>
-<td style="text-align:left"><code class="md-code-inline">NotElementary</code></td>
-<td style="text-align:left"><span class="md-math md-math-inline">\(x^m(α + βx^n)^q\)</span>, <span class="md-math md-math-inline">\(\sin^p \cos^r\)</span>, symbolic exponents</td>
+<td style="text-align:left"><code class="md-code-inline">NotElementary</code>; for <span class="md-math md-math-inline">\(\sin^p \cos^r\)</span> also a radical refused for its radicand, or not elementary after step HT</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(x^m(α + βx^n)^q\)</span>, <span class="md-math md-math-inline">\(\sin^p \cos^r\)</span>, symbolic exponents (for <span class="md-math md-math-inline">\(\sin^p \cos^r\)</span> also fractional ones: <span class="md-math md-math-inline">\(\sin^{7/2} x \cos^{3/2} x\)</span>)</td>
 <td style="text-align:left"><span class="md-math md-math-inline">\({}_2F_1\)</span> terms</td>
 </tr>
 <tr>
@@ -920,6 +932,16 @@
 <td style="text-align:left">polylogarithms by parts</td>
 </tr>
 <tr>
+<td style="text-align:left">XP</td>
+<td style="text-align:left"><code class="md-code-inline">polylog_parts.jl</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(P(x) R(e^{kx})\)</span> by parts</td>
+</tr>
+<tr>
+<td style="text-align:left">LW</td>
+<td style="text-align:left"><code class="md-code-inline">lambertw.jl</code></td>
+<td style="text-align:left">Lambert&#39;s <span class="md-math md-math-inline">\(W(ax + b)\)</span> by <span class="md-math md-math-inline">\(x = (w e^w - b)/a\)</span></td>
+</tr>
+<tr>
 <td style="text-align:left">MR, PW, NR</td>
 <td style="text-align:left"><code class="md-code-inline">monomial_radicals.jl</code></td>
 <td style="text-align:left">radicals of functions of a monomial; inner linear radicals</td>
@@ -1104,6 +1126,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=5ae1e880"></script>
+  <script src="../assets/materialdocs.js?v=bdc439b0"></script>
 </body>
 </html>
