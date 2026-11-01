@@ -182,6 +182,16 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
 end
 const EXPR_RETRY = Ref(false)                           # no nested Expr retries
 const RISCH_DEPTH = Ref(0)                              # nested risch_integrate calls (step RK: the outermost only)
+# the integral of g, from a step that only rescales or shifts (steps IT, SL), at the depth of the caller: ∫ c g
+# and ∫ g(e + f x) get the outermost call's fallbacks (steps RK, HT, RM) as ∫ g does
+function as_outer(fn)
+    RISCH_DEPTH[] -= 1
+    try
+        fn()
+    finally
+        RISCH_DEPTH[] += 1
+    end
+end
 
 function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
@@ -195,7 +205,7 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     cg = split_free_factor(f, x, xk, build, lift)
     if cg !== nothing
         c, g, bd = cg
-        G = risch_integrate(g, x; build = build, lift = lift, verify = verify)
+        G = as_outer(() -> risch_integrate(g, x; build = build, lift = lift, verify = verify))
         leaf_rational(c) == 1 && return G
         G isa IntegralWithRootSums && return IntegralWithRootSums(mk(bd, :*, c, G.elementary),
                                                                  Any[ScaledRootSum(c, rs) for rs in G.rootsums], G.var)
@@ -444,8 +454,10 @@ function split_free_factor(f, x, xk::String, build, lift)
     (safe_iscall(f) && !isempty(arguments(f))) || return nothing
     n = opname(operation(f))
     n in (:*, :/) || return nothing
-    factors(t) = (safe_iscall(t) && !isempty(arguments(t)) && opname(operation(t)) === :*) ? arguments(t) : Any[t]
-    nums, dens = n === :* ? (Any[arguments(f)...], Any[]) :
+    # (nested products flattened: (√d √(sec x)) (b^(5/2) tan(x)^(5/2)) from step RK, as Expr writes it)
+    factors(t) = (safe_iscall(t) && !isempty(arguments(t)) && opname(operation(t)) === :*) ?
+                 Any[s for a in arguments(t) for s in factors(a)] : Any[t]
+    nums, dens = n === :* ? (factors(f), Any[]) :
                  length(arguments(f)) == 2 ? (Any[factors(arguments(f)[1])...], Any[factors(arguments(f)[2])...]) :
                  return nothing
     isfree(t) = !has_leaf(t, xk) && (has_symbol(t) || has_high_root(t))
@@ -678,7 +690,7 @@ function integrate_linear_shift(f, x; build = nothing, lift = nothing, verify::B
     g = mk(bd, :*, mk(bd, :^, a, bd.lift(-1)), walk(f))
     LINEAR_SHIFT[] = true
     G = try
-        risch_integrate(g, x; build = build, lift = lift, verify = verify)
+        as_outer(() -> risch_integrate(g, x; build = build, lift = lift, verify = verify))
     finally
         LINEAR_SHIFT[] = false
     end
