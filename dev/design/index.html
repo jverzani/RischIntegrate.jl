@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=bb775aea">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=c5164fd9">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -586,7 +586,7 @@
 <td style="text-align:left">RK</td>
 <td style="text-align:left">a radical refused for its radicand, in the outermost call</td>
 <td style="text-align:left"><span class="md-math md-math-inline">\((cV)^e\)</span> with a factor <span class="md-math md-math-inline">\(c\)</span> free of <code class="md-code-inline">x</code>, with a parameter, in every summand of the radicand</td>
-<td style="text-align:left"><span class="md-math md-math-inline">\(c^e V^e\)</span> for <span class="md-math md-math-inline">\(c &gt; 0\)</span> (<span class="md-math md-math-inline">\((-c)^e(-V)^e\)</span> for <span class="md-math md-math-inline">\(c &lt; 0\)</span>; the sign from step SO or the positive parameter values), <span class="md-math md-math-inline">\((t^k)^e = t^{ke}\)</span> for an integer <span class="md-math md-math-inline">\(ke\)</span> and <span class="md-math md-math-inline">\(t &gt; 0\)</span>. Then <span class="md-math md-math-inline">\(V\)</span> has rational coefficients: <span class="md-math md-math-inline">\(\sqrt{a + a\sin x} = \sqrt a \sqrt{1 + \sin x}\)</span> for step PW. Last, and not inside another call, so that a substitution refused inside (steps AL, US) leaves the next route its chance</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(c^e V^e\)</span> for <span class="md-math md-math-inline">\(c &gt; 0\)</span> (<span class="md-math md-math-inline">\((-c)^e(-V)^e\)</span> for <span class="md-math md-math-inline">\(c &lt; 0\)</span>; the sign from step SO or the positive parameter values), <span class="md-math md-math-inline">\((t^k)^e = t^{ke}\)</span> for an integer <span class="md-math md-math-inline">\(ke\)</span> and <span class="md-math md-math-inline">\(t &gt; 0\)</span>. Then <span class="md-math md-math-inline">\(V\)</span> has rational coefficients: <span class="md-math md-math-inline">\(\sqrt{a + a\sin x} = \sqrt a \sqrt{1 + \sin x}\)</span> for step PW. Last, and not inside another call, so that a substitution refused inside (steps AL, US) leaves the next route its chance. A call from a step that only shifts or rescales (SL, IT) counts as the outermost one: <span class="md-math md-math-inline">\(\int (d\sec(e + fx))^{1/2}(b\tan(e + fx))^{5/2}\)</span> by steps SL, RK, IT and HT. (Step RK&#39;s own call stays nested, so that step RM, not HT, takes <span class="md-math md-math-inline">\((a + a\sin x)^{3/2}(c - c\sin x)^{7/2}\)</span>)</td>
 </tr>
 <tr>
 <td style="text-align:left">HT</td>
@@ -1126,6 +1126,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=bb775aea"></script>
+  <script src="../assets/materialdocs.js?v=c5164fd9"></script>
 </body>
 </html>
