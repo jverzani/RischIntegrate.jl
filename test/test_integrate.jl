@@ -1557,6 +1557,20 @@ end
     end
 end
 
+# steps SL and IT only shift or rescale: the integral after them gets the outermost call's fallbacks (steps RK,
+# HT, RM), as the integrand before them does; step IT sees the constants of the nested products step RK writes
+@testset "the outermost fallbacks after steps SL and IT" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(b = 0.7), :(d = 1.3), :(e = 0.4), :(f = 1.1)), e))
+    for f in (:(sqrt(sec(e + f * x)) * tan(e + f * x) ^ (5 // 2)), :(sqrt(d * sec(x)) * (b * tan(x)) ^ (5 // 2)),
+              :((d * sec(e + f * x)) ^ (1 // 2) * (b * tan(e + f * x)) ^ (5 // 2)), :(cos(x) ^ (3 // 2) * (b * cos(x)) ^ (5 // 2)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 0.9)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
 # step BQ4: an even quartic x⁴ + b x² + c (b² < 4c) whose residues need nested radicals: (x² ± r x + q),
 # q = √c, r = √(2q - b), s = √(2q + b), atans and logs continuous on ℝ
 @testset "even quartics with nested real forms (step BQ4)" begin
