@@ -1442,6 +1442,20 @@ end
                                                                 build = build, lift = identity)
 end
 
+# step US with u = sin x: a fractional power is not taken inside a product or quotient of factors with x,
+# √(sin x/cos² x) = √(sin x)/|cos x| (it gave √(sin x)/cos x, the wrong sign where cos x < 0); a power of a
+# lone factor still is. Checked where cos x < 0 too (sin x > 0: f real)
+@testset "fractional powers in step US keep the sign" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0)), e))
+    for f in (:(sqrt(sin(x) / cos(x) ^ 2)), :(sqrt(sin(x) * cos(x) ^ 2)), :(sin(x) ^ (3 / 2) * cos(x)), :(cos(x) / sqrt(sin(x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.5, 1.2, 2.0, 2.8)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
 # step SQ, u = c s²: √u/s = ±√c on each interval; with parameters in f, the two branches (sample 133-139:
 # (c x²)^(3/2) (a + b x)/x after step RK's √c). Checked on both sides of 0
 @testset "constant times a square, with parameters (step SQ)" begin
