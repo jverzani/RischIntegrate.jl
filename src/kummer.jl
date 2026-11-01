@@ -258,6 +258,11 @@ function kum_component(bs::Vector{QX}, r::Vector{Q}, g::QXF, θterm; needlog::Bo
                   "a nonzero differential without residues")
 end
 
+# A base bₖ with an even multiplicity mₖ in a radicand, (bₖ^mₖ)^e = |bₖ|^(e mₖ), and an odd integer part
+# ⌊e mₖ⌋: the integrand is real on both sides of bₖ = 0, but bₖ^⌊e mₖ⌋ is right only where bₖ > 0. With
+# pₖ = ±1 for sign(bₖ), f = Σ_S σ^S f_S (σ^S = Π_{k∈S} σₖ, σₖ = √(bₖ²)/bₖ locally constant), f_S the
+# Hadamard transform of the integrands f_p for each sign pattern p; ∫ f = Σ_S σ^S ∫ f_S
+# (√((1 - x²)²/(1 + x²)²) = σ (x² - 1)/(x² + 1), σ = sign(x² - 1)).
 function integrate_kummer(f, x, rads; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     xk = string(x)
@@ -271,18 +276,63 @@ function integrate_kummer(f, x, rads; build = nothing, lift = nothing, verify::B
     bs = kum_basis(vcat(QX[u.num for u in us], QX[u.den for u in us]))
     isempty(bs) && throw(RischNotImplemented("only constant radicands"))
     nb = length(bs)
-    rad = function (ue, e)
+    # the exponents of u^e over the bases, and the bases whose sign matters (see above; lc bₖ > 0, so a base
+    # without real roots is positive)
+    changes = [real_root_count(b, nothing, nothing) > 0 for b in bs]
+    function rad_parts(ue, e)
         cn, mn = kum_exponents(bs, ue.num)
         cd, md = kum_exponents(bs, ue.den)
         c, m = cn / cd, mn .- md
-        ce = iszero(c) ? nothing : c > 0 ? rat_root(c^numerator(e), Int(denominator(e))) : nothing
-        ce === nothing && throw(RischNotImplemented("the constant factor $c of a radicand: c^$e is not rational"))
         s = e .* m
         fl = floor.(Int, s)
+        c, s, fl, [k for k in 1:nb if changes[k] && m[k] != 0 && iseven(m[k]) && isodd(fl[k])]
+    end
+    signed = sort!(unique!(reduce(vcat, (rad_parts(ue, e)[4] for (ue, (e, _)) in zip(us, rads)); init = Int[])))
+    length(signed) > 3 && throw(RischNotImplemented("radicals with more than three sign factors"))
+    rad(p) = function (ue, e)
+        c, s, fl, sg = rad_parts(ue, e)
+        ce = iszero(c) ? nothing : c > 0 ? rat_root(c^numerator(e), Int(denominator(e))) : nothing
+        ce === nothing && throw(RischNotImplemented("the constant factor $c of a radicand: c^$e is not rational"))
         g = kconst(ce) * prod((frac(bs[k])^fl[k] for k in 1:nb if fl[k] != 0); init = one(QXF))
+        isodd(count(k -> p[k] < 0, sg)) && (g = -g)            # (bₖ^mₖ)^e = pₖ bₖ^⌊e mₖ⌋ θ: one sign per such base
         KumEl(Dict(s .- fl => g))
     end
-    el = parse_kum(f, xk, bs, rad)
+    if isempty(signed)
+        return integrate_kum_el(parse_kum(f, xk, bs, rad(ones(Int, nb))), bs, b0, xk, verify)
+    end
+    pats = collect(Iterators.product(ntuple(_ -> (1, -1), length(signed))...))
+    els = map(pats) do pt
+        p = ones(Int, nb)
+        foreach(((k, v),) -> (p[k] = v), zip(signed, pt))
+        parse_kum(f, xk, bs, rad(p))
+    end
+    σs = Any[mk(b0, :/, mk(b0, :sqrt, mk(b0, :^, poly_term(b0, bs[k]), b0.lift(2))), poly_term(b0, bs[k]))
+             for k in signed]
+    terms, rss = Any[], Any[]
+    for S in Iterators.product(ntuple(_ -> (false, true), length(signed))...)
+        fS = kum_zero()                                 # f_S = 2^(-r) Σ_p (Π_{k∈S} pₖ) f_p
+        for (pt, el) in zip(pats, els)
+            w = prod((pt[j] for j in eachindex(S) if S[j]); init = 1)
+            fS = kum_add(fS, w > 0 ? el : kum_neg(el))
+        end
+        fS = KumEl(Dict(e => g * kconst(Q(1, 2^length(signed))) for (e, g) in fS.t))
+        isempty(fS.t) && continue
+        F = integrate_kum_el(fS, bs, b0, xk, verify)
+        σ = Any[σs[j] for j in eachindex(S) if S[j]]
+        sc = isempty(σ) ? nothing : length(σ) == 1 ? σ[1] : mk(b0, :*, σ...)
+        if F isa IntegralWithRootSums
+            append!(rss, sc === nothing ? F.rootsums : Any[ScaledRootSum(sc, r) for r in F.rootsums])
+            F = F.elementary
+        end
+        push!(terms, sc === nothing ? F : mk(b0, :*, sc, F))
+    end
+    E = isempty(terms) ? b0.lift(0) : length(terms) == 1 ? terms[1] : mk(b0, :+, terms...)
+    isempty(rss) ? E : IntegralWithRootSums(E, rss, xk)
+end
+
+# ∫ of a Kummer element Σ g_e θ_e, component by component
+function integrate_kum_el(el::KumEl, bs::Vector{QX}, b0::Builder, xk::String, verify::Bool)
+    nb = length(bs)
     terms = Any[]
     rss = Any[]
     for (e, g) in sort!(collect(el.t); by = first)
