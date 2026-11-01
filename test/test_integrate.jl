@@ -1160,6 +1160,14 @@ let
     sy_tests(x, p, q, r, s1, s2, (e, a) -> real(ComplexF64(SymEngine.N(SymEngine.subs(e, x => a, p => 0.2)))), "SymEngine")
 end
 
+# residues of a quartic over exactly MAX_ROOTSUM_GENS = 4 parameters are refused too, before the resultant (it
+# took minutes, and the subresultant chain did not finish): Rubi sample 929, after step PR
+@testset "a quartic over four parameters is refused quickly" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(1 / ((a + c * x ^ 2) ^ (3 // 2) * (d + e * x + f * x ^ 2))), :x;
+                                                                build = build, lift = identity)
+end
+
 # step SO: the caller's sign oracle decides the signs of parameter expressions
 @testset "SymEngine: sign oracle (step SO)" begin
     SymEngine.@vars x a b

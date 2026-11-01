@@ -215,6 +215,10 @@ end
 function root_sums(rest::UPoly{C}, R::UPoly{C}, D::UPoly{C}, var::String; arg = nothing) where {C}
     cdepth(C) > MAX_ROOTSUM_GENS && degree(rest) > 2 && throw(RischNotImplemented(
         "a RootSum over more than $MAX_ROOTSUM_GENS symbolic constants (parameters)"))
+    # (a quartic or higher over MAX_ROOTSUM_GENS parameters: the subresultant chain does not finish, sample
+    # 929: 1/((a + c x²)^(3/2) (d + e x + f x²)))
+    cdepth(C) >= MAX_ROOTSUM_GENS && degree(rest) > 3 && throw(RischNotImplemented(
+        "a RootSum of degree $(degree(rest)) over $(cdepth(C)) symbolic constants (parameters)"))
     P = UPoly{C}
     dD = deriv(D)
     n = max(length(R.c), length(dD.c))

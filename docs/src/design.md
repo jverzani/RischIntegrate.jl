@@ -126,7 +126,7 @@ The generators are treated as algebraically independent. That is exact for one o
 that meets a constant needing a new generator throws `NewConstants` with the longer list, and the
 tower is built again over the larger field. Parameters nest the field one level deeper each, so
 their number is capped (`MAX_PARAMS`); residues of a denominator of degree above 2 over more than
-`MAX_ROOTSUM_GENS` generators are refused, since the log part does not finish. Resultants over
+`MAX_ROOTSUM_GENS` generators, or of degree above 3 over exactly that many, are refused, since the log part does not finish. Resultants over
 these fields are fraction-free (step FR): the coefficients are scaled into ``B[t_1, …, t_k]`` and
 the subresultant PRS runs there, with exact divisions; Euclid over ``B(t_1, …, t_k)`` normalises
 nested fractions by gcds at every step. For the residues only a constant multiple of
