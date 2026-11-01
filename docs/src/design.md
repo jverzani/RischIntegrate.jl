@@ -175,7 +175,13 @@ into a product of the facts' expressions and the parameters. There is no linear 
 
 Logarithms in answers are `log(w)`, real where ``w > 0``; on an interval where ``w < 0`` such a term
 ``c \log w`` differs from a real antiderivative by the constant ``iπc`` (``∫ x/(x^2 - 1) =
-\tfrac12 \log(x^2 - 1)``, as in Mathematica). Steps RL, EL and EC write ``\log|w|`` where the
+\tfrac12 \log(x^2 - 1)``, as in Mathematica). The tower itself takes ``\log(-w)`` as ``\log w`` when both occur (the
+constant ``iπ`` dropped); inside a power ``w^k = e^{k \log w}`` with ``k \notin \mathbb{Z}`` that would lose a
+factor ``e^{iπk}``, so such a power is refused: ``(a + bx)^n/(-a - bx)^n``. A radical of a constant with a
+parameter, ``\sqrt{-1/n^2}``, is an opaque constant whose square the field does not know; an answer that
+divides by ``1/n^2 + \sqrt{-1/n^2}^2`` (a hidden zero) is caught numerically and refused (step HZ: with such
+a radical in the integrand, the outermost answer is evaluated at three generic points, and refused when it is
+``10^8`` times larger than the integrand at two of them). Steps RL, EL and EC write ``\log|w|`` where the
 real domain of a substitution is known. With an oracle, the arguments of the logs that are summands
 of the answer are asked about too (`oracle_real_logs`, after the answer is checked): `-1`, on the
 caller's domain (assumptions about ``x``), gives ``\log(-w)``, real there (``\tfrac12 \log(1 -
@@ -465,7 +471,7 @@ order:
 | XP | `NotElementary` | ``P(x) R(e^{kx})``, ``P`` a polynomial, ``x`` nowhere else | by parts with ``Q = \int R`` elementary: ``P Q - \int P' Q`` (``\int x/(e^x - 1)`` with ``\operatorname{Li}_2``) |
 | LW | `RischNotImplemented` | Lambert's ``W(ax + b)``, one argument | ``x = (w e^w - b)/a``, ``dx = (1 + w) e^w/a\,dw``, integrated in ``w``, then ``e^{kw} = ((ax + b)/W)^k``: ``\int W(x) = x(W - 1 + 1/W)`` |
 | AP | any | ``A \cdot L^k`` with ``L`` an inverse function or `log` | by parts, ``\int A L^k = Q L^k - k\int Q L^{k-1} L'`` |
-| HS | `NotElementary`; for ``\sin^p \cos^r`` also a radical refused for its radicand, or not elementary after step HT | ``x^m(α + βx^n)^q``, ``\sin^p \cos^r``, symbolic exponents (for ``\sin^p \cos^r`` also fractional ones: ``\sin^{7/2} x \cos^{3/2} x``) | ``{}_2F_1`` terms |
+| HS | `NotElementary`; for ``\sin^p \cos^r`` also a radical refused for its radicand, or not elementary after step HT | ``x^m(α + βx^n)^q``, ``\sin^p \cos^r``, symbolic exponents (for ``\sin^p \cos^r`` also fractional ones: ``\sin^{7/2} x \cos^{3/2} x``) | ``{}_2F_1`` terms; ``α^q (1 + βx^n/α)^q = (α + βx^n)^q`` is used for ``α > 0`` (a positive rational, or a product of parameters), else the ratio ``(α + βx^n)^q/(1 + βx^n/α)^q``, constant on each interval, as Rubi writes it (``α = -a/b`` after a shift) |
 | EH | `NotElementary` | ``e^{ax} R(\cos bx, \sin bx)`` with the poles of ``R(E)``, ``E = e^{ibx}``, in ``ℚ(i)`` | partial fractions in ``E``. Each pole gives ``\int e^{ax}/(1 - E/r)^k = e^{ax}\,{}_2F_1(k, s; s+1; E/r)/a`` with ``s = a/(ib)``. The real part is printed with `rehyp2f1` and `imhyp2f1` (``\int e^x/(1 + \cos x)``) |
 | H3, H4 | `NotElementary` | ``x^s e^{bx + d}``, ``x^s \sin``, ``x^s \cos`` | incomplete ``Γ`` terms |
 | US | any | ``f = G(u)\,u'`` for a subterm ``u`` (and the partner ``\sinh v`` of ``\cosh v``, ``\sin v`` of ``\cos v``, …) | derivative-divides, below. With ``u = \sinh v``, even powers of ``\cosh v`` are ``(1 + u^2)^k``, and so on. A fractional power goes inside only a lone factor with ``x``: ``\sqrt{\sin x/\cos^2 x} = \sqrt{\sin x}/\lvert\cos x\rvert`` is refused |

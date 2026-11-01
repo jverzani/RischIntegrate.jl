@@ -1456,6 +1456,29 @@ end
     end
 end
 
+# answers that were wrong (sample 206, 2228, 2230, 129): (-w)ⁿ beside wⁿ, where the tower's log(-w) = log w
+# drops iπ (a factor e^(iπn) in the power); a hidden zero 1/n² + √(-1/n²)², the opaque radical's square not
+# known to the field (step HZ); and step HS's α^q (1 - z)^q for α < 0 (after a shift, α = -a/b)
+@testset "refused instead of wrong: (-w)ⁿ, hidden zeros; step HS for α < 0" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    I(f) = Risch.risch_integrate(f, :x; build = build, lift = identity)
+    @test_throws Risch.RischNotImplemented I(:(x ^ 2 * (a + b * x) ^ n / (-a - b * x) ^ n))
+    @test_throws Risch.RischNotImplemented I(:(sin(a + log(c * x ^ n) * sqrt(-1 / (4 * n ^ 2))) ^ 2))
+    f = :(x ^ m / (a + b * x) ^ (3 // 2))
+    isdefined(Main, :_₂F₁) || Main.eval(:(const _₂F₁ = $(Risch._₂F₁)))
+    hyp = Risch.HYP_ANSWERS[]
+    Risch.HYP_ANSWERS[] = true
+    try
+        F = I(f)
+        for x0 in (1.37, 2.71, -0.43, -1.63)
+            ev(e, x1) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x1))), :(a = 1.13), :(b = 2.13), :(m = 3.13)), e))
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    finally
+        Risch.HYP_ANSWERS[] = hyp
+    end
+end
+
 # step SQ, u = c s²: √u/s = ±√c on each interval; with parameters in f, the two branches (sample 133-139:
 # (c x²)^(3/2) (a + b x)/x after step RK's √c). Checked on both sides of 0
 @testset "constant times a square, with parameters (step SQ)" begin
@@ -2173,7 +2196,7 @@ end
     Risch.HYP_ANSWERS[] = true
     try
         build(op, args...) = Expr(:call, nameof(op), args...)
-        Main.eval(:(const _₂F₁ = $(Risch._₂F₁)))
+        isdefined(Main, :_₂F₁) || Main.eval(:(const _₂F₁ = $(Risch._₂F₁)))
         subst(ex, d) = ex isa Symbol ? get(d, ex, ex) : ex isa Expr ? Expr(ex.head, (subst(a, d) for a in ex.args)...) : ex
         vals = Dict{Symbol,Any}(:m => 0.37, :a => 1.3, :q => -0.6, :b => 0.7)
         ev(e, x0) = (vals[:x] = x0; Core.eval(Main, subst(e, vals)))

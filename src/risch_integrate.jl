@@ -47,6 +47,20 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             err isa SignOracleZero ? throw(RischNotImplemented(err.msg)) : rethrow()
         end
     end
+    # step HZ: with an opaque constant radical, the outermost answer evaluated numerically; a hidden zero (a denominator that vanishes identically
+    # by a relation the field does not know, √(-1/n²)² = -1/n² for an opaque constant radical: sample 2228)
+    # shows as an answer orders of magnitude larger than the integrand at generic points, and is refused
+    if verify && RISCH_DEPTH[] == 0 && !OUTER_CHECK[] && has_opaque_radical(f, string(x))
+        OUTER_CHECK[] = true
+        F = try
+            risch_integrate(f, x; build = build, lift = lift, verify = verify)
+        finally
+            OUTER_CHECK[] = false
+        end
+        F isa IntegralWithRootSums || !hidden_zero(f, F, string(x)) || throw(RischNotImplemented(
+            "the answer has a denominator that vanishes identically (a relation between constants that the field does not know)"))
+        return F
+    end
     check_leaves(f, string(x))                                         # step WR
     RISCH_DEPTH[] += 1
     try
@@ -179,6 +193,26 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
     finally
         RISCH_DEPTH[] -= 1
     end
+end
+const OUTER_CHECK = Ref(false)                          # step HZ: the outermost call checks its answer
+# a radical of a constant with a parameter (√(-1/n²)), which the tower takes as an opaque constant
+has_opaque_radical(t, xk::String) = safe_iscall(t) && !isempty(arguments(t)) &&
+    ((rp = radical_parts(t); rp !== nothing && !has_x(rp[2], xk) && has_param(rp[2], xk)) || any(a -> has_opaque_radical(a, xk), arguments(t)))
+# step HZ: |G| > 10⁸ max(1, |f|) at two of three generic points where f is finite (parameters at the fixed
+# values of `numeric_evaluator`); false when G cannot be evaluated
+function hidden_zero(f, G, xk::String)
+    ev = numeric_evaluator(xk, f, G)
+    big = 0
+    for x0 in (0.41, 1.21, 0.27)
+        fv, gv = try
+            ev(f, x0), ev(G, x0)
+        catch
+            continue
+        end
+        isfinite(fv) || continue
+        (!isfinite(gv) || abs(gv) > 1e8 * max(1.0, abs(fv))) && (big += 1)
+    end
+    big >= 2
 end
 const EXPR_RETRY = Ref(false)                           # no nested Expr retries
 const RISCH_DEPTH = Ref(0)                              # nested risch_integrate calls (step RK: the outermost only)

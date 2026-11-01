@@ -104,7 +104,12 @@ function parse_tower(t, T::Tower)
                     end
                     # a non-rational constant exponent (a parameter, e, …): u^k = exp(k log u) (SY)
                 end
+                # (-w)ᵏ beside wᵏ (or log w): log(-w) = log w + iπ, and the tower drops iπ, which in exp(k log(-w)) is
+                # a factor e^(iπk) ≠ 1, (a + b x)ⁿ/(-a - b x)ⁿ = e^(-iπn) (sample 206); refused rather than lost
+                n0 = NEG_LOG_DROPPED[]
                 lg = make_log(T, base)
+                NEG_LOG_DROPPED[] == n0 || throw(RischNotImplemented(
+                    "the power $(t) needs log(-w) beside log(w): its principal value differs by e^(iπk)"))
                 p, m = unify(T, ex, lg)
                 return make_exp(T, p * m)
             else
