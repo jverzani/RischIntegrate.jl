@@ -1456,6 +1456,22 @@ end
     end
 end
 
+# step TW (tan(x/2) with parameters) with a rational factor of the denominator besides the one with
+# parameters, cos x/(a + b cos x): the jump of 2 atan(tan(x/2))/b at x = π needs the sign of the leading
+# coefficient 1 of its argument, which `csign` left undecided with parameters and no oracle (Rubi 4.2.4.2
+# timed out). Checked across x = ±π, for a < b and a > b (complex logs: Re of the derivative)
+@testset "tan(x/2) with parameters and a rational factor (step TW)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    for f in (:(cos(x) / (a + b * cos(x))), :((A + C * cos(x) ^ 2) / (a + b * cos(x))),
+              :(cos(x) * (1 - cos(x) ^ 2) / (a + b * cos(x)) ^ 3))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for (av, bv) in ((1.0, 2.0), (2.0, 1.0)), x0 in (-2.5, -0.4, 0.7, 2.9, 4.0)
+            ev(e, x1) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x1))), :(a = $(complex(av))), :(b = $(complex(bv))), :(A = 1.3), :(C = 0.6)), e))
+            @test isapprox(real((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6), real(ev(f, x0)); rtol = 1e-5)
+        end
+    end
+end
+
 # step SQ, u = c s²: √u/s = ±√c on each interval; with parameters in f, the two branches (sample 133-139:
 # (c x²)^(3/2) (a + b x)/x after step RK's √c). Checked on both sides of 0
 @testset "constant times a square, with parameters (step SQ)" begin

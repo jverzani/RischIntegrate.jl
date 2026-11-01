@@ -26,6 +26,8 @@ end
 csign(c::Q, gens) = Int(sign(c))
 function csign(c, gens)
     iszero(c) && return 0
+    r = crational(c)                                   # a rational constant: its sign (even with parameters)
+    r === nothing || return Int(sign(r))
     any(g -> g.kind in (:sym, :symlog), gens) && return oracle_sign(c, gens)   # a parameter: the oracle's sign (step SO), if any
     v = setprecision(() -> cbig(c, gens), BigFloat, 256)
     abs(v) < big(10)^-40 ? nothing : Int(sign(v))

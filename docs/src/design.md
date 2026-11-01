@@ -150,7 +150,8 @@ values that share those signs, the usual convention of symbolic integrators ("as
 The caller can decide these signs instead (step SO): `risch_integrate(f, x; sign = p -> …)` is
 called with the parameter expression, a term built like the answer, and returns `1`, `-1`, `0` or
 `nothing`. `param_sign` asks it first, and `csign`, which otherwise leaves the signs of parameter
-expressions undecided, asks it too. What it leaves undecided is taken at the fixed values, with the
+expressions undecided, asks it too (a constant that is rational, such as the leading coefficient 1 of an
+`atan` argument in step TW, is decided at once, oracle or not). What it leaves undecided is taken at the fixed values, with the
 `k`-th parameter set to `-k` when the oracle says that parameter is negative, so that the two agree.
 A `0` for an expression that is not identically zero is a special case of the parameters (a double
 root, say), which is refused: the error passes through the methods that catch
