@@ -257,6 +257,7 @@ throws. A step that rewrites the integrand calls `risch_integrate` again on the 
 | Step | Recognizes | Does |
 |:-----|:-----------|:-----|
 | EP | ``(b^w)^r`` with a positive constant ``b``; ``(C^s)^n`` with integer ``n`` over products and quotients | merges exponents: ``(3^{3x})^{1/4} = 3^{3x/4}``, so a radicand with even powers of a radical becomes rational; a rewrite the term type undoes (Giac keeps ``C^{2/3}`` as ``(C^{1/3})^2``) is no change |
+| XL | ``\exp(c L(u))`` with ``c \in \mathbb{Q}`` and ``L`` one of `log`, `atanh`, `acoth` (a sum in the exponent is split) | a power the radical steps take, in place of the tower's refusal of ``\exp`` of a fractional multiple of a logarithm: ``\exp(c \log u) = u^c``, ``\exp(c \operatorname{atanh} u) = ((1+u)/(1-u))^{c/2}`` (``\lvert u \rvert < 1``, the base is positive), ``\exp(c \operatorname{acoth} u) = ((u+1)/(u-1))^{c/2}`` (``\lvert u \rvert > 1``); for ``c = n \in \mathbb{Z}``, ``(1+u)^n (1-u^2)^{-n/2}`` (in ``1/u`` for `acoth`), so ``\int e^{\operatorname{atanh} x} = \operatorname{asin} x - \sqrt{1-x^2}``. With `atanh` or `acoth` it comes after step AL (``y = ax``), and again if step AL refuses |
 | erf | ``\int A(x) \operatorname{erf}(ax + b)`` (or `erfi`), ``A`` free of `erf` | by parts with ``Q = \int A``: ``Q \operatorname{erf}(u) - (2a/\sqrt π)\int Q e^{-u^2}``, the exponentials of ``Q`` merged into ``e^{-u^2}`` (``\int e^x \operatorname{erf} x``) |
 | IT | a factor free of `x` that contains a symbol or a root ``c^{p/q}`` with ``q > 2`` | takes it out: ``\int c\,g = c \int g``. This keeps the parameter out of the constant field, and lets an iterated integral see ``c(y) \cdot \text{RootSum}(x)`` |
 | KR | a radical whose radicand has a transcendental function | if the radicand is constant in its tower (``\sin^2 x + \cos^2 x``, the speed of a circle in a line integral), it is replaced by its value: ``\sqrt{\sin^2 x + \cos^2 x} = 1`` |
@@ -733,6 +734,7 @@ failures, and their comments cite the Rubi problem numbers.
 | 10e | `radicals.jl` | square roots of rational constants |
 | AC | `inverse_trig.jl` | `acot`, `acsc`, `asec` rewritten |
 | IH | `inverse_trig.jl` | inverse hyperbolic functions by parts or as logarithms |
+| XL | `inverse_trig.jl` | ``\exp(c \log u)``, ``\exp(c \operatorname{atanh} u)`` as powers |
 | AP | `inverse_trig.jl` | by parts for ``A L^k`` |
 | AS | `inverse_trig.jl` | `asin`, `acos` by ``u = \sin t`` |
 | AL | `inverse_trig.jl` | `asin`, `acos`, `asinh`, … of ``ax + b`` with parameters |

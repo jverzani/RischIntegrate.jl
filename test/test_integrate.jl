@@ -1456,6 +1456,21 @@ end
     end
 end
 
+# step XL: exp(c L(u)), L = log, atanh, acoth, c ∈ ℚ, as a power (the tower refused exp of a fractional multiple of
+# a logarithm; Rubi 7.3.6, 7.4.2). Checked on both sides of 0, and for acoth on both sides of the gap [-1, 1]
+@testset "exp of a rational multiple of atanh, acoth, log (step XL)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0)), e))
+    for (f, pts) in ((:(exp(atanh(x))), (-0.7, 0.3, 0.9)), (:(exp(atanh(x) / 2) / x), (-0.7, 0.3, 0.9)),
+                     (:(exp(3 * atanh(2x))), (-0.4, 0.1, 0.45)), (:(exp(acoth(x)) / x ^ 2), (-3.0, -1.5, 1.5, 4.0)),
+                     (:(exp((3 // 2) * acoth(x))), (-3.0, -1.5, 1.5, 4.0)), (:(x * exp(log(x) / 3 + 1)), (0.5, 2.0)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in pts
+            @test isapprox(real((ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6), ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
 # step SQ, u = c s²: √u/s = ±√c on each interval; with parameters in f, the two branches (sample 133-139:
 # (c x²)^(3/2) (a + b x)/x after step RK's √c). Checked on both sides of 0
 @testset "constant times a square, with parameters (step SQ)" begin
