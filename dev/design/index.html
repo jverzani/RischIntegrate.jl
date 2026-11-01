@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=c5164fd9">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=5b3c3a31">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -544,7 +544,7 @@
 <td style="text-align:left">US</td>
 <td style="text-align:left">any</td>
 <td style="text-align:left"><span class="md-math md-math-inline">\(f = G(u)\,u&#39;\)</span> for a subterm <span class="md-math md-math-inline">\(u\)</span> (and the partner <span class="md-math md-math-inline">\(\sinh v\)</span> of <span class="md-math md-math-inline">\(\cosh v\)</span>, <span class="md-math md-math-inline">\(\sin v\)</span> of <span class="md-math md-math-inline">\(\cos v\)</span>, …)</td>
-<td style="text-align:left">derivative-divides, below. With <span class="md-math md-math-inline">\(u = \sinh v\)</span>, even powers of <span class="md-math md-math-inline">\(\cosh v\)</span> are <span class="md-math md-math-inline">\((1 + u^2)^k\)</span>, and so on</td>
+<td style="text-align:left">derivative-divides, below. With <span class="md-math md-math-inline">\(u = \sinh v\)</span>, even powers of <span class="md-math md-math-inline">\(\cosh v\)</span> are <span class="md-math md-math-inline">\((1 + u^2)^k\)</span>, and so on. A fractional power goes inside only a lone factor with <span class="md-math md-math-inline">\(x\)</span>: <span class="md-math md-math-inline">\(\sqrt{\sin x/\cos^2 x} = \sqrt{\sin x}/\lvert\cos x\rvert\)</span> is refused</td>
 </tr>
 <tr>
 <td style="text-align:left">NS</td>
@@ -1126,6 +1126,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=c5164fd9"></script>
+  <script src="../assets/materialdocs.js?v=5b3c3a31"></script>
 </body>
 </html>
