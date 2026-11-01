@@ -428,6 +428,104 @@ function integrate_binomial_scaled(f, x; build = nothing, lift = nothing, verify
     bk(tot)
 end
 
+# step PB: a binomial radicand with parameters, A + B xⁿ (n ≥ 3), where A = α t or B = β t for a parameter t
+# found nowhere else in the radicand ((a + b x³)^(1/3)/x⁸). With s = |A/B|^(1/n) and x = s u the radicand is
+# A (1 + σ uⁿ), σ = sign(B/A), free of parameters but for its factor. The symbol t stands for s in the integrand
+# in u (the other parameter is solved for it: A = α t gives α t = σ B sⁿ, B = β t gives β t = σ A/sⁿ), so
+#   (A + B xⁿ)^e = |K|^e (sgn K · R(u))^e,  K = B sⁿ, R = σ + uⁿ (A = α t), or K = A, R = 1 + σ uⁿ (B = β t),
+# |K|^e = |B|^e s^(n e) or |A|^e, and xᵐ = sᵐ uᵐ (s > 0). The integrand in u has rational coefficients in its
+# radicand, and ∫ f dx = ∫ f(s u) s du; then u = x/s and t = s. Nothing when f has another radical, the
+# signs are undecided, or the integral in u is refused.
+function integrate_param_binomial(f, x, rads; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    ut0 = rads[1][2]
+    all(((_, u),) -> string(u) == string(ut0), rads) || return nothing
+    T, el = try
+        build_tower(ut0, xk)
+    catch err
+        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        return nothing
+    end
+    (isempty(T.levels) && isone(el.den)) || return nothing
+    C = ctype(T)
+    C <: Frac || return nothing
+    N = el.num
+    n = degree(N)
+    (n >= 3 && count(!iszero, N.c) == 2 && !iszero(N.c[1])) || return nothing
+    A, B = N.c[1], N.c[n + 1]
+    pos(c) = param_sign(c, T.consts) == 1
+    sg(c) = pos(c) ? 1 : pos(-c) ? -1 : 0
+    σ, sA, sB = sg(B / A), sg(A), sg(B)
+    (σ == 0 || sA == 0 || sB == 0) && return nothing
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
+    # the parameter t: A = α t (case :A) or B = β t (case :B), t not in the other coefficient
+    function single(c, other)
+        m = const_monomial(c)
+        (m !== nothing && length(m[2]) == 1 && m[2][1][2] == 1) || return nothing
+        g = T.consts[m[2][1][1]]
+        g.kind === :sym || return nothing
+        has_leaf(cterm(bd, other), string(g.term)) && return nothing
+        (m[1], g.term)
+    end
+    case, αt = :A, single(A, B)
+    αt === nothing && ((case, αt) = (:B, single(B, A)))
+    αt === nothing && return nothing
+    α, t = αt
+    tk = string(t)
+    q(r) = bd.lift(r)
+    pw(b, e) = isone(e) ? b : mk(bd, :^, b, q(e))
+    # t in the integrand in u: A = α t = σ B sⁿ, or B = β t = σ A s⁻ⁿ (s printed as t)
+    tsub = case === :A ? mk(bd, :*, q(σ // α), cterm(bd, B), pw(t, n)) :
+                         mk(bd, :*, q(σ // α), cterm(bd, A), pw(t, -n))
+    # |K|^e (sgn K R(u))^e
+    Ru = case === :A ? QX([i == 0 ? Q(σ) : i == n ? Q(1) : Q(0) for i in 0:n]) :
+                       QX([i == 0 ? Q(1) : i == n ? Q(σ) : Q(0) for i in 0:n])
+    sK = case === :A ? sB : sA
+    Rt = poly_term(bd, sK == 1 ? Ru : -Ru)
+    function radval(e)
+        Ke = case === :A ? mk(bd, :*, pw(cterm(bd, sB == 1 ? B : -B), e), pw(t, n * e)) :
+                           pw(cterm(bd, sA == 1 ? A : -A), e)
+        mk(bd, :*, Ke, isone(2e) ? mk(bd, :sqrt, Rt) : pw(Rt, e))
+    end
+    xs = mk(bd, :*, t, bd.x)
+    function walk(t0)
+        if !safe_iscall(t0) || isempty(arguments(t0))
+            string(t0) == xk && return xs
+            string(t0) == tk && return tsub
+            return t0
+        end
+        rp = radical_parts(t0)
+        (rp !== nothing && string(rp[2]) == string(ut0)) && return radval(rp[1])
+        args = arguments(t0)
+        if opname(operation(t0)) === :^ && length(args) == 2 && string(args[1]) == xk &&
+           (m = leaf_rational(args[2]); m !== nothing)
+            return mk(bd, :*, pw(t, m), pw(bd.x, m))   # (s u)ᵐ = sᵐ uᵐ, s > 0
+        end
+        term_rebuild(bd, t0, Any[walk(a) for a in args])
+    end
+    g = mk(bd, :*, t, walk(f))
+    G = try
+        risch_integrate(g, x; build = bd.build, lift = bd.lift, verify = verify)
+    catch err
+        (err isa RischNotImplemented || err isa NotElementary) || rethrow()
+        return nothing
+    end
+    G isa IntegralWithRootSums && return nothing
+    # s = |A/B|^(1/n) in the original parameters, then u = x/s, t = s (at once)
+    sback = pw(cterm(bd, sg(A / B) == 1 ? A / B : -A / B), Q(1) // n)
+    xback = mk(bd, :/, bd.x, sback)
+    function back(t0)
+        if !safe_iscall(t0) || isempty(arguments(t0))
+            string(t0) == xk && return xback
+            string(t0) == tk && return sback
+            return t0
+        end
+        term_rebuild(bd, t0, Any[back(a) for a in arguments(t0)])
+    end
+    back(G)
+end
+
 # step PS for radicals: x = p u with p a parameter, a radicand homogeneous in (x, p), U(p u) = p^m U₀(u) with U₀
 # free of p, written p^(me) U₀^e (p > 0; p^(me) an opaque constant when me ∉ ℤ): ∫ g(x) dx = ∫ g(p u) p du,
 # then u = x/p. Nothing when no parameter gives an answer without a RootSum.

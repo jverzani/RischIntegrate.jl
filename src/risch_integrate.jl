@@ -305,6 +305,8 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         end
         r = integrate_param_radicals(f, x, rads; build = build, lift = lift, verify = verify)
         r === nothing || return r
+        r = integrate_param_binomial(f, x, rads; build = build, lift = lift, verify = verify)   # a + b xⁿ (PB)
+        r === nothing || return r
         r = try                                          # several radicands, one linear: u = √(linear) (NR)
             integrate_inner_linear_radical(f, x; build = build, lift = lift, verify = verify)
         catch e

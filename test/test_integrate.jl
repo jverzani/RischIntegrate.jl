@@ -1456,6 +1456,21 @@ end
     end
 end
 
+# step PB: a binomial radicand with parameters, a + b xⁿ (n ≥ 3), by x = |a/b|^(1/n) u (sample 453, 481, 484,
+# 455, 454, 479, 574). Checked on both sides of 0, with a < b and a > b
+@testset "binomial radicand with parameters (step PB)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    for f in (:((a + b * x ^ 3) ^ (1 // 3) / x ^ 8), :(1 / (x ^ 12 * (a + b * x ^ 4) ^ (1 // 4))), :(1 / (a + b * x ^ 4) ^ (5 // 4)),
+              :(1 / (x ^ 2 * (a + b * x ^ 3) ^ (2 // 3))), :(x ^ 3 * (a + b * x ^ 3) ^ (2 // 3)), :(x ^ 6 * (a + b * x ^ 4) ^ (5 // 4)),
+              :((c + d * x ^ 3) / (a + b * x ^ 3) ^ (16 // 3)), :((2 + b * x ^ 3) ^ (1 // 3) / x ^ 8))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for (av, bv) in ((0.7, 1.3), (1.3, 0.7)), x0 in (-0.6, 0.4, 1.1)
+            ev(e, x1) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x1))), :(a = $av), :(b = $bv), :(c = 0.9), :(d = 1.7)), e))
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
 # step SQ, u = c s²: √u/s = ±√c on each interval; with parameters in f, the two branches (sample 133-139:
 # (c x²)^(3/2) (a + b x)/x after step RK's √c). Checked on both sides of 0
 @testset "constant times a square, with parameters (step SQ)" begin

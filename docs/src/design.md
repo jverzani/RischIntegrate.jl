@@ -278,6 +278,7 @@ rational exponent). Radicals of parameters are opaque constants and are not coun
 | AS | only powers of ``\sqrt{1 - u^2}``, ``u`` linear | ``u = \sin t`` first, which gives `asin(u)` instead of logarithms |
 | PR (rational) | one quadratic radicand ``K - \lvert α \rvert (x - h)^2`` whose scaling to ``K(1 - u^2)`` is irrational, e.g. ``7 - 2x^2`` | step PR with the constant radicals opaque, so that the `asin` route applies in ``u`` |
 | PR | parameters in a radicand: ``a^2 - x^2``, ``(x - a)(b - x)``, ``(a + x)/(a - x)`` | an affine ``x = s u + h`` over the parameter field makes the radicand ``κ R(u)`` with ``R`` free of parameters; ``κ^{k/2}`` is written with ``\sqrt κ``, as ``s`` is, so that the tower has one constant for both, and the factors free of ``x`` (also in a denominator) are taken out of the integrand in ``u`` |
+| PB | a binomial radicand ``A + Bx^n``, ``n \ge 3``, with ``A = αt`` or ``B = βt`` for a parameter ``t`` not in the other coefficient: ``(a + bx^3)^{1/3}/x^8`` | ``x = su`` with ``s = \lvert A/B \rvert^{1/n}`` makes the radicand ``A(1 + σu^n)``; in the integrand in ``u``, ``t`` stands for ``s`` (the other coefficient solved for it), ``x^m = s^m u^m`` and ``(A + Bx^n)^e = \lvert K \rvert^e (\operatorname{sgn} K \cdot R(u))^e``, so the radicand has rational coefficients; then ``u = x/s``, ``t = s``. Signs from step SO or the positive parameter values |
 | PM | parameters in a radicand with repeated factors, ``u = s^n w``, ``n`` even: ``(a^2 + 2abx + b^2x^2)^{3/2}``, ``((a^2 + x^2)^3)^{1/2}`` | ``Y = u^{1/n}/s`` is ``\pm w^{1/n}`` on each interval: with ``F_\pm`` the integrals for each sign, ``(F_+ + F_-)/2 + σ (F_+ - F_-)/2``, ``σ = Y/w^{1/n}``; for constant ``w`` the answer is ``(u^{1/n}/s) F_+``, as Rubi writes it |
 | LL | two linear radicands with parameters whose exponents add up to an integer in each product: ``(a + bx)^{-3/4}(c + dx)^{-1/4}`` | one radicand on the real domain: ``(L_1L_2)^{E_1} L_2^{E_2 - E_1}`` for square roots, ``(L_1/L_2)^{E_1} L_2^{E_1 + E_2}`` otherwise; then step PR |
 | NR | several radicands, one innermost radical of a linear radicand | ``u = \sqrt{\text{linear}}`` |
@@ -731,6 +732,7 @@ failures, and their comments cite the Rubi problem numbers.
 | 10b, 10c | `euler_substitutions.jl` | square roots of quadratics (Euler) |
 | 10d | `euler_substitutions.jl` | square roots of two linear polynomials |
 | 10e | `radicals.jl` | square roots of rational constants |
+| PB | `param_radicals.jl` | a binomial radicand with parameters, scaled to ``1 \pm u^n`` |
 | AC | `inverse_trig.jl` | `acot`, `acsc`, `asec` rewritten |
 | IH | `inverse_trig.jl` | inverse hyperbolic functions by parts or as logarithms |
 | AP | `inverse_trig.jl` | by parts for ``A L^k`` |
