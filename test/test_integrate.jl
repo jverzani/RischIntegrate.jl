@@ -1456,6 +1456,21 @@ end
     end
 end
 
+# step SP: refused for the number of parameters (residues over more than MAX_ROOTSUM_GENS of them), a sum
+# factor whose summands bring their own parameters is integrated term by term (Rubi 1.1.3.8)
+@testset "a sum factor with parameters term by term (step SP)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    for f in (:((x ^ 4 * (c + d * x ^ 3 + e * x ^ 6 + f * x ^ 9)) / (a + b * x ^ 3)),
+              :((x ^ 4 * (c + d * x + e * x ^ 2 + f * x ^ 3)) / (a + b * x ^ 3) ^ 2))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (-0.6, 0.4, 1.1)
+            ev(e, x1) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x1))), :(a = 0.7), :(b = 1.3), :(c = 0.9),
+                                                    :(d = 1.7), :(e = 0.4), :(f = 2.1), :(A = 1.2), :(B = 0.8), :(C = 1.5)), e))
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
 # step SQ, u = c s²: √u/s = ±√c on each interval; with parameters in f, the two branches (sample 133-139:
 # (c x²)^(3/2) (a + b x)/x after step RK's √c). Checked on both sides of 0
 @testset "constant times a square, with parameters (step SQ)" begin

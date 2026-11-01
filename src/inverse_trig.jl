@@ -598,6 +598,44 @@ function distribute_sum_factor(f, x, xk::String, isop; build, lift, verify::Bool
     add_answers(bd, Fs, xk)
 end
 
+# step SP: a refusal for the number of parameters or constants (the caps on residues and RootSums over
+# parameters, MAX_CONSTS), with a factor that is a sum whose summands bring parameters of their own:
+# x⁴(c + d x³ + e x⁶)/(a + b x³) = c x⁴/(a + b x³) + …, each term with fewer parameters (step IT takes the
+# parameter out of the integral). The factor that leaves the fewest parameters in its largest term; nothing
+# when no factor lowers the count, or a term is refused or not elementary (the caller then refuses f).
+function split_param_sum(f, x; build, lift, verify::Bool)
+    @nospecialize f x
+    xk = string(x)
+    params(t, acc = Set{String}()) = (safe_iscall(t) && !isempty(arguments(t)) ? foreach(a -> params(a, acc), arguments(t)) :
+                                      (has_param(t, xk) && push!(acc, string(t))); acc)
+    fs = product_factors!(Any[], f, 1)
+    n0 = length(params(f))
+    best, bestn = nothing, n0
+    for (j, (t, e)) in enumerate(fs)
+        (e == 1 && safe_iscall(t) && opname(operation(t)) === :+ && length(arguments(t)) >= 2) || continue
+        prest = Set{String}()
+        for (i, (u, _)) in enumerate(fs)
+            i == j || params(u, prest)
+        end
+        m = maximum(length(union(prest, params(s))) for s in arguments(t))
+        m < bestn && ((best, bestn) = (j, m))
+    end
+    best === nothing && return nothing
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    rest = Any[e == 1 ? t : mk(bd, :^, t, bd.lift(e)) for (i, (t, e)) in enumerate(fs) if i != best]
+    Fs = Any[]
+    for s in arguments(fs[best][1])
+        F = try
+            risch_integrate(isempty(rest) ? s : mk(bd, :*, s, rest...), x; build = build, lift = lift, verify = verify)
+        catch e
+            (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+            return nothing
+        end
+        push!(Fs, F)
+    end
+    add_answers(bd, Fs, xk)
+end
+
 # run g() with PARTS set; nothing if it is not elementary or not implemented
 function with_parts(g)
     PARTS[] = true
