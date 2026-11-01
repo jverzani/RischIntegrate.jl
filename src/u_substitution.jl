@@ -318,7 +318,9 @@ end
 # (cosh v, sinh v), each factor a power (rational exponents allowed) of one of the six functions of v. With
 # U = u, C and S are U^p P(U)^(r/2) (sech: C = U⁻¹, S = (1 - U²)^(1/2) U⁻¹); the square-root factor P^(1/2) must
 # enter with an integer total power (so no sign of √P is assumed), U to any rational power (U > 0 where
-# a fractional power of u is in the integrand already). Then f dx = c U^α P(U)^β dU.
+# a fractional power of u is in the integrand already). Then f dx = c U^α P(U)^β dU. A fractional exponent e is
+# taken inside only where (∏ tᵢ)^e = ∏ tᵢ^e, (t^k)^e = t^(k e) hold on the principal branch for every x: one
+# factor with x, to the first power (√(sin x/cos² x) = √(sin x)/|cos x|, not √(sin x)/cos x, is refused here).
 # ---------------------------------------------------------------------------
 const TRIG_CS = Dict(:sin => (0, 1), :cos => (1, 0), :tan => (-1, 1), :cot => (1, -1), :sec => (-1, 0), :csc => (0, -1))
 const HYP_CS = Dict(:sinh => (0, 1), :cosh => (1, 0), :tanh => (-1, 1), :coth => (1, -1), :sech => (-1, 0), :csch => (0, -1))
@@ -348,11 +350,18 @@ function integrate_usub_trig(f, x, u, du, bd::Builder; build, lift, verify::Bool
         end
         isnode(t) || return false
         n, args = opname(operation(t)), arguments(t)
-        n === :* && return all(a -> collect!(a, e), args)
-        (n === :/ && length(args) == 2) && return collect!(args[1], e) && collect!(args[2], -e)
+        # (under a fractional e: at most one factor with x, not in a denominator)
+        nx = count(a -> depends_on(a, xk), args)
+        n === :* && return (isinteger(e) || nx <= 1) && all(a -> collect!(a, e), args)
+        if n === :/ && length(args) == 2
+            (isinteger(e) || !depends_on(args[2], xk)) || return false
+            return collect!(args[1], e) && collect!(args[2], -e)
+        end
         if n === :^ && length(args) == 2
             k = leaf_rational(args[2])
             k === nothing && return false
+            # (t^k)^e = t^(k e) for all t when e is an integer, or k = 1/m (log t^(1/m) = log(t)/m)
+            (isinteger(e) || (isone(numerator(Q(k))) && k > 0)) || return false
             return collect!(args[1], e * Q(k))
         end
         n === :sqrt && return collect!(args[1], e / 2)
