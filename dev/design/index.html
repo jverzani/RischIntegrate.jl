@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=bdc439b0">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=bb775aea">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -422,7 +422,7 @@
 </li>
 </ul>
 </li>
-<li><p><strong>Kummer</strong> (SI2 phases 3a and 3b): products of radicals of any index, through the integral basis of the Kummer extension. The log part uses Riemann–Roch on the curve and yields a RootSum over the roots of unity. This runs when <code class="md-code-inline">integrate_radical</code> refuses. Residue classes <span class="md-math md-math-inline">\(σ_i\)</span> are independent when no <span class="md-math md-math-inline">\(σ_i/σ_j\)</span> is a <span class="md-math md-math-inline">\(q\)</span>-th power in <span class="md-math md-math-inline">\(ℚ(ζ_q)\)</span>; for <span class="md-math md-math-inline">\(q = 2\)</span> that field is <span class="md-math md-math-inline">\(ℚ\)</span>, so negative classes count too (<span class="md-math md-math-inline">\(-1\)</span> and <span class="md-math md-math-inline">\(5\)</span> in <span class="md-math md-math-inline">\(\int x^2/((1 + 2x^2)\sqrt{3 + 5x^2})\)</span>).</p>
+<li><p><strong>Kummer</strong> (SI2 phases 3a and 3b): products of radicals of any index, through the integral basis of the Kummer extension. The log part uses Riemann–Roch on the curve and yields a RootSum over the roots of unity. This runs when <code class="md-code-inline">integrate_radical</code> refuses. Residue classes <span class="md-math md-math-inline">\(σ_i\)</span> are independent when no <span class="md-math md-math-inline">\(σ_i/σ_j\)</span> is a <span class="md-math md-math-inline">\(q\)</span>-th power in <span class="md-math md-math-inline">\(ℚ(ζ_q)\)</span>; for <span class="md-math md-math-inline">\(q = 2\)</span> that field is <span class="md-math md-math-inline">\(ℚ\)</span>, so negative classes count too (<span class="md-math md-math-inline">\(-1\)</span> and <span class="md-math md-math-inline">\(5\)</span> in <span class="md-math md-math-inline">\(\int x^2/((1 + 2x^2)\sqrt{3 + 5x^2})\)</span>). A base <span class="md-math md-math-inline">\(b\)</span> with real roots and an even multiplicity <span class="md-math md-math-inline">\(m\)</span> in a radicand, where <span class="md-math md-math-inline">\(⌊e m⌋\)</span> is odd, gives <span class="md-math md-math-inline">\((b^m)^e = |b|^{e m}\)</span>. The integrand is real on both sides of <span class="md-math md-math-inline">\(b = 0\)</span>. With <span class="md-math md-math-inline">\(f = Σ_S σ^S f_S\)</span>, where <span class="md-math md-math-inline">\(σ = \sqrt{b^2}/b\)</span> is locally constant, each <span class="md-math md-math-inline">\(f_S\)</span> is integrated in turn: <span class="md-math md-math-inline">\(\int \sqrt{(1 - x^2)^2/(1 + x^2)^2} = σ\,(x - 2\arctan x)\)</span>, with <span class="md-math md-math-inline">\(σ = \operatorname{sign}(x^2 - 1)\)</span>.</p>
 </li>
 </ul>
 <p>A substitution step parses the integrand in the new variable <span class="md-math md-math-inline">\(t\)</span> through a parse hook, multiplies by <span class="md-math md-math-inline">\(φ&#39;(t)\)</span>, integrates in the tower over <span class="md-math md-math-inline">\(ℚ(t)\)</span> (or a larger constant field), and verifies there. The answer is printed with <span class="md-math md-math-inline">\(t\)</span> written as a term in <code class="md-code-inline">x</code>, so no substitution back is needed at the term level. Steps RL and EL then make the arguments of logarithms real on the real points of the substitution: <span class="md-math md-math-inline">\(\log(-w)\)</span> for a negative <span class="md-math md-math-inline">\(w\)</span>, <span class="md-math md-math-inline">\(\log\lvert w \rvert\)</span> for a <span class="md-math md-math-inline">\(w\)</span> of both signs.</p>
@@ -1126,6 +1126,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=bdc439b0"></script>
+  <script src="../assets/materialdocs.js?v=bb775aea"></script>
 </body>
 </html>
