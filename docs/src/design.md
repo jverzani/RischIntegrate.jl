@@ -321,6 +321,10 @@ What is left goes to `integrate_radical`. Its cases, in order:
   the roots of unity. This runs when `integrate_radical` refuses. Residue classes ``σ_i`` are independent
   when no ``σ_i/σ_j`` is a ``q``-th power in ``ℚ(ζ_q)``; for ``q = 2`` that field is ``ℚ``, so negative classes count
   too (``-1`` and ``5`` in ``\int x^2/((1 + 2x^2)\sqrt{3 + 5x^2})``).
+  A base ``b`` with real roots and an even multiplicity ``m`` in a radicand, where ``⌊e m⌋`` is odd, gives
+  ``(b^m)^e = |b|^{e m}``. The integrand is real on both sides of ``b = 0``. With ``f = Σ_S σ^S f_S``, where
+  ``σ = \sqrt{b^2}/b`` is locally constant, each ``f_S`` is integrated in turn:
+  ``\int \sqrt{(1 - x^2)^2/(1 + x^2)^2} = σ\,(x - 2\arctan x)``, with ``σ = \operatorname{sign}(x^2 - 1)``.
 
 A substitution step parses the integrand in the new variable ``t`` through a parse hook,
 multiplies by ``φ'(t)``, integrates in the tower over ``ℚ(t)`` (or a larger constant field), and

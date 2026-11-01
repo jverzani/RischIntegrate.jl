@@ -385,6 +385,18 @@ function run_tests(x, evalat, name)
         end
     end
 
+    @testset "$name: Kummer radicals with a square base: σ = sign(b) where b < 0 too" begin
+        # (bᵐ)^e = |b|^(e m) for even m: real on both sides of b = 0, the answer is σ ∫ … with σ = √(b²)/b
+        for f in (sqrt((1 - x^2)^2 / (1 + x^2)^2), sqrt((1 + x)^2 / (1 + x^2)) * sqrt((1 - x)^2 / (1 + x^2)),
+                  sqrt((x - 1)^2 * (x + 2)^2) / (x^2 + 1), sqrt((x - 1)^2 / (x + 1)^2) + sqrt(x^2),
+                  sqrt(1 + sin(x)) * sqrt(1 - sin(x)))
+            F = Risch.risch_integrate(f, x)
+            for a in (-3.0, -1.5, -0.5, 0.3, 0.7, 2.0, 4.0)
+                @test isapprox(fd(t -> real(evalat(F, complex(t))), a), real(evalat(f, a)); rtol = 1e-5)
+            end
+        end
+    end
+
     @testset "$name: the log part for one radical of index q ≥ 3 (SI2 phase 3b)" begin
         # residues r·μ_q with rᵠ in one class tᵠσ; v vanishing at one place of each orbit; the answer is a
         # RootSum over αᵠ = 1 or over zᵠ = σ
