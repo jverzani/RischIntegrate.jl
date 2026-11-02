@@ -256,6 +256,10 @@ function residue_logs(T::Tower, i::Int, A::UPoly, D::UPoly)
     CT0 = ctype(T)
     CT0 <: Frac && cdepth(CT0) > MAX_ROOTSUM_GENS && degree(D) > 2 && throw(RischNotImplemented(
         "residues of a denominator of degree $(degree(D)) over more than $MAX_ROOTSUM_GENS symbolic constants"))
+    # (a quartic or higher over MAX_ROOTSUM_GENS parameters: the resultant takes minutes, and its RootSum is
+    # refused in `root_sums` anyway; sample 1018: x⁶/((a + b x² + c x⁴) √(d + e x²)))
+    CT0 <: Frac && cdepth(CT0) >= MAX_ROOTSUM_GENS && degree(D) > 3 && throw(RischNotImplemented(
+        "residues of a denominator of degree $(degree(D)) over $(cdepth(CT0)) symbolic constants"))
     Rz = residue_resultant(D, A, dD)
     iszero(Rz) && throw(RischError("zero resultant in the residue computation"))
     CT = ctype(T)
