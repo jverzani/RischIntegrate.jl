@@ -240,6 +240,9 @@ Two mechanisms let the later steps reuse `parse_tower`:
   u-substitution use the same device to test whether an expression is a function of a chosen
   subterm. This is sound because the opaque constants are formally independent: an identity that
   holds for an indeterminate still holds after the actual subterm is put back.
+  A plain symbol goes before the opaque subterms among the generators, whatever the order the term
+  prints in (step SG): a parameter after an opaque radical such as ``(ℓ^2)^{3/2}`` made the gcds over the
+  nested constant field grow without end (SymPy #27957).
 
 ## Following an integrand
 
@@ -771,6 +774,7 @@ failures, and their comments cite the Rubi problem numbers.
 | RP, SQ | `factoring.jl`, `radicals.jl` | radicands that are powers; repeated factors |
 | RY | `tower_radicals.jl` | a radical of a tower element |
 | SY | `tower_terms.jl` | parameters and opaque constants |
+| SG | `tower_terms.jl` | plain symbols before opaque subterms among the constant generators |
 | SL | `risch_integrate.jl` | ``y = e + fx`` for shifted linear trigonometric arguments |
 | SO | `param_radicals.jl`, `sign_facts.jl` | signs of parameter expressions from the caller: an oracle, or facts |
 | TA | `tower_terms.jl`, `monomial_integration.jl` | `atan` levels |

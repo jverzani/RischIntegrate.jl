@@ -1168,6 +1168,21 @@ end
                                                                 build = build, lift = identity)
 end
 
+# step SG: a parameter (π here) met after an opaque radical goes before it among the constant generators; in
+# the other order the gcds over the nested constant field did not finish in minutes (SymPy #27957, step PR's
+# integrand for (-ℓ²/8 + l²/8 - π/4)(ℓ² - l²)(l - 1) + 2(ℓ² - l²)^(3/2)(l - 1)/3, in SymJ's term order)
+@testset "a parameter after an opaque radical (step SG)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    f = :(2 * (1 - l ^ 2) ^ (3 // 2) * (ℓ * l - 1) * (ℓ ^ 2) ^ (3 // 2) / 3 +
+          (ℓ ^ 2 - ℓ ^ 2 * l ^ 2) * (ℓ * l - 1) * (ℓ ^ 2 * l ^ 2 / 8 - ℓ ^ 2 / 8 - π / 4))
+    F = Risch.risch_integrate(f, :l; build = build, lift = identity)
+    ev(e, t) = Core.eval(Main, :(let ℓ = 1.3, l = $t; $e end))
+    for t in (0.2, 0.5, 0.8)
+        h = 1e-5
+        @test (ev(F, t + h) - ev(F, t - h)) / 2h ≈ ev(f, t) rtol = 1e-6
+    end
+end
+
 # step SO: the caller's sign oracle decides the signs of parameter expressions
 @testset "SymEngine: sign oracle (step SO)" begin
     SymEngine.@vars x a b
