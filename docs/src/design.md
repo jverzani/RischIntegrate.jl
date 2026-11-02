@@ -382,6 +382,9 @@ denominator to one over ``ℚ``, where the real forms above apply:
   For example, ``1/(x^3 + a^3) = a^{-3}/(u^3 + 1)``.
 - **Step BN.** If the denominator is ``λ x^j (x^n + c)^k`` with ``n ≥ 3``, then
   ``ρ = |c|^{1/n}``, kept as an opaque constant. For example, ``1/(x^3 - 2)`` and ``1/(a x^3 - b)``.
+  Also a biquadratic ``x^4 + bx^2 + c`` with ``c > 0`` and ``γ = b/\sqrt c`` rational: ``ρ = c^{1/4}`` gives
+  ``c(u^4 + γu^2 + 1)``, as for ``1/(16π^4x^4 - 4π^2x^2 + 1)`` (SymPy #28657). The signs of ``c`` and ``b`` are
+  `param_sign`'s.
   Here ``x^n + c = |c|(u^n ± 1)``. The numerator is split into monomials ``u^i``, and powers of
   ``ρ`` are reduced with ``ρ^n = |c|``. That leaves one integral ``\int u^{i-j}/(u^n ± 1)^k`` over
   ``ℚ`` for each monomial. The factors of ``u^n ± 1`` are cyclotomic, so for ``n = 3, 4, 5, 6``
@@ -761,7 +764,7 @@ failures, and their comments cite the Rubi problem numbers.
 | CS | `constant_scaling.jl` | nested radicals over ``ℚ(\sqrt d)``: scaling and constant factors out of radicands |
 | PP | `nested_subst.jl` | pairs of square roots ``\sqrt{g + c_1}``, ``\sqrt{g + c_2}`` |
 | PL, PR, PM, LL, PS | `param_radicals.jl` | parameters: linearity, radicands, repeated factors, two linear radicands, scaling |
-| BN | `param_radicals.jl` | binomial denominators ``x^n + c``: ``x = \lvert c\rvert^{1/n} u`` |
+| BN | `param_radicals.jl` | binomial denominators ``x^n + c``: ``x = \lvert c\rvert^{1/n} u``; biquadratics ``x^4 + bx^2 + c`` with ``b/\sqrt c`` rational |
 | PC | `precompile.jl` | precompile workload |
 | R2, NR | `quartic_residues.jl` | real forms of quartic residues, nested radicals in them |
 | BQ4 | `quartic_residues.jl` | even quartics ``x^4 + bx^2 + c`` with nested real forms |
