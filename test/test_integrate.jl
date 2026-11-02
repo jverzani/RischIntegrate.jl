@@ -1160,6 +1160,61 @@ let
     sy_tests(x, p, q, r, s1, s2, (e, a) -> real(ComplexF64(SymEngine.N(SymEngine.subs(e, x => a, p => 0.2)))), "SymEngine")
 end
 
+# residues of a quartic over exactly MAX_ROOTSUM_GENS = 4 parameters are refused too, before the resultant (it
+# took minutes, and the subresultant chain did not finish): Rubi sample 929, after step PR
+@testset "a quartic over four parameters is refused quickly" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(1 / ((a + c * x ^ 2) ^ (3 // 2) * (d + e * x + f * x ^ 2))), :x;
+                                                                build = build, lift = identity)
+end
+
+# step SG: a parameter (π here) met after an opaque radical goes before it among the constant generators; in
+# the other order the gcds over the nested constant field did not finish in minutes (SymPy #27957, step PR's
+# integrand for (-ℓ²/8 + l²/8 - π/4)(ℓ² - l²)(l - 1) + 2(ℓ² - l²)^(3/2)(l - 1)/3, in SymJ's term order)
+@testset "a parameter after an opaque radical (step SG)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    f = :(2 * (1 - l ^ 2) ^ (3 // 2) * (ℓ * l - 1) * (ℓ ^ 2) ^ (3 // 2) / 3 +
+          (ℓ ^ 2 - ℓ ^ 2 * l ^ 2) * (ℓ * l - 1) * (ℓ ^ 2 * l ^ 2 / 8 - ℓ ^ 2 / 8 - π / 4))
+    F = Risch.risch_integrate(f, :l; build = build, lift = identity)
+    ev(e, t) = Core.eval(Main, :(let ℓ = 1.3, l = $t; $e end))
+    for t in (0.2, 0.5, 0.8)
+        h = 1e-5
+        @test (ev(F, t + h) - ev(F, t - h)) / 2h ≈ ev(f, t) rtol = 1e-6
+    end
+end
+
+# step BN for a biquadratic x⁴ + b x² + c with b/√c rational: x = c^(1/4) u gives u⁴ + γ u² + 1 over ℚ, real
+# forms with √3 instead of a RootSum over the parameter field (SymPy #28657: ∫₀^∞ is 1/4 for the first)
+@testset "biquadratic denominators with parameters (step BN)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, c, t) = Core.eval(Main, :(let c = $c, x = $t; $e end))
+    for f in (:(1 / ((1 - 4 * π ^ 2 * x ^ 2) ^ 2 + 4 * π ^ 2 * x ^ 2)), :(1 / (c ^ 4 * x ^ 4 - c ^ 2 * x ^ 2 + 1)),
+              :(x ^ 2 / (c ^ 4 * x ^ 4 + c ^ 2 * x ^ 2 + 1)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test F isa Expr
+        for c in (1.7, -0.6), t in (-1.3, 0.4, 2.2)
+            h = 1e-6
+            @test (ev(F, c, t + h) - ev(F, c, t - h)) / 2h ≈ ev(f, c, t) atol = 1e-8
+        end
+    end
+end
+
+# step TW (tan(x/2) with parameters) with a rational factor of the denominator besides the one with
+# parameters, cos x/(a + b cos x): the jump of 2 atan(tan(x/2))/b at x = π needs the sign of the leading
+# coefficient 1 of its argument, which `csign` left undecided with parameters and no oracle (Rubi 4.2.4.2
+# timed out). Checked across x = ±π, for a < b and a > b (complex logs: Re of the derivative)
+@testset "tan(x/2) with parameters and a rational factor (step TW)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    for f in (:(cos(x) / (a + b * cos(x))), :((A + C * cos(x) ^ 2) / (a + b * cos(x))),
+              :(cos(x) * (1 - cos(x) ^ 2) / (a + b * cos(x)) ^ 3))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for (av, bv) in ((1.0, 2.0), (2.0, 1.0)), x0 in (-2.5, -0.4, 0.7, 2.9, 4.0)
+            ev(e, x1) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x1))), :(a = $(complex(av))), :(b = $(complex(bv))), :(A = 1.3), :(C = 0.6)), e))
+            @test isapprox(real((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6), real(ev(f, x0)); rtol = 1e-5)
+        end
+    end
+end
+
 # step SO: the caller's sign oracle decides the signs of parameter expressions
 @testset "SymEngine: sign oracle (step SO)" begin
     SymEngine.@vars x a b
@@ -1456,18 +1511,17 @@ end
     end
 end
 
-# step TW (tan(x/2) with parameters) with a rational factor of the denominator besides the one with
-# parameters, cos x/(a + b cos x): the jump of 2 atan(tan(x/2))/b at x = π needs the sign of the leading
-# coefficient 1 of its argument, which `csign` left undecided with parameters and no oracle (Rubi 4.2.4.2
-# timed out). Checked across x = ±π, for a < b and a > b (complex logs: Re of the derivative)
-@testset "tan(x/2) with parameters and a rational factor (step TW)" begin
+# step XL: exp(c L(u)), L = log, atanh, acoth, c ∈ ℚ, as a power (the tower refused exp of a fractional multiple of
+# a logarithm; Rubi 7.3.6, 7.4.2). Checked on both sides of 0, and for acoth on both sides of the gap [-1, 1]
+@testset "exp of a rational multiple of atanh, acoth, log (step XL)" begin
     build(op, args...) = Expr(:call, nameof(op), args...)
-    for f in (:(cos(x) / (a + b * cos(x))), :((A + C * cos(x) ^ 2) / (a + b * cos(x))),
-              :(cos(x) * (1 - cos(x) ^ 2) / (a + b * cos(x)) ^ 3))
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0)), e))
+    for (f, pts) in ((:(exp(atanh(x))), (-0.7, 0.3, 0.9)), (:(exp(atanh(x) / 2) / x), (-0.7, 0.3, 0.9)),
+                     (:(exp(3 * atanh(2x))), (-0.4, 0.1, 0.45)), (:(exp(acoth(x)) / x ^ 2), (-3.0, -1.5, 1.5, 4.0)),
+                     (:(exp((3 // 2) * acoth(x))), (-3.0, -1.5, 1.5, 4.0)), (:(x * exp(log(x) / 3 + 1)), (0.5, 2.0)))
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)
-        for (av, bv) in ((1.0, 2.0), (2.0, 1.0)), x0 in (-2.5, -0.4, 0.7, 2.9, 4.0)
-            ev(e, x1) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x1))), :(a = $(complex(av))), :(b = $(complex(bv))), :(A = 1.3), :(C = 0.6)), e))
-            @test isapprox(real((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6), real(ev(f, x0)); rtol = 1e-5)
+        for x0 in pts
+            @test isapprox(real((ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6), ev(f, x0); rtol = 1e-5)
         end
     end
 end

@@ -198,6 +198,10 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     xk = string(x)
     g = merge_exp_powers(f, x, build, lift)            # (bʷ)^r = b^(w r), b > 0 constant (step EP)
     g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    if !any(n -> has_op(f, n), INV_HYP)                # exp(c log u) = u^c (step XL; atanh, acoth after step AL)
+        g = rewrite_exp_logs(f, x, build, lift)
+        g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    end
     g = try_erf(f, x; build = build, lift = lift, verify = verify)   # ∫ erf(ax + b) by parts
     g === nothing || return g
     # step IT: a factor free of x containing other symbols comes out, ∫ c g dx = c ∫ g dx (keeps the
@@ -229,8 +233,16 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         # US) and A·L by parts (∫ asinh x = x asinh x - √(x² + 1), step AP), so the answer keeps L; else
         # atanh, acoth, asinh, acosh, acsch, asech as logs (step IH)
         hs = collect_arcs(f, xk; fns = INV_HYP)
-        r = isempty(hs) ? nothing : integrate_arcs_scaled(f, x, hs; build = build, lift = lift, verify = verify)
-        r === nothing || return r
+        r = try
+            isempty(hs) ? nothing : integrate_arcs_scaled(f, x, hs; build = build, lift = lift, verify = verify)
+        catch e
+            e isa RischNotImplemented || rethrow()
+            e
+        end
+        r === nothing || r isa Exception || return r
+        g = rewrite_exp_logs(f, x, build, lift)        # exp(c atanh u) = ((1 + u)/(1 - u))^(c/2) (step XL)
+        g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
+        r isa Exception && throw(r)
         r = try_usub(f, x; build = build, lift = lift, verify = verify)
         r === nothing || return r
         r = try_parts(f, x; build = build, lift = lift, verify = verify)

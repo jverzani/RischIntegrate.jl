@@ -373,7 +373,9 @@ end
 
 # step BN: f ∈ C(x) (C = ℚ or ℚ(a, …)) with denominator λ xʲ (xⁿ + c)ᵏ, n ≥ 3, whose residues need a RootSum
 # (c not ± an n-th power: 1/(x³ - 2), 1/(a x³ - b)). With ρ = |c|^(1/n) (an opaque constant, positive by
-# `param_sign`) and x = ρ u, xⁿ + c = |c| (uⁿ ± 1); the numerator N(ρu) = Σ Nᵢ ρⁱ uⁱ, and
+# `param_sign`) and x = ρ u, xⁿ + c = |c| (uⁿ ± 1) (also a biquadratic x⁴ + b x² + c, c > 0, with
+# γ = b/√c rational: c (u⁴ + γ u² + 1), as for 1/(16π⁴x⁴ - 4π²x² + 1), SymPy #28657); the numerator
+# N(ρu) = Σ Nᵢ ρⁱ uⁱ, and
 # ρ^(i+1-j) = |c|^q ρ^m (i + 1 - j = qn + m), so by linearity
 #   ∫ f dx = Σᵢ Nᵢ |c|^(q-k)/λ · ρ^m ∫ uⁱ⁻ʲ/(uⁿ ± 1)ᵏ du,
 # each integral over ℚ (real forms with √3, √2, …); then u = x/ρ. Nothing when one of them needs a RootSum.
@@ -395,20 +397,29 @@ function integrate_binomial_scaled(f, x; build = nothing, lift = nothing, verify
     (length(sf) == 1 && degree(sf[1][1]) >= 3) || return nothing
     Qf, k = sf[1]
     n = degree(Qf)
-    all(iszero, Qf.c[2:n]) || return nothing           # Qf = xⁿ + c
     c = Qf.c[1]
     pos(c) = param_sign(c, T.consts) == 1
+    γ = nothing                                        # Qf = x⁴ + b x² + c: c (u⁴ + γ u² + 1), γ = b/√c
+    if !all(iszero, Qf.c[2:n])                         # Qf = xⁿ + c, or that biquadratic
+        (n == 4 && iszero(Qf.c[2]) && iszero(Qf.c[4]) && pos(c)) || return nothing
+        b = Qf.c[3]
+        g2 = crational(b * b / c)                      # γ² ∈ ℚ, γ = ±√(b²/c) (the sign of b)
+        (g2 === nothing || g2 <= 0) && return nothing
+        g = rat_root(g2, 2)
+        g === nothing && return nothing
+        γ = pos(b) ? g : pos(-b) ? -g : return nothing
+    end
     σ = pos(c) ? 1 : -1
     iseven(n) && σ == -1 && !pos(-c) && return nothing  # (no sign at the parameter values)
     r = cfromQ(C, Q(σ)) * c                            # |c|, ρⁿ = r
-    isone(r) && return nothing                         # (already uⁿ ± 1)
+    isone(r) && return nothing                         # (already uⁿ ± 1, or u⁴ + γu² + 1 over ℚ)
     lcD = lc(Dn)
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
     # ρ itself when |c| is an n-th power in C (a³: ρ = a, positive at the parameter values), else |c|^(m/n)
     ρ = cnthroot(r, n)
     ρ !== nothing && !pos(ρ) && (ρ = -ρ)
     ρpow(m) = ρ === nothing ? mk(bd, :^, cterm(bd, r), bd.lift(Q(m) // n)) : cterm(bd, ρ^m)
-    Q0 = QX([i == 0 ? Q(σ) : i == n ? Q(1) : Q(0) for i in 0:n])^k
+    Q0 = QX([i == 0 ? Q(σ) : i == n ? Q(1) : (i == 2 && γ !== nothing) ? γ : Q(0) for i in 0:n])^k
     terms = Any[]
     for (i, Ni) in enumerate(el.num.c)
         i -= 1
