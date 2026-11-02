@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=d51f6022">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=59d64836">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -364,6 +364,11 @@
 <td style="text-align:left">PR</td>
 <td style="text-align:left">parameters in a radicand: <span class="md-math md-math-inline">\(a^2 - x^2\)</span>, <span class="md-math md-math-inline">\((x - a)(b - x)\)</span>, <span class="md-math md-math-inline">\((a + x)/(a - x)\)</span></td>
 <td style="text-align:left">an affine <span class="md-math md-math-inline">\(x = s u + h\)</span> over the parameter field makes the radicand <span class="md-math md-math-inline">\(κ R(u)\)</span> with <span class="md-math md-math-inline">\(R\)</span> free of parameters; <span class="md-math md-math-inline">\(κ^{k/2}\)</span> is written with <span class="md-math md-math-inline">\(\sqrt κ\)</span>, as <span class="md-math md-math-inline">\(s\)</span> is, so that the tower has one constant for both, and the factors free of <span class="md-math md-math-inline">\(x\)</span> (also in a denominator) are taken out of the integrand in <span class="md-math md-math-inline">\(u\)</span></td>
+</tr>
+<tr>
+<td style="text-align:left">PB</td>
+<td style="text-align:left">a binomial radicand <span class="md-math md-math-inline">\(A + Bx^n\)</span>, <span class="md-math md-math-inline">\(n \ge 3\)</span>, with <span class="md-math md-math-inline">\(A = αt\)</span> or <span class="md-math md-math-inline">\(B = βt\)</span> for a parameter <span class="md-math md-math-inline">\(t\)</span> not in the other coefficient: <span class="md-math md-math-inline">\((a + bx^3)^{1/3}/x^8\)</span></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(x = su\)</span> with <span class="md-math md-math-inline">\(s = \lvert A/B \rvert^{1/n}\)</span> makes the radicand <span class="md-math md-math-inline">\(A(1 + σu^n)\)</span>; in the integrand in <span class="md-math md-math-inline">\(u\)</span>, <span class="md-math md-math-inline">\(t\)</span> stands for <span class="md-math md-math-inline">\(s\)</span> (the other coefficient solved for it), <span class="md-math md-math-inline">\(x^m = s^m u^m\)</span> and <span class="md-math md-math-inline">\((A + Bx^n)^e = \lvert K \rvert^e (\operatorname{sgn} K \cdot R(u))^e\)</span>, so the radicand has rational coefficients; then <span class="md-math md-math-inline">\(u = x/s\)</span>, <span class="md-math md-math-inline">\(t = s\)</span>. Signs from step SO or the positive parameter values</td>
 </tr>
 <tr>
 <td style="text-align:left">PM</td>
@@ -842,6 +847,11 @@
 <td style="text-align:left">square roots of rational constants</td>
 </tr>
 <tr>
+<td style="text-align:left">PB</td>
+<td style="text-align:left"><code class="md-code-inline">param_radicals.jl</code></td>
+<td style="text-align:left">a binomial radicand with parameters, scaled to <span class="md-math md-math-inline">\(1 \pm u^n\)</span></td>
+</tr>
+<tr>
 <td style="text-align:left">AC</td>
 <td style="text-align:left"><code class="md-code-inline">inverse_trig.jl</code></td>
 <td style="text-align:left"><code class="md-code-inline">acot</code>, <code class="md-code-inline">acsc</code>, <code class="md-code-inline">asec</code> rewritten</td>
@@ -1141,6 +1151,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=d51f6022"></script>
+  <script src="../assets/materialdocs.js?v=59d64836"></script>
 </body>
 </html>
