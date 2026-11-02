@@ -61,6 +61,74 @@ function rewrite_invhyp(f, x, build, lift)
     rw(f)
 end
 
+# step XL: exp(c L(u)) with c ∈ ℚ as a product of powers, which the radical steps take (the tower refuses exp of a
+# fractional multiple of a logarithm). Principal values, all u where L(u) is real:
+#   exp(c log u)   = u^c,
+#   exp(c atanh u) = ((1 + u)/(1 - u))^(c/2),  |u| < 1 (the base is positive); (1 + u)ⁿ (1 - u²)^(-n/2) for c = n ∈ ℤ,
+#   exp(c acoth u) = ((u + 1)/(u - 1))^(c/2),  |u| > 1; (1 + 1/u)ⁿ (1 - 1/u²)^(-n/2) for c = n (acoth u = atanh(1/u)).
+# A sum in the exponent is split, exp(a + b) = exp(a) exp(b). nothing if there is no such exp.
+function rewrite_exp_logs(f, x, build, lift)
+    @nospecialize f x
+    xk = string(x)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    one_t = bd.lift(1)
+    # t = c L(u) with c ∈ ℚ, L ∈ (log, atanh, acoth): (c, L, u), else nothing
+    function cl(t)
+        safe_iscall(t) || return nothing
+        n, a = opname(operation(t)), arguments(t)
+        if n in (:log, :atanh, :acoth) && length(a) == 1
+            return depends_on(a[1], xk) ? (Q(1), n, a[1]) : nothing
+        elseif n === :* && length(a) >= 2
+            k = findall(b -> leaf_rational(b) === nothing, a)
+            length(k) == 1 || return nothing
+            r = cl(a[k[1]]); r === nothing && return nothing
+            return (prod(leaf_rational(a[j]) for j in eachindex(a) if j != k[1]) * r[1], r[2], r[3])
+        elseif n === :/ && length(a) == 2 && (d = leaf_rational(a[2]); d !== nothing && !iszero(d))
+            r = cl(a[1]); r === nothing && return nothing
+            return (r[1] / d, r[2], r[3])
+        elseif n === :- && length(a) == 1
+            r = cl(a[1]); r === nothing && return nothing
+            return (-r[1], r[2], r[3])
+        end
+        nothing
+    end
+    pw(b, e) = isone(e) ? b : mk(bd, :^, b, cterm(bd, e))
+    function power(c, L, u)
+        L === :log && return pw(u, c)
+        if !isinteger(c)                    # one radicand, (1 + u)/(1 - u) > 0 (atanh), (u + 1)/(u - 1) > 0 (acoth)
+            neg_u = mk(bd, :*, bd.lift(-1), u)
+            r = L === :atanh ? mk(bd, :/, mk(bd, :+, one_t, u), mk(bd, :+, one_t, neg_u)) :
+                               mk(bd, :/, mk(bd, :+, u, one_t), mk(bd, :+, u, bd.lift(-1)))
+            return pw(r, c / 2)
+        end
+        L === :acoth && (u = mk(bd, :/, one_t, u))
+        p = mk(bd, :+, one_t, u)
+        mk(bd, :*, pw(p, c), pw(mk(bd, :+, one_t, mk(bd, :*, bd.lift(-1), mk(bd, :^, u, bd.lift(2)))), -c / 2))
+    end
+    changed = false
+    function walk(t)
+        safe_iscall(t) || return t
+        args = arguments(t)
+        isempty(args) && return t
+        nargs = Any[walk(a) for a in args]
+        if opname(operation(t)) === :exp && length(nargs) == 1
+            g = nargs[1]
+            ts = safe_iscall(g) && opname(operation(g)) === :+ ? collect(Any, arguments(g)) : Any[g]
+            ms = map(cl, ts)
+            if any(!isnothing, ms)
+                changed = true
+                fs = Any[power(m...) for m in ms if m !== nothing]
+                rest = Any[ts[i] for i in eachindex(ts) if ms[i] === nothing]
+                isempty(rest) || push!(fs, mk(bd, :exp, length(rest) == 1 ? rest[1] : mk(bd, :+, rest...)))
+                return length(fs) == 1 ? fs[1] : mk(bd, :*, fs...)
+            end
+        end
+        all(i -> nargs[i] === args[i], eachindex(args)) ? t : term_rebuild(bd, t, nargs)
+    end
+    g = walk(f)
+    changed ? g : nothing
+end
+
 has_op(f, n::Symbol) = safe_iscall(f) && !isempty(arguments(f)) &&
                        (opname(operation(f)) === n || any(a -> has_op(a, n), arguments(f)))
 # step AC: acot(u) ↦ atan(1/u) (Julia's definition, all u ≠ 0)
