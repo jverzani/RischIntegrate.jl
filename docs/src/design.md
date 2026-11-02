@@ -240,6 +240,9 @@ Two mechanisms let the later steps reuse `parse_tower`:
   u-substitution use the same device to test whether an expression is a function of a chosen
   subterm. This is sound because the opaque constants are formally independent: an identity that
   holds for an indeterminate still holds after the actual subterm is put back.
+  A plain symbol goes before the opaque subterms among the generators, whatever the order the term
+  prints in (step SG): a parameter after an opaque radical such as ``(ℓ^2)^{3/2}`` made the gcds over the
+  nested constant field grow without end (SymPy #27957).
 
 ## Following an integrand
 
@@ -379,6 +382,9 @@ denominator to one over ``ℚ``, where the real forms above apply:
   For example, ``1/(x^3 + a^3) = a^{-3}/(u^3 + 1)``.
 - **Step BN.** If the denominator is ``λ x^j (x^n + c)^k`` with ``n ≥ 3``, then
   ``ρ = |c|^{1/n}``, kept as an opaque constant. For example, ``1/(x^3 - 2)`` and ``1/(a x^3 - b)``.
+  Also a biquadratic ``x^4 + bx^2 + c`` with ``c > 0`` and ``γ = b/\sqrt c`` rational: ``ρ = c^{1/4}`` gives
+  ``c(u^4 + γu^2 + 1)``, as for ``1/(16π^4x^4 - 4π^2x^2 + 1)`` (SymPy #28657). The signs of ``c`` and ``b`` are
+  `param_sign`'s.
   Here ``x^n + c = |c|(u^n ± 1)``. The numerator is split into monomials ``u^i``, and powers of
   ``ρ`` are reduced with ``ρ^n = |c|``. That leaves one integral ``\int u^{i-j}/(u^n ± 1)^k`` over
   ``ℚ`` for each monomial. The factors of ``u^n ± 1`` are cyclotomic, so for ``n = 3, 4, 5, 6``
@@ -758,7 +764,7 @@ failures, and their comments cite the Rubi problem numbers.
 | CS | `constant_scaling.jl` | nested radicals over ``ℚ(\sqrt d)``: scaling and constant factors out of radicands |
 | PP | `nested_subst.jl` | pairs of square roots ``\sqrt{g + c_1}``, ``\sqrt{g + c_2}`` |
 | PL, PR, PM, LL, PS | `param_radicals.jl` | parameters: linearity, radicands, repeated factors, two linear radicands, scaling |
-| BN | `param_radicals.jl` | binomial denominators ``x^n + c``: ``x = \lvert c\rvert^{1/n} u`` |
+| BN | `param_radicals.jl` | binomial denominators ``x^n + c``: ``x = \lvert c\rvert^{1/n} u``; biquadratics ``x^4 + bx^2 + c`` with ``b/\sqrt c`` rational |
 | PC | `precompile.jl` | precompile workload |
 | R2, NR | `quartic_residues.jl` | real forms of quartic residues, nested radicals in them |
 | BQ4 | `quartic_residues.jl` | even quartics ``x^4 + bx^2 + c`` with nested real forms |
@@ -771,6 +777,7 @@ failures, and their comments cite the Rubi problem numbers.
 | RP, SQ | `factoring.jl`, `radicals.jl` | radicands that are powers; repeated factors |
 | RY | `tower_radicals.jl` | a radical of a tower element |
 | SY | `tower_terms.jl` | parameters and opaque constants |
+| SG | `tower_terms.jl` | plain symbols before opaque subterms among the constant generators |
 | SL | `risch_integrate.jl` | ``y = e + fx`` for shifted linear trigonometric arguments |
 | SO | `param_radicals.jl`, `sign_facts.jl` | signs of parameter expressions from the caller: an oracle, or facts |
 | TA | `tower_terms.jl`, `monomial_integration.jl` | `atan` levels |

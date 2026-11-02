@@ -1168,6 +1168,37 @@ end
                                                                 build = build, lift = identity)
 end
 
+# step SG: a parameter (π here) met after an opaque radical goes before it among the constant generators; in
+# the other order the gcds over the nested constant field did not finish in minutes (SymPy #27957, step PR's
+# integrand for (-ℓ²/8 + l²/8 - π/4)(ℓ² - l²)(l - 1) + 2(ℓ² - l²)^(3/2)(l - 1)/3, in SymJ's term order)
+@testset "a parameter after an opaque radical (step SG)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    f = :(2 * (1 - l ^ 2) ^ (3 // 2) * (ℓ * l - 1) * (ℓ ^ 2) ^ (3 // 2) / 3 +
+          (ℓ ^ 2 - ℓ ^ 2 * l ^ 2) * (ℓ * l - 1) * (ℓ ^ 2 * l ^ 2 / 8 - ℓ ^ 2 / 8 - π / 4))
+    F = Risch.risch_integrate(f, :l; build = build, lift = identity)
+    ev(e, t) = Core.eval(Main, :(let ℓ = 1.3, l = $t; $e end))
+    for t in (0.2, 0.5, 0.8)
+        h = 1e-5
+        @test (ev(F, t + h) - ev(F, t - h)) / 2h ≈ ev(f, t) rtol = 1e-6
+    end
+end
+
+# step BN for a biquadratic x⁴ + b x² + c with b/√c rational: x = c^(1/4) u gives u⁴ + γ u² + 1 over ℚ, real
+# forms with √3 instead of a RootSum over the parameter field (SymPy #28657: ∫₀^∞ is 1/4 for the first)
+@testset "biquadratic denominators with parameters (step BN)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, c, t) = Core.eval(Main, :(let c = $c, x = $t; $e end))
+    for f in (:(1 / ((1 - 4 * π ^ 2 * x ^ 2) ^ 2 + 4 * π ^ 2 * x ^ 2)), :(1 / (c ^ 4 * x ^ 4 - c ^ 2 * x ^ 2 + 1)),
+              :(x ^ 2 / (c ^ 4 * x ^ 4 + c ^ 2 * x ^ 2 + 1)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test F isa Expr
+        for c in (1.7, -0.6), t in (-1.3, 0.4, 2.2)
+            h = 1e-6
+            @test (ev(F, c, t + h) - ev(F, c, t - h)) / 2h ≈ ev(f, c, t) atol = 1e-8
+        end
+    end
+end
+
 # step SO: the caller's sign oracle decides the signs of parameter expressions
 @testset "SymEngine: sign oracle (step SO)" begin
     SymEngine.@vars x a b
