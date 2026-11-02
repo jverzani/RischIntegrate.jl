@@ -51,6 +51,8 @@ function make_exp(T::Tower, u)
     s == 1 ? th : th^s
 end
 
+# the times make_log identified log(-w) with log(w), dropping the constant iπ (counted for the power parse)
+const NEG_LOG_DROPPED = Ref(0)
 function make_log(T::Tower, u)
     c = dconst_value(T, u)
     if c !== nothing
@@ -95,6 +97,7 @@ function make_log(T::Tower, u)
         if !(isone(cv) || isone(-cv))
             res = res + lconst(T, const_log(T, cv) / cfromQ(ctype(T), Q(q)), top)
         end
+        isone(-cv) && (NEG_LOG_DROPPED[] += 1)        # (a power uᵏ, k ∉ ℤ, then refuses: e^(iπk) is lost)
         return res
     end
     add_level!(T, :log, u, UPoly{K}(K[w]), 0)

@@ -146,6 +146,15 @@ function binomial_over_x(bd::Builder, f, cs, α, β, n::Int, q::SymExp)
 end
 
 # the answer c α^q u^(m+1)/(m+1) ₂F₁(-q, (m+1)/n; (m+1)/n + 1; -βuⁿ/α), u = bd.x (x, x + x₀ or sin(kx))
+# a term positive by the convention for parameters: a positive rational, or a product of parameters and positive
+# rationals (no minus sign, no sum)
+function positive_like(t)
+    r = leaf_rational(t)
+    r !== nothing && return r > 0
+    safe_iscall(t) || return true                       # a parameter
+    opname(operation(t)) in (:*, :/, :^) || return false
+    all(a -> positive_like(a) || (opname(operation(t)) === :^ && leaf_rational(a) !== nothing), arguments(t))
+end
 function binomial_answer(bd::Builder, f, cs, m::SymExp, q::SymExp, α, β, n::Int)
     !symbolic(m) && m.r == -1 && return binomial_over_x(bd, f, cs, α, β, n, q)
     m1 = SymExp(m.r + 1, m.ts)
@@ -160,7 +169,17 @@ function binomial_answer(bd::Builder, f, cs, m::SymExp, q::SymExp, α, β, n::In
     F21 = hyp2f1_term(bd, f, exp_term(bd, SymExp(-q.r, Any[mk(bd, :*, bd.lift(-1), t) for t in q.ts])), a,
                       mk(bd, :+, a, bd.lift(1)), z)
     fs = Any[t for t in cs if !isunit(t)]
-    isunit(α) || push!(fs, mk(bd, :^, α, qt))
+    # α^q (1 - z)^q = (α + β xⁿ)^q needs α > 0 (or q ∈ ℤ): a positive rational, or a product of parameters (taken
+    # positive, the convention for parameters); else the ratio (α + β xⁿ)^q/(1 - z)^q, constant on each interval,
+    # as Rubi writes it (α = -a/b after a shift: x^m/(a + b x)^(3/2), sample 129, was wrong for x > 0)
+    if !isunit(α)
+        if positive_like(α) || (!symbolic(q) && isinteger(q.r))
+            push!(fs, mk(bd, :^, α, qt))
+        else
+            B = mk(bd, :+, α, rβ === nothing ? mk(bd, :*, β, xn) : isone(Q(rβ)) ? xn : mk(bd, :*, cterm(bd, Q(rβ)), xn))
+            push!(fs, mk(bd, :/, mk(bd, :^, B, qt), mk(bd, :^, mk(bd, :+, bd.lift(1), mk(bd, :*, bd.lift(-1), z)), qt)))
+        end
+    end
     push!(fs, (!symbolic(m) && iszero(m.r)) ? bd.x : mk(bd, :/, mk(bd, :^, bd.x, m1t), m1t), F21)
     length(fs) == 1 ? fs[1] : mk(bd, :*, fs...)
 end
