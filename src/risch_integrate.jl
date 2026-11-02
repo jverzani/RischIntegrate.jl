@@ -121,6 +121,10 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         r === nothing || return r
         r = try_sum_split(f, x; build = build, lift = lift, verify = verify)   # term by term (step LS)
         r === nothing || return r
+        if e isa RischNotImplemented && (occursin("symbolic constants", e.msg) || occursin("transcendental constants", e.msg))
+            r = split_param_sum(f, x; build = build, lift = lift, verify = verify)   # a sum factor term by term (SP)
+            r === nothing || return r
+        end
         # a radical refused for its radicand: a parameter factor of every summand taken out, (a + a sin x)^e =
         # a^e (1 + sin x)^e for a > 0 (step RK; last, and in the outermost call only, so that the routes that
         # already work are not changed: a substitution refused inside, step AL or US, leaves the next one its chance)
