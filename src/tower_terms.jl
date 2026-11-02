@@ -150,7 +150,11 @@ function sym_const(T::Tower, t)
         # (four parameters did not finish in minutes), so their number is capped
         count(c -> c.kind === :sym, T.consts) < MAX_PARAMS || throw(RischNotImplemented(
             "more than $MAX_PARAMS symbolic parameters"))
-        throw(NewConstants(ConstGen[T.consts; g]))
+        # a plain symbol goes before the opaque subterms (step SG): their order otherwise follows the
+        # term's printed order, and a parameter after an opaque radical such as (ℓ²)^(3/2) made the
+        # gcds over the nested constant field grow without end (SymPy #27957, with π)
+        k = safe_iscall(t) ? nothing : findfirst(c -> c.kind === :sym && safe_iscall(c.term), T.consts)
+        throw(NewConstants(k === nothing ? ConstGen[T.consts; g] : ConstGen[T.consts[1:k-1]; g; T.consts[k:end]]))
     end
     lconst(T, tgen(ctype(T), j), 0)
 end

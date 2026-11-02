@@ -195,6 +195,10 @@ function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
     # (the resultant over more than MAX_ROOTSUM_GENS parameters does not finish for a quartic)
     C <: Frac && cdepth(C) > MAX_ROOTSUM_GENS && degree(D) > 2 && throw(RischNotImplemented(
         "residues of a denominator of degree $(degree(D)) over more than $MAX_ROOTSUM_GENS symbolic constants"))
+    # (a quartic or higher over MAX_ROOTSUM_GENS parameters: the resultant takes minutes, and its RootSum is
+    # refused in `root_sums` anyway; sample 1018: x⁶/((a + b x² + c x⁴) √(d + e x²)))
+    C <: Frac && cdepth(C) >= MAX_ROOTSUM_GENS && degree(D) > 3 && throw(RischNotImplemented(
+        "residues of a denominator of degree $(degree(D)) over $(cdepth(C)) symbolic constants"))
     Rz = residue_resultant(D, A, dD)                 # R(z) = res_x(D, A - z D')
     iszero(Rz) && throw(RischError("zero resultant in the residue computation"))
     degree(Rz) <= 0 && return logs, atans, unresolved, quads

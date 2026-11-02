@@ -126,7 +126,7 @@ The generators are treated as algebraically independent. That is exact for one o
 that meets a constant needing a new generator throws `NewConstants` with the longer list, and the
 tower is built again over the larger field. Parameters nest the field one level deeper each, so
 their number is capped (`MAX_PARAMS`); residues of a denominator of degree above 2 over more than
-`MAX_ROOTSUM_GENS` generators are refused, since the log part does not finish. Resultants over
+`MAX_ROOTSUM_GENS` generators, or of degree above 3 over exactly that many, are refused, since the log part does not finish. Resultants over
 these fields are fraction-free (step FR): the coefficients are scaled into ``B[t_1, …, t_k]`` and
 the subresultant PRS runs there, with exact divisions; Euclid over ``B(t_1, …, t_k)`` normalises
 nested fractions by gcds at every step. For the residues only a constant multiple of
@@ -246,6 +246,9 @@ Two mechanisms let the later steps reuse `parse_tower`:
   u-substitution use the same device to test whether an expression is a function of a chosen
   subterm. This is sound because the opaque constants are formally independent: an identity that
   holds for an indeterminate still holds after the actual subterm is put back.
+  A plain symbol goes before the opaque subterms among the generators, whatever the order the term
+  prints in (step SG): a parameter after an opaque radical such as ``(ℓ^2)^{3/2}`` made the gcds over the
+  nested constant field grow without end (SymPy #27957).
 
 ## Following an integrand
 
@@ -263,6 +266,7 @@ throws. A step that rewrites the integrand calls `risch_integrate` again on the 
 | Step | Recognizes | Does |
 |:-----|:-----------|:-----|
 | EP | ``(b^w)^r`` with a positive constant ``b``; ``(C^s)^n`` with integer ``n`` over products and quotients | merges exponents: ``(3^{3x})^{1/4} = 3^{3x/4}``, so a radicand with even powers of a radical becomes rational; a rewrite the term type undoes (Giac keeps ``C^{2/3}`` as ``(C^{1/3})^2``) is no change |
+| XL | ``\exp(c L(u))`` with ``c \in \mathbb{Q}`` and ``L`` one of `log`, `atanh`, `acoth` (a sum in the exponent is split) | a power the radical steps take, in place of the tower's refusal of ``\exp`` of a fractional multiple of a logarithm: ``\exp(c \log u) = u^c``, ``\exp(c \operatorname{atanh} u) = ((1+u)/(1-u))^{c/2}`` (``\lvert u \rvert < 1``, the base is positive), ``\exp(c \operatorname{acoth} u) = ((u+1)/(u-1))^{c/2}`` (``\lvert u \rvert > 1``); for ``c = n \in \mathbb{Z}``, ``(1+u)^n (1-u^2)^{-n/2}`` (in ``1/u`` for `acoth`), so ``\int e^{\operatorname{atanh} x} = \operatorname{asin} x - \sqrt{1-x^2}``. With `atanh` or `acoth` it comes after step AL (``y = ax``), and again if step AL refuses |
 | erf | ``\int A(x) \operatorname{erf}(ax + b)`` (or `erfi`), ``A`` free of `erf` | by parts with ``Q = \int A``: ``Q \operatorname{erf}(u) - (2a/\sqrt π)\int Q e^{-u^2}``, the exponentials of ``Q`` merged into ``e^{-u^2}`` (``\int e^x \operatorname{erf} x``) |
 | IT | a factor free of `x` that contains a symbol or a root ``c^{p/q}`` with ``q > 2`` | takes it out: ``\int c\,g = c \int g``. This keeps the parameter out of the constant field, and lets an iterated integral see ``c(y) \cdot \text{RootSum}(x)`` |
 | KR | a radical whose radicand has a transcendental function | if the radicand is constant in its tower (``\sin^2 x + \cos^2 x``, the speed of a circle in a line integral), it is replaced by its value: ``\sqrt{\sin^2 x + \cos^2 x} = 1`` |
@@ -385,6 +389,9 @@ denominator to one over ``ℚ``, where the real forms above apply:
   For example, ``1/(x^3 + a^3) = a^{-3}/(u^3 + 1)``.
 - **Step BN.** If the denominator is ``λ x^j (x^n + c)^k`` with ``n ≥ 3``, then
   ``ρ = |c|^{1/n}``, kept as an opaque constant. For example, ``1/(x^3 - 2)`` and ``1/(a x^3 - b)``.
+  Also a biquadratic ``x^4 + bx^2 + c`` with ``c > 0`` and ``γ = b/\sqrt c`` rational: ``ρ = c^{1/4}`` gives
+  ``c(u^4 + γu^2 + 1)``, as for ``1/(16π^4x^4 - 4π^2x^2 + 1)`` (SymPy #28657). The signs of ``c`` and ``b`` are
+  `param_sign`'s.
   Here ``x^n + c = |c|(u^n ± 1)``. The numerator is split into monomials ``u^i``, and powers of
   ``ρ`` are reduced with ``ρ^n = |c|``. That leaves one integral ``\int u^{i-j}/(u^n ± 1)^k`` over
   ``ℚ`` for each monomial. The factors of ``u^n ± 1`` are cyclotomic, so for ``n = 3, 4, 5, 6``
@@ -739,6 +746,7 @@ failures, and their comments cite the Rubi problem numbers.
 | 10e | `radicals.jl` | square roots of rational constants |
 | AC | `inverse_trig.jl` | `acot`, `acsc`, `asec` rewritten |
 | IH | `inverse_trig.jl` | inverse hyperbolic functions by parts or as logarithms |
+| XL | `inverse_trig.jl` | ``\exp(c \log u)``, ``\exp(c \operatorname{atanh} u)`` as powers |
 | AP | `inverse_trig.jl` | by parts for ``A L^k`` |
 | AS | `inverse_trig.jl` | `asin`, `acos` by ``u = \sin t`` |
 | AL | `inverse_trig.jl` | `asin`, `acos`, `asinh`, … of ``ax + b`` with parameters |
@@ -764,7 +772,7 @@ failures, and their comments cite the Rubi problem numbers.
 | CS | `constant_scaling.jl` | nested radicals over ``ℚ(\sqrt d)``: scaling and constant factors out of radicands |
 | PP | `nested_subst.jl` | pairs of square roots ``\sqrt{g + c_1}``, ``\sqrt{g + c_2}`` |
 | PL, PR, PM, LL, PS | `param_radicals.jl` | parameters: linearity, radicands, repeated factors, two linear radicands, scaling |
-| BN | `param_radicals.jl` | binomial denominators ``x^n + c``: ``x = \lvert c\rvert^{1/n} u`` |
+| BN | `param_radicals.jl` | binomial denominators ``x^n + c``: ``x = \lvert c\rvert^{1/n} u``; biquadratics ``x^4 + bx^2 + c`` with ``b/\sqrt c`` rational |
 | PC | `precompile.jl` | precompile workload |
 | R2, NR | `quartic_residues.jl` | real forms of quartic residues, nested radicals in them |
 | BQ4 | `quartic_residues.jl` | even quartics ``x^4 + bx^2 + c`` with nested real forms |
@@ -777,6 +785,7 @@ failures, and their comments cite the Rubi problem numbers.
 | RP, SQ | `factoring.jl`, `radicals.jl` | radicands that are powers; repeated factors |
 | RY | `tower_radicals.jl` | a radical of a tower element |
 | SY | `tower_terms.jl` | parameters and opaque constants |
+| SG | `tower_terms.jl` | plain symbols before opaque subterms among the constant generators |
 | SL | `risch_integrate.jl` | ``y = e + fx`` for shifted linear trigonometric arguments |
 | SO | `param_radicals.jl`, `sign_facts.jl` | signs of parameter expressions from the caller: an oracle, or facts |
 | TA | `tower_terms.jl`, `monomial_integration.jl` | `atan` levels |
