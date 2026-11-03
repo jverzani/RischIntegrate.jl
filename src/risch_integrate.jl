@@ -521,21 +521,22 @@ function split_free_factor(f, x, xk::String, build, lift)
     (safe_iscall(f) && !isempty(arguments(f))) || return nothing
     n = opname(operation(f))
     n in (:*, :/) || return nothing
-    # (nested products and quotients flattened: (√d √(sec x)) (b^(5/2) tan(x)^(5/2)) from step RK, as Expr writes
-    # it; -1·(p/q) from step LS's split of a difference)
-    nums, dens = Any[], Any[]
-    function collect!(t, up::Bool)
-        if safe_iscall(t) && !isempty(arguments(t)) && opname(operation(t)) === :*
-            foreach(a -> collect!(a, up), arguments(t))
-        elseif safe_iscall(t) && length(arguments(t)) == 2 && opname(operation(t)) === :/
-            collect!(arguments(t)[1], up)
-            collect!(arguments(t)[2], !up)
-        else
-            push!(up ? nums : dens, t)
-        end
+    # (nested products flattened: (√d √(sec x)) (b^(5/2) tan(x)^(5/2)) from step RK, as Expr writes it)
+    factors(t) = (safe_iscall(t) && !isempty(arguments(t)) && opname(operation(t)) === :*) ?
+                 Any[s for a in arguments(t) for s in factors(a)] : Any[t]
+    isquo(t) = safe_iscall(t) && length(arguments(t)) == 2 && opname(operation(t)) === :/
+    if n === :* && (fs = factors(f); count(t -> leaf_rational(t) === nothing, fs) == 1) &&
+       isquo(fs[findfirst(t -> leaf_rational(t) === nothing, fs)])
+        # k·(p/q) with k rational (-1·(p/q) from step LS's split of a difference, SymPy #27374): as k p/q. (Not
+        # deeper: a quotient beside other factors stays whole, so that step RM's merged call keeps its route)
+        qt = fs[findfirst(t -> leaf_rational(t) === nothing, fs)]
+        nums = Any[Any[t for t in fs if t !== qt]..., factors(arguments(qt)[1])...]
+        dens = Any[factors(arguments(qt)[2])...]
+    else
+        nums, dens = n === :* ? (factors(f), Any[]) :
+                     length(arguments(f)) == 2 ? (Any[factors(arguments(f)[1])...], Any[factors(arguments(f)[2])...]) :
+                     return nothing
     end
-    n === :/ && length(arguments(f)) != 2 && return nothing
-    collect!(f, true)
     # (also a factor with π or ℯ, √π: beside √2, which fixes the constant field to ℚ(√2), π cannot be a new
     # constant; SymPy #27374)
     isfree(t) = !has_leaf(t, xk) && (has_symbol(t) || has_high_root(t) || has_pi_e(t))
