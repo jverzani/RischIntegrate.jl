@@ -73,8 +73,8 @@ function try_lambertw(f, x; build = nothing, lift = nothing, verify::Bool = true
         safe_iscall(t) || return string(t) == xk ? Wt : t
         args = arguments(t)
         isempty(args) && return t
-        if opname(operation(t)) === :exp && length(args) == 1
-            k = wmult(args[1])
+        if exp_arg(t) !== nothing
+            k = wmult(exp_arg(t))
             k === nothing || return k == 1 ? xW : mk(bd, :^, xW, bd.lift(k))
         end
         term_rebuild(bd, t, Any[back(a) for a in args])

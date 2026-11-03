@@ -115,8 +115,6 @@ function usub_hook(u, xk::String)
     end
     intk(r) = isone(denominator(r)) ? Int(numerator(r)) : nothing
     # u = exp(w): exp(m w) = U^m for an integer m
-    exp_arg(t) = !isnode(t) ? nothing : opname(operation(t)) === :exp ? arguments(t)[1] :
-                 (opname(operation(t)) === :^ && is_e_const(arguments(t)[1])) ? arguments(t)[2] : nothing
     ua = exp_arg(u)
     ue = ua === nothing ? nothing : radicand_element(ua, xk)
     function upow(t)

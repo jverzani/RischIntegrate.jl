@@ -111,8 +111,8 @@ function rewrite_exp_logs(f, x, build, lift)
         args = arguments(t)
         isempty(args) && return t
         nargs = Any[walk(a) for a in args]
-        if opname(operation(t)) === :exp && length(nargs) == 1
-            g = nargs[1]
+        if exp_arg(t) !== nothing
+            g = walk(exp_arg(t))
             ts = safe_iscall(g) && opname(operation(g)) === :+ ? collect(Any, arguments(g)) : Any[g]
             ms = map(cl, ts)
             if any(!isnothing, ms)

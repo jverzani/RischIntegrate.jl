@@ -13,8 +13,12 @@ const SUM_SPLIT = Ref(0)                                # nesting (at most 2)
 function additive_terms(bd::Builder, f)
     safe_iscall(f) || return Any[]
     n, args = opname(operation(f)), arguments(f)
-    n === :+ && return Any[a for a in args]
-    n === :- && length(args) == 2 && return Any[args[1], mk(bd, :*, bd.lift(-1), args[2])]
+    # (nested sums and differences flattened: Expr writes t₁ - t₂ + t₃ as (t₁ - t₂) + t₃, SymPy #27374)
+    neg(t) = mk(bd, :*, bd.lift(-1), t)
+    parts(t) = (safe_iscall(t) && (opname(operation(t)) === :+ || (opname(operation(t)) === :- && length(arguments(t)) == 2))) ?
+               additive_terms(bd, t) : Any[t]
+    n === :+ && return Any[p for a in args for p in parts(a)]
+    n === :- && length(args) == 2 && return Any[parts(args[1])..., (neg(p) for p in parts(args[2]))...]
     if n === :/ && length(args) == 2
         ts = additive_terms(bd, args[1])
         return Any[mk(bd, :/, t, args[2]) for t in ts]

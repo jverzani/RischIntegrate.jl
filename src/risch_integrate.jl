@@ -249,6 +249,12 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         g = rewrite_exp_logs(f, x, build, lift)
         g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
     end
+    # f free of x, with a parameter or π, e (erf(a√(R²)/√2)/(R²)^(3/2), SymPy #27374): ∫ f = f x, not through a
+    # constant field that may not hold all of f's constants beside √2
+    if !has_leaf(f, xk) && (has_symbol(f) || has_pi_e(f))
+        bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+        return mk(bd, :*, f, bd.x)
+    end
     g = try_erf(f, x; build = build, lift = lift, verify = verify)   # ∫ erf(ax + b) by parts
     g === nothing || return g
     # step IT: a factor free of x containing other symbols comes out, ∫ c g dx = c ∫ g dx (keeps the
@@ -518,14 +524,26 @@ function split_free_factor(f, x, xk::String, build, lift)
     # (nested products flattened: (√d √(sec x)) (b^(5/2) tan(x)^(5/2)) from step RK, as Expr writes it)
     factors(t) = (safe_iscall(t) && !isempty(arguments(t)) && opname(operation(t)) === :*) ?
                  Any[s for a in arguments(t) for s in factors(a)] : Any[t]
-    nums, dens = n === :* ? (factors(f), Any[]) :
-                 length(arguments(f)) == 2 ? (Any[factors(arguments(f)[1])...], Any[factors(arguments(f)[2])...]) :
-                 return nothing
-    isfree(t) = !has_leaf(t, xk) && (has_symbol(t) || has_high_root(t))
+    isquo(t) = safe_iscall(t) && length(arguments(t)) == 2 && opname(operation(t)) === :/
+    if n === :* && (fs = factors(f); count(t -> leaf_rational(t) === nothing, fs) == 1) &&
+       isquo(fs[findfirst(t -> leaf_rational(t) === nothing, fs)])
+        # k·(p/q) with k rational (-1·(p/q) from step LS's split of a difference, SymPy #27374): as k p/q. (Not
+        # deeper: a quotient beside other factors stays whole, so that step RM's merged call keeps its route)
+        qt = fs[findfirst(t -> leaf_rational(t) === nothing, fs)]
+        nums = Any[Any[t for t in fs if t !== qt]..., factors(arguments(qt)[1])...]
+        dens = Any[factors(arguments(qt)[2])...]
+    else
+        nums, dens = n === :* ? (factors(f), Any[]) :
+                     length(arguments(f)) == 2 ? (Any[factors(arguments(f)[1])...], Any[factors(arguments(f)[2])...]) :
+                     return nothing
+    end
+    # (also a factor with π or ℯ, √π: beside √2, which fixes the constant field to ℚ(√2), π cannot be a new
+    # constant; SymPy #27374)
+    isfree(t) = !has_leaf(t, xk) && (has_symbol(t) || has_high_root(t) || has_pi_e(t))
     cn, cd = filter(isfree, nums), filter(isfree, dens)
     (isempty(cn) && isempty(cd)) && return nothing
     gn, gd = filter(!isfree, nums), filter(!isfree, dens)
-    (isempty(gn) && isempty(gd)) && return nothing           # f free of x altogether: as before
+    (isempty(gn) && isempty(gd)) && return nothing           # f free of x altogether: see `integrate_direct`
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     prod_(ts) = isempty(ts) ? bd.lift(1) : length(ts) == 1 ? ts[1] : mk(bd, :*, ts...)
     c = isempty(cd) ? prod_(cn) : mk(bd, :/, prod_(cn), prod_(cd))

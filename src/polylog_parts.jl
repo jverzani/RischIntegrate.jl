@@ -91,9 +91,9 @@ function try_poly_exp_parts(f, x; build = nothing, lift = nothing, verify::Bool 
     xk = string(x)
     # x only inside exp
     bare(t) = safe_iscall(t) && !isempty(arguments(t)) ?
-              (opname(operation(t)) === :exp ? false : any(bare, arguments(t))) : string(t) == xk
+              (exp_arg(t) !== nothing ? false : any(bare, arguments(t))) : string(t) == xk
     hasexp(t) = safe_iscall(t) && !isempty(arguments(t)) &&
-                ((opname(operation(t)) === :exp && depends_on(arguments(t)[1], xk)) || any(hasexp, arguments(t)))
+                ((exp_arg(t) !== nothing && depends_on(exp_arg(t), xk)) || any(hasexp, arguments(t)))
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     pw(t, e) = e == 1 ? t : mk(bd, :^, t, bd.lift(e))
     Ps, Rs = Any[], Any[]

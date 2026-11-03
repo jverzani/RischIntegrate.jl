@@ -79,10 +79,10 @@ function gamma_factors(t, xk::String, sign::Int = 1, acc = (Any[], Ref(Q(0)), An
         end
         return acc
     end
-    if n === :^ && length(args) == 2 && safe_iscall(args[1]) && opname(operation(args[1])) === :exp   # exp(u)^k
+    if n === :^ && length(args) == 2 && exp_arg(args[1]) !== nothing   # exp(u)^k
         k = leaf_rational(args[2])
         k === nothing && return nothing
-        push!(exps, (args[1], sign * Int(k)))          # (only integer k reach here in practice)
+        push!(exps, (exp_arg(args[1]), sign * Int(k)))  # (only integer k reach here in practice)
         return acc
     end
     nothing
@@ -369,14 +369,15 @@ end
 # Q eᵛ with the exponentials of each summand of Q merged into eᵛ: (x - 1)eˣ e^(-x²) as x e^(x - x²) - e^(x - x²),
 # whose erf terms step SF finds (eˣ e^(-x²) is two exponentials there)
 function times_exp(b0::Builder, Q, ex)
-    v = arguments(ex)[1]
+    v = exp_arg(ex)            # (not arguments(ex)[1]: a SymJ exp(u) is ℯ^u, arguments [ℯ, u]; SymPy #27586)
     ss = (safe_iscall(Q) && opname(operation(Q)) === :+) ? arguments(Q) : Any[Q]
     ts = Any[]
     for s in ss
         args, rest = Any[v], Any[]
         for (t, e) in product_factors!(Any[], s, 1)
-            if safe_iscall(t) && opname(operation(t)) === :exp && length(arguments(t)) == 1
-                push!(args, e == 1 ? arguments(t)[1] : mk(b0, :*, b0.lift(e), arguments(t)[1]))
+            w = exp_arg(t)
+            if w !== nothing
+                push!(args, e == 1 ? w : mk(b0, :*, b0.lift(e), w))
             else
                 push!(rest, e == 1 ? t : mk(b0, :^, t, b0.lift(e)))
             end
@@ -385,6 +386,41 @@ function times_exp(b0::Builder, Q, ex)
         push!(ts, isempty(rest) ? E : mk(b0, :*, rest..., E))
     end
     length(ts) == 1 ? ts[1] : mk(b0, :+, ts...)
+end
+
+# Q as λ e + R, with e = erf(u) and λ free of x (nothing for a part that is zero)
+function erf_multiple(b0::Builder, Q, e, xk::String)
+    es, en, eu = string(e), opname(operation(e)), arguments(e)[1]
+    # erf(v) with v = u, compared at two points (Expr writes erf(sqrt(1)*x) for erf(x)); a wrong match would
+    # show in the numeric check of try_erf's answer
+    function same(t)
+        string(t) == es && return true
+        (isnode(t) && opname(operation(t)) === en && length(arguments(t)) == 1) || return false
+        v = arguments(t)[1]
+        ev = numeric_evaluator(xk, v, eu)
+        try
+            all(x0 -> isapprox(ev(v, x0), ev(eu, x0); rtol = 1e-12), (0.37, 1.21))
+        catch
+            false
+        end
+    end
+    λs, Rs = Any[], Any[]
+    for (t, sg) in gamma_summands(Q)
+        facs = Any[]
+        flat(u) = (isnode(u) && opname(operation(u)) === :*) ? foreach(flat, arguments(u)) : push!(facs, u)
+        flat(t)
+        j = findfirst(same, facs)
+        rest = Any[facs[i] for i in eachindex(facs) if i != j]
+        c = isempty(rest) ? b0.lift(sg) : mk(b0, :*, b0.lift(sg), rest...)
+        if j !== nothing && !any(u -> depends_on(u, xk), rest)
+            push!(λs, c)
+        else
+            push!(Rs, sg == 1 ? t : mk(b0, :*, b0.lift(-1), t))
+        end
+    end
+    sm(v) = isempty(v) ? nothing : length(v) == 1 ? v[1] : mk(b0, :+, v...)
+    isempty(λs) && return nothing, Q
+    sm(λs), sm(Rs)
 end
 
 # ∫ c·erf(ax + b) = c (x + b/a) erf(ax + b) + c e^(-(ax+b)²)/(a√π); erfi: c (x + b/a) erfi(ax + b) - c e^((ax+b)²)/(a√π)
@@ -433,10 +469,18 @@ function try_erf(f, x; build = nothing, lift = nothing, verify::Bool = true)
             tt = try
                 Qt = risch_integrate(A, x; build = build, lift = lift, verify = verify)
                 Qt isa IntegralWithRootSums && return nothing
-                H = risch_integrate(times_exp(b0, Qt, ex), x; build = build, lift = lift, verify = verify)
-                H isa IntegralWithRootSums && return nothing
+                # Q = λ erf(u) + R (A = c e^(-u²), SymPy #27586: erf(x) e^(-x²)): ∫ λ erf(u) erf(u)′ = λ erf(u)²/2 by
+                # hand, since ∫ Q e^(-u²) would be the integral asked for again
+                λ, R = erf_multiple(b0, Qt, e, xk)
                 k = mk(b0, :/, isone(a) ? b0.lift(2) : mk(b0, :*, b0.lift(2), cterm(bc, a)), mk(b0, :sqrt, b0.lift(π)))
-                mk(b0, :+, mk(b0, :*, Qt, e), mk(b0, :*, b0.lift(-1), k, H))
+                parts = Any[mk(b0, :*, Qt, e)]
+                λ === nothing || push!(parts, mk(b0, :*, b0.lift(-1 // 2), λ, mk(b0, :^, e, b0.lift(2))))
+                if R !== nothing
+                    H = risch_integrate(times_exp(b0, R, ex), x; build = build, lift = lift, verify = verify)
+                    H isa IntegralWithRootSums && return nothing
+                    push!(parts, mk(b0, :*, b0.lift(-1), k, H))
+                end
+                length(parts) == 1 ? parts[1] : mk(b0, :+, parts...)
             catch err
                 (err isa RischNotImplemented || err isa NotElementary) || rethrow()
                 return nothing
@@ -455,5 +499,9 @@ function try_erf(f, x; build = nothing, lift = nothing, verify::Bool = true)
         F isa IntegralWithRootSums && return nothing
         push!(terms, F)
     end
-    length(terms) == 1 ? terms[1] : mk(b0, :+, terms...)
+    G = length(terms) == 1 ? terms[1] : mk(b0, :+, terms...)
+    # the parts are checked as integrals of what they were given, not the sum as an integral of f: an integrand
+    # built wrongly for the second integral (exp(x + ℯ) for SymJ's ℯ^x, SymPy #27586) passed. Checked numerically
+    (verify && !numeric_antiderivative(f, G, xk)) && throw(RischError("internal check failed: erf by parts"))
+    G
 end
