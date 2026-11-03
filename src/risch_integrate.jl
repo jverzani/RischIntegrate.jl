@@ -154,7 +154,10 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
                 g === nothing && rethrow()
                 g
             end
-            r === nothing || return r
+            # an answer with RootSums (step HT: √tan(L)/√(2 - 3 tan L), sample 1826, a quartic RootSum in
+            # tan(L/2)) waits for step RM, whose closed form (logs and atans) is preferred
+            (r === nothing || r isa IntegralWithRootSums) || return r
+            r_rs = r
             # (after step RK's parameter factors, which a merged radicand (a + a sec x) cos x would hide)
             fk = split_radicand_content(f, x, string(x), build, lift)
             m = merge_square_roots(fk === nothing ? f : fk, x, string(x), build, lift)
@@ -163,15 +166,21 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
                 r = try
                     risch_integrate(g, x; build = build, lift = lift, verify = verify)
                 catch e2
-                    e2 isa RischNotImplemented || rethrow()
-                    radicand_fallbacks(g, x; build = build, lift = lift, verify = verify)
+                    (e2 isa RischNotImplemented || (r_rs !== nothing && e2 isa NotElementary)) || rethrow()
+                    try
+                        radicand_fallbacks(g, x; build = build, lift = lift, verify = verify)
+                    catch e3
+                        (r_rs !== nothing && (e3 isa RischNotImplemented || e3 isa NotElementary)) || rethrow()
+                        nothing
+                    end
                 end
-                if r !== nothing
+                if r !== nothing && !(r_rs !== nothing && r isa IntegralWithRootSums)
                     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
                     r isa IntegralWithRootSums || return mk(bd, :*, σ, r)
                     return IntegralWithRootSums(mk(bd, :*, σ, r.elementary), Any[ScaledRootSum(σ, rs) for rs in r.rootsums], r.var)
                 end
             end
+            r_rs === nothing || return r_rs
         end
         # sinᵖ cosʳ with a fractional exponent beside a symbolic one (sin^(7/2) cosᵐ), or a term type that keeps
         # sin^(3/2) as a radical: the ₂F₁ of step HS (at any depth: the special-function fallback's Expr call)
