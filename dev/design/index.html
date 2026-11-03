@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=5762ea34">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=77e3a4c2">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -612,7 +612,7 @@
 </tr>
 <tr>
 <td style="text-align:left">RM</td>
-<td style="text-align:left">a radical refused for its radicand, in the outermost call, after RK and HT</td>
+<td style="text-align:left">a radical refused for its radicand, in the outermost call, after RK and HT (or after an answer of step HT with RootSums, which it replaces when its own has none: <span class="md-math md-math-inline">\(\sqrt{\tan L}/\sqrt{2 - 3\tan L}\)</span>)</td>
 <td style="text-align:left"><span class="md-math md-math-inline">\(h \prod u_i^{k_i/2}\)</span>: square roots of two or more radicands with a trigonometric or hyperbolic function, <span class="md-math md-math-inline">\(h\)</span> free of radicals</td>
 <td style="text-align:left">after step RK&#39;s parameter factors, the radicals of odd <span class="md-math md-math-inline">\(k_i\)</span> merged: <span class="md-math md-math-inline">\(\prod u_i^{k_i/2} = σ \prod u_i^{(k_i - 1)/2} \sqrt{\prod u_i}\)</span>, integrated (then steps RK, HT), and the answer times <span class="md-math md-math-inline">\(σ = \prod \sqrt{u_i}/\sqrt{\prod u_i} = ±1\)</span>, constant on each interval (not when <span class="md-math md-math-inline">\(\prod u_i\)</span> is nowhere positive: the integrand is then nowhere real): <span class="md-math md-math-inline">\((a + a\sec x)^{5/2}/\cos^{5/2} x\)</span> by <span class="md-math md-math-inline">\(\sqrt{(1 + \sec x)\cos x}\)</span>, <span class="md-math md-math-inline">\((a + a \sin x)^{3/2}(c - c\sin x)^{7/2}\)</span> by <span class="md-math md-math-inline">\(\sqrt{(1 + \sin x)(1 - \sin x)}\)</span></td>
 </tr>
@@ -1162,6 +1162,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=5762ea34"></script>
+  <script src="../assets/materialdocs.js?v=77e3a4c2"></script>
 </body>
 </html>
