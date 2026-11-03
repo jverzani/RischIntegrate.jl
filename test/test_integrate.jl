@@ -2762,6 +2762,27 @@ end
         end
     end
     @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(erf(x) / x), :x; build = build, lift = identity)
+    # Q = ∫ A a multiple of erf(u) itself: ∫ erf(x) e^(-x²) = √π erf(x)²/4 (SymPy #27586; a stack overflow, then)
+    F = Risch.risch_integrate(:(erf(x) * exp(-x ^ 2)), :x; build = build, lift = identity)
+    for x0 in (-0.7, 0.4, 1.3)
+        @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, SpecialFunctions.erf(x0) * exp(-x0^2); rtol = 1e-5)
+    end
+end
+
+# SymPy #27586: a term type whose exp(u) is the power ℯ^u (SymEngine; SymJ, arguments [ℯ, u]) had its exponent
+# read as ℯ in the erf-by-parts route (exp(x + ℯ) in the answer of ∫ eˣ erf x), and the assembled answer was not
+# checked. Exponents are read through `exp_arg`, and the answer is checked numerically
+@testset "SymEngine: erf by parts with exp(u) as ℯ^u" begin
+    SymEngine.@vars x
+    for f in (exp(x) * SpecialFunctions.erf(x), exp(-x) * SpecialFunctions.erf(x), x * exp(x) * SpecialFunctions.erf(x),
+              SpecialFunctions.erf(x) * exp(-x^2), x * SpecialFunctions.erf(x), (x + 1) * SpecialFunctions.erf(x))
+        F = Risch.risch_integrate(f, x)
+        @test !(F isa Risch.IntegralWithRootSums)
+        @test !occursin("exp(1)", string(F))
+        for x0 in (-0.7, 0.4, 1.3)
+            @test abs(SymEngine.N(SymEngine.subs(SymEngine.diff(F, x) - f, x => x0))) < 1e-10
+        end
+    end
 end
 
 # SymPy #30167, step XP: P(x) R(eˣ) by parts with Q = ∫ R, then ∫ P′ Q (log(1 + c eᵏˣ): Li₂). x²/(eˣ - 1) needs Li₃

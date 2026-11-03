@@ -15,6 +15,10 @@ end
 # The constant e, however the package prints it: Julia's ℯ, SymEngine's `E`, or
 # `exp(1)` (SymEngine builds exp(u) as the power E^u).
 is_e_const(t) = !safe_iscall(t) && string(t) in ("ℯ", "E", "exp(1)")
+# the exponent u of exp(u), however the term type presents it: a one-argument `exp` call, or the power ℯ^u
+# (SymEngine, SymJ: arguments [ℯ, u]); nothing for any other term. Read exponents only through this.
+exp_arg(t) = !isnode(t) ? nothing : (opname(operation(t)) === :exp && length(arguments(t)) == 1) ? arguments(t)[1] :
+             (opname(operation(t)) === :^ && length(arguments(t)) == 2 && is_e_const(arguments(t)[1])) ? arguments(t)[2] : nothing
 
 const ALGEBRAIC = (:sqrt, :cbrt)
 const TRIG = (:sin, :cos, :tan, :cot, :sec, :csc, :atan, :abs)
