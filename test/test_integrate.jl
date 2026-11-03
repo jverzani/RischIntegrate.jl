@@ -2806,6 +2806,23 @@ end
     @test ev(F, 1.3) - ev(F, -1.3) ≈ -2 * sqrt(2) * 1.3 * 0.7^3 * exp(-1.3^2 * 0.7^2 / 2) / (3 * sqrt(π))
 end
 
+# SymPy #26922: e^(A x² + B x + C) with A a parameter expression: √π/(2√(-A)) e^E erf(√(-A)(x + h)), erf or erfi by
+# the sign of A (the oracle, else the parameters' positive values: erf for -a). An antiderivative for either sign
+# of a (checked at a < 0 too, in complex arithmetic: erf(i y) = i erfi(y))
+@testset "erf with parameter coefficients (SymPy #26922)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0, av) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x0))), :(a = $(complex(av))), :(b = $(complex(1.3))),
+                                                    :(erf = $(SpecialFunctions.erf)), :(erfi = $(SpecialFunctions.erfi))), e))
+    for (f, fn) in ((:(exp(-a * x ^ 2 + b * x)), "erf"), (:(exp(-a * x ^ 2)), "erf"), (:(x * exp(-a * x ^ 2 + sqrt(b) * x)), "erf"),
+                    (:(x ^ 2 * exp(-a * x ^ 2)), "erf"), (:(exp(a * x ^ 2)), "erfi"))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin(fn * "(", string(F))
+        for av in (0.8, -0.6), x0 in (-0.7, 0.4, 1.3)
+            @test isapprox((ev(F, x0 + 1e-6, av) - ev(F, x0 - 1e-6, av)) / 2e-6, ev(f, x0, av); rtol = 1e-6)
+        end
+    end
+end
+
 # SymPy #30167, step XP: P(x) R(eˣ) by parts with Q = ∫ R, then ∫ P′ Q (log(1 + c eᵏˣ): Li₂). x²/(eˣ - 1) needs Li₃
 @testset "polynomial times a rational function of exp (step XP)" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)

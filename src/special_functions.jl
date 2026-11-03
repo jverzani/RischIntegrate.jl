@@ -17,7 +17,7 @@ struct SpecialTerm
     c::Any             # coefficient ∈ C
     p::Any             # constant prefactor e^p, p ∈ C (output only: it cancels in the derivative)
     z::Any             # the argument (Ei), or x + h (erf/erfi): a tower element
-    A::Q               # erf/erfi: the coefficient of x²
+    A::Any             # erf/erfi: the coefficient of x² (∈ C; with parameters, SymPy #26922)
     deriv::Any         # the exact derivative of the term (tower element)
 end
 
@@ -90,11 +90,16 @@ function special_exp(T::Tower, i::Int, j::Int, α)
         push!(kinds, (:Eigen, W))
     end
     if m == 0 && isone(jU.den) && degree(jU.num) == 2
-        A = crational(jU.num.c[3])
+        # A x² + B x + C₀, A a constant of the field: rational, or with parameters (e^(-a x² + b x), SymPy #26922),
+        # its sign (erf for A < 0, erfi for A > 0) from `param_sign`: the sign oracle (step SO), else the
+        # parameters' generic positive values. The answer √π/(2√(-A)) e^E erf(√(-A)(x + h)) is an antiderivative
+        # for either sign of A (erf(i y) = i erfi(y)), so the choice only picks the real form
+        A = jU.num.c[3]
         B, C0 = jU.num.c[2], jU.num.c[1]
-        if A !== nothing && (!cx || (cconj_g(T.consts, B) == B && cconj_g(T.consts, C0) == C0))
+        sA = (cx && cconj_g(T.consts, A) != A) ? nothing : param_sign(A, T.consts)
+        if sA !== nothing && sA != 0 && (!cx || (cconj_g(T.consts, B) == B && cconj_g(T.consts, C0) == C0))
             push!(extras, one(jU))
-            push!(kinds, (:erf, A))
+            push!(kinds, (:erf, (A, sA)))
         end
     end
     isempty(extras) && return nothing
@@ -123,12 +128,11 @@ function special_exp(T::Tower, i::Int, j::Int, α)
         elseif kd[1] === :Eigen
             push!(terms, SpecialTerm(:Ei, c, zero(C), lq(T, Q(j), m) * kd[2], Q(0), d))
         else
-            A = kd[2]
-            Ac = cfromQ(C, A)
+            Ac, sA = kd[2]
             B, C0 = jU.num.c[2], jU.num.c[1]
             h = B / (Ac + Ac)
             E = C0 - B * B / (4 * Ac)
-            push!(terms, SpecialTerm(A < 0 ? :erf : :erfi, c, E, X + kconst(h), A, d))
+            push!(terms, SpecialTerm(sA < 0 ? :erf : :erfi, c, E, X + kconst(h), Ac, d))
         end
     end
     y, terms
@@ -266,7 +270,7 @@ function special_out(b::Builder, q::SpecialTerm, ct, zt)
     if q.fn === :Ei
         core = mk(b, :Ei, zt(q.z))
     else
-        sa = mk(b, :sqrt, cterm(b, abs(q.A)))
+        sa = mk(b, :sqrt, cterm(b, q.fn === :erf ? -q.A : q.A))     # √|A| (√(-A) for erf: A < 0)
         core = mk(b, :*, mk(b, :/, mk(b, :sqrt, b.lift(π)), mk(b, :*, b.lift(2), sa)),
                   mk(b, q.fn, mk(b, :*, sa, zt(q.z))))
     end

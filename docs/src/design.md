@@ -271,8 +271,8 @@ throws. A step that rewrites the integrand calls `risch_integrate` again on the 
 |:-----|:-----------|:-----|
 | EP | ``(b^w)^r`` with a positive constant ``b``; ``(C^s)^n`` with integer ``n`` over products and quotients | merges exponents: ``(3^{3x})^{1/4} = 3^{3x/4}``, so a radicand with even powers of a radical becomes rational; a rewrite the term type undoes (Giac keeps ``C^{2/3}`` as ``(C^{1/3})^2``) is no change |
 | XL | ``\exp(c L(u))`` with ``c \in \mathbb{Q}`` and ``L`` one of `log`, `atanh`, `acoth` (a sum in the exponent is split) | a power the radical steps take, in place of the tower's refusal of ``\exp`` of a fractional multiple of a logarithm: ``\exp(c \log u) = u^c``, ``\exp(c \operatorname{atanh} u) = ((1+u)/(1-u))^{c/2}`` (``\lvert u \rvert < 1``, the base is positive), ``\exp(c \operatorname{acoth} u) = ((u+1)/(u-1))^{c/2}`` (``\lvert u \rvert > 1``); for ``c = n \in \mathbb{Z}``, ``(1+u)^n (1-u^2)^{-n/2}`` (in ``1/u`` for `acoth`), so ``\int e^{\operatorname{atanh} x} = \operatorname{asin} x - \sqrt{1-x^2}``. With `atanh` or `acoth` it comes after step AL (``y = ax``), and again if step AL refuses |
-| erf | ``\int A(x) \operatorname{erf}(ax + b)`` (or `erfi`), ``A`` free of `erf` | by parts with ``Q = \int A``: ``Q \operatorname{erf}(u) - (2a/\sqrt π)\int Q e^{-u^2}``, the exponentials of ``Q`` merged into ``e^{-u^2}`` (``\int e^x \operatorname{erf} x``) |
-| IT | a factor free of `x` that contains a symbol or a root ``c^{p/q}`` with ``q > 2`` | takes it out: ``\int c\,g = c \int g``. This keeps the parameter out of the constant field, and lets an iterated integral see ``c(y) \cdot \text{RootSum}(x)`` |
+| erf | ``\int A(x) \operatorname{erf}(ax + b)`` (or `erfi`), ``A`` free of `erf` | by parts with ``Q = \int A``: ``Q \operatorname{erf}(u) - (2a/\sqrt π)\int Q e^{-u^2}``, the exponentials of ``Q`` merged into ``e^{-u^2}`` (``\int e^x \operatorname{erf} x``); a multiple ``λ \operatorname{erf}(u)`` in ``Q`` gives ``λ \operatorname{erf}(u)^2/2``. The sum is checked numerically. Exponents of `exp(u)` and ``ℯ^u`` (SymEngine, SymJ) are read through `exp_arg` |
+| IT | a factor free of `x` that contains a symbol, π or ℯ, or a root ``c^{p/q}`` with ``q > 2`` (an integrand free of `x` with a symbol or π: ``f x``) | takes it out: ``\int c\,g = c \int g``. This keeps the parameter out of the constant field, and lets an iterated integral see ``c(y) \cdot \text{RootSum}(x)`` |
 | KR | a radical whose radicand has a transcendental function | if the radicand is constant in its tower (``\sin^2 x + \cos^2 x``, the speed of a circle in a line integral), it is replaced by its value: ``\sqrt{\sin^2 x + \cos^2 x} = 1`` |
 | SL | every trigonometric or hyperbolic argument with `x` is ``r(e + fx)``, ``r`` rational, ``e`` a parameter; elsewhere `x` only algebraically | ``y = e + fx``, ``x = (y - e)/f``, integrated in ``y`` and ``y = e + fx`` substituted back (refused in ``y``: on to TS2). Before TS2, whose ``\cos e``, ``\sin e`` are independent constants to the constant field: ``\cos^2 e + \sin^2 e = 1`` is not seen, which gives hidden zero denominators, false residue criteria and slow resultants |
 | TS2 | ``\sin(v + a)``, ``\cosh(v + a)``, … with ``a`` free of `x` | addition formulas, so ``\cos a``, ``\sin a`` become opaque constants. Exact values for multiples of ``π/6`` and ``π/4`` |
@@ -285,7 +285,7 @@ throws. A step that rewrites the integrand calls `risch_integrate` again on the 
 ### 2. Radicals
 
 `collect_radicals` finds every ``u^{p/q}`` (`sqrt`, `cbrt`, `^` with a non-integer
-rational exponent). Radicals of parameters are opaque constants and are not counted. Then:
+rational exponent). Radicals of parameters and of π or ℯ (``\sqrt π``) are opaque constants and are not counted. Then:
 
 | Step | Recognizes | Does |
 |:-----|:-----------|:-----|
@@ -448,7 +448,8 @@ At a level ``i ≥ 1`` with monomial ``θ`` over ``K = K_{i-1}`` (Bronstein ch. 
 5. **Special functions** (Step 8a). Where step 4 proves ``\int a θ^j`` (``θ = e^U``) not elementary,
    the parametric Risch equation (ch. 7, `prde`) looks for
    ``a = y' + jU'y + \sum c_t U'/(U - t) + \sum d_l θ_l^{-j} W_l'/W_l [+ k]``, which integrates with
-   `Ei` terms, and `erf`/`erfi` for a quadratic exponent at the base. At a log level with
+   `Ei` terms, and `erf`/`erfi` for a quadratic exponent ``A x^2 + Bx + C`` at the base (``A`` rational or a
+   parameter expression: `erf` when ``A < 0`` by `param_sign`, an antiderivative for either sign). At a log level with
    non-constant residues, ``\int c\,u^m u'/(\log u + b)`` gives ``\operatorname{Ei}`` of a log
    (`li`). When the denominator has several factors, partial fractions first split off each factor
    ``θ - r`` with ``r`` constant (`special_log_split`). These factors are found as the common roots
