@@ -2785,6 +2785,27 @@ end
     end
 end
 
+# SymPy #27374: radicals of transcendental constants (√π) are opaque constants, and step IT takes x-free factors
+# with π out (beside √2, which fixes the constant field, π could not be a new constant). The integrand is a
+# polynomial in z with √π, e^(R²a²/2) and erf(a√(R²)/√2) in its coefficients
+@testset "radicals of π are constants (SymPy #27374)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, z0) = Core.eval(Main, Expr(:let, Expr(:block, :(z = $z0), :(a = 0.7), :(R = 1.3), :(erf = $(SpecialFunctions.erf))), e))
+    E = :(exp(R ^ 2 * a ^ 2 / 2))
+    Ec = :(-sqrt(2) * a ^ 3 * z ^ 2 / (R ^ 2 * sqrt(π) * $E) - 3 * sqrt(2) * a * z ^ 2 / (R ^ 4 * sqrt(π) * $E) +
+           sqrt(2) * a / (R ^ 2 * sqrt(π) * $E) + 3 * erf(sqrt(2) * sqrt(R ^ 2) * a / 2) * z ^ 2 / (R ^ 2) ^ (5 // 2) -
+           erf(sqrt(2) * sqrt(R ^ 2) * a / 2) / (R ^ 2) ^ (3 // 2))
+    for f in (:(sqrt(2) / sqrt(π)), :(sqrt(2) * z / sqrt(π)), :(sqrt(π) * z ^ 2), Ec)
+        F = Risch.risch_integrate(f, :z; build = build, lift = identity)
+        for z0 in (-0.9, 0.4, 1.1)
+            @test isapprox((ev(F, z0 + 1e-6) - ev(F, z0 - 1e-6)) / 2e-6, ev(f, z0); rtol = 1e-6, atol = 1e-9)
+        end
+    end
+    # ∫_{-R}^{R} Ec dz = -2√2 R a³ e^(-R²a²/2)/(3√π)
+    F = Risch.risch_integrate(Ec, :z; build = build, lift = identity)
+    @test ev(F, 1.3) - ev(F, -1.3) ≈ -2 * sqrt(2) * 1.3 * 0.7^3 * exp(-1.3^2 * 0.7^2 / 2) / (3 * sqrt(π))
+end
+
 # SymPy #30167, step XP: P(x) R(eˣ) by parts with Q = ∫ R, then ∫ P′ Q (log(1 + c eᵏˣ): Li₂). x²/(eˣ - 1) needs Li₃
 @testset "polynomial times a rational function of exp (step XP)" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
