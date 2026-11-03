@@ -1273,6 +1273,33 @@ end
     end
 end
 
+# step TW needs no count of the real poles (the answer holds between them): its Sturm sequence over
+# ℚ(a, b, cos c, sin c) took minutes for Rubi sample 1910 (shifted argument, step SL)
+@testset "tan(x/2) with parameters: no Sturm count (step TW)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    f = :(cos(c + d * x) ^ 3 / (a + b * tan(c + d * x) ^ 2))
+    t = @elapsed F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+    @test t < 90                          # (minutes before; about 20 s with compilation)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x0))), :(a = $(complex(1.3))), :(b = $(complex(0.7))),
+                                                :(c = $(complex(0.4))), :(d = $(complex(1.1)))), e))
+    for x0 in (-2.1, 0.3, 1.9)
+        @test real((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6) ≈ real(ev(f, x0)) rtol = 1e-5
+    end
+end
+
+# step HT's answer with a RootSum (a quartic in tan(L/2)) waits for step RM, whose merged radicand gives logs
+# and atans: Rubi sample 1826 (a RootSum since #94). Checked where the integrand is real, 0 < tan L < 2/3
+@testset "a RootSum from step HT gives way to step RM's closed form" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    f = :(sqrt(tan(c + d * x)) / sqrt(2 - 3 * tan(c + d * x)))
+    F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+    @test F isa Expr
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x0))), :(c = $(complex(0.2))), :(d = $(complex(1.0)))), e))
+    for x0 in (-0.15, 0.1, 0.25)              # tan(0.2 + x) ∈ (0, 2/3)
+        @test real((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6) ≈ real(ev(f, x0)) rtol = 1e-5
+    end
+end
+
 # step SO: the caller's sign oracle decides the signs of parameter expressions
 @testset "SymEngine: sign oracle (step SO)" begin
     SymEngine.@vars x a b

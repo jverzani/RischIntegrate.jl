@@ -133,11 +133,11 @@ function bioche(f, x; build = nothing, lift = nothing)
     # real poles of f (poles of g in the range of s) → the general route (real forms with |w|²)
     sg(c) = csign(c, T.consts)
     rng = kind in (:tan, :half) ? (nothing, nothing) : (-1, 1)
-    nreal = real_root_count(gq.den, rng..., sg)
     # (tan(u/2) with parameters: whether the sign conditions are decided (by the caller's oracle, step SO)
     # or not, the answer holds between the real poles of g, on (-π, π) when the parameters leave none,
-    # e.g. |a| < 1 for 1/(1 + a cos u); the general route has no parameter forms to offer instead)
-    (nreal == 0 || kind === :half) || return nothing
+    # e.g. |a| < 1 for 1/(1 + a cos u); the general route has no parameter forms to offer instead. So the
+    # count is not needed there: its Sturm sequence over ℚ(a, b, cos c, sin c) took minutes, sample 1910)
+    (kind === :half || real_root_count(gq.den, rng..., sg) == 0) || return nothing
     res = integrate_rational(gq)
     # residues of degree > 2 (step TR): a RootSum in s = cos u or sin u (over ℚ, real and continuous
     # since g has no pole in [-1, 1]); for s = tan u see step TT below
