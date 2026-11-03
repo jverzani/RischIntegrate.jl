@@ -247,6 +247,18 @@ const MAX_PARAMS = 12         # symbolic parameters (steps SY, PF): see the cap 
 # ℚ(t₁, …, t₅)) did not finish in minutes for a general quartic, while other integrals with 5, 6 parameters are fast
 # (with step FR, raising it answers 4 of the Rubi problems it refuses but leaves 12 running past 120 s)
 const MAX_ROOTSUM_GENS = 4
+# Over exactly MAX_ROOTSUM_GENS parameters (step RB): residues of a denominator of degree above
+# MAX_RESIDUE_DEGREE4 are refused before the resultant (sample 1018: degree 8, the resultant took 18 s and its
+# RootSum minutes), and a RootSum whose polynomial has more than MAX_ROOTSUM_SIZE4 rational coefficients in all
+# (`csize`) before the subresultant chain (sample 929: 499, did not finish). Smaller ones are quick: samples 173,
+# 392-394 and 721 (sizes 16-92, degree 4) are answered in about a second.
+const MAX_RESIDUE_DEGREE4 = 6
+const MAX_ROOTSUM_SIZE4 = 256
+
+# the number of rational coefficients in all of c (its numerators and denominators down the nested fields)
+csize(c) = 1
+csize(f::Frac) = csize(f.num) + (isone(f.den) ? 0 : csize(f.den))
+csize(p::UPoly) = isempty(p.c) ? 0 : sum(csize, p.c)
 
 # the value of c at depth `d` of the nested constant field, if c lies in that subfield
 function const_below(c, d::Int)

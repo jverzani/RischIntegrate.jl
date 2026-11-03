@@ -126,7 +126,10 @@ The generators are treated as algebraically independent. That is exact for one o
 that meets a constant needing a new generator throws `NewConstants` with the longer list, and the
 tower is built again over the larger field. Parameters nest the field one level deeper each, so
 their number is capped (`MAX_PARAMS`); residues of a denominator of degree above 2 over more than
-`MAX_ROOTSUM_GENS` generators, or of degree above 3 over exactly that many, are refused, since the log part does not finish. Resultants over
+`MAX_ROOTSUM_GENS` generators are refused, since the log part does not finish. Over exactly that many
+(step RB), a denominator of degree above `MAX_RESIDUE_DEGREE4` is refused before the resultant, and a
+RootSum of degree above 3 whose polynomial has more than `MAX_ROOTSUM_SIZE4` rational coefficients
+(`csize`) before the subresultant chain; smaller ones are quick. Resultants over
 these fields are fraction-free (step FR): the coefficients are scaled into ``B[t_1, …, t_k]`` and
 the subresultant PRS runs there, with exact divisions; Euclid over ``B(t_1, …, t_k)`` normalises
 nested fractions by gcds at every step. For the residues only a constant multiple of
@@ -786,6 +789,7 @@ failures, and their comments cite the Rubi problem numbers.
 | RM | `radicals.jl` | several square roots merged into one, times ``σ = ±1`` |
 | RE, RT, RF | `constant_fields.jl`, `tower_rootsums.jl`, `tower_real_forms.jl` | RootSums over parameter fields and in towers, their real forms |
 | FR | `fractions.jl`, `monomial_integration.jl` | fraction-free resultants over parameter fields |
+| RB | `constant_fields.jl`, `rothstein_trager.jl`, `rootsum.jl` | residues over exactly `MAX_ROOTSUM_GENS` parameters: refused by degree and size |
 | RP, SQ | `factoring.jl`, `radicals.jl` | radicands that are powers; repeated factors |
 | RY | `tower_radicals.jl` | a radical of a tower element |
 | SY | `tower_terms.jl` | parameters and opaque constants |

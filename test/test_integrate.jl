@@ -1181,6 +1181,26 @@ end
     build(op, args...) = Expr(:call, nameof(op), args...)
     @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(1 / ((a + c * x ^ 2) ^ (3 // 2) * (d + e * x + f * x ^ 2))), :x;
                                                                 build = build, lift = identity)
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(x ^ 6 / ((a + b * x ^ 2 + c * x ^ 4) * sqrt(d + e * x ^ 2))), :x;
+                                                                build = build, lift = identity)
+end
+
+# step RB: over four parameters, only a high degree or a large RootSum polynomial is refused; small ones are
+# quick and were answered before (samples 173, 392, 721: refused since the guard above was unconditional)
+@testset "small residues over four parameters (step RB)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    vals = Dict(:a => 1.3, :b => 0.7, :c => 1.9, :d => 0.6, :e => 1.1)     # (logs of negative values: complex)
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, (:($k = $(complex(v))) for (k, v) in vals)..., :(x = $(complex(t)))), e))
+    for f in (:(1 / ((e * x) ^ (5 // 2) * (a + b * x) * (a * c - b * c * x))),
+              :((a + b * x ^ 2) ^ 2 / (x ^ (9 // 2) * (c + d * x ^ 2))),
+              :((b * d + 2 * c * d * x) ^ (9 // 2) / (a + b * x + c * x ^ 2) ^ 3))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test F isa Expr
+        for t in (0.3, 0.8, 1.7)
+            h = 1e-6
+            @test real((ev(F, t + h) - ev(F, t - h)) / 2h) ≈ real(ev(f, t)) rtol = 1e-6
+        end
+    end
 end
 
 # answers that were wrong (sample 206, 2228, 2230, 129): (-w)ⁿ beside wⁿ, where the tower's log(-w) = log w
