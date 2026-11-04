@@ -91,6 +91,9 @@ function x_trig(f, x, build, lift, verify::Bool, in_power::Bool)
     end
     C = ctype(T)
     (C === QI && length(T.levels) == 1 && T.levels[1].kind === :exp && levelof(T, el) == 1) || return nothing
+    # (the answer is the real part: a real integrand only, not x/(1 + (2 + (1 + 2i) tan x)²), step CI)
+    kinds = try sigma_kinds(T) catch e; e isa RischNotImplemented ? nothing : rethrow() end
+    (kinds !== nothing && tconj(T, kinds, el, 1) == el) || return nothing
     a = T.levels[1].arg
     (isone(a.den) && degree(a.num) == 1 && iszero(a.num.c[1])) || return nothing
     I = cimag(C)

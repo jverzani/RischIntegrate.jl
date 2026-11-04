@@ -2878,3 +2878,16 @@ end
                               build = build, lift = identity)
     @test F isa Risch.IntegralWithRootSums && occursin("im", string(F.elementary))
 end
+
+# SymPy #26509: x² atan(c + (1 + ic) tan(bx + a)) ran for minutes in the substitutions (step US under u = bx, step TS2's
+# cos a, sin a). Step SL now takes y = bx + a inside atan; by parts, ∫ Q·atan′ is not elementary (it needs Li₂), so
+# neither is ∫ f (step AP), and the substitutions are not tried. Step CL writes real parts: not for x/(1 + (2 + (1 + 2i) tan x)²)
+@testset "atan of a complex function of tan (SymPy #26509)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    @test_throws Risch.NotElementary Risch.risch_integrate(:(x ^ 2 * atan(c + (1 + im * c) * tan(b * x + a))), :x; build = build, lift = identity)
+    @test_throws Risch.NotElementary Risch.risch_integrate(:(x * atan(2 + (1 + 2im) * tan(x))), :x; build = build, lift = identity)
+    @test Risch.try_x_trig(:(x * sec(x) ^ 2 / (1 + (2 + (1 + 2im) * tan(x)) ^ 2)), :x; build = build, lift = identity) === nothing
+    # a real one is unchanged: ∫ atan(2 tan x) (Rubi 206, by parts)
+    F = Risch.risch_integrate(:(atan(2 * tan(x))), :x; build = build, lift = identity)
+    @test occursin("atan", string(F))
+end

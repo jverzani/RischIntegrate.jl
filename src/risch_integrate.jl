@@ -62,6 +62,19 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         return F
     end
     check_leaves(f, string(x))                                         # step WR
+    # step CI: an answer to an integrand with i in it, checked numerically (complex values) in the outermost call:
+    # a step that writes the real part of its answer, for a real integrand only, would drop the imaginary part
+    if verify && RISCH_DEPTH[] == 0 && !CI_CHECK[] && has_imag_unit(f)
+        CI_CHECK[] = true
+        F = try
+            risch_integrate(f, x; build = build, lift = lift, verify = verify)
+        finally
+            CI_CHECK[] = false
+        end
+        (F isa IntegralWithRootSums || numeric_antiderivative(f, F, string(x))) || throw(RischError(
+            "internal check failed: the answer to an integrand with the imaginary unit does not differentiate back"))
+        return F
+    end
     RISCH_DEPTH[] += 1
     try
         r = integrate_direct(f, x; build = build, lift = lift, verify = verify)
@@ -83,6 +96,7 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             return integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
         end
         (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        decided = false                                   # ∫ f shown not elementary by parts (step AP)
         g = try
             # x·R(sin, cos): Clausen's function (step CL); logʲ(x) L(w x)/x, L = atan, log or li2: polylogarithms
             # by parts (step LP, before step AT: ∫ atan(x)/x = Ti₂(x), not eight Clausen terms); atan(u): u = tan t
@@ -96,9 +110,14 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             g1 === nothing && e isa RischNotImplemented && (g1 = try_lambertw(f, x; build = build, lift = lift, verify = verify))
             g1 === nothing ? try_parts(f, x; build = build, lift = lift, verify = verify) : g1
         catch e2
-            # (raised here, inside the catch, these miss the special-function fallback above)
-            (e2 isa MethodError && any(fn -> e2.f === fn, SPECIAL_FNS) && !(f isa Expr)) || rethrow()
-            integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
+            if e2 isa PartsNotElementary
+                e, decided = e2.err, true
+                nothing
+            else
+                # (raised here, inside the catch, these miss the special-function fallback above)
+                (e2 isa MethodError && any(fn -> e2.f === fn, SPECIAL_FNS) && !(f isa Expr)) || rethrow()
+                integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
+            end
         end
         g === nothing || return g
         if e isa NotElementary && HYP_ANSWERS[]           # xᵐ(α + βxⁿ)^q, sinᵖ cosʳ, symbolic exponents: ₂F₁ (step HS)
@@ -121,6 +140,8 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             g = try_trig_power(f, x; build = build, lift = lift, verify = verify)   # xˢ sin, cos (H4)
             g === nothing || return g
         end
+        # (shown not elementary, the special-function answers above aside, the substitutions below are not tried)
+        decided && throw(e)
         r = try_usub(f, x; build = build, lift = lift, verify = verify)    # step US
         r === nothing || return r
         r = try_nested_radical(f, x; build = build, lift = lift, verify = verify)   # nested radicals (step NS)
@@ -298,7 +319,11 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         r isa Exception && throw(r)
         r = try_usub(f, x; build = build, lift = lift, verify = verify)
         r === nothing || return r
-        r = try_parts(f, x; build = build, lift = lift, verify = verify)
+        r = try
+            try_parts(f, x; build = build, lift = lift, verify = verify)
+        catch err
+            err isa PartsNotElementary ? throw(err.err) : rethrow()
+        end
         r === nothing || return r
         # a factor (a + b L): term by term, each by parts (x √(1 + x²) (a + b asinh x)); else on to the logs
         r = distribute_sum_factor(f, x, xk, n -> n in INV_HYP; build = build, lift = lift, verify = verify)
@@ -761,11 +786,13 @@ const OPS_HYP = Dict{Symbol,Function}(:sin => sin, :cos => cos, :sinh => sinh, :
 # back (∫ (a + b asin(c x))^(-3/2): u = sin t, then cos((v - a)/b) for v = a + b t), and the two would undo
 # each other until the stack overflows; the inner one is left to step TS2.
 const LINEAR_SHIFT = Ref(false)
+const CI_CHECK = Ref(false)                              # step CI: the outer numeric check is running
 function integrate_linear_shift(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     LINEAR_SHIFT[] && return nothing
     xk = string(x)
-    # the arguments; x elsewhere only algebraically (exp(c x) would become exp(c (y - e)/f))
+    # the arguments; x elsewhere only algebraically, or inside atan, acot, asin, acos, log (exp(c x) would become
+    # exp(c (y - e)/f))
     args = Any[]
     function collect_args(t)
         (safe_iscall(t) && !isempty(arguments(t))) || return true
@@ -774,7 +801,8 @@ function integrate_linear_shift(f, x; build = nothing, lift = nothing, verify::B
             push!(args, arguments(t)[1])
             return true
         end
-        (n in (:+, :-, :*, :/, :^, :sqrt, :cbrt) || !has_x(t, xk)) || return false
+        # (and inverse functions and log of such terms: x² atan(c + (1 + ic) tan(bx + a)), SymPy #26509)
+        (n in (:+, :-, :*, :/, :^, :sqrt, :cbrt, :atan, :acot, :asin, :acos, :log) || !has_x(t, xk)) || return false
         all(collect_args, arguments(t))
     end
     collect_args(f) || return nothing
