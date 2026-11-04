@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=9e9188fd">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=dc54fb58">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -303,7 +303,7 @@
 <tr>
 <td style="text-align:left">SL</td>
 <td style="text-align:left">every trigonometric or hyperbolic argument with <code class="md-code-inline">x</code> is <span class="md-math md-math-inline">\(r(e + fx)\)</span>, <span class="md-math md-math-inline">\(r\)</span> rational, <span class="md-math md-math-inline">\(e\)</span> a parameter; elsewhere <code class="md-code-inline">x</code> only algebraically</td>
-<td style="text-align:left"><span class="md-math md-math-inline">\(y = e + fx\)</span>, <span class="md-math md-math-inline">\(x = (y - e)/f\)</span>, integrated in <span class="md-math md-math-inline">\(y\)</span> and <span class="md-math md-math-inline">\(y = e + fx\)</span> substituted back (refused in <span class="md-math md-math-inline">\(y\)</span>: on to TS2). Before TS2, whose <span class="md-math md-math-inline">\(\cos e\)</span>, <span class="md-math md-math-inline">\(\sin e\)</span> are independent constants to the constant field: <span class="md-math md-math-inline">\(\cos^2 e + \sin^2 e = 1\)</span> is not seen, which gives hidden zero denominators, false residue criteria and slow resultants</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(y = e + fx\)</span>, <span class="md-math md-math-inline">\(x = (y - e)/f\)</span>, integrated in <span class="md-math md-math-inline">\(y\)</span> and <span class="md-math md-math-inline">\(y = e + fx\)</span> substituted back (refused in <span class="md-math md-math-inline">\(y\)</span>: on to TS2). Before TS2, whose <span class="md-math md-math-inline">\(\cos e\)</span>, <span class="md-math md-math-inline">\(\sin e\)</span> are independent constants to the constant field: <span class="md-math md-math-inline">\(\cos^2 e + \sin^2 e = 1\)</span> is not seen, which gives hidden zero denominators, false residue criteria and slow resultants <code class="md-code-inline">x</code> may also sit inside <code class="md-code-inline">atan</code>, <code class="md-code-inline">acot</code>, <code class="md-code-inline">asin</code>, <code class="md-code-inline">acos</code> and <code class="md-code-inline">log</code> (<span class="md-math md-math-inline">\(x^2 \operatorname{atan}(c + (1 + ic)\tan(bx + a))\)</span>, SymPy #26509).</td>
 </tr>
 <tr>
 <td style="text-align:left">TS2</td>
@@ -410,9 +410,9 @@
 </div>
 <p>What is left goes to <code class="md-code-inline">integrate_radical</code>. Its cases, in order:</p>
 <ul class="md-list-tight">
-<li><p><strong>NP</strong>: a square root of a radicand <span class="md-math md-math-inline">\(u ≤ 0\)</span> on all of <span class="md-math md-math-inline">\(ℝ\)</span> (checked exactly: no real root of odd multiplicity of <span class="md-math md-math-inline">\(N D\)</span>, <span class="md-math md-math-inline">\(\operatorname{lc}(ND) &lt; 0\)</span>). On the principal branch <span class="md-math md-math-inline">\(u^{p/2} = i^p (-u)^{p/2}\)</span>, with <span class="md-math md-math-inline">\(i = \sqrt{-1}\)</span> an opaque constant, and the rewritten integrand starts over.</p>
+<li><p><strong>NP</strong>: a square root of a radicand <span class="md-math md-math-inline">\(u ≤ 0\)</span> on all of <span class="md-math md-math-inline">\(ℝ\)</span> (checked exactly: no real root of odd multiplicity of <span class="md-math md-math-inline">\(N D\)</span>, <span class="md-math md-math-inline">\(\operatorname{lc}(ND) &lt; 0\)</span>). On the principal branch <span class="md-math md-math-inline">\(u^{p/2} = i^p (-u)^{p/2}\)</span>, with <span class="md-math md-math-inline">\(i = \sqrt{-1}\)</span> (step CI), and the rewritten integrand starts over.</p>
 </li>
-<li><p><strong>10e</strong>: square roots of rational constants (<span class="md-math md-math-inline">\(\sqrt 2\)</span>, <span class="md-math md-math-inline">\(8^{3/2}\)</span>) become constants of <span class="md-math md-math-inline">\(ℚ(i)(\sqrt d)\)</span>; they must share one <span class="md-math md-math-inline">\(d\)</span>.</p>
+<li><p><strong>10e</strong>: square roots of rational constants (<span class="md-math md-math-inline">\(\sqrt 2\)</span>, <span class="md-math md-math-inline">\(8^{3/2}\)</span>) become constants of <span class="md-math md-math-inline">\(ℚ(i)(\sqrt d)\)</span>; they must share one <span class="md-math md-math-inline">\(d\)</span>. With several squarefree parts (<span class="md-math md-math-inline">\(\sqrt 6\)</span>, <span class="md-math md-math-inline">\(\sqrt 3\)</span>, <span class="md-math md-math-inline">\(\sqrt 2\)</span>: SymPy #26502), step SQ takes them as opaque constants, independent indeterminates, and checks the answer numerically at their values (a relation such as <span class="md-math md-math-inline">\(\sqrt 6 = \sqrt 2 \sqrt 3\)</span> that the field does not know could hide a zero). A <code class="md-code-inline">NotElementary</code> for generic values decides nothing there, and the refusal stands. The answer is often a RootSum: the roots of <span class="md-math md-math-inline">\(x^4 - 3\sqrt 2 x^2 - 9\sqrt 3\)</span> need <span class="md-math md-math-inline">\(\sqrt{1 + 2\sqrt 3}\)</span> too.</p>
 </li>
 <li><p><strong>RP</strong>: a radicand <span class="md-math md-math-inline">\(c\,w^m\)</span> is read as a power of <span class="md-math md-math-inline">\(w\)</span>.</p>
 </li>
@@ -482,6 +482,7 @@
 </li>
 </ol>
 <p>Over <span class="md-math md-math-inline">\(ℚ(i)\)</span> (trigonometric input) the integral is computed there and then put in <strong>real form</strong> (Step 7). Conjugation <span class="md-math md-math-inline">\(σ\)</span> (<span class="md-math md-math-inline">\(i ↦ -i\)</span>, with <span class="md-math md-math-inline">\(σθ = θ\)</span> for real generators and <span class="md-math md-math-inline">\(σθ = 1/θ\)</span> for <span class="md-math md-math-inline">\(θ = e^{iw}\)</span>) commutes with the derivation, so <span class="md-math md-math-inline">\(\operatorname{Re} F = (F + σF)/2\)</span> is also an antiderivative. Its real form uses <span class="md-math md-math-inline">\(\cos kw\)</span>, <span class="md-math md-math-inline">\(\sin kw\)</span>, and <span class="md-math md-math-inline">\((c \log w + σc \log σw)/2 = (c_r/2) \log(w\,σw) - c_i \operatorname{atan}(V/U)\)</span>, with <span class="md-math md-math-inline">\(c_r = (c + σc)/2\)</span>, <span class="md-math md-math-inline">\(c_i = (c - σc)/(2i)\)</span>, <span class="md-math md-math-inline">\(U = (w + σw)/2\)</span> and <span class="md-math md-math-inline">\(V = (w - σw)/(2i)\)</span>. The real form is verified again in the tower.</p>
+<p><strong>Step CI.</strong> The imaginary unit of the integrand (Julia&#39;s <code class="md-code-inline">im</code>, SymEngine&#39;s <code class="md-code-inline">I</code>, SymJ&#39;s <span class="md-math md-math-inline">\((-1)^{1/2}\)</span>, <code class="md-code-inline">sqrt(-1)</code>) is the <span class="md-math md-math-inline">\(i\)</span> of <span class="md-math md-math-inline">\(ℚ(i)\)</span>. It is not a parameter: as one, <span class="md-math md-math-inline">\(1/(1 + i\tan x)^2\)</span> gave RootSum coefficients with the denominator <span class="md-math md-math-inline">\((1 + i^2)^4 = 0\)</span> (SymPy #26508). An integrand that is not real (<span class="md-math md-math-inline">\(σf ≠ f\)</span>) is split as <span class="md-math md-math-inline">\(f = u + i v\)</span>, with <span class="md-math md-math-inline">\(u = (f + σf)/2\)</span> and <span class="md-math md-math-inline">\(v = (f - σf)/(2i)\)</span>. Both parts are real and are put in real form, so <span class="md-math md-math-inline">\(\int f = \int u + i \int v\)</span>. A part with rational coefficients, in a tower without trigonometric levels, is integrated over <span class="md-math md-math-inline">\(ℚ\)</span> (or over <span class="md-math md-math-inline">\(ℚ(t_1, …)\)</span>); over <span class="md-math md-math-inline">\(ℚ(i)\)</span>, <span class="md-math md-math-inline">\(1/(t^4 + 1)\)</span> would keep a RootSum. The RootSums of <span class="md-math md-math-inline">\(\int v\)</span> come back as <code class="md-code-inline">ScaledRootSum</code>s with the factor <span class="md-math md-math-inline">\(i\)</span>, and <code class="md-code-inline">F(a)</code> is then complex. A generator that is not real, such as <span class="md-math md-math-inline">\(\operatorname{atan}(w)\)</span> with <span class="md-math md-math-inline">\(w\)</span> not real (<span class="md-math md-math-inline">\(x^2 \operatorname{atan}(c + (1 + ic)\tan(bx + a))\)</span>, SymPy #26509), has no real form on any route. Only by parts (step AP) takes it out, so after step AP the refusal stands, and step SL passes it on rather than trying step TS2. Steps that write a real part (CL) refuse non-real integrands. As a safety net, the outermost call checks the answer to an integrand with <span class="md-math md-math-inline">\(i\)</span> numerically, in complex values.</p>
 <p>A <code class="md-code-inline">NotElementary</code> from a tower with an <code class="md-code-inline">atan</code> level is demoted to <code class="md-code-inline">RischNotImplemented</code>, since the structure-theorem arguments behind some decisions are for <code class="md-code-inline">exp</code>/<code class="md-code-inline">log</code> towers only.</p>
 <h3 id="5.-When-the-direct-route-fails:-the-fallback-chain" class="md-heading">5. When the direct route fails: the fallback chain<a href="#5.-When-the-direct-route-fails:-the-fallback-chain" class="md-heading-anchor" aria-label="Link to this section">#</a></h3>
 <p>If <code class="md-code-inline">integrate_direct</code> throws <code class="md-code-inline">NotElementary</code> or <code class="md-code-inline">RischNotImplemented</code>, <code class="md-code-inline">risch_integrate</code> tries, in order:</p>
@@ -500,7 +501,7 @@
 <td style="text-align:left">CL</td>
 <td style="text-align:left"><code class="md-code-inline">NotElementary</code></td>
 <td style="text-align:left"><span class="md-math md-math-inline">\(x^p R(\sin kx, \cos kx)\)</span></td>
-<td style="text-align:left">by parts, with Clausen functions <span class="md-math md-math-inline">\(\operatorname{Cl}_m\)</span> and <span class="md-math md-math-inline">\(\operatorname{Re}\operatorname{Li}_m\)</span>: <span class="md-math md-math-inline">\(\int x \tan x\)</span></td>
+<td style="text-align:left">by parts, with Clausen functions <span class="md-math md-math-inline">\(\operatorname{Cl}_m\)</span> and <span class="md-math md-math-inline">\(\operatorname{Re}\operatorname{Li}_m\)</span>: <span class="md-math md-math-inline">\(\int x \tan x\)</span> A real integrand only (the answer is a real part): not <span class="md-math md-math-inline">\(x/(1 + (2 + (1 + 2i)\tan x)^2)\)</span>.</td>
 </tr>
 <tr>
 <td style="text-align:left">LP</td>
@@ -554,7 +555,7 @@
 <td style="text-align:left">US</td>
 <td style="text-align:left">any</td>
 <td style="text-align:left"><span class="md-math md-math-inline">\(f = G(u)\,u&#39;\)</span> for a subterm <span class="md-math md-math-inline">\(u\)</span> (and the partner <span class="md-math md-math-inline">\(\sinh v\)</span> of <span class="md-math md-math-inline">\(\cosh v\)</span>, <span class="md-math md-math-inline">\(\sin v\)</span> of <span class="md-math md-math-inline">\(\cos v\)</span>, …)</td>
-<td style="text-align:left">derivative-divides, below. With <span class="md-math md-math-inline">\(u = \sinh v\)</span>, even powers of <span class="md-math md-math-inline">\(\cosh v\)</span> are <span class="md-math md-math-inline">\((1 + u^2)^k\)</span>, and so on. A fractional power goes inside only a lone factor with <span class="md-math md-math-inline">\(x\)</span>: <span class="md-math md-math-inline">\(\sqrt{\sin x/\cos^2 x} = \sqrt{\sin x}/\lvert\cos x\rvert\)</span> is refused</td>
+<td style="text-align:left">derivative-divides, below. With <span class="md-math md-math-inline">\(u = \sinh v\)</span>, even powers of <span class="md-math md-math-inline">\(\cosh v\)</span> are <span class="md-math md-math-inline">\((1 + u^2)^k\)</span>, and so on. A fractional power goes inside only a lone factor with <span class="md-math md-math-inline">\(x\)</span>: <span class="md-math md-math-inline">\(\sqrt{\sin x/\cos^2 x} = \sqrt{\sin x}/\lvert\cos x\rvert\)</span> is refused Not inside step AP for an integrand with <span class="md-math md-math-inline">\(i\)</span> in it (step CI).</td>
 </tr>
 <tr>
 <td style="text-align:left">NS</td>
@@ -943,6 +944,11 @@
 <td style="text-align:left">Hermite reduction on the conic before the Euler substitution</td>
 </tr>
 <tr>
+<td style="text-align:left">CI</td>
+<td style="text-align:left"><code class="md-code-inline">tower_terms.jl</code>, <code class="md-code-inline">risch_integrate.jl</code></td>
+<td style="text-align:left">the imaginary unit; non-real integrands as <span class="md-math md-math-inline">\(u + i v\)</span></td>
+</tr>
+<tr>
 <td style="text-align:left">IT</td>
 <td style="text-align:left"><code class="md-code-inline">risch_integrate.jl</code></td>
 <td style="text-align:left">constant factors out; iterated integrals</td>
@@ -1073,6 +1079,11 @@
 <td style="text-align:left">plain symbols before opaque subterms among the constant generators</td>
 </tr>
 <tr>
+<td style="text-align:left">SQ</td>
+<td style="text-align:left"><code class="md-code-inline">risch_integrate.jl</code></td>
+<td style="text-align:left">constant square roots with several squarefree parts, opaque</td>
+</tr>
+<tr>
 <td style="text-align:left">SL</td>
 <td style="text-align:left"><code class="md-code-inline">risch_integrate.jl</code></td>
 <td style="text-align:left"><span class="md-math md-math-inline">\(y = e + fx\)</span> for shifted linear trigonometric arguments</td>
@@ -1162,6 +1173,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=9e9188fd"></script>
+  <script src="../assets/materialdocs.js?v=dc54fb58"></script>
 </body>
 </html>
