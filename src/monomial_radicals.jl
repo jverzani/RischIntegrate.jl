@@ -390,7 +390,10 @@ function integrate_inner_linear_radical(f, x; build = nothing, lift = nothing, v
             (err isa RischNotImplemented || err isa RischError) || rethrow()
             return nothing
         end
-        (isempty(T.levels) && isone(ve.den) && degree(ve.num) == 1) ? (v, ve.num.c[2], ve.num.c[1], T.consts) : nothing
+        (isempty(T.levels) && isone(ve.den) && degree(ve.num) == 1) || return nothing
+        # (real coefficients: a + i a x would put i in x = (u^Q - b)/a, step CI)
+        is_complex_field(ctype(T)) && any(c -> to_real(c) === nothing, ve.num.c) && return nothing
+        (v, ve.num.c[2], ve.num.c[1], T.consts)
     end
     L = nothing
     for (_, u) in nested, (e2, v) in collect_radicals(u, xk)

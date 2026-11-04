@@ -847,7 +847,8 @@ function rewrite_two_linear(f, x, rads; build = nothing, lift = nothing)
             rp = radical_parts(s)
             k = rp === nothing ? nothing : findfirst(==(string(rp[2])), us)
             if k === nothing
-                push!(fs, pw(rw(s), e))
+                # (a factor that is t itself, another radical such as √-1: its arguments, else rw recurses forever)
+                push!(fs, pw(string(s) == string(t) ? term_rebuild(b0, s, Any[rw(a) for a in arguments(s)]) : rw(s), e))
             else
                 E[k] += rp[1] * e
             end

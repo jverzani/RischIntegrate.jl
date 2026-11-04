@@ -96,7 +96,8 @@ function try_reciprocal(f, x; build = nothing, lift = nothing, verify::Bool = tr
     S = laurent_to_u(C[co(m + i) for i in -m:m], m, s)
     S === nothing && return nothing
     xp = UPoly{C}(C[zero(C), one(C)])
-    h = Rel * frac(xp^(k * m ÷ 2 + 2)) / frac(UPoly{C}(C[-s, zero(C), one(C)]))   # R x^(km/2)/(1 - s/x²)
+    # (a power of the fraction x: k < 0 for 1/√P⁵, sample 2269)
+    h = Rel * frac(xp)^(k * m ÷ 2 + 2) / frac(UPoly{C}(C[-s, zero(C), one(C)]))   # R x^(km/2)/(1 - s/x²)
     H = symmetric_to_u(h, s)
     H === nothing && return nothing
     bc = Builder(bd.build, bd.lift, bd.x, T.consts)

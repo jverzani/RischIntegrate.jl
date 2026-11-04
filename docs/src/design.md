@@ -487,6 +487,8 @@ Only by parts (step AP) takes it out, so after step AP the refusal stands, and s
 rather than trying step TS2. Steps that write a real part (CL) refuse non-real integrands. As a
 safety net, the outermost call checks the answer to an integrand with ``i`` numerically, in complex
 values.
+Step NR does not take a linear radicand with non-real coefficients (``a - iax``): ``x = (u^Q - b)/a`` would
+bring ``i`` into the substitution.
 
 A `NotElementary` from a tower with an `atan` level is demoted to `RischNotImplemented`, since the
 structure-theorem arguments behind some decisions are for `exp`/`log` towers only.
