@@ -250,7 +250,7 @@ function never_positive(u::Frac{UPoly{Q}})
 end
 
 # step NP: square roots of a radicand u ≤ 0 on ℝ (√(-1 - 4x²), Rubi 1427 after s = sin x): on the principal branch
-# u^(p/2) = i^p (-u)^(p/2), with i = √-1 an opaque constant; f rewritten so, or nothing
+# u^(p/2) = i^p (-u)^(p/2), with i = √-1 (the i of ℚ(i), step CI); f rewritten so, or nothing
 function negative_radicands(f, rads, xk::String, b0::Builder)
     neg = Set{String}()
     for (_, ut) in rads

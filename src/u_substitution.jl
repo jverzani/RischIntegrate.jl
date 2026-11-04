@@ -282,6 +282,9 @@ end
 function try_usub(f, x; build, lift, verify::Bool)
     @nospecialize f x
     USUB_DEPTH[] < 2 || return nothing
+    # (not inside step AP for an integrand with i in it: Q·w′/(1 + w²) from x² atan(c + (1 + ic) tan(bx + a)), SymPy
+    # #26509, ran through about a hundred substitutions over ℚ(i)(a, b, c), each refused)
+    (PARTS[] && has_imag_unit(f)) && return nothing
     xk = string(x)
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     USUB_DEPTH[] += 1
@@ -296,21 +299,12 @@ function try_usub(f, x; build, lift, verify::Bool)
     end
     try
         for u in cands
-            # a linear u = kx + m keeps the integrand's shape: a substitution inside it is one of f's own
-            # candidates composed with it, so none is tried there (x² atan(c + (1 + ic) tan(bx + a)) took minutes
-            # in the substitutions under u = bx: SymPy #26509)
-            du = term_deriv(bd, u, xk)
-            lin = du !== nothing && !has_x(du, xk)
-            d0 = USUB_DEPTH[]
-            lin && (USUB_DEPTH[] = 2)
             r = try
                 integrate_usub(f, x, u, bd; build = build, lift = lift, verify = verify)
             catch e
                 # (DivideError: u′ is zero in the tower where u is opaque, ∫ asech(a x)/x: not a substitution)
                 (e isa RischNotImplemented || e isa NotElementary || e isa DivideError) || rethrow()
                 nothing
-            finally
-                USUB_DEPTH[] = d0
             end
             r === nothing || return r
         end

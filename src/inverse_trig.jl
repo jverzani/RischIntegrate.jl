@@ -554,10 +554,6 @@ end
 # by steps DL, LF).
 # ---------------------------------------------------------------------------
 const PARTS = Ref(false)                                # no nested integration by parts
-# ∫ Q Lᵏ⁻¹ L′ not elementary, with Q elementary: then neither is ∫ f (raised past `with_parts` to `risch_integrate`)
-struct PartsNotElementary <: Exception
-    err::NotElementary
-end
 const PARTS_FNS = (:atan, :acot, :asin, :acos, :asec, :acsc, :asinh, :acosh, :atanh, :acoth, :acsch, :asech, :log)
 
 function try_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
@@ -587,14 +583,7 @@ function try_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
             dLk = k == 1 ? dL : mk(bd, :*, bd.lift(k), k == 2 ? L : mk(bd, :^, L, bd.lift(k - 1)), dL)
             # (one flat product, so that step IT sees a constant factor of Q: b·(…)√(1 + x²)·(1/√(1 + x²)))
             QdL = Any[e == 1 ? t : mk(bd, :^, t, bd.lift(e)) for (t, e) in product_factors!(product_factors!(Any[], Qt, 1), dLk, 1)]
-            H = try
-                risch_integrate(length(QdL) == 1 ? QdL[1] : mk(bd, :*, QdL...), x; build = build, lift = lift, verify = verify)
-            catch err
-                # Q Lᵏ is elementary, so ∫ f is elementary if and only if ∫ Q Lᵏ⁻¹ L′ is: a decision for f
-                err isa NotElementary && throw(PartsNotElementary(NotElementary(
-                    "by parts, ∫ f = Q·$(Ls)$(k == 1 ? "" : "^$k") - ∫ (non-elementary): " * err.msg)))
-                rethrow()
-            end
+            H = risch_integrate(length(QdL) == 1 ? QdL[1] : mk(bd, :*, QdL...), x; build = build, lift = lift, verify = verify)
             H isa IntegralWithRootSums && return nothing
             mk(bd, :+, mk(bd, :*, Qt, Lk), mk(bd, :*, bd.lift(-1), H))
         end

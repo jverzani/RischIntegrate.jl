@@ -2879,15 +2879,42 @@ end
     @test F isa Risch.IntegralWithRootSums && occursin("im", string(F.elementary))
 end
 
-# SymPy #26509: x² atan(c + (1 + ic) tan(bx + a)) ran for minutes in the substitutions (step US under u = bx, step TS2's
-# cos a, sin a). Step SL now takes y = bx + a inside atan; by parts, ∫ Q·atan′ is not elementary (it needs Li₂), so
-# neither is ∫ f (step AP), and the substitutions are not tried. Step CL writes real parts: not for x/(1 + (2 + (1 + 2i) tan x)²)
+# SymPy #26509: x² atan(c + (1 + ic) tan(bx + a)) ran for minutes in the substitutions (steps US and TS2, over
+# ℚ(i)(a, b, c, cos a, sin a)), each refused: atan of a non-real argument has no real form. Now refused after step AP alone
+# (in a few seconds: step SL takes y = bx + a inside atan). Step CL writes real parts: not for x/(1 + (2 + (1 + 2i) tan x)²)
 @testset "atan of a complex function of tan (SymPy #26509)" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
-    @test_throws Risch.NotElementary Risch.risch_integrate(:(x ^ 2 * atan(c + (1 + im * c) * tan(b * x + a))), :x; build = build, lift = identity)
-    @test_throws Risch.NotElementary Risch.risch_integrate(:(x * atan(2 + (1 + 2im) * tan(x))), :x; build = build, lift = identity)
+    t = @elapsed @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(x ^ 2 * atan(c + (1 + im * c) * tan(b * x + a))), :x;
+                                                                             build = build, lift = identity)
+    @test t < 120
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(x * atan(2 + (1 + 2im) * tan(x))), :x; build = build, lift = identity)
     @test Risch.try_x_trig(:(x * sec(x) ^ 2 / (1 + (2 + (1 + 2im) * tan(x)) ^ 2)), :x; build = build, lift = identity) === nothing
     # a real one is unchanged: ∫ atan(2 tan x) (Rubi 206, by parts)
     F = Risch.risch_integrate(:(atan(2 * tan(x))), :x; build = build, lift = identity)
     @test occursin("atan", string(F))
+end
+
+# SymPy #26502, step SQ: square roots of constants with different squarefree parts (√6, √3, √2) as opaque constants,
+# the answer checked numerically (a relation s₆ = s₂s₃ or s₂² = 2 the field does not know could hide a zero)
+@testset "square roots of constants with different squarefree parts (SymPy #26502)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    f = :((-36 - 2 * sqrt(6) * x ^ 2) / (9 * sqrt(3) + 3 * sqrt(2) * x ^ 2 - x ^ 4))   # x² = (3√2 ± √(18 + 36√3))/2
+    F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+    @test F isa Risch.IntegralWithRootSums
+    for x0 in (0.3, 1.1, 2.0)
+        @test isapprox((F(x0 + 1e-6) - F(x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+    end
+    f = :(1 / (x ^ 2 + sqrt(2)) + 1 / (x ^ 2 + sqrt(3)))
+    F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+    @test occursin("atan", string(F))
+    for x0 in (0.3, 1.1, 2.0)
+        @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+    end
+    x = SymEngine.symbols(:x)
+    s(n) = sqrt(SymEngine.Basic(n))
+    f = (-36 - 2 * s(6) * x ^ 2) / (9 * s(3) + 3 * s(2) * x ^ 2 - x ^ 4)
+    F = Risch.risch_integrate(f, x)
+    @test F isa Risch.IntegralWithRootSums
+    @test isapprox((F(1.1 + 1e-6) - F(1.1 - 1e-6)) / 2e-6, SymEngine.N(SymEngine.subs(f, x => 1.1)); rtol = 1e-6)
 end

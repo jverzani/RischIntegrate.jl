@@ -96,7 +96,14 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             return integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
         end
         (e isa RischNotImplemented || e isa NotElementary) || rethrow()
-        decided = false                                   # ∫ f shown not elementary by parts (step AP)
+        # step CI: a generator of the tower that is not real (atan(w) with w not real: x² atan(c + (1 + ic) tan(bx + a)),
+        # SymPy #26509) has no real form, whatever the route; by parts takes it out (step AP), else the refusal stands
+        # (the substitutions below ran for minutes over ℚ(i)(a, b, c, cos a, sin a), each refused the same way)
+        if e isa RischNotImplemented && occursin("no real form", e.msg) && has_imag_unit(f)
+            g = try_parts(f, x; build = build, lift = lift, verify = verify)
+            g === nothing || return g
+            throw(e)
+        end
         g = try
             # x·R(sin, cos): Clausen's function (step CL); logʲ(x) L(w x)/x, L = atan, log or li2: polylogarithms
             # by parts (step LP, before step AT: ∫ atan(x)/x = Ti₂(x), not eight Clausen terms); atan(u): u = tan t
@@ -110,14 +117,9 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             g1 === nothing && e isa RischNotImplemented && (g1 = try_lambertw(f, x; build = build, lift = lift, verify = verify))
             g1 === nothing ? try_parts(f, x; build = build, lift = lift, verify = verify) : g1
         catch e2
-            if e2 isa PartsNotElementary
-                e, decided = e2.err, true
-                nothing
-            else
-                # (raised here, inside the catch, these miss the special-function fallback above)
-                (e2 isa MethodError && any(fn -> e2.f === fn, SPECIAL_FNS) && !(f isa Expr)) || rethrow()
-                integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
-            end
+            # (raised here, inside the catch, these miss the special-function fallback above)
+            (e2 isa MethodError && any(fn -> e2.f === fn, SPECIAL_FNS) && !(f isa Expr)) || rethrow()
+            integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
         end
         g === nothing || return g
         if e isa NotElementary && HYP_ANSWERS[]           # xᵐ(α + βxⁿ)^q, sinᵖ cosʳ, symbolic exponents: ₂F₁ (step HS)
@@ -140,8 +142,6 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             g = try_trig_power(f, x; build = build, lift = lift, verify = verify)   # xˢ sin, cos (H4)
             g === nothing || return g
         end
-        # (shown not elementary, the special-function answers above aside, the substitutions below are not tried)
-        decided && throw(e)
         r = try_usub(f, x; build = build, lift = lift, verify = verify)    # step US
         r === nothing || return r
         r = try_nested_radical(f, x; build = build, lift = lift, verify = verify)   # nested radicals (step NS)
@@ -208,6 +208,12 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg) && HYP_ANSWERS[]
             g = trig_symbolic_or_fallback(f, x; build = build, lift = lift, verify = verify)
             g === nothing || return g
+        end
+        # square roots of constants with two or more squarefree parts (√6, √3, √2: SymPy #26502), as opaque constants
+        # of the field ℚ(√2, √3, √6) with no relations between them (step SQ)
+        if e isa RischNotImplemented && occursin("different squarefree parts", e.msg) && !OPAQUE_CONST_RADICALS[]
+            r = integrate_opaque_sqrts(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
         end
         # a u-substitution may have failed only for want of a special function in the term type: once
         # through Expr, keeping the answer when it has special terms
@@ -295,6 +301,7 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         integrate_linear_shift(f, x; build = build, lift = lift, verify = verify)
     catch e
         e isa RischNotImplemented || rethrow()         # (refused in y: the addition formulas may still do)
+        (occursin("no real form", e.msg) && has_imag_unit(f)) && rethrow()   # (not this one: step CI)
         nothing
     end
     r === nothing || return r
@@ -319,11 +326,7 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         r isa Exception && throw(r)
         r = try_usub(f, x; build = build, lift = lift, verify = verify)
         r === nothing || return r
-        r = try
-            try_parts(f, x; build = build, lift = lift, verify = verify)
-        catch err
-            err isa PartsNotElementary ? throw(err.err) : rethrow()
-        end
+        r = try_parts(f, x; build = build, lift = lift, verify = verify)
         r === nothing || return r
         # a factor (a + b L): term by term, each by parts (x √(1 + x²) (a + b asinh x)); else on to the logs
         r = distribute_sum_factor(f, x, xk, n -> n in INV_HYP; build = build, lift = lift, verify = verify)
@@ -848,6 +851,39 @@ function integrate_linear_shift(f, x; build = nothing, lift = nothing, verify::B
     back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? L : t)
     subst_answer(G, back, bd)
 end
+# step SQ: ∫ f with its constant square roots opaque (independent indeterminates s₆, s₃, s₂). The answer holds for
+# generic values; at s₆ = √6, … it is checked numerically: a hidden zero (a denominator that vanishes by a relation
+# such as s₆ = s₂s₃ or s₂² = 2) shows as a wrong derivative. A NotElementary for generic values says nothing here.
+function integrate_opaque_sqrts(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    OPAQUE_CONST_RADICALS[] = true
+    F = try
+        risch_integrate(f, x; build = build, lift = lift, verify = verify)
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        nothing
+    finally
+        OPAQUE_CONST_RADICALS[] = false
+    end
+    (F === nothing || !verify) && return F
+    xk = string(x)
+    if F isa IntegralWithRootSums
+        has_param(f, xk) && return F                     # (not evaluated with parameters; generic, as for step HZ)
+        ev = numeric_evaluator(xk, f)
+        n = 0
+        for x0 in (0.37, 0.83, 1.29, -0.61)
+            fv = try ev(f, x0) catch; continue end
+            isfinite(fv) || continue
+            h = 1e-6 * max(1.0, abs(x0))
+            dF = try (F(x0 + h) - F(x0 - h)) / (2h) catch; return nothing end
+            abs(dF - fv) <= 1e-5 * max(1.0, abs(fv)) || return nothing
+            (n += 1) == 2 && break
+        end
+        return F
+    end
+    (numeric_antiderivative(f, F, xk) && !hidden_zero(f, F, xk)) ? F : nothing
+end
+
 # an element of a constant field (ℚ, ℚ(i), parameter fractions over them) that is rational, else nothing
 rational_const(v::Q) = v
 rational_const(v::QI) = iszero(v.im) ? v.re : nothing
