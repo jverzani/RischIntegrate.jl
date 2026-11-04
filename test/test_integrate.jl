@@ -2934,3 +2934,14 @@ end
     end
     @test Risch.RischNotImplemented("a message").term === nothing
 end
+
+# scan errors (stratified Rubi sample 148-150, 2269): refusals, not a stack overflow (step LL: rw recursed on √-1, a
+# radical of its own), a RischError (step NR: i in x = (u^Q - b)/a) or a DomainError (step RC: x^(km/2) with k < 0)
+@testset "scan errors: clean refusals (samples 148-150, 2269)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    for f in (:(1 / ((a - sqrt(-1) * a * x) ^ (3 / 4) * (a + sqrt(-1) * a * x) ^ (7 / 4))),
+              :(1 / ((a - sqrt(-1) * a * x) ^ (13 / 4) * (a + sqrt(-1) * a * x) ^ (9 / 4))),
+              :(1 / (a + b * cos(c + d * x) * sin(c + d * x)) ^ (5 / 2)))
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(f, :x; build = build, lift = identity)
+    end
+end
