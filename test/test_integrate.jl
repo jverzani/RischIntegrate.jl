@@ -907,7 +907,8 @@ function run_tests(x, evalat, name)
             end
         end
         @test_throws Risch.NotElementary Risch.risch_integrate(s2 * exp(x) * sqrt(3 - x^2), x)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(s2 * s3 * x, x)              # ℚ(√2, √3)
+        # ℚ(√2, √3): opaque constants, checked numerically (step SQ)
+        @test antiderivative_ok(Risch.risch_integrate(s2 * s3 * x, x), s2 * s3 * x, 0.7, evalat)
         # a cube root of a constant is taken out as a factor (step IT)
         @test iszero(SymEngine.expand(Risch.risch_integrate(cbrt(SymEngine.Basic(2)) * x, x) - cbrt(SymEngine.Basic(2)) * x^2 / 2))
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(SymEngine.Basic(6)) * sqrt(3 - x^2), x)
@@ -2917,4 +2918,19 @@ end
     F = Risch.risch_integrate(f, x)
     @test F isa Risch.IntegralWithRootSums
     @test isapprox((F(1.1 + 1e-6) - F(1.1 - 1e-6)) / 2e-6, SymEngine.N(SymEngine.subs(f, x => 1.1)); rtol = 1e-6)
+end
+
+# SymPy #25457, #26116, #26249: an unknown function is refused with the subterm named (`term`), so that a caller can
+# keep it as an unevaluated integral without reading the message
+@testset "unknown functions: the refusal names the subterm" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    for (f, t) in ((:(f(x) + x), :(f(x))), (:(x * p(x)), :(p(x))), (:(sin(x) * g(x) ^ 2), :(g(x))))
+        e = try
+            Risch.risch_integrate(f, :x; build = build, lift = identity)
+        catch err
+            err
+        end
+        @test e isa Risch.RischNotImplemented && e.term == t
+    end
+    @test Risch.RischNotImplemented("a message").term === nothing
 end

@@ -132,7 +132,7 @@ function parse_tower(t, T::Tower)
                 p, m = unify(T, ex, lg)
                 return make_exp(T, p * m)
             else
-                throw(RischNotImplemented("unsupported operation `$n`"))
+                throw(RischNotImplemented("unsupported operation `$n`", t))
             end
         end
     end
