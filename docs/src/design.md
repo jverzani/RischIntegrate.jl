@@ -468,6 +468,15 @@ antiderivative. Its real form uses ``\cos kw``, ``\sin kw``, and
 ``c_r = (c + σc)/2``, ``c_i = (c - σc)/(2i)``, ``U = (w + σw)/2`` and ``V = (w - σw)/(2i)``. The real
 form is verified again in the tower.
 
+**Step CI.** The imaginary unit of the integrand (Julia's `im`, SymEngine's `I`, SymJ's
+``(-1)^{1/2}``, `sqrt(-1)`) is the ``i`` of ``ℚ(i)``. It is not a parameter: as one, ``1/(1 + i\tan x)^2``
+gave RootSum coefficients with the denominator ``(1 + i^2)^4 = 0`` (SymPy #26508). An integrand that
+is not real (``σf ≠ f``) is split as ``f = u + i v``, with ``u = (f + σf)/2`` and ``v = (f - σf)/(2i)``.
+Both parts are real and are put in real form, so ``\int f = \int u + i \int v``. A part with
+rational coefficients, in a tower without trigonometric levels, is integrated over ``ℚ`` (or over
+``ℚ(t_1, …)``); over ``ℚ(i)``, ``1/(t^4 + 1)`` would keep a RootSum. The RootSums of ``\int v`` come back
+as `ScaledRootSum`s with the factor ``i``, and `F(a)` is then complex.
+
 A `NotElementary` from a tower with an `atan` level is demoted to `RischNotImplemented`, since the
 structure-theorem arguments behind some decisions are for `exp`/`log` towers only.
 
@@ -769,6 +778,7 @@ failures, and their comments cite the Rubi problem numbers.
 | H3, H4 | `gamma_terms.jl` | incomplete ``Γ`` answers |
 | EH | `exp_trig_hyp.jl` | ``e^{ax} R(\cos bx, \sin bx)`` with ``{}_2F_1`` terms |
 | EQ | `euler_substitutions.jl` | Hermite reduction on the conic before the Euler substitution |
+| CI | `tower_terms.jl`, `risch_integrate.jl` | the imaginary unit; non-real integrands as ``u + i v`` |
 | IT | `risch_integrate.jl` | constant factors out; iterated integrals |
 | KR | `radicals.jl` | constant radicands written with `x` |
 | LP | `polylog_parts.jl` | polylogarithms by parts |

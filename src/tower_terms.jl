@@ -15,6 +15,17 @@ end
 # The constant e, however the package prints it: Julia's ℯ, SymEngine's `E`, or
 # `exp(1)` (SymEngine builds exp(u) as the power E^u).
 is_e_const(t) = !safe_iscall(t) && string(t) in ("ℯ", "E", "exp(1)")
+# the imaginary unit, however the package prints it (Julia's im, SymEngine's I)
+# (SymJ: the power (-1)^(1/2); Expr: im, sqrt(-1))
+function is_imag_unit(t)
+    if isnode(t)
+        n, a = opname(operation(t)), arguments(t)
+        n === :sqrt && length(a) == 1 && return leaf_rational(a[1]) == -1
+        return n === :^ && length(a) == 2 && leaf_rational(a[1]) == -1 && leaf_rational(a[2]) == 1//2
+    end
+    t isa Complex ? (iszero(real(t)) && isone(imag(t))) : string(t) in ("im", "I", "1im")
+end
+has_imag_unit(t) = is_imag_unit(t) || (isnode(t) && any(has_imag_unit, arguments(t)))
 # the exponent u of exp(u), however the term type presents it: a one-argument `exp` call, or the power ℯ^u
 # (SymEngine, SymJ: arguments [ℯ, u]); nothing for any other term. Read exponents only through this.
 exp_arg(t) = !isnode(t) ? nothing : (opname(operation(t)) === :exp && length(arguments(t)) == 1) ? arguments(t)[1] :
@@ -28,6 +39,10 @@ function parse_tower(t, T::Tower)
     if T.subst !== nothing                     # Step 10: x ↦ φ(t), radicals ↦ powers of t
         r = T.subst(t, T)
         r === nothing || return r
+    end
+    if is_imag_unit(t)                         # step CI: i, as for trigonometric input (Step 7)
+        is_complex_field(ctype(T)) || throw(NeedComplex())
+        return lconst(T, cimag(ctype(T)), 0)
     end
     if safe_iscall(t)
         args = arguments(t)

@@ -2850,3 +2850,31 @@ end
     s = string(Risch.risch_integrate(x / sin(x), x))
     @test occursin("- clausen2", s) && !occursin("+ -1 * clausen2", s)
 end
+
+# SymPy #26508, step CI: the imaginary unit is i of ℚ(i), not a parameter (as one, 1/(1 + i tan x)² gave RootSum coefficients
+# with the denominator (1 + i²)⁴ = 0). A non-real integrand is integrated as u + i v, u and v real
+@testset "integrands with the imaginary unit (SymPy #26508)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $(complex(x0))), e))
+    for f in (:(im * x), :(1 / (x + im)), :(1 / tan(x) ^ (3 / 2) / (1 + im * tan(x)) ^ 2), :(exp(im * x)), :(x * exp(im * x)),
+              :(1 / (1 + im * sin(x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("im", string(F))
+        for x0 in (0.3, 0.7, 1.1)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    x = SymEngine.symbols(:x)
+    f = 1 / tan(x) ^ (SymEngine.Basic(3) / 2) / (1 + SymEngine.IM * tan(x)) ^ 2
+    F = Risch.risch_integrate(f, x)
+    @test abs(SymEngine.N(SymEngine.subs(SymEngine.diff(F, x) - f, x => 0.7))) < 1e-10
+    # RootSums: those of ∫ v times i (F(a) is then complex); with parameters A, B, a as for a + a tan x
+    F = Risch.risch_integrate(:(im / (x ^ 5 + x + 1)), :x; build = build, lift = identity)
+    @test F isa Risch.IntegralWithRootSums
+    for x0 in (0.3, 1.1)
+        @test isapprox((F(x0 + 1e-6) - F(x0 - 1e-6)) / 2e-6, im / (x0 ^ 5 + x0 + 1); rtol = 1e-6)
+    end
+    F = Risch.risch_integrate(:((A + B * tan(d * x + c)) / tan(d * x + c) ^ (3 / 2) / (a + im * a * tan(d * x + c)) ^ 2), :x;
+                              build = build, lift = identity)
+    @test F isa Risch.IntegralWithRootSums && occursin("im", string(F.elementary))
+end

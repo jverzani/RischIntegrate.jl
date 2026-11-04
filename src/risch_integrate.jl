@@ -445,10 +445,52 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     end
 end
 
+# step CI: an integrand with i in it (1/(1 + i tan x)²) that is not real, f = u + i·v with u = (f + σf)/2 and
+# v = (f - σf)/(2i) real: ∫ f = ∫ u + i ∫ v, each in real form (a RootSum of ∫ v as i·RootSum); nothing for a real f
+function integrate_complex_parts(T::Tower, el, bd::Builder, verify::Bool, pos)
+    L = length(T.levels)
+    kinds = sigma_kinds(T)
+    e = liftto(T, el, L)
+    s = tconj(T, kinds, e, L)
+    s == e && return nothing
+    C = ctype(T)
+    two = cfromQ(C, Q(2))
+    u = (e + s) * lconst(T, inv(two), L)
+    v = (e - s) * lconst(T, inv(two * cimag(C)), L)
+    terms, rss = Any[], Any[]
+    for (w, isim) in ((u, false), (v, true))
+        iszero(w) && continue
+        G = integrate_real_over_q(T, kinds, w, bd, verify, pos)
+        G === nothing && (G = integrate_built(T, w, bd, verify; pos = pos))
+        E = G isa IntegralWithRootSums ? G.elementary : G
+        leaf_rational(E) == 0 || push!(terms, isim ? mk(bd, :*, bd.lift(im), E) : E)
+        G isa IntegralWithRootSums && append!(rss, isim ? Any[ScaledRootSum(bd.lift(im), r) for r in G.rootsums] : G.rootsums)
+    end
+    E = isempty(terms) ? bd.lift(0) : length(terms) == 1 ? terms[1] : mk(bd, :+, terms...)
+    isempty(rss) ? E : IntegralWithRootSums(E, rss, string(bd.x))
+end
+
+# a real part (σ-invariant) over the real field: ℚ for ℚ(i), ℚ(t₁, …) for ℚ(i)(t₁, …) with real generators, in a
+# tower without trigonometric levels (over ℚ(i) its logarithmic part can stay a RootSum: 1/(t⁴ + 1)); nothing otherwise
+function integrate_real_over_q(T::Tower, kinds, w, bd::Builder, verify::Bool, pos)
+    C = ctype(T)
+    (C === QI || (C <: Frac && cbase(C) === QI && all(g -> g.kind in (:exp, :log, :sym, :symlog), T.consts))) || return nothing
+    all(==(:real), kinds) || return nothing
+    RC = real_ctype(C)
+    ok = Ref(true)
+    φ(c) = (r = to_real(c); r === nothing ? (ok[] = false; zero(RC)) : r)
+    T2 = change_constants(T, RC, φ)
+    w2 = change_constants(T, T2, w, φ)
+    ok[] || return nothing
+    integrate_built(T2, w2, bd, verify; pos = pos)
+end
+
 # integrate an element of a built tower and return the term (base variable printed as bd.x)
 function integrate_built(T::Tower, el, bd::Builder, verify::Bool; pos = nothing)
     L = length(T.levels)
     if is_complex_field(ctype(T))      # Step 7: integrate over ℚ(i), then take the real part
+        F = integrate_complex_parts(T, el, bd, verify, pos)
+        F === nothing || return F
         res = integrate_el(T, L, el)
         verify && !check_tower(T, L, res, el) &&
             throw(RischError("internal check failed: derivative of the result differs from the integrand"))
@@ -573,6 +615,8 @@ end
 Base.show(io::IO, s::ScaledRootSum) = print(io, "(", s.factor, ")*", s.rs)
 rs_value(s::ScaledRootSum, xk::String, a) = term_value(s.factor, xk, a) * rs_value(s.rs, xk, a)
 rs_value_continuous(s::ScaledRootSum, xk::String, a::Real) = term_value(s.factor, xk, a) * rs_value_continuous(s.rs, xk, a)
+rs_real_value(s::ScaledRootSum, xk::String, a::Real) = term_value(s.factor, xk, a) * rs_real_value(s.rs, xk, a)
+complex_factor(s::ScaledRootSum) = has_imag_unit(s.factor) || complex_factor(s.rs)
 
 # an answer with its variable substituted (a substitution step putting u back): the elementary part by the term
 # map `back`, a RootSum with its variable standing for back(x) (`arg`), a TermRootSum with `back` applied to its

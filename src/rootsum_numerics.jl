@@ -91,6 +91,7 @@ function term_value(t, xk::String, a)
     string(t) == xk && return ComplexF64(a)
     is_e_const(t) && return ComplexF64(ℯ)
     string(t) in ("pi", "π") && return ComplexF64(π)
+    is_imag_unit(t) && return ComplexF64(im)
     r = leaf_rational(t)
     r === nothing && throw(RischError("cannot evaluate the leaf $t numerically"))
     ComplexF64(Float64(r))
@@ -193,9 +194,15 @@ function rs_value_continuous(rs, xk::String, a::Real)
     sum(αs[k] * (log(abs(w[k])) + im * θ[k]) for k in eachindex(αs); init = 0.0im)
 end
 
-(F::IntegralWithRootSums)(a::Real) =
-    real(term_value(F.elementary, F.var, a) +
-         sum(rs_value_continuous(rs, F.var, a) for rs in F.rootsums; init = 0.0im))
+# the real part of each RootSum (over ℚ(i) only its real part is an antiderivative, step RC), times its factor; the
+# value is real unless the answer has i in it (step CI: u + i·v, the RootSums of ∫ v scaled by i)
+rs_real_value(rs, xk::String, a::Real) = real(rs_value_continuous(rs, xk, a))
+complex_answer(F::IntegralWithRootSums) = has_imag_unit(F.elementary) || any(complex_factor, F.rootsums)
+complex_factor(r) = false
+function (F::IntegralWithRootSums)(a::Real)
+    v = term_value(F.elementary, F.var, a) + sum(rs_real_value(rs, F.var, a) for rs in F.rootsums; init = 0.0im)
+    complex_answer(F) ? v : real(v)
+end
 # substitution syntax `F(x => value)` with a numeric value (definite integrals `F(x => b) - F(x => a)`)
 function (F::IntegralWithRootSums)(p::Pair)
     (string(p.first) == F.var && p.second isa Real) || throw(RischNotImplemented(

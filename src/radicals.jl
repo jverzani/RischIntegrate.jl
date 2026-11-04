@@ -479,7 +479,9 @@ function integrate_subst(f, xk::String, ::Type{S}, φ, radval, bt::Builder, veri
     F = integrate_built(T, g, bd, verify; pos = pos)
     # a RootSum for a binomial denominator in t (1/(t²(a³ - t³)) from t = x^(1/3)): step BN, in the variable
     # x standing for t, then t put back
-    if F isa IntegralWithRootSums && isempty(T.levels) && xvar !== nothing
+    # (not for a non-real g, step CI: it is printed in the variable x)
+    if F isa IntegralWithRootSums && isempty(T.levels) && xvar !== nothing &&
+       (!is_complex_field(ctype(T)) || all(c -> to_real(c) !== nothing, [g.num.c; g.den.c]))
         bx = Builder(bt.build, bt.lift, xvar, T.consts)
         F2 = integrate_binomial_scaled(frac_term(bx, g), xvar; build = bt.build, lift = bt.lift, verify = verify)
         if F2 !== nothing
