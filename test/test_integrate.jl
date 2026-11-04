@@ -907,7 +907,8 @@ function run_tests(x, evalat, name)
             end
         end
         @test_throws Risch.NotElementary Risch.risch_integrate(s2 * exp(x) * sqrt(3 - x^2), x)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(s2 * s3 * x, x)              # ℚ(√2, √3)
+        # ℚ(√2, √3): opaque constants, checked numerically (step SQ)
+        @test antiderivative_ok(Risch.risch_integrate(s2 * s3 * x, x), s2 * s3 * x, 0.7, evalat)
         # a cube root of a constant is taken out as a factor (step IT)
         @test iszero(SymEngine.expand(Risch.risch_integrate(cbrt(SymEngine.Basic(2)) * x, x) - cbrt(SymEngine.Basic(2)) * x^2 / 2))
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(SymEngine.Basic(6)) * sqrt(3 - x^2), x)
@@ -2849,4 +2850,87 @@ end
     x = SymEngine.symbols("x")
     s = string(Risch.risch_integrate(x / sin(x), x))
     @test occursin("- clausen2", s) && !occursin("+ -1 * clausen2", s)
+end
+
+# SymPy #26508, step CI: the imaginary unit is i of ℚ(i), not a parameter (as one, 1/(1 + i tan x)² gave RootSum coefficients
+# with the denominator (1 + i²)⁴ = 0). A non-real integrand is integrated as u + i v, u and v real
+@testset "integrands with the imaginary unit (SymPy #26508)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $(complex(x0))), e))
+    for f in (:(im * x), :(1 / (x + im)), :(1 / tan(x) ^ (3 / 2) / (1 + im * tan(x)) ^ 2), :(exp(im * x)), :(x * exp(im * x)),
+              :(1 / (1 + im * sin(x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("im", string(F))
+        for x0 in (0.3, 0.7, 1.1)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    x = SymEngine.symbols(:x)
+    f = 1 / tan(x) ^ (SymEngine.Basic(3) / 2) / (1 + SymEngine.IM * tan(x)) ^ 2
+    F = Risch.risch_integrate(f, x)
+    @test abs(SymEngine.N(SymEngine.subs(SymEngine.diff(F, x) - f, x => 0.7))) < 1e-10
+    # RootSums: those of ∫ v times i (F(a) is then complex); with parameters A, B, a as for a + a tan x
+    F = Risch.risch_integrate(:(im / (x ^ 5 + x + 1)), :x; build = build, lift = identity)
+    @test F isa Risch.IntegralWithRootSums
+    for x0 in (0.3, 1.1)
+        @test isapprox((F(x0 + 1e-6) - F(x0 - 1e-6)) / 2e-6, im / (x0 ^ 5 + x0 + 1); rtol = 1e-6)
+    end
+    F = Risch.risch_integrate(:((A + B * tan(d * x + c)) / tan(d * x + c) ^ (3 / 2) / (a + im * a * tan(d * x + c)) ^ 2), :x;
+                              build = build, lift = identity)
+    @test F isa Risch.IntegralWithRootSums && occursin("im", string(F.elementary))
+end
+
+# SymPy #26509: x² atan(c + (1 + ic) tan(bx + a)) ran for minutes in the substitutions (steps US and TS2, over
+# ℚ(i)(a, b, c, cos a, sin a)), each refused: atan of a non-real argument has no real form. Now refused after step AP alone
+# (in a few seconds: step SL takes y = bx + a inside atan). Step CL writes real parts: not for x/(1 + (2 + (1 + 2i) tan x)²)
+@testset "atan of a complex function of tan (SymPy #26509)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    t = @elapsed @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(x ^ 2 * atan(c + (1 + im * c) * tan(b * x + a))), :x;
+                                                                             build = build, lift = identity)
+    @test t < 120
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(x * atan(2 + (1 + 2im) * tan(x))), :x; build = build, lift = identity)
+    @test Risch.try_x_trig(:(x * sec(x) ^ 2 / (1 + (2 + (1 + 2im) * tan(x)) ^ 2)), :x; build = build, lift = identity) === nothing
+    # a real one is unchanged: ∫ atan(2 tan x) (Rubi 206, by parts)
+    F = Risch.risch_integrate(:(atan(2 * tan(x))), :x; build = build, lift = identity)
+    @test occursin("atan", string(F))
+end
+
+# SymPy #26502, step SQ: square roots of constants with different squarefree parts (√6, √3, √2) as opaque constants,
+# the answer checked numerically (a relation s₆ = s₂s₃ or s₂² = 2 the field does not know could hide a zero)
+@testset "square roots of constants with different squarefree parts (SymPy #26502)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    f = :((-36 - 2 * sqrt(6) * x ^ 2) / (9 * sqrt(3) + 3 * sqrt(2) * x ^ 2 - x ^ 4))   # x² = (3√2 ± √(18 + 36√3))/2
+    F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+    @test F isa Risch.IntegralWithRootSums
+    for x0 in (0.3, 1.1, 2.0)
+        @test isapprox((F(x0 + 1e-6) - F(x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+    end
+    f = :(1 / (x ^ 2 + sqrt(2)) + 1 / (x ^ 2 + sqrt(3)))
+    F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+    @test occursin("atan", string(F))
+    for x0 in (0.3, 1.1, 2.0)
+        @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+    end
+    x = SymEngine.symbols(:x)
+    s(n) = sqrt(SymEngine.Basic(n))
+    f = (-36 - 2 * s(6) * x ^ 2) / (9 * s(3) + 3 * s(2) * x ^ 2 - x ^ 4)
+    F = Risch.risch_integrate(f, x)
+    @test F isa Risch.IntegralWithRootSums
+    @test isapprox((F(1.1 + 1e-6) - F(1.1 - 1e-6)) / 2e-6, SymEngine.N(SymEngine.subs(f, x => 1.1)); rtol = 1e-6)
+end
+
+# SymPy #25457, #26116, #26249: an unknown function is refused with the subterm named (`term`), so that a caller can
+# keep it as an unevaluated integral without reading the message
+@testset "unknown functions: the refusal names the subterm" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    for (f, t) in ((:(f(x) + x), :(f(x))), (:(x * p(x)), :(p(x))), (:(sin(x) * g(x) ^ 2), :(g(x))))
+        e = try
+            Risch.risch_integrate(f, :x; build = build, lift = identity)
+        catch err
+            err
+        end
+        @test e isa Risch.RischNotImplemented && e.term == t
+    end
+    @test Risch.RischNotImplemented("a message").term === nothing
 end

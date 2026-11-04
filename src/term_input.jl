@@ -81,7 +81,7 @@ function parse_rational(t, xk::String)::CXF
                     throw(RischNotImplemented("only small integer powers are rational functions"))
                 return a[1]^k
             else
-                throw(RischNotImplemented("unsupported operation `$n`"))
+                throw(RischNotImplemented("unsupported operation `$n`", t))
             end
         end
     end

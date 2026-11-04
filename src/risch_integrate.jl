@@ -62,6 +62,19 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         return F
     end
     check_leaves(f, string(x))                                         # step WR
+    # step CI: an answer to an integrand with i in it, checked numerically (complex values) in the outermost call:
+    # a step that writes the real part of its answer, for a real integrand only, would drop the imaginary part
+    if verify && RISCH_DEPTH[] == 0 && !CI_CHECK[] && has_imag_unit(f)
+        CI_CHECK[] = true
+        F = try
+            risch_integrate(f, x; build = build, lift = lift, verify = verify)
+        finally
+            CI_CHECK[] = false
+        end
+        (F isa IntegralWithRootSums || numeric_antiderivative(f, F, string(x))) || throw(RischError(
+            "internal check failed: the answer to an integrand with the imaginary unit does not differentiate back"))
+        return F
+    end
     RISCH_DEPTH[] += 1
     try
         r = integrate_direct(f, x; build = build, lift = lift, verify = verify)
@@ -83,6 +96,14 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             return integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
         end
         (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        # step CI: a generator of the tower that is not real (atan(w) with w not real: x² atan(c + (1 + ic) tan(bx + a)),
+        # SymPy #26509) has no real form, whatever the route; by parts takes it out (step AP), else the refusal stands
+        # (the substitutions below ran for minutes over ℚ(i)(a, b, c, cos a, sin a), each refused the same way)
+        if e isa RischNotImplemented && occursin("no real form", e.msg) && has_imag_unit(f)
+            g = try_parts(f, x; build = build, lift = lift, verify = verify)
+            g === nothing || return g
+            throw(e)
+        end
         g = try
             # x·R(sin, cos): Clausen's function (step CL); logʲ(x) L(w x)/x, L = atan, log or li2: polylogarithms
             # by parts (step LP, before step AT: ∫ atan(x)/x = Ti₂(x), not eight Clausen terms); atan(u): u = tan t
@@ -188,6 +209,12 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             g = trig_symbolic_or_fallback(f, x; build = build, lift = lift, verify = verify)
             g === nothing || return g
         end
+        # square roots of constants with two or more squarefree parts (√6, √3, √2: SymPy #26502), as opaque constants
+        # of the field ℚ(√2, √3, √6) with no relations between them (step SQ)
+        if e isa RischNotImplemented && occursin("different squarefree parts", e.msg) && !OPAQUE_CONST_RADICALS[]
+            r = integrate_opaque_sqrts(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
+        end
         # a u-substitution may have failed only for want of a special function in the term type: once
         # through Expr, keeping the answer when it has special terms
         if !(f isa Expr) && !EXPR_RETRY[]
@@ -274,6 +301,7 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         integrate_linear_shift(f, x; build = build, lift = lift, verify = verify)
     catch e
         e isa RischNotImplemented || rethrow()         # (refused in y: the addition formulas may still do)
+        (occursin("no real form", e.msg) && has_imag_unit(f)) && rethrow()   # (not this one: step CI)
         nothing
     end
     r === nothing || return r
@@ -445,10 +473,52 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     end
 end
 
+# step CI: an integrand with i in it (1/(1 + i tan x)²) that is not real, f = u + i·v with u = (f + σf)/2 and
+# v = (f - σf)/(2i) real: ∫ f = ∫ u + i ∫ v, each in real form (a RootSum of ∫ v as i·RootSum); nothing for a real f
+function integrate_complex_parts(T::Tower, el, bd::Builder, verify::Bool, pos)
+    L = length(T.levels)
+    kinds = sigma_kinds(T)
+    e = liftto(T, el, L)
+    s = tconj(T, kinds, e, L)
+    s == e && return nothing
+    C = ctype(T)
+    two = cfromQ(C, Q(2))
+    u = (e + s) * lconst(T, inv(two), L)
+    v = (e - s) * lconst(T, inv(two * cimag(C)), L)
+    terms, rss = Any[], Any[]
+    for (w, isim) in ((u, false), (v, true))
+        iszero(w) && continue
+        G = integrate_real_over_q(T, kinds, w, bd, verify, pos)
+        G === nothing && (G = integrate_built(T, w, bd, verify; pos = pos))
+        E = G isa IntegralWithRootSums ? G.elementary : G
+        leaf_rational(E) == 0 || push!(terms, isim ? mk(bd, :*, bd.lift(im), E) : E)
+        G isa IntegralWithRootSums && append!(rss, isim ? Any[ScaledRootSum(bd.lift(im), r) for r in G.rootsums] : G.rootsums)
+    end
+    E = isempty(terms) ? bd.lift(0) : length(terms) == 1 ? terms[1] : mk(bd, :+, terms...)
+    isempty(rss) ? E : IntegralWithRootSums(E, rss, string(bd.x))
+end
+
+# a real part (σ-invariant) over the real field: ℚ for ℚ(i), ℚ(t₁, …) for ℚ(i)(t₁, …) with real generators, in a
+# tower without trigonometric levels (over ℚ(i) its logarithmic part can stay a RootSum: 1/(t⁴ + 1)); nothing otherwise
+function integrate_real_over_q(T::Tower, kinds, w, bd::Builder, verify::Bool, pos)
+    C = ctype(T)
+    (C === QI || (C <: Frac && cbase(C) === QI && all(g -> g.kind in (:exp, :log, :sym, :symlog), T.consts))) || return nothing
+    all(==(:real), kinds) || return nothing
+    RC = real_ctype(C)
+    ok = Ref(true)
+    φ(c) = (r = to_real(c); r === nothing ? (ok[] = false; zero(RC)) : r)
+    T2 = change_constants(T, RC, φ)
+    w2 = change_constants(T, T2, w, φ)
+    ok[] || return nothing
+    integrate_built(T2, w2, bd, verify; pos = pos)
+end
+
 # integrate an element of a built tower and return the term (base variable printed as bd.x)
 function integrate_built(T::Tower, el, bd::Builder, verify::Bool; pos = nothing)
     L = length(T.levels)
     if is_complex_field(ctype(T))      # Step 7: integrate over ℚ(i), then take the real part
+        F = integrate_complex_parts(T, el, bd, verify, pos)
+        F === nothing || return F
         res = integrate_el(T, L, el)
         verify && !check_tower(T, L, res, el) &&
             throw(RischError("internal check failed: derivative of the result differs from the integrand"))
@@ -573,6 +643,8 @@ end
 Base.show(io::IO, s::ScaledRootSum) = print(io, "(", s.factor, ")*", s.rs)
 rs_value(s::ScaledRootSum, xk::String, a) = term_value(s.factor, xk, a) * rs_value(s.rs, xk, a)
 rs_value_continuous(s::ScaledRootSum, xk::String, a::Real) = term_value(s.factor, xk, a) * rs_value_continuous(s.rs, xk, a)
+rs_real_value(s::ScaledRootSum, xk::String, a::Real) = term_value(s.factor, xk, a) * rs_real_value(s.rs, xk, a)
+complex_factor(s::ScaledRootSum) = has_imag_unit(s.factor) || complex_factor(s.rs)
 
 # an answer with its variable substituted (a substitution step putting u back): the elementary part by the term
 # map `back`, a RootSum with its variable standing for back(x) (`arg`), a TermRootSum with `back` applied to its
@@ -717,11 +789,13 @@ const OPS_HYP = Dict{Symbol,Function}(:sin => sin, :cos => cos, :sinh => sinh, :
 # back (∫ (a + b asin(c x))^(-3/2): u = sin t, then cos((v - a)/b) for v = a + b t), and the two would undo
 # each other until the stack overflows; the inner one is left to step TS2.
 const LINEAR_SHIFT = Ref(false)
+const CI_CHECK = Ref(false)                              # step CI: the outer numeric check is running
 function integrate_linear_shift(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     LINEAR_SHIFT[] && return nothing
     xk = string(x)
-    # the arguments; x elsewhere only algebraically (exp(c x) would become exp(c (y - e)/f))
+    # the arguments; x elsewhere only algebraically, or inside atan, acot, asin, acos, log (exp(c x) would become
+    # exp(c (y - e)/f))
     args = Any[]
     function collect_args(t)
         (safe_iscall(t) && !isempty(arguments(t))) || return true
@@ -730,7 +804,8 @@ function integrate_linear_shift(f, x; build = nothing, lift = nothing, verify::B
             push!(args, arguments(t)[1])
             return true
         end
-        (n in (:+, :-, :*, :/, :^, :sqrt, :cbrt) || !has_x(t, xk)) || return false
+        # (and inverse functions and log of such terms: x² atan(c + (1 + ic) tan(bx + a)), SymPy #26509)
+        (n in (:+, :-, :*, :/, :^, :sqrt, :cbrt, :atan, :acot, :asin, :acos, :log) || !has_x(t, xk)) || return false
         all(collect_args, arguments(t))
     end
     collect_args(f) || return nothing
@@ -776,6 +851,39 @@ function integrate_linear_shift(f, x; build = nothing, lift = nothing, verify::B
     back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? L : t)
     subst_answer(G, back, bd)
 end
+# step SQ: ∫ f with its constant square roots opaque (independent indeterminates s₆, s₃, s₂). The answer holds for
+# generic values; at s₆ = √6, … it is checked numerically: a hidden zero (a denominator that vanishes by a relation
+# such as s₆ = s₂s₃ or s₂² = 2) shows as a wrong derivative. A NotElementary for generic values says nothing here.
+function integrate_opaque_sqrts(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    OPAQUE_CONST_RADICALS[] = true
+    F = try
+        risch_integrate(f, x; build = build, lift = lift, verify = verify)
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        nothing
+    finally
+        OPAQUE_CONST_RADICALS[] = false
+    end
+    (F === nothing || !verify) && return F
+    xk = string(x)
+    if F isa IntegralWithRootSums
+        has_param(f, xk) && return F                     # (not evaluated with parameters; generic, as for step HZ)
+        ev = numeric_evaluator(xk, f)
+        n = 0
+        for x0 in (0.37, 0.83, 1.29, -0.61)
+            fv = try ev(f, x0) catch; continue end
+            isfinite(fv) || continue
+            h = 1e-6 * max(1.0, abs(x0))
+            dF = try (F(x0 + h) - F(x0 - h)) / (2h) catch; return nothing end
+            abs(dF - fv) <= 1e-5 * max(1.0, abs(fv)) || return nothing
+            (n += 1) == 2 && break
+        end
+        return F
+    end
+    (numeric_antiderivative(f, F, xk) && !hidden_zero(f, F, xk)) ? F : nothing
+end
+
 # an element of a constant field (ℚ, ℚ(i), parameter fractions over them) that is rational, else nothing
 rational_const(v::Q) = v
 rational_const(v::QI) = iszero(v.im) ? v.re : nothing

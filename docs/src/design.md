@@ -274,7 +274,7 @@ throws. A step that rewrites the integrand calls `risch_integrate` again on the 
 | erf | ``\int A(x) \operatorname{erf}(ax + b)`` (or `erfi`), ``A`` free of `erf` | by parts with ``Q = \int A``: ``Q \operatorname{erf}(u) - (2a/\sqrt π)\int Q e^{-u^2}``, the exponentials of ``Q`` merged into ``e^{-u^2}`` (``\int e^x \operatorname{erf} x``); a multiple ``λ \operatorname{erf}(u)`` in ``Q`` gives ``λ \operatorname{erf}(u)^2/2``. The sum is checked numerically. Exponents of `exp(u)` and ``ℯ^u`` (SymEngine, SymJ) are read through `exp_arg` |
 | IT | a factor free of `x` that contains a symbol, π or ℯ, or a root ``c^{p/q}`` with ``q > 2`` (an integrand free of `x` with a symbol or π: ``f x``) | takes it out: ``\int c\,g = c \int g``. This keeps the parameter out of the constant field, and lets an iterated integral see ``c(y) \cdot \text{RootSum}(x)`` |
 | KR | a radical whose radicand has a transcendental function | if the radicand is constant in its tower (``\sin^2 x + \cos^2 x``, the speed of a circle in a line integral), it is replaced by its value: ``\sqrt{\sin^2 x + \cos^2 x} = 1`` |
-| SL | every trigonometric or hyperbolic argument with `x` is ``r(e + fx)``, ``r`` rational, ``e`` a parameter; elsewhere `x` only algebraically | ``y = e + fx``, ``x = (y - e)/f``, integrated in ``y`` and ``y = e + fx`` substituted back (refused in ``y``: on to TS2). Before TS2, whose ``\cos e``, ``\sin e`` are independent constants to the constant field: ``\cos^2 e + \sin^2 e = 1`` is not seen, which gives hidden zero denominators, false residue criteria and slow resultants |
+| SL | every trigonometric or hyperbolic argument with `x` is ``r(e + fx)``, ``r`` rational, ``e`` a parameter; elsewhere `x` only algebraically | ``y = e + fx``, ``x = (y - e)/f``, integrated in ``y`` and ``y = e + fx`` substituted back (refused in ``y``: on to TS2). Before TS2, whose ``\cos e``, ``\sin e`` are independent constants to the constant field: ``\cos^2 e + \sin^2 e = 1`` is not seen, which gives hidden zero denominators, false residue criteria and slow resultants `x` may also sit inside `atan`, `acot`, `asin`, `acos` and `log` (``x^2 \operatorname{atan}(c + (1 + ic)\tan(bx + a))``, SymPy #26509). |
 | TS2 | ``\sin(v + a)``, ``\cosh(v + a)``, … with ``a`` free of `x` | addition formulas, so ``\cos a``, ``\sin a`` become opaque constants. Exact values for multiples of ``π/6`` and ``π/4`` |
 | AC | `acot`, `acsc`, `asec` | ``\operatorname{acot} u = \operatorname{atan}(1/u)``, ``\operatorname{acsc} u = \operatorname{asin}(1/u)``, … |
 | IH | `atanh`, `acoth`, `asinh`, `acosh`, `acsch`, `asech` | first ``y = cx`` for ``L(cx)`` with a parameter ``c`` (step AL), then derivative-divides (step US: ``\int \operatorname{asinh} x/\sqrt{x^2+1} = \tfrac12\operatorname{asinh}^2 x``), ``A \cdot L`` by parts (step AP) and a factor ``a + bL`` term by term, so the answer keeps ``L``: ``\int \operatorname{asech} x = x \operatorname{asech} x + \operatorname{asin} x``. Otherwise as logarithms: ``\operatorname{atanh} u = \tfrac12\log\frac{1+u}{1-u}``, ``\operatorname{acoth} u = \tfrac12\log\frac{u+1}{u-1}``, ``\operatorname{asinh} u = \log(u + \sqrt{u^2+1})``, ``\operatorname{acosh} u = \log(u + \sqrt{u^2-1})``, ``\operatorname{acsch} u = \operatorname{asinh}(1/u)``, ``\operatorname{asech} u = \log\frac{1 + \sqrt{1 - u^2}}{u}`` (``0 < u \le 1``) |
@@ -305,10 +305,15 @@ What is left goes to `integrate_radical`. Its cases, in order:
 
 - **NP**: a square root of a radicand ``u ≤ 0`` on all of ``ℝ`` (checked exactly: no real root of
   odd multiplicity of ``N D``, ``\operatorname{lc}(ND) < 0``). On the principal branch
-  ``u^{p/2} = i^p (-u)^{p/2}``, with ``i = \sqrt{-1}`` an opaque constant, and the rewritten
+  ``u^{p/2} = i^p (-u)^{p/2}``, with ``i = \sqrt{-1}`` (step CI), and the rewritten
   integrand starts over.
 - **10e**: square roots of rational constants (``\sqrt 2``, ``8^{3/2}``) become constants of
-  ``ℚ(i)(\sqrt d)``; they must share one ``d``.
+  ``ℚ(i)(\sqrt d)``; they must share one ``d``. With several squarefree parts (``\sqrt 6``,
+  ``\sqrt 3``, ``\sqrt 2``: SymPy #26502), step SQ takes them as opaque constants, independent
+  indeterminates, and checks the answer numerically at their values (a relation such as
+  ``\sqrt 6 = \sqrt 2 \sqrt 3`` that the field does not know could hide a zero). A `NotElementary`
+  for generic values decides nothing there, and the refusal stands. The answer is often a RootSum:
+  the roots of ``x^4 - 3\sqrt 2 x^2 - 9\sqrt 3`` need ``\sqrt{1 + 2\sqrt 3}`` too.
 - **RP**: a radicand ``c\,w^m`` is read as a power of ``w``.
 - **BQ**: two square roots, not both of linear polynomials: the biquadratic field
   ``ℚ(x)(\sqrt a, \sqrt b)`` splits into the three quadratic subfields by its Galois group, so
@@ -468,6 +473,21 @@ antiderivative. Its real form uses ``\cos kw``, ``\sin kw``, and
 ``c_r = (c + σc)/2``, ``c_i = (c - σc)/(2i)``, ``U = (w + σw)/2`` and ``V = (w - σw)/(2i)``. The real
 form is verified again in the tower.
 
+**Step CI.** The imaginary unit of the integrand (Julia's `im`, SymEngine's `I`, SymJ's
+``(-1)^{1/2}``, `sqrt(-1)`) is the ``i`` of ``ℚ(i)``. It is not a parameter: as one, ``1/(1 + i\tan x)^2``
+gave RootSum coefficients with the denominator ``(1 + i^2)^4 = 0`` (SymPy #26508). An integrand that
+is not real (``σf ≠ f``) is split as ``f = u + i v``, with ``u = (f + σf)/2`` and ``v = (f - σf)/(2i)``.
+Both parts are real and are put in real form, so ``\int f = \int u + i \int v``. A part with
+rational coefficients, in a tower without trigonometric levels, is integrated over ``ℚ`` (or over
+``ℚ(t_1, …)``); over ``ℚ(i)``, ``1/(t^4 + 1)`` would keep a RootSum. The RootSums of ``\int v`` come back
+as `ScaledRootSum`s with the factor ``i``, and `F(a)` is then complex.
+A generator that is not real, such as ``\operatorname{atan}(w)`` with ``w`` not real
+(``x^2 \operatorname{atan}(c + (1 + ic)\tan(bx + a))``, SymPy #26509), has no real form on any route.
+Only by parts (step AP) takes it out, so after step AP the refusal stands, and step SL passes it on
+rather than trying step TS2. Steps that write a real part (CL) refuse non-real integrands. As a
+safety net, the outermost call checks the answer to an integrand with ``i`` numerically, in complex
+values.
+
 A `NotElementary` from a tower with an `atan` level is demoted to `RischNotImplemented`, since the
 structure-theorem arguments behind some decisions are for `exp`/`log` towers only.
 
@@ -478,7 +498,7 @@ order:
 
 | Step | When | Recognizes | Does |
 |:-----|:-----|:-----------|:-----|
-| CL | `NotElementary` | ``x^p R(\sin kx, \cos kx)`` | by parts, with Clausen functions ``\operatorname{Cl}_m`` and ``\operatorname{Re}\operatorname{Li}_m``: ``\int x \tan x`` |
+| CL | `NotElementary` | ``x^p R(\sin kx, \cos kx)`` | by parts, with Clausen functions ``\operatorname{Cl}_m`` and ``\operatorname{Re}\operatorname{Li}_m``: ``\int x \tan x`` A real integrand only (the answer is a real part): not ``x/(1 + (2 + (1 + 2i)\tan x)^2)``. |
 | LP | any | ``\log^j(x)\, L(wx)/x``, ``L`` = `atan`, `log`, `li2` | polylogarithms by parts: ``\int \operatorname{atan}(x)/x = \operatorname{Ti}_2(x)`` |
 | AT | any | `atan(u)` | ``u = \tan t`` |
 | XP | `NotElementary` | ``P(x) R(e^{kx})``, ``P`` a polynomial, ``x`` nowhere else | by parts with ``Q = \int R`` elementary: ``P Q - \int P' Q`` (``\int x/(e^x - 1)`` with ``\operatorname{Li}_2``) |
@@ -487,7 +507,7 @@ order:
 | HS | `NotElementary`; for ``\sin^p \cos^r`` also a radical refused for its radicand, or not elementary after step HT | ``x^m(α + βx^n)^q``, ``\sin^p \cos^r``, symbolic exponents (for ``\sin^p \cos^r`` also fractional ones: ``\sin^{7/2} x \cos^{3/2} x``) | ``{}_2F_1`` terms; ``α^q (1 + βx^n/α)^q = (α + βx^n)^q`` is used for ``α > 0`` (a positive rational, or a product of parameters), else the ratio ``(α + βx^n)^q/(1 + βx^n/α)^q``, constant on each interval, as Rubi writes it (``α = -a/b`` after a shift) |
 | EH | `NotElementary` | ``e^{ax} R(\cos bx, \sin bx)`` with the poles of ``R(E)``, ``E = e^{ibx}``, in ``ℚ(i)`` | partial fractions in ``E``. Each pole gives ``\int e^{ax}/(1 - E/r)^k = e^{ax}\,{}_2F_1(k, s; s+1; E/r)/a`` with ``s = a/(ib)``. The real part is printed with `rehyp2f1` and `imhyp2f1` (``\int e^x/(1 + \cos x)``) |
 | H3, H4 | `NotElementary` | ``x^s e^{bx + d}``, ``x^s \sin``, ``x^s \cos`` | incomplete ``Γ`` terms |
-| US | any | ``f = G(u)\,u'`` for a subterm ``u`` (and the partner ``\sinh v`` of ``\cosh v``, ``\sin v`` of ``\cos v``, …) | derivative-divides, below. With ``u = \sinh v``, even powers of ``\cosh v`` are ``(1 + u^2)^k``, and so on. A fractional power goes inside only a lone factor with ``x``: ``\sqrt{\sin x/\cos^2 x} = \sqrt{\sin x}/\lvert\cos x\rvert`` is refused |
+| US | any | ``f = G(u)\,u'`` for a subterm ``u`` (and the partner ``\sinh v`` of ``\cosh v``, ``\sin v`` of ``\cos v``, …) | derivative-divides, below. With ``u = \sinh v``, even powers of ``\cosh v`` are ``(1 + u^2)^k``, and so on. A fractional power goes inside only a lone factor with ``x``: ``\sqrt{\sin x/\cos^2 x} = \sqrt{\sin x}/\lvert\cos x\rvert`` is refused Not inside step AP for an integrand with ``i`` in it (step CI). |
 | NS | any | a radical with an inner radical ``\sqrt{R(x)}`` | ``x = X(u)`` that rationalizes the inner radical |
 | CS | any | nested radicals with coefficients in ``ℚ(\sqrt d)`` | ``x = σy`` (``σ = 1, d, 1/d``). Each radicand is written as ``κ P_0`` with ``P_0`` over ``ℚ``, so ``\sqrt{κ}`` comes out: in ``ℚ(\sqrt d)``, or ``\sqrt b\, d^{1/4}`` for ``κ = b\sqrt d``. Step IT then takes out ``d^{1/4}``. Example: ``\sqrt{\sqrt2 + \sqrt x + \sqrt{2 + \sqrt8\sqrt x + 2x}}`` |
 | PP | any | ``\sqrt{g + c_1}``, ``\sqrt{g + c_2}`` of one term ``g`` | ``w = \sqrt{x + c_1} - \sqrt{x + c_2}`` for ``g = x``. Then ``\sqrt{x + c_1} = (w + k/w)/2`` and ``\sqrt{x + c_2} = (k/w - w)/2``, with ``k = c_1 - c_2``. For ``g = h(ax + b)`` (``h`` = sec, csc, sin, cos, tan, cot, exp, sinh, cosh), first ``u = g``, ``dx = du/(a h'(u))`` with ``h'`` written in ``u`` (``\sec x \tan x = u\sqrt{u + 1}\sqrt{u - 1}`` only where ``\tan x > 0``), and the answer times ``σ = h'/(h' \text{ written in } u) = ±1`` (``\tan x/(\sqrt{\sec x + 1}\sqrt{\sec x - 1})``), constant on each interval. Example: ``\sqrt{\sqrt{\sec x + 1} - \sqrt{\sec x - 1}}`` |
@@ -769,6 +789,7 @@ failures, and their comments cite the Rubi problem numbers.
 | H3, H4 | `gamma_terms.jl` | incomplete ``Γ`` answers |
 | EH | `exp_trig_hyp.jl` | ``e^{ax} R(\cos bx, \sin bx)`` with ``{}_2F_1`` terms |
 | EQ | `euler_substitutions.jl` | Hermite reduction on the conic before the Euler substitution |
+| CI | `tower_terms.jl`, `risch_integrate.jl` | the imaginary unit; non-real integrands as ``u + i v`` |
 | IT | `risch_integrate.jl` | constant factors out; iterated integrals |
 | KR | `radicals.jl` | constant radicands written with `x` |
 | LP | `polylog_parts.jl` | polylogarithms by parts |
@@ -795,6 +816,7 @@ failures, and their comments cite the Rubi problem numbers.
 | RY | `tower_radicals.jl` | a radical of a tower element |
 | SY | `tower_terms.jl` | parameters and opaque constants |
 | SG | `tower_terms.jl` | plain symbols before opaque subterms among the constant generators |
+| SQ | `risch_integrate.jl` | constant square roots with several squarefree parts, opaque |
 | SL | `risch_integrate.jl` | ``y = e + fx`` for shifted linear trigonometric arguments |
 | SO | `param_radicals.jl`, `sign_facts.jl` | signs of parameter expressions from the caller: an oracle, or facts |
 | TA | `tower_terms.jl`, `monomial_integration.jl` | `atan` levels |

@@ -63,11 +63,14 @@ end
     RischNotImplemented
 
 The integrand lies outside the cases implemented: no answer, and no decision whether the integral
-is elementary.
+is elementary. `term` is the subterm whose operation is not supported (an unknown function `f(r)`,
+an unevaluated sum, …) when that is the reason, else `nothing`.
 """
 struct RischNotImplemented <: Exception
     msg::String
+    term::Any
 end
+RischNotImplemented(msg::AbstractString) = RischNotImplemented(String(msg), nothing)
 Base.showerror(io::IO, e::RischError) = print(io, "RischError: ", e.msg)
 Base.showerror(io::IO, e::RischNotImplemented) = print(io, "RischNotImplemented: ", e.msg)
 

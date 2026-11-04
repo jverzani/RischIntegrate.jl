@@ -605,7 +605,8 @@ function numeric_evaluator(xk::String, ts...)
             foreach(leaves!, arguments(t))
         else
             s = string(t)
-            (s != xk && leaf_rational(t) === nothing && !is_e_const(t) && !(s in ("pi", "π")) && !(s in names)) && push!(names, s)
+            (s != xk && leaf_rational(t) === nothing && !is_e_const(t) && !is_imag_unit(t) && !(s in ("pi", "π")) && !(s in names)) &&
+                push!(names, s)
         end
     end
     foreach(leaves!, ts)
@@ -626,6 +627,7 @@ end
 # fixed positive values; true when no such points are found or a term cannot be evaluated
 function numeric_antiderivative(f, G, xk::String)
     ev = numeric_evaluator(xk, f, G)
+    cx = has_imag_unit(f)                               # (a complex integrand: compared where it is finite, step CI)
     found = 0
     for x0 in (0.13, 0.27, 0.41, 0.58, 0.83, 1.21, 1.77, 2.6, -0.37, -1.4)
         fv, dG = try
@@ -635,7 +637,7 @@ function numeric_antiderivative(f, G, xk::String)
         catch
             continue
         end
-        (isfinite(fv) && isfinite(dG) && abs(imag(fv)) <= 1e-10 * max(1.0, abs(fv))) || continue
+        (isfinite(fv) && isfinite(dG) && (cx || abs(imag(fv)) <= 1e-10 * max(1.0, abs(fv)))) || continue
         abs(dG - fv) <= 1e-4 * max(1.0, abs(fv)) || return false
         (found += 1) == 2 && return true
     end

@@ -250,7 +250,7 @@ function never_positive(u::Frac{UPoly{Q}})
 end
 
 # step NP: square roots of a radicand u ≤ 0 on ℝ (√(-1 - 4x²), Rubi 1427 after s = sin x): on the principal branch
-# u^(p/2) = i^p (-u)^(p/2), with i = √-1 an opaque constant; f rewritten so, or nothing
+# u^(p/2) = i^p (-u)^(p/2), with i = √-1 (the i of ℚ(i), step CI); f rewritten so, or nothing
 function negative_radicands(f, rads, xk::String, b0::Builder)
     neg = Set{String}()
     for (_, ut) in rads
@@ -479,7 +479,9 @@ function integrate_subst(f, xk::String, ::Type{S}, φ, radval, bt::Builder, veri
     F = integrate_built(T, g, bd, verify; pos = pos)
     # a RootSum for a binomial denominator in t (1/(t²(a³ - t³)) from t = x^(1/3)): step BN, in the variable
     # x standing for t, then t put back
-    if F isa IntegralWithRootSums && isempty(T.levels) && xvar !== nothing
+    # (not for a non-real g, step CI: it is printed in the variable x)
+    if F isa IntegralWithRootSums && isempty(T.levels) && xvar !== nothing &&
+       (!is_complex_field(ctype(T)) || all(c -> to_real(c) !== nothing, [g.num.c; g.den.c]))
         bx = Builder(bt.build, bt.lift, xvar, T.consts)
         F2 = integrate_binomial_scaled(frac_term(bx, g), xvar; build = bt.build, lift = bt.lift, verify = verify)
         if F2 !== nothing

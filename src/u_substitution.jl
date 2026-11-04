@@ -282,6 +282,9 @@ end
 function try_usub(f, x; build, lift, verify::Bool)
     @nospecialize f x
     USUB_DEPTH[] < 2 || return nothing
+    # (not inside step AP for an integrand with i in it: Q·w′/(1 + w²) from x² atan(c + (1 + ic) tan(bx + a)), SymPy
+    # #26509, ran through about a hundred substitutions over ℚ(i)(a, b, c), each refused)
+    (PARTS[] && has_imag_unit(f)) && return nothing
     xk = string(x)
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     USUB_DEPTH[] += 1
