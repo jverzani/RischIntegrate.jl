@@ -68,6 +68,12 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         CI_CHECK[] = true
         F = try
             risch_integrate(f, x; build = build, lift = lift, verify = verify)
+        catch e
+            # a step over ℚ(i) whose output is written in real form (radicals of a + i a tan(c + d x), steps PM, PB:
+            # 34 problems of the stratified scan) refuses the integrand; its other routes were slower still (> 15 min)
+            (e isa RischError && startswith(e.msg, "a non-real constant")) || rethrow()
+            throw(RischNotImplemented("a step for real integrands reached a non-real constant of the integrand " *
+                                      "with the imaginary unit (no complex form of that step)"))
         finally
             CI_CHECK[] = false
         end
@@ -165,6 +171,12 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         # already work are not changed: a substitution refused inside, step AL or US, leaves the next one its chance)
         # Then radicals of trigonometric functions of one linear argument by t = tan(L/2) (step HT).
         # Last, two or more square roots merged into one, the answer times σ = ±1 (step RM), and the same again.
+        # a radicand with the imaginary unit: i as a parameter (step IP)
+        if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg) && RISCH_DEPTH[] == 1 &&
+           has_imag_unit(f)
+            r = integrate_imag_param(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
+        end
         if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg) && RISCH_DEPTH[] == 1
             r = try
                 radicand_fallbacks(f, x; build = build, lift = lift, verify = verify)
@@ -211,7 +223,12 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         end
         # square roots of constants with two or more squarefree parts (√6, √3, √2: SymPy #26502), as opaque constants
         # of the field ℚ(√2, √3, √6) with no relations between them (step SQ)
-        if e isa RischNotImplemented && occursin("different squarefree parts", e.msg) && !OPAQUE_CONST_RADICALS[]
+        # (also beside a transcendental constant, which the field ℚ(i)(√d) of step 10e has no room for: √5 with π,
+        # SymPy #24952; not beside a parameter, where step SQ's RootSum answers go unchecked: ∫∫ dx dy/(x³ + y))
+        if e isa RischNotImplemented && (occursin("different squarefree parts", e.msg) ||
+                                         (occursin("transcendental constants, but the constant field was fixed", e.msg) &&
+                                          !has_param(f, string(x)))) &&
+           !OPAQUE_CONST_RADICALS[]
             r = integrate_opaque_sqrts(f, x; build = build, lift = lift, verify = verify)
             r === nothing || return r
         end
@@ -337,7 +354,15 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     if !isempty(arcs)
         r = integrate_arcs_scaled(f, x, arcs; build = build, lift = lift, verify = verify)   # asin(a x): y = a x (AL)
         r === nothing || return r
-        return integrate_arcsin(f, x, arcs; build = build, lift = lift, verify = verify)
+        return try
+            integrate_arcsin(f, x, arcs; build = build, lift = lift, verify = verify)
+        catch e
+            # asin/acos of a tower element (acos(eᵗ log t)): by parts over the sum (step AM)
+            (e isa RischNotImplemented && startswith(e.msg, "asin/acos of")) || rethrow()
+            r = try_parts_sum(f, x; build = build, lift = lift, verify = verify)
+            r === nothing && throw(e)
+            r
+        end
     end
     rads = collect_radicals(f, xk)
     if isempty(rads) && has_param(f, xk)               # a power of one parameter quadratic: linearity (step PL)

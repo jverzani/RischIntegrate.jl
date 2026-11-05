@@ -52,6 +52,9 @@ function parse_tower(t, T::Tower)
             if n in SHIFT_TRIG && length(args) == 1 && !has_x(args[1], T.xk) && has_param(args[1], T.xk)
                 return sym_const(T, t)
             end
+            # |c| of a term c free of x (|ζ ω|, from a definite integral's degenerate cases): an opaque constant
+            # (SymPy #24518)
+            n === :abs && length(args) == 1 && !has_x(args[1], T.xk) && return sym_const(T, t)
             rp = radical_parts(t)                       # √(2h): an opaque constant (as cos a)
             (rp !== nothing && opaque_radical(rp[2], T.xk)) && return sym_const(T, t)
             if n in (:sin, :cos, :tan, :cot, :sec, :csc) && length(args) == 1   # Step 7: θ = exp(i·u) over ℚ(i)
@@ -78,7 +81,9 @@ function parse_tower(t, T::Tower)
             n in ALGEBRAIC && throw(RischNotImplemented(
                 "`$n` is an algebraic (radical) function; only transcendental towers are supported"))
             if n === :^ && length(args) == 2 && is_e_const(args[1])
-                return make_exp(T, parse_tower(args[2], T))          # E^u = exp(u)
+                u = parse_tower(args[2], T)
+                has_x(args[2], T.xk) && return make_exp(T, u)       # E^u = exp(u)
+                return const_exp_or_opaque(T, t, u)
             end
             a = Any[parse_tower(u, T) for u in args]
             if n === :+
@@ -96,7 +101,8 @@ function parse_tower(t, T::Tower)
             elseif n === :inv && length(a) == 1
                 return inv(a[1])
             elseif n === :exp && length(a) == 1
-                return make_exp(T, a[1])
+                has_x(args[1], T.xk) && return make_exp(T, a[1])
+                return const_exp_or_opaque(T, t, a[1])
             elseif n === :log && length(a) == 1
                 return make_log(T, a[1])
             elseif n in (:sinh, :cosh, :tanh, :coth, :sech, :csch) && length(a) == 1
@@ -176,6 +182,18 @@ function sym_const(T::Tower, t)
         throw(NewConstants(k === nothing ? ConstGen[T.consts; g] : ConstGen[T.consts[1:k-1]; g; T.consts[k:end]]))
     end
     lconst(T, tgen(ctype(T), j), 0)
+end
+
+# exp(c) for a constant c (the term t): in the constant field when it is there (e^(a + b·i) Π pᵏ), else, for a c
+# such as e⁵ or π√2 whose exp the field has no generator for, the term t as an opaque constant (as a parameter,
+# step SY: the answer holds for its generic values; SymPy #23949, exp(exp(5)))
+function const_exp_or_opaque(T::Tower, t, u)
+    try
+        return make_exp(T, u)
+    catch e
+        (e isa RischNotImplemented && startswith(e.msg, "exp of the constant")) || rethrow()
+    end
+    sym_const(T, t)
 end
 
 # Build the tower for `f`. A Restart (a rational multiple such as exp(x/2) after

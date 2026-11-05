@@ -2920,6 +2920,107 @@ end
     @test isapprox((F(1.1 + 1e-6) - F(1.1 - 1e-6)) / 2e-6, SymEngine.N(SymEngine.subs(f, x => 1.1)); rtol = 1e-6)
 end
 
+# SymPy #24952: √5 beside π, which the field ℚ(i)(√5) of step 10e has no room for: √5 opaque (step SQ)
+@testset "a constant square root beside a transcendental constant (SymPy #24952)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, v, x0) = Core.eval(Main, Expr(:let, Expr(:(=), v, x0), e))
+    for f in (:(exp(-sqrt(5) * s) * cos(2 * pi * s)), :(exp(-sqrt(5) * s) * sin(pi * s)), :(sqrt(2) * exp(pi * s) * s))
+        F = Risch.risch_integrate(f, :s; build = build, lift = identity)
+        for s0 in (0.3, 1.1, -0.7)
+            @test isapprox((ev(F, :s, s0 + 1e-6) - ev(F, :s, s0 - 1e-6)) / 2e-6, ev(f, :s, s0); rtol = 1e-6)
+        end
+    end
+    s = SymEngine.symbols(:s)
+    f = exp(-sqrt(SymEngine.Basic(5)) * s) * cos(2 * SymEngine.PI * s)
+    F = Risch.risch_integrate(f, s)
+    d = SymEngine.diff(F, s) - f
+    @test abs(SymEngine.N(SymEngine.subs(d, s => 0.7))) < 1e-10
+end
+
+# SymPy #23949: exp of a constant the constant field has no generator for (exp(e⁵)) as an opaque constant
+@testset "exp of a transcendental constant (SymPy #23949)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    f = :(((-x * exp(exp(5)) * log(x) + (x ^ 2 + 13x + 42) * exp(exp(5))) * exp(log(x) / (6 + x)) +
+           ((-2x ^ 4 - 24x ^ 3 - 73x ^ 2 - 12x - 36) * exp(x ^ 2) + (-x ^ 2 - 12x - 36) * exp(2)) * exp(exp(5))) / (x ^ 2 + 12x + 36))
+    for g in (f, :(exp(exp(5)) * x * exp(x)), :(exp(pi * sqrt(2)) / (1 + x ^ 2)), :(x * exp(exp(1 // 3))))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        for x0 in (0.3, 1.1, 2.0)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(g, x0); rtol = 1e-6)
+        end
+    end
+    @test occursin("exp(exp(5))", string(Risch.risch_integrate(f, :x; build = build, lift = identity)))
+end
+
+# SymPy #25314: a radicand with the imaginary unit, i as a parameter (step IP), checked over ℂ
+@testset "radicands with the imaginary unit (SymPy #25314)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for f in (:(1 / (2 * (1 + x) ^ 2 * sqrt(x ^ 2 - im))), :(1 / sqrt(x ^ 2 - im)), :(x / sqrt(x ^ 2 + 2im)),
+              :(sqrt(x ^ 2 - im)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 1.1, 2.0, -0.6, -2.3)
+            fv = ev(f, complex(x0))
+            @test isapprox((ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, fv; rtol = 1e-6)
+        end
+    end
+    x = SymEngine.symbols(:x)
+    f = 1 / sqrt(x ^ 2 - SymEngine.IM)
+    F = Risch.risch_integrate(f, x)
+    d = SymEngine.diff(F, x) - f
+    @test abs(SymEngine.N(SymEngine.subs(d, x => 0.7))) < 1e-10
+end
+
+# SymPy #24025: acos and atan of tower elements, by parts over the sum (step AM); the radicals of the last integrand
+# cancel only numerically as written
+@testset "inverse trigonometric functions of tower elements (SymPy #24025)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, v, x0) = Core.eval(Main, Expr(:let, Expr(:(=), v, x0), e))
+    f = :(t * exp(2t) * log(t) / (t ^ 2 * exp(2t) + 1) + (t ^ 2 * exp(t) * log(t) / (t ^ 2 * exp(2t) + 1) +
+          t * log(t) * atan(t * exp(t)) + sqrt(t * exp(t) * log(t)) * exp(-t) * acos(exp(t) * log(t)) / 2 -
+          sqrt(t * exp(t) * log(t)) * log(t) / sqrt(-exp(2t) * log(t) ^ 2 + 1)) * exp(t) + exp(t) * log(t) * atan(t * exp(t)) +
+          sqrt(t * exp(t) * log(t)) * acos(exp(t) * log(t)) / (2t) + (t * exp(t) * atan(t * exp(t)) +
+          sqrt(t * exp(t) * log(t)) * acos(exp(t) * log(t)) / (2 * log(t)) - sqrt(t * exp(t) * log(t)) * exp(t) /
+          sqrt(-exp(2t) * log(t) ^ 2 + 1)) / t)
+    F = Risch.risch_integrate(f, :t; build = build, lift = identity)
+    @test occursin("acos(exp(t) * log(t))", string(F)) && occursin("atan(t * exp(t))", string(F))
+    for t0 in (1.05, 1.15, 1.25)                         # (eᵗ log t < 1 for 1 < t < 1.31)
+        @test isapprox((ev(F, :t, t0 + 1e-6) - ev(F, :t, t0 - 1e-6)) / 2e-6, ev(f, :t, t0); rtol = 1e-6)
+    end
+    for (g, pts) in ((:(acos(exp(x)) - x * exp(x) / sqrt(1 - exp(2x))), (-0.9, -0.3)), (:(asin(log(x)) / x), (0.7, 1.5)))
+        G = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        for x0 in pts
+            @test isapprox((ev(G, :x, x0 + 1e-6) - ev(G, :x, x0 - 1e-6)) / 2e-6, ev(g, :x, x0); rtol = 1e-6)
+        end
+    end
+    @test string(Risch.risch_integrate(:(acos(exp(x)) - x * exp(x) / sqrt(1 - exp(2x))), :x; build = build, lift = identity)) ==
+          "x * acos(exp(x))"
+end
+
+# SymPy #24518: |c| of a term free of x is an opaque constant (a definite integral's degenerate cases give |ζ ω|)
+@testset "abs of a constant term (SymPy #24518)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = -0.7), :(c = 1.3)), e))
+    for f in (:(exp(-abs(a) * x) * sin(x)), :(sin(x) * exp(-abs(a * c) * x) * sin(abs(c) * x)), :(x / (x ^ 2 + abs(a))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 1.1, -0.8)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(abs(x) * x), :x; build = build, lift = identity)
+end
+
+# stratified scan of 2026-11-05: radicals of a + i a tan(c + d x) reached a step's real-form output (RischError); now
+# a refusal (samples 1810, 1862, 2715)
+@testset "radicals with i in a step for real integrands: a refusal (scan 2026-11-05)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    for f in (:(1 / (a + I * a * tan(c + d * x)) ^ (4 // 3)),
+              :(sqrt(a + I * a * tan(c + d * x)) * tan(c + d * x) ^ (3 // 2) * (A + B * tan(c + d * x))),
+              :(a + b * asinh(-I + d * x ^ 2)))
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(f, :x; build = build, lift = identity)
+    end
+end
+
 # SymPy #25457, #26116, #26249: an unknown function is refused with the subterm named (`term`), so that a caller can
 # keep it as an unevaluated integral without reading the message
 @testset "unknown functions: the refusal names the subterm" begin
