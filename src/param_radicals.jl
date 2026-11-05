@@ -26,7 +26,15 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     end
     isempty(T.levels) || return nothing
     C = ctype(T)
-    is_complex_field(C) && return nothing              # (a radicand with i: step IP, as a parameter)
+    # a radicand with i: as a parameter (step IP; in the outermost call only, after a substitution, a + i a tan(c + d x)
+    # with t = tan(c + d x), it took minutes), else no route
+    if is_complex_field(C)
+        if RISCH_DEPTH[] == 1
+            r = integrate_imag_param(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
+        end
+        throw(RischError("a non-real constant of the radicand $ut0 reached step PR (real form only)"))
+    end
     P = UPoly{C}
     N, Dn = el.num, el.den
     kc(c) = frac(P([c]))

@@ -68,6 +68,12 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         CI_CHECK[] = true
         F = try
             risch_integrate(f, x; build = build, lift = lift, verify = verify)
+        catch e
+            # a step over ℚ(i) whose output is written in real form (radicals of a + i a tan(c + d x), steps PM, PB:
+            # 34 problems of the stratified scan) refuses the integrand; its other routes were slower still (> 15 min)
+            (e isa RischError && startswith(e.msg, "a non-real constant")) || rethrow()
+            throw(RischNotImplemented("a step for real integrands reached a non-real constant of the integrand " *
+                                      "with the imaginary unit (no complex form of that step)"))
         finally
             CI_CHECK[] = false
         end

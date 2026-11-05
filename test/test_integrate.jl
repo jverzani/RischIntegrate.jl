@@ -3010,6 +3010,17 @@ end
     @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(abs(x) * x), :x; build = build, lift = identity)
 end
 
+# stratified scan of 2026-11-05: radicals of a + i a tan(c + d x) reached a step's real-form output (RischError); now
+# a refusal (samples 1810, 1862, 2715)
+@testset "radicals with i in a step for real integrands: a refusal (scan 2026-11-05)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    for f in (:(1 / (a + I * a * tan(c + d * x)) ^ (4 // 3)),
+              :(sqrt(a + I * a * tan(c + d * x)) * tan(c + d * x) ^ (3 // 2) * (A + B * tan(c + d * x))),
+              :(a + b * asinh(-I + d * x ^ 2)))
+        @test_throws Risch.RischNotImplemented Risch.risch_integrate(f, :x; build = build, lift = identity)
+    end
+end
+
 # SymPy #25457, #26116, #26249: an unknown function is refused with the subterm named (`term`), so that a caller can
 # keep it as an unevaluated integral without reading the message
 @testset "unknown functions: the refusal names the subterm" begin
