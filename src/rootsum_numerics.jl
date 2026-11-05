@@ -78,6 +78,9 @@ function (rs::RootSum)(a::Number)
     tot
 end
 
+# values of other leaves (parameters) while an answer is evaluated, `F(x => a, :b => 1.5, …)`; nothing outside
+const LEAF_VALUES = Ref{Union{Nothing,Dict{String,ComplexF64}}}(nothing)
+
 # numeric value of a term of the user's package at x = a (TermInterface walk)
 function term_value(t, xk::String, a)
     if safe_iscall(t)
@@ -93,7 +96,11 @@ function term_value(t, xk::String, a)
     string(t) in ("pi", "π") && return ComplexF64(π)
     is_imag_unit(t) && return ComplexF64(im)
     r = leaf_rational(t)
-    r === nothing && throw(RischError("cannot evaluate the leaf $t numerically"))
+    if r === nothing
+        lv = LEAF_VALUES[]
+        (lv !== nothing && haskey(lv, string(t))) && return lv[string(t)]
+        throw(RischError("cannot evaluate the leaf $t numerically"))
+    end
     ComplexF64(Float64(r))
 end
 
@@ -203,9 +210,20 @@ function (F::IntegralWithRootSums)(a::Real)
     v = term_value(F.elementary, F.var, a) + sum(rs_real_value(rs, F.var, a) for rs in F.rootsums; init = 0.0im)
     complex_answer(F) ? v : real(v)
 end
-# substitution syntax `F(x => value)` with a numeric value (definite integrals `F(x => b) - F(x => a)`)
-function (F::IntegralWithRootSums)(p::Pair)
+# substitution syntax `F(x => value)` with a numeric value (definite integrals `F(x => b) - F(x => a)`), and
+# `F(x => value, a => 1.5, …)` with real values of the parameters (the other leaves of the answer; the real part of each
+# RootSum is an antiderivative only for real parameters)
+function (F::IntegralWithRootSums)(p::Pair, ps::Pair...)
     (string(p.first) == F.var && p.second isa Real) || throw(RischNotImplemented(
         "an IntegralWithRootSums can only be evaluated at a numeric value of $(F.var)"))
-    F(p.second)
+    isempty(ps) && return F(p.second)
+    all(q -> q.second isa Real && string(q.first) != F.var, ps) || throw(RischNotImplemented(
+        "parameter values must be real numbers, for leaves other than $(F.var)"))
+    old = LEAF_VALUES[]
+    LEAF_VALUES[] = Dict{String,ComplexF64}(string(q.first) => ComplexF64(q.second) for q in ps)
+    try
+        F(p.second)
+    finally
+        LEAF_VALUES[] = old
+    end
 end

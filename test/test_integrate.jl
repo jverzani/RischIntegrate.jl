@@ -3021,6 +3021,27 @@ end
     end
 end
 
+# RootSum answers with parameters, evaluated at parameter values: F(x => a, b => 1.5, …)
+@testset "RootSum answers evaluated at parameter values" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    for (f, pv) in ((:(x ^ 2 / (a + b * x ^ 2 + c * x ^ 4) ^ 2), (:a => 1.13, :b => 2.13, :c => 3.13)),
+                    (:(cos(x) ^ 4 / (a + b * cos(x) + c * cos(x) ^ 2)), (:a => 3.13, :b => 1.13, :c => 0.53)),
+                    (:((A + B * x) / ((a + b * x + c * x ^ 2) ^ 2 * sqrt(x))), (:A => 1.13, :B => 2.13, :a => 3.13, :b => 4.13, :c => 5.13)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test F isa Risch.IntegralWithRootSums
+        ev(x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), (:($(p.first) = $(p.second)) for p in pv)...), f))
+        for x0 in (0.3, 0.9)
+            @test isapprox((F(:x => x0 + 1e-5, pv...) - F(:x => x0 - 1e-5, pv...)) / 2e-5, ev(x0); rtol = 1e-6)
+        end
+    end
+    F = Risch.risch_integrate(:(1 / (x ^ 4 + a * x + b)), :x; build = build, lift = identity)
+    @test_throws Risch.RischError F(0.5)                                  # (no value for a)
+    @test_throws Risch.RischNotImplemented F(:x => 0.5, :a => 1.0im, :b => 2.0)
+    x = SymEngine.symbols(:x); a, b = SymEngine.symbols(:a), SymEngine.symbols(:b)
+    G = Risch.risch_integrate(1 / (x ^ 4 + a * x + b), x)
+    @test isapprox((G(x => 1.0 + 1e-5, a => 1.0, b => 3.0) - G(x => 1.0 - 1e-5, a => 1.0, b => 3.0)) / 2e-5, 1 / 5; rtol = 1e-6)
+end
+
 # SymPy #25457, #26116, #26249: an unknown function is refused with the subterm named (`term`), so that a caller can
 # keep it as an unevaluated integral without reading the message
 @testset "unknown functions: the refusal names the subterm" begin

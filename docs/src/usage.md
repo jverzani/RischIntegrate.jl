@@ -216,3 +216,11 @@ F = integrate(1 / (x^5 + x + 1), x)
 ```@example symengine
 F(2.0) - F(1.0)
 ```
+
+An answer with parameters is evaluated with values for them, as pairs after the variable's (real values):
+
+```@example symengine
+@vars a b
+G = integrate(1 / (x^4 + a * x + b), x)
+G(x => 2.0, a => 1.0, b => 3.0) - G(x => 1.0, a => 1.0, b => 3.0)
+```
