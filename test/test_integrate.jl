@@ -3014,10 +3014,41 @@ end
 # a refusal (samples 1810, 1862, 2715)
 @testset "radicals with i in a step for real integrands: a refusal (scan 2026-11-05)" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
-    for f in (:(1 / (a + I * a * tan(c + d * x)) ^ (4 // 3)),
-              :(sqrt(a + I * a * tan(c + d * x)) * tan(c + d * x) ^ (3 // 2) * (A + B * tan(c + d * x))),
+    for f in (:(sqrt(a + I * a * tan(c + d * x)) * tan(c + d * x) ^ (3 // 2) * (A + B * tan(c + d * x))),
               :(a + b * asinh(-I + d * x ^ 2)))
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(f, :x; build = build, lift = identity)
+    end
+end
+
+# radicals of a + i a tan(c + d x) (stratified scan of 2026-11-05: samples 1766-1810, 1835-1859): t = tan(c + d x)
+# (steps MR, TQ), then u = (a + i a t)^(1/n) over ℚ(i) (step LC); i written as I or as √-1 (as the scan writes it);
+# two radicands that merge into a real one, (c - i c t)(a + i a t) = a c (1 + t²)
+@testset "radicals of a + i a tan(c + d x) (steps LC, TQ)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    cfix(ex) = ex == :(sqrt(-1)) || ex === :I ? im : ex isa Expr ? Expr(ex.head, map(cfix, ex.args)...) : ex
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x0))), :(a = 1.3), :(c = 0.4), :(d = 1.7), :(e = 0.2),
+                                             :(f = 0.9), :(A = 0.6), :(B = -1.1)), cfix(e)))
+    for g in (:(sqrt(1 + I * tan(x))),
+              :(1 / (a + I * a * tan(c + d * x)) ^ (4 // 3)),
+              :(tan(c + d * x) ^ 3 / sqrt(a + I * a * tan(c + d * x))),
+              :((a + I * a * tan(c + d * x)) ^ (3 // 2) * (A + B * tan(c + d * x))),
+              :(cos(c + d * x) ^ 4 / (a + I * a * tan(c + d * x)) ^ (3 // 2)),
+              :(cot(c + d * x) ^ 2 * sqrt(a + sqrt(-1) * a * tan(c + d * x))),
+              :(cot(c + d * x) ^ 2 / (a + sqrt(-1) * a * tan(c + d * x)) ^ (5 // 2)),
+              :(sqrt(c - sqrt(-1) * c * tan(e + f * x)) / (a + sqrt(-1) * a * tan(e + f * x)) ^ (7 // 2)))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        for x0 in (0.3, 1.1, 2.2, -0.7)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(g, x0); rtol = 1e-5)
+        end
+    end
+    # SymEngine: its answers have complex numbers such as -1/2*im as leaves (step CI's check evaluates them)
+    x, a, c, d = SymEngine.symbols("x a c d")
+    for g in (sqrt(1 + SymEngine.IM * tan(x)), cot(c + d * x) ^ 2 * sqrt(a + SymEngine.IM * a * tan(c + d * x)))
+        F = Risch.risch_integrate(g, x)
+        for x0 in (0.7, -0.4)
+            @test abs(SymEngine.N(SymEngine.subs(SymEngine.diff(F, x) - g, x => x0, a => 1.3, c => 0.4, d => 1.7))) < 1e-10
+        end
     end
 end
 

@@ -484,3 +484,97 @@ function integrate_halfangle_radicals(f, x; build = nothing, lift = nothing, ver
               isnode(u) ? term_rebuild(bd, u, Any[back(s) for s in arguments(u)]) : (string(u) == xk ? tL : u)
     subst_answer(G, back, bd)
 end
+
+# Step TQ: radicals of a + b tan(L) (L = a x + b, as in step HT) by t = tan(L) itself, when the rest of the integrand
+# is a rational function of tan L (Bioche: invariant under L ↦ L + π): tan → t, cot → 1/t, and in each product
+# sinʲ cosᵏ secˡ cscᵐ with j + k - l - m even, sin = t w⁻¹, cos = w⁻¹, w = √(1 + t²), so the w's give (1 + t²)^(integer);
+# dx = dt/(a (1 + t²)). The radicand stays linear in t: √(1 + i t) is step LC's, where step HT's t = tan(L/2) made it
+# a quadratic over ℚ(i), which no step takes (cot(c + d x)² √(a + i a tan(c + d x)), cos⁴/(a + i a tan)^(3/2)).
+# t = tan(L) is put back (an antiderivative on each interval between the poles of tan L).
+function integrate_tan_radicals(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    args = Any[]
+    function scan(t)
+        safe_iscall(t) && !isempty(arguments(t)) || return string(t) != xk
+        if opname(operation(t)) in HT_TRIG && length(arguments(t)) == 1 && has_x(arguments(t)[1], xk)
+            push!(args, arguments(t)[1])
+            return true
+        end
+        all(scan, arguments(t))
+    end
+    (scan(f) && !isempty(args)) || return nothing
+    L = args[1]
+    Ls = string(L)
+    all(a -> string(a) == Ls, args) || return nothing
+    any(((_, u),) -> has_op(u, :tan) || has_op(u, :cot), collect_radicals(f, xk)) || return nothing
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    pp = poly_parts(bd, L, xk)
+    (pp === nothing || !haskey(pp, 1) || maximum(keys(pp)) != 1) && return nothing
+    a = pp[1]
+    t = bd.x
+    one_ = bd.lift(1)
+    W2 = mk(bd, :+, one_, mk(bd, :^, t, bd.lift(2)))
+    pw(b, e) = e == 1 ? b : mk(bd, :^, b, bd.lift(e))
+    trig(u) = (safe_iscall(u) && !isempty(arguments(u)) && opname(operation(u)) in HT_TRIG &&
+               length(arguments(u)) == 1 && string(arguments(u)[1]) == Ls) ? opname(operation(u)) : nothing
+    function walk(u)                                    # u in t, or nothing (not a rational function of tan L)
+        (safe_iscall(u) && !isempty(arguments(u))) || return u
+        n = opname(operation(u))
+        if n === :+ || n === :-
+            as = Any[walk(s) for s in arguments(u)]
+            any(isnothing, as) && return nothing
+            return term_rebuild(bd, u, as)
+        end
+        fs = product_factors!(Any[], u, 1)
+        if length(fs) == 1 && fs[1][2] == 1 && fs[1][1] === u      # a call: tan, cot, a radical, …
+            k = trig(u)
+            k === :tan && return t
+            k === :cot && return mk(bd, :/, one_, t)
+            k === nothing || return nothing                         # sin, cos, sec, csc to an odd power
+            as = Any[walk(s) for s in arguments(u)]
+            any(isnothing, as) && return nothing
+            return term_rebuild(bd, u, as)
+        end
+        w = 0
+        parts = Any[]
+        for (b, e) in fs
+            k = trig(b)
+            if k === :sin
+                push!(parts, pw(t, e)); w -= e
+            elseif k === :cos
+                w -= e
+            elseif k === :sec
+                w += e
+            elseif k === :csc
+                push!(parts, pw(t, -e)); w += e
+            else
+                wb = walk(b)
+                wb === nothing && return nothing
+                push!(parts, pw(wb, e))
+            end
+        end
+        isodd(w) && return nothing
+        w == 0 || push!(parts, pw(W2, w ÷ 2))
+        isempty(parts) ? one_ : length(parts) == 1 ? parts[1] : mk(bd, :*, parts...)
+    end
+    ft = walk(f)
+    ft === nothing && return nothing
+    g = mk(bd, :/, ft, mk(bd, :*, a, W2))
+    G = risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    tL = mk(bd, :tan, L)
+    radmap = Dict{String,Any}()
+    function radicals!(u)
+        isnode(u) || return
+        rp = radical_parts(u)
+        if rp !== nothing && has_x(rp[2], xk)
+            wu = walk(u)
+            wu === nothing || (radmap[string(wu)] = u)
+        end
+        foreach(radicals!, arguments(u))
+    end
+    radicals!(f)
+    back(u) = haskey(radmap, string(u)) ? radmap[string(u)] :
+              isnode(u) ? term_rebuild(bd, u, Any[back(s) for s in arguments(u)]) : (string(u) == xk ? tL : u)
+    subst_answer(G, back, bd)
+end

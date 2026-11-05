@@ -97,6 +97,8 @@ function term_value(t, xk::String, a)
     is_imag_unit(t) && return ComplexF64(im)
     r = leaf_rational(t)
     if r === nothing
+        z = leaf_gaussian(t)
+        z === nothing || return ComplexF64(Float64(real(z)), Float64(imag(z)))
         lv = LEAF_VALUES[]
         (lv !== nothing && haskey(lv, string(t))) && return lv[string(t)]
         throw(RischError("cannot evaluate the leaf $t numerically"))

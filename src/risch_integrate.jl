@@ -381,6 +381,20 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
             end
         end
     end
+    # one radicand with i written as √-1, no parameter (1 + √-1 x, which step PR does not see: i as the symbol I is
+    # a parameter there): step LC
+    if !isempty(rads) && all(((_, u),) -> string(u) == string(rads[1][2]), rads) && has_imag_unit(rads[1][2]) &&
+       !has_param(rads[1][2], xk)
+        r = try
+            T, el = build_tower(rads[1][2], xk)
+            (isempty(T.levels) && is_complex_field(ctype(T))) ?
+                integrate_complex_linear_radicals(f, x, rads, T, el; build = build, lift = lift, verify = verify) : nothing
+        catch e
+            (e isa RischNotImplemented || e isa RischError) || rethrow()
+            nothing
+        end
+        r === nothing || return r
+    end
     if !OPAQUE_CONST_RADICALS[] && length(rads) >= 1 && all(((e, u),) -> denominator(e) == 2 && string(u) == string(rads[1][2]), rads)
         # one quadratic radicand K - |α| (x - h)² over ℚ whose scaling to K(1 - u²) is irrational (7 - 2x²:
         # s = √(7/2)): step PR with the constant radicals opaque, so that the asin route applies to the
@@ -695,12 +709,27 @@ function radicand_fallbacks(f, x; build, lift, verify::Bool)
         nothing
     end
     r === nothing || return r
-    try
-        integrate_halfangle_radicals(g === nothing ? f : g, x; build = build, lift = lift, verify = verify)
+    h = g === nothing ? f : g
+    # radicals of a + b tan(L), the rest rational in tan L: t = tan L (step TQ), before step HT with the imaginary
+    # unit (√(a + i a t) is linear in t, step LC), else after it (its answers kept)
+    tq() = try
+        integrate_tan_radicals(h, x; build = build, lift = lift, verify = verify)
     catch e
         e isa RischNotImplemented || rethrow()
         nothing
     end
+    cx = has_imag_unit(h)
+    if cx
+        r = tq()
+        r === nothing || return r
+    end
+    r = try
+        integrate_halfangle_radicals(h, x; build = build, lift = lift, verify = verify)
+    catch e
+        (e isa RischNotImplemented || (cx && e isa RischError && startswith(e.msg, "a non-real constant"))) || rethrow()
+        nothing
+    end
+    (r !== nothing || cx) ? r : tq()
 end
 
 function subst_answer(F, back, bd::Builder)
