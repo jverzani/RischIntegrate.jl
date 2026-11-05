@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usage — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=85a1bca7">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=471f6af5">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Usage — RischIntegrate.jl">
   <meta property="og:title" content="Usage — RischIntegrate.jl">
@@ -301,6 +301,16 @@ end</code></pre>
 </div>
 <pre class="md-output md-output-text"><code class="nohighlight ansi">0.12705252340768314</code></pre>
 </div>
+<p>An answer with parameters is evaluated with values for them, as pairs after the variable&#39;s (real values):</p>
+<div class="md-multi-output">
+<div class="md-code-block">
+<button class="md-copy-btn" title="Copy to clipboard" aria-label="Copy code"><span class="md-copy-icon">⧉</span><span class="md-copy-feedback">Copied!</span></button>
+<pre><code class="language-julia">@vars a b
+G = integrate(1 / (x^4 + a * x + b), x)
+G(x =&gt; 2.0, a =&gt; 1.0, b =&gt; 3.0) - G(x =&gt; 1.0, a =&gt; 1.0, b =&gt; 3.0)</code></pre>
+</div>
+<pre class="md-output md-output-text"><code class="nohighlight ansi">0.11149474363024257</code></pre>
+</div>
       </article>
       <footer class="md-footer">
 <p>Built with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and <a href="https://github.com/mthelm85/MaterialDocs.jl">MaterialDocs.jl</a>.</p>
@@ -335,6 +345,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=85a1bca7"></script>
+  <script src="../assets/materialdocs.js?v=471f6af5"></script>
 </body>
 </html>
