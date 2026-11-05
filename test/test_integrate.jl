@@ -2997,6 +2997,19 @@ end
           "x * acos(exp(x))"
 end
 
+# SymPy #24518: |c| of a term free of x is an opaque constant (a definite integral's degenerate cases give |ζ ω|)
+@testset "abs of a constant term (SymPy #24518)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = -0.7), :(c = 1.3)), e))
+    for f in (:(exp(-abs(a) * x) * sin(x)), :(sin(x) * exp(-abs(a * c) * x) * sin(abs(c) * x)), :(x / (x ^ 2 + abs(a))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 1.1, -0.8)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(abs(x) * x), :x; build = build, lift = identity)
+end
+
 # SymPy #25457, #26116, #26249: an unknown function is refused with the subterm named (`term`), so that a caller can
 # keep it as an unevaluated integral without reading the message
 @testset "unknown functions: the refusal names the subterm" begin
