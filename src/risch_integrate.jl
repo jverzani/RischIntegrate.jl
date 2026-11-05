@@ -165,6 +165,12 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         # already work are not changed: a substitution refused inside, step AL or US, leaves the next one its chance)
         # Then radicals of trigonometric functions of one linear argument by t = tan(L/2) (step HT).
         # Last, two or more square roots merged into one, the answer times σ = ±1 (step RM), and the same again.
+        # a radicand with the imaginary unit: i as a parameter (step IP)
+        if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg) && RISCH_DEPTH[] == 1 &&
+           has_imag_unit(f)
+            r = integrate_imag_param(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
+        end
         if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg) && RISCH_DEPTH[] == 1
             r = try
                 radicand_fallbacks(f, x; build = build, lift = lift, verify = verify)
@@ -211,7 +217,11 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         end
         # square roots of constants with two or more squarefree parts (√6, √3, √2: SymPy #26502), as opaque constants
         # of the field ℚ(√2, √3, √6) with no relations between them (step SQ)
-        if e isa RischNotImplemented && occursin("different squarefree parts", e.msg) && !OPAQUE_CONST_RADICALS[]
+        # (also beside a transcendental constant, which the field ℚ(i)(√d) of step 10e has no room for: √5 with π,
+        # SymPy #24952)
+        if e isa RischNotImplemented && (occursin("different squarefree parts", e.msg) ||
+                                         occursin("transcendental constants, but the constant field was fixed", e.msg)) &&
+           !OPAQUE_CONST_RADICALS[]
             r = integrate_opaque_sqrts(f, x; build = build, lift = lift, verify = verify)
             r === nothing || return r
         end

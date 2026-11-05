@@ -26,6 +26,7 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     end
     isempty(T.levels) || return nothing
     C = ctype(T)
+    is_complex_field(C) && return nothing              # (a radicand with i: step IP, as a parameter)
     P = UPoly{C}
     N, Dn = el.num, el.den
     kc(c) = frac(P([c]))

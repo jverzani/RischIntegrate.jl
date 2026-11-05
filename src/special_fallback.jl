@@ -86,3 +86,43 @@ function collect_leaves!(d, t)
     end
     d
 end
+
+# Step IP: ∫ f dx for a radical whose radicand has the imaginary unit (√(x² - i), SymPy #25314), which the radical
+# steps (over ℚ(x)) refuse: i is taken as a parameter ⅈ (through Expr, as above), the radicand is then one with a
+# symbolic constant (step PR: x = √ⅈ u), and ⅈ = i is put back. The answer, for generic values of ⅈ, is checked
+# numerically at ⅈ = i (the branches of √ⅈ are those of the principal square root). Nothing when it fails, has a
+# RootSum, or i appears outside the user's leaves in a way Expr cannot hold.
+const IMAG_PARAM = Ref(false)
+const IMAG_PARAM_NAME = "ⅈ"
+function integrate_imag_param(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    IMAG_PARAM[] && return nothing
+    xk = string(x)
+    leaves = Dict{String,Any}()
+    collect_leaves!(leaves, f)
+    haskey(leaves, IMAG_PARAM_NAME) && return nothing
+    ii = Symbol(IMAG_PARAM_NAME)
+    toexpr(t) = is_imag_unit(t) ? ii : safe_iscall(t) && !isempty(arguments(t)) ?
+        Expr(:call, opname(operation(t)), (toexpr(a) for a in arguments(t))...) : term_to_expr(t)
+    IMAG_PARAM[] = true
+    F = try
+        risch_integrate(toexpr(f), Symbol(xk); build = expr_build, lift = identity, verify = verify)
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        nothing
+    finally
+        IMAG_PARAM[] = false
+    end
+    (F === nothing || F isa IntegralWithRootSums || has_special(F)) && return nothing
+    b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    function back(ex)                                   # Expr → the user's term type, ⅈ ↦ i
+        ex === ii && return b0.lift(im)
+        ex isa Symbol && return haskey(leaves, string(ex)) ? leaves[string(ex)] : ex === :ℯ ? mk(b0, :exp, b0.lift(1)) : ex
+        ex isa Number && return b0.lift(ex)
+        ex isa Expr && ex.head === :call || return ex
+        b0.build(op_function(ex), (back(a) for a in ex.args[2:end])...)
+    end
+    G = back(F)
+    (verify && !numeric_antiderivative(f, G, xk)) && return nothing
+    G
+end
