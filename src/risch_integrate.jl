@@ -722,6 +722,14 @@ function radicand_fallbacks(f, x; build, lift, verify::Bool)
     if cx
         r = tq()
         r === nothing || return r
+        # odd or fractional powers of sec L with them: the radicals as one radical of w̄, w or w/w̄ (step TS)
+        r = try
+            integrate_sec_tan_radicals(h, x; build = build, lift = lift, verify = verify)
+        catch e
+            e isa RischNotImplemented || rethrow()
+            nothing
+        end
+        r === nothing || return r
     end
     r = try
         integrate_halfangle_radicals(h, x; build = build, lift = lift, verify = verify)

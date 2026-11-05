@@ -26,6 +26,16 @@ function is_imag_unit(t)
     t isa Complex ? (iszero(real(t)) && isone(imag(t))) : string(t) in ("im", "I", "1im")
 end
 has_imag_unit(t) = is_imag_unit(t) || (isnode(t) && any(has_imag_unit, arguments(t)))
+# the first imaginary-unit subterm of t, else nothing
+function find_imag_unit(t)
+    is_imag_unit(t) && return t
+    isnode(t) || return nothing
+    for a in arguments(t)
+        u = find_imag_unit(a)
+        u === nothing || return u
+    end
+    nothing
+end
 # the exponent u of exp(u), however the term type presents it: a one-argument `exp` call, or the power ℯ^u
 # (SymEngine, SymJ: arguments [ℯ, u]); nothing for any other term. Read exponents only through this.
 exp_arg(t) = !isnode(t) ? nothing : (opname(operation(t)) === :exp && length(arguments(t)) == 1) ? arguments(t)[1] :
