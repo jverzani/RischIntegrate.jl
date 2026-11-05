@@ -605,7 +605,8 @@ function numeric_evaluator(xk::String, ts...)
             foreach(leaves!, arguments(t))
         else
             s = string(t)
-            (s != xk && leaf_rational(t) === nothing && !is_e_const(t) && !is_imag_unit(t) && !(s in ("pi", "π")) && !(s in names)) &&
+            (s != xk && leaf_rational(t) === nothing && leaf_gaussian(t) === nothing && !is_e_const(t) && !is_imag_unit(t) &&
+             !(s in ("pi", "π")) && !(s in names)) &&
                 push!(names, s)
         end
     end

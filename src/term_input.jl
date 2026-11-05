@@ -32,6 +32,22 @@ function leaf_rational(t)
         rationalize(BigInt, parse(Float64, s)) : nothing
 end
 
+# a complex rational leaf (SymEngine prints i·(-1/2) as the one number -1/2*im; Expr's 2im is a Complex) as
+# Complex{Rational}, else nothing
+function leaf_gaussian(t)
+    t isa Complex && return (isfinite(real(t)) && isfinite(imag(t))) ? Complex(Q(rationalize(BigInt, real(t))), Q(rationalize(BigInt, imag(t)))) : nothing
+    safe_iscall(t) && !isempty(arguments(t)) && return nothing
+    s = replace(string(t), " " => "")
+    (startswith(s, "(") && endswith(s, ")")) && (s = s[2:end-1])
+    m = match(r"^(?:(-?\d+(?:/{1,2}\d+)?)([+-]))?(-?\d+(?:/{1,2}\d+)?)?\*?(?:im|I)$", s)
+    m === nothing && return nothing
+    rq(c) = (p = split(c, r"/{1,2}"); length(p) == 1 ? Q(parse(BigInt, p[1])) : Q(parse(BigInt, p[1]) // parse(BigInt, p[2])))
+    re = m.captures[1] === nothing ? Q(0) : rq(m.captures[1])
+    b = m.captures[3] === nothing ? Q(1) : m.captures[3] == "-" ? Q(-1) : rq(m.captures[3])
+    m.captures[2] == "-" && (b = -b)
+    Complex(re, b)
+end
+
 const OP_ALIASES = Dict(:ln => :log, :// => :/)          # Giac.jl writes log as ln; Expr has 1//3 calls
 function opname(op)
     n = op isa Symbol ? op : (op isa Function ? nameof(op) : opname_other(op))

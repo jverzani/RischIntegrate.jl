@@ -29,6 +29,13 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     # a radicand with i: as a parameter (step IP; in the outermost call only, after a substitution, a + i a tan(c + d x)
     # with t = tan(c + d x), it took minutes), else no route
     if is_complex_field(C)
+        # a linear (or linear-fractional) radicand over ℚ(i)(…): u = L^(1/n), a rational integrand over ℚ(i) (step LC)
+        r = integrate_complex_linear_radicals(f, x, rads, T, el; build = build, lift = lift, verify = verify)
+        r === nothing || return r
+        # a real radicand written with i ((c - i c t)(a + i a t) = a c (1 + t²), step RM's merge of
+        # √(c - i c tan)/(a + i a tan)^(7/2)): the radicand in real form, integrated again
+        r = real_radicand_retry(f, x, ut0, T, el; build = build, lift = lift, verify = verify)
+        r === nothing || return r
         if RISCH_DEPTH[] == 1
             r = integrate_imag_param(f, x; build = build, lift = lift, verify = verify)
             r === nothing || return r
@@ -156,6 +163,175 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     back = sone ? xh : mk(b0, :/, xh, st)               # x ↦ (x - h)/s
     function walk_back(t)
         safe_iscall(t) || return string(t) == xk ? back : t
+        args = arguments(t)
+        isempty(args) && return t
+        b0.build(op_function(t), (walk_back(a) for a in args)...)
+    end
+    walk_back(G)
+end
+
+# ---------------------------------------------------------------------------
+# Step LC: radicals L^(p/q) of one radicand L = (n₁x + n₀)/(d₁x + d₀) (or n₁x + n₀) whose coefficients are in
+# ℚ(i)(a, …), not real (√(a + i a t) from √(a + i a tan(c + d x)) after t = tan(c + d x)). With n = lcm of the q's
+# and u = L^(1/n) (principal branches: L^(p/q) = u^(pn/q)), x = (n₀ - d₀uⁿ)/(d₁uⁿ - n₁) and
+#   ∫ f dx = ∫ f(x(u)) x′(u) du,  x′(u) = n uⁿ⁻¹ (n₁d₀ - n₀d₁)/(d₁uⁿ - n₁)²
+# a rational integrand in u over ℚ(i)(…), whose real-form answer (in the real variable u) continues analytically
+# to the complex u = L^(1/n). (Step IP, i as a parameter, misses these: √(1 + i t)/(1 + t²) is elementary only
+# because 1 + t² = (1 + i t)(1 - i t).) The answer is checked numerically in the outermost call (step CI).
+# ---------------------------------------------------------------------------
+
+# a constant of ℚ(i)(t₁, …) as a term re + im·i
+function cterm_complex(b::Builder, c, gens)
+    C = typeof(c)
+    is_complex_field(C) || return cterm(b, c)
+    σ = cconj_g(gens, c)
+    two = cfromQ(C, Q(2))
+    r, s = (c + σ) / two, (c - σ) / (two * cimag(C))
+    iszero(s) && return cterm(b, r)
+    it = isone(s) ? b.lift(im) : mk(b, :*, cterm(b, s), b.lift(im))
+    iszero(r) ? it : mk(b, :+, cterm(b, r), it)
+end
+
+function real_radicand_retry(f, x, ut0, T, el; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    all(c -> cconj_g(T.consts, c) == c, [el.num.c; el.den.c]) || return nothing
+    b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
+    ur = frac_term(b0, el)
+    has_imag_unit(ur) && return nothing
+    us = string(ut0)
+    function walk(t)
+        safe_iscall(t) || return t
+        args = arguments(t)
+        isempty(args) && return t
+        rp = radical_parts(t)
+        if rp !== nothing && string(rp[2]) == us
+            return rp[1] == Q(1) // 2 ? mk(b0, :sqrt, ur) : mk(b0, :^, ur, cterm(b0, rp[1]))
+        end
+        b0.build(op_function(t), (walk(a) for a in args)...)
+    end
+    try
+        risch_integrate(walk(f), x; build = b0.build, lift = b0.lift, verify = verify)
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        nothing
+    end
+end
+
+# g ∈ ℚ(i)(a, …)(x) as (g_re, g_im) terms (nothing for a zero part), or nothing (g not rational in x, or real)
+function complex_rational_parts(g, xk::String, b0::Builder)
+    T, el = try
+        build_tower(g, xk)
+    catch err
+        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        return nothing
+    end
+    isempty(T.levels) || return nothing
+    C = ctype(T)
+    is_complex_field(C) || return nothing
+    P = typeof(el.num)
+    cj(p) = P([cconj_g(T.consts, c) for c in p.c])
+    σel = frac(cj(el.num), cj(el.den))
+    kc(c) = frac(P([c]))
+    two = cfromQ(C, Q(2))
+    re, imp = (el + σel) * kc(inv(two)), (el - σel) * kc(inv(two * cimag(C)))
+    b = Builder(b0.build, b0.lift, b0.x, T.consts)
+    (iszero(re) ? nothing : frac_term(b, re)), (iszero(imp) ? nothing : frac_term(b, imp))
+end
+
+function integrate_complex_linear_radicals(f, x, rads, T, el; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    C = ctype(T)
+    N, Dn = el.num, el.den
+    (degree(N) <= 1 && degree(Dn) <= 1 && degree(N) + degree(Dn) >= 1) || return nothing
+    ut0 = rads[1][2]
+    co(p, i) = i <= length(p.c) ? p.c[i] : zero(C)
+    n1, n0, d1, d0 = co(N, 2), co(N, 1), co(Dn, 2), co(Dn, 1)
+    det = n1 * d0 - n0 * d1
+    iszero(det) && return nothing
+    # a parameter factor of the radicand out first (step RK: √(a + i a t) = √a √(1 + i t), a > 0), so that the
+    # rational integral in u is free of it: in ℚ(a)(u) the log part of 1/((u² - a)²(u² - 2a)) needs √a (a RootSum),
+    # in ℚ(u) it does not (cot(c + d x)² √(a + i a tan(c + d x)) after step MR's s = tan(c + d x))
+    if has_param(ut0, xk)
+        g = split_radicand_content(f, x, xk, build, lift)
+        if g !== nothing
+            # the constant factors (√a) out of the product: inside, the residues are in ℚ(√a) (√(-1/(8a)) and an
+            # atan, for tan³/√(a + i a tan))
+            bk = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+            fs = product_factors!(Any[], g, 1)
+            pw(t, e) = e == 1 ? t : mk(bk, :^, t, bk.lift(e))
+            cf = Any[pw(t, e) for (t, e) in fs if !has_leaf(t, xk)]
+            rest = Any[pw(t, e) for (t, e) in fs if has_leaf(t, xk)]
+            cg = nothing
+            if !isempty(cf) && !isempty(rest)
+                cg = length(cf) == 1 ? cf[1] : mk(bk, :*, cf...)
+                g = length(rest) == 1 ? rest[1] : mk(bk, :*, rest...)
+            end
+            r = try
+                risch_integrate(g, x; build = build, lift = lift, verify = verify)
+            catch e
+                (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+                nothing
+            end
+            (r === nothing || r isa IntegralWithRootSums) || return cg === nothing ? r : mk(bk, :*, cg, r)
+        end
+    end
+    n = lcm([Int(denominator(e)) for (e, _) in rads])
+    b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
+    ct(c) = cterm_complex(b0, c, T.consts)
+    u = b0.x
+    un = n == 1 ? u : mk(b0, :^, u, b0.lift(n))
+    lin(α, t, β) = begin                                # α t + β as a term (α, β ∈ C)
+        p = iszero(α) ? nothing : isone(α) ? t : mk(b0, :*, ct(α), t)
+        p === nothing ? ct(β) : iszero(β) ? p : mk(b0, :+, p, ct(β))
+    end
+    # x(u) = (n₀ - d₀uⁿ)/(d₁uⁿ - n₁), x′(u) = n uⁿ⁻¹ det/(d₁uⁿ - n₁)²
+    num_x, den_x = lin(-d0, un, n0), lin(d1, un, -n1)
+    xu = isone(-n1) && iszero(d1) ? num_x : mk(b0, :/, num_x, den_x)
+    du = mk(b0, :*, ct(cfromQ(C, Q(n)) * det), n == 1 ? b0.lift(1) : n == 2 ? u : mk(b0, :^, u, b0.lift(n - 1)))
+    du = iszero(d1) ? mk(b0, :/, du, mk(b0, :^, ct(-n1), b0.lift(2))) : mk(b0, :/, du, mk(b0, :^, den_x, b0.lift(2)))
+    us = string(ut0)
+    function walk(t)
+        safe_iscall(t) || return string(t) == xk ? xu : t
+        args = arguments(t)
+        isempty(args) && return t
+        rp = radical_parts(t)
+        if rp !== nothing && string(rp[2]) == us
+            k = rp[1] * n
+            isone(denominator(k)) || return nothing
+            kk = Int(numerator(k))
+            return kk == 1 ? u : mk(b0, :^, u, b0.lift(kk))
+        end
+        as = Any[walk(a) for a in args]
+        any(isnothing, as) && return nothing
+        b0.build(op_function(t), as...)
+    end
+    g = walk(f)
+    g === nothing && return nothing
+    g = mk(b0, :*, g, du)
+    # a rational g = g_re + i g_im (real rational functions of u): each part on the real route, whose log parts
+    # are in closed form where the route over ℚ(i) left RootSums (1/(u⁵(2 - u³)): cube roots of 2)
+    parts = complex_rational_parts(g, xk, b0)
+    G = try
+        if parts === nothing
+            risch_integrate(g, x; build = b0.build, lift = b0.lift, verify = verify)
+        else
+            gr, gi = parts
+            Gs = Any[risch_integrate(h, x; build = b0.build, lift = b0.lift, verify = verify) for h in (gr, gi) if h !== nothing]
+            any(F -> F isa IntegralWithRootSums, Gs) && return nothing
+            Gi = gi === nothing ? nothing : isone(length(Gs)) ? Gs[1] : Gs[2]
+            Gi === nothing ? Gs[1] : (gr === nothing ? mk(b0, :*, b0.lift(im), Gi) :
+                                      mk(b0, :+, Gs[1], mk(b0, :*, b0.lift(im), Gi)))
+        end
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        return nothing
+    end
+    (G isa IntegralWithRootSums || has_special(G)) && return nothing
+    root = n == 2 ? mk(b0, :sqrt, ut0) : mk(b0, :^, ut0, cterm(b0, Q(1) // n))
+    function walk_back(t)
+        safe_iscall(t) || return string(t) == xk ? root : t
         args = arguments(t)
         isempty(args) && return t
         b0.build(op_function(t), (walk_back(a) for a in args)...)
