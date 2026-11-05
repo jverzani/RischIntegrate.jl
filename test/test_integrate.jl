@@ -2971,6 +2971,32 @@ end
     @test abs(SymEngine.N(SymEngine.subs(d, x => 0.7))) < 1e-10
 end
 
+# SymPy #24025: acos and atan of tower elements, by parts over the sum (step AM); the radicals of the last integrand
+# cancel only numerically as written
+@testset "inverse trigonometric functions of tower elements (SymPy #24025)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, v, x0) = Core.eval(Main, Expr(:let, Expr(:(=), v, x0), e))
+    f = :(t * exp(2t) * log(t) / (t ^ 2 * exp(2t) + 1) + (t ^ 2 * exp(t) * log(t) / (t ^ 2 * exp(2t) + 1) +
+          t * log(t) * atan(t * exp(t)) + sqrt(t * exp(t) * log(t)) * exp(-t) * acos(exp(t) * log(t)) / 2 -
+          sqrt(t * exp(t) * log(t)) * log(t) / sqrt(-exp(2t) * log(t) ^ 2 + 1)) * exp(t) + exp(t) * log(t) * atan(t * exp(t)) +
+          sqrt(t * exp(t) * log(t)) * acos(exp(t) * log(t)) / (2t) + (t * exp(t) * atan(t * exp(t)) +
+          sqrt(t * exp(t) * log(t)) * acos(exp(t) * log(t)) / (2 * log(t)) - sqrt(t * exp(t) * log(t)) * exp(t) /
+          sqrt(-exp(2t) * log(t) ^ 2 + 1)) / t)
+    F = Risch.risch_integrate(f, :t; build = build, lift = identity)
+    @test occursin("acos(exp(t) * log(t))", string(F)) && occursin("atan(t * exp(t))", string(F))
+    for t0 in (1.05, 1.15, 1.25)                         # (eᵗ log t < 1 for 1 < t < 1.31)
+        @test isapprox((ev(F, :t, t0 + 1e-6) - ev(F, :t, t0 - 1e-6)) / 2e-6, ev(f, :t, t0); rtol = 1e-6)
+    end
+    for (g, pts) in ((:(acos(exp(x)) - x * exp(x) / sqrt(1 - exp(2x))), (-0.9, -0.3)), (:(asin(log(x)) / x), (0.7, 1.5)))
+        G = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        for x0 in pts
+            @test isapprox((ev(G, :x, x0 + 1e-6) - ev(G, :x, x0 - 1e-6)) / 2e-6, ev(g, :x, x0); rtol = 1e-6)
+        end
+    end
+    @test string(Risch.risch_integrate(:(acos(exp(x)) - x * exp(x) / sqrt(1 - exp(2x))), :x; build = build, lift = identity)) ==
+          "x * acos(exp(x))"
+end
+
 # SymPy #25457, #26116, #26249: an unknown function is refused with the subterm named (`term`), so that a caller can
 # keep it as an unevaluated integral without reading the message
 @testset "unknown functions: the refusal names the subterm" begin

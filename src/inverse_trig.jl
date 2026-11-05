@@ -718,3 +718,100 @@ function with_parts(g)
         PARTS[] = false
     end
 end
+
+# ---------------------------------------------------------------------------
+# Step AM: by parts over a sum, for inverse trigonometric functions of tower elements (acos(eᵗ log t), atan(t eᵗ);
+# SymPy #24025), which step AS (u = sin t, u linear) refuses. With f = Σ_L A_L·L + B, linear in the arcs L (the
+# A_L, B free of them), and Q_L = ∫ A_L elementary:
+#   ∫ f = Σ Q_L L + ∫ (B - Σ Q_L L′).
+# The last integrand is often zero although its terms do not cancel as written (√(1 - e²ᵗlog²t) from L′ beside the
+# integrand's √(-e²ᵗlog²t + 1)): it is tested numerically first, else integrated by the usual route. The answer is
+# checked numerically.
+# ---------------------------------------------------------------------------
+const PARTS_SUM_FNS = (:atan, :acot, :asin, :acos, :asec, :acsc, :asinh, :acosh, :atanh, :acoth, :acsch, :asech)
+
+# (A, B) with t = A·L + B (`nothing` for a zero part), or false when t is not linear in L (the term with string Ls)
+function arc_linear_parts(bd::Builder, t, Ls::String)
+    st = string(t)
+    st == Ls && return (bd.lift(1), nothing)
+    occursin(Ls, st) || return (nothing, t)
+    isnode(t) || return false
+    n, a = opname(operation(t)), arguments(t)
+    neg(v) = v === nothing ? nothing : mk(bd, :*, bd.lift(-1), v)
+    add(vs) = (ws = Any[v for v in vs if v !== nothing]; isempty(ws) ? nothing : length(ws) == 1 ? ws[1] : mk(bd, :+, ws...))
+    ps = Any[arc_linear_parts(bd, s, Ls) for s in a]
+    any(p -> p === false, ps) && return false
+    if n === :+
+        return (add(first.(ps)), add(last.(ps)))
+    elseif n === :- && length(a) == 1
+        return (neg(ps[1][1]), neg(ps[1][2]))
+    elseif n === :- && length(a) == 2
+        return (add(Any[ps[1][1], neg(ps[2][1])]), add(Any[ps[1][2], neg(ps[2][2])]))
+    elseif n === :*
+        js = findall(p -> p[1] !== nothing, ps)
+        length(js) == 1 || return false
+        j = js[1]
+        others = Any[a[m] for m in eachindex(a) if m != j]
+        mul(v) = v === nothing ? nothing : isempty(others) ? v : mk(bd, :*, v, others...)
+        return (mul(ps[j][1]), mul(ps[j][2]))
+    elseif n === :/ && length(a) == 2
+        ps[2][1] === nothing || return false
+        dv(v) = v === nothing ? nothing : mk(bd, :/, v, a[2])
+        return (dv(ps[1][1]), dv(ps[1][2]))
+    end
+    false
+end
+
+function try_parts_sum(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    PARTS[] && return nothing
+    xk = string(x)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    Ls = Any[]
+    function arcs!(t)
+        isnode(t) || return
+        if opname(operation(t)) in PARTS_SUM_FNS && length(arguments(t)) == 1 && depends_on(t, xk)
+            any(L -> string(L) == string(t), Ls) || push!(Ls, t)
+        else
+            foreach(arcs!, arguments(t))
+        end
+    end
+    arcs!(f)
+    isempty(Ls) && return nothing
+    Lstr = map(string, Ls)
+    free_of_arcs(t) = !any(s -> occursin(s, string(t)), Lstr)
+    G = with_parts() do
+        rest = f
+        terms = Any[]                                   # Q_L·L
+        resid = Any[]                                   # -Q_L·L′
+        for L in Ls
+            p = arc_linear_parts(bd, rest, string(L))
+            (p === false || p[1] === nothing || !free_of_arcs(p[1])) && return nothing
+            A, rest = p
+            Q = risch_integrate(A, x; build = build, lift = lift, verify = verify)
+            Q isa IntegralWithRootSums && return nothing
+            push!(terms, mk(bd, :*, Q, L))
+            push!(resid, mk(bd, :*, bd.lift(-1), Q, term_deriv(bd, L, xk)))
+            rest === nothing && (rest = bd.lift(0))
+        end
+        free_of_arcs(rest) || return nothing
+        R = mk(bd, :+, rest, resid...)
+        ev = numeric_evaluator(xk, R)
+        nz, n = false, 0
+        for x0 in (0.13, 0.27, 0.41, 0.58, 0.83, 1.21, 1.77, 2.6, -0.37, -1.4)
+            vs = try
+                Any[ev(t, x0) for t in (rest, resid...)]
+            catch
+                continue
+            end
+            all(isfinite, vs) || continue
+            abs(sum(vs)) <= 1e-9 * max(1.0, maximum(abs, vs)) || (nz = true; break)
+            n += 1
+        end
+        H = (nz || n < 2) ? risch_integrate(R, x; build = build, lift = lift, verify = verify) : nothing
+        H isa IntegralWithRootSums && return nothing
+        H === nothing ? (length(terms) == 1 ? terms[1] : mk(bd, :+, terms...)) : mk(bd, :+, terms..., H)
+    end
+    (G !== nothing && verify && !numeric_antiderivative(f, G, xk)) && return nothing
+    G
+end

@@ -218,9 +218,10 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         # square roots of constants with two or more squarefree parts (√6, √3, √2: SymPy #26502), as opaque constants
         # of the field ℚ(√2, √3, √6) with no relations between them (step SQ)
         # (also beside a transcendental constant, which the field ℚ(i)(√d) of step 10e has no room for: √5 with π,
-        # SymPy #24952)
+        # SymPy #24952; not beside a parameter, where step SQ's RootSum answers go unchecked: ∫∫ dx dy/(x³ + y))
         if e isa RischNotImplemented && (occursin("different squarefree parts", e.msg) ||
-                                         occursin("transcendental constants, but the constant field was fixed", e.msg)) &&
+                                         (occursin("transcendental constants, but the constant field was fixed", e.msg) &&
+                                          !has_param(f, string(x)))) &&
            !OPAQUE_CONST_RADICALS[]
             r = integrate_opaque_sqrts(f, x; build = build, lift = lift, verify = verify)
             r === nothing || return r
@@ -347,7 +348,15 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     if !isempty(arcs)
         r = integrate_arcs_scaled(f, x, arcs; build = build, lift = lift, verify = verify)   # asin(a x): y = a x (AL)
         r === nothing || return r
-        return integrate_arcsin(f, x, arcs; build = build, lift = lift, verify = verify)
+        return try
+            integrate_arcsin(f, x, arcs; build = build, lift = lift, verify = verify)
+        catch e
+            # asin/acos of a tower element (acos(eᵗ log t)): by parts over the sum (step AM)
+            (e isa RischNotImplemented && startswith(e.msg, "asin/acos of")) || rethrow()
+            r = try_parts_sum(f, x; build = build, lift = lift, verify = verify)
+            r === nothing && throw(e)
+            r
+        end
     end
     rads = collect_radicals(f, xk)
     if isempty(rads) && has_param(f, xk)               # a power of one parameter quadratic: linearity (step PL)
