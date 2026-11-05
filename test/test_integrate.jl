@@ -3010,6 +3010,26 @@ end
     @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(abs(x) * x), :x; build = build, lift = identity)
 end
 
+# SymPy #24518 (degenerate cases, ω₁ = Ω): a trigonometric argument c·(v + e) with a parameter shift e is distributed
+# to c v + c e (step TD), else exp(i a (t - τ)) brought the constant exp(i a t) to the constant field
+@testset "products of sin, cos with a factored shifted argument (SymPy #24518)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(τ = $x0), :(a = 1.3), :(b = 0.7), :(t = 0.4)), e))
+    for f in (:(sin(a * τ) * sin(a * (t - τ))), :(sin(a * τ) * cos(a * (t - τ))), :(cos(a * τ) * cos(a * (t - τ))),
+              :(sin(a * τ) ^ 2 * cos(a * (t - τ))), :(sin(a * τ) * sin(b * (t - τ))), :(exp(a * τ) * sin(a * (t - τ))))
+        F = Risch.risch_integrate(f, :τ; build = build, lift = identity)
+        for x0 in (0.3, 1.1, -0.8)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    a, t, τ = SymEngine.symbols("a t τ")
+    g = sin(a * τ) * sin(a * (t - τ))
+    F = Risch.risch_integrate(g, τ)
+    for x0 in (0.3, 1.9)
+        @test abs(SymEngine.N(SymEngine.subs(SymEngine.diff(F, τ) - g, τ => x0, a => 1.3, t => 0.4))) < 1e-10
+    end
+end
+
 # stratified scan of 2026-11-05: radicals of a + i a tan(c + d x) reached a step's real-form output (RischError); now
 # a refusal (samples 1810, 1862, 2715)
 @testset "radicals with i in a step for real integrands: a refusal (scan 2026-11-05)" begin
