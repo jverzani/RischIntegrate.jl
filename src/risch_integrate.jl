@@ -314,6 +314,8 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     end
     g = constant_radicands(f, x, xk, build, lift)      # √(sin²x + cos²x) = √1 (step KR)
     g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    g = distribute_trig_args(f, x, xk, build, lift)    # sin(a (t - x)) = sin(a t - a x) (step TD)
+    g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
     r = try                                            # sin(e + f x): y = e + f x (step SL)
         integrate_linear_shift(f, x; build = build, lift = lift, verify = verify)
     catch e
@@ -805,6 +807,49 @@ function expand_trig_shifts(f, x, xk::String, build, lift)
     rw(f)
 end
 const OPS_HYP = Dict{Symbol,Function}(:sin => sin, :cos => cos, :sinh => sinh, :cosh => cosh)
+
+# step TD: a trigonometric or hyperbolic argument c·(v + e) with x in v, c free of x, and a parameter shift e,
+# distributed to c v + c e, so that steps SL and TS2 see the shift (sin(a τ) sin(a (t - τ)): in the tower, exp(i a
+# (t - τ)) = exp(i a t)·exp(-i a τ), and exp(i a t) is no constant of the field; SymPy #24518). Nothing when there is
+# no such argument.
+function distribute_trig_args(f, x, xk::String, build, lift)
+    @nospecialize f x
+    # the factors of a product u: (x-free factors, the one sum with x), else nothing
+    function split_prod(u)
+        (safe_iscall(u) && opname(operation(u)) === :*) || return nothing
+        cs, s = Any[], nothing
+        for a in arguments(u)
+            if !has_x(a, xk)
+                push!(cs, a)
+            elseif s === nothing && safe_iscall(a) && opname(operation(a)) in (:+, :-) && shift_split(a, xk) !== nothing
+                s = a
+            else
+                return nothing
+            end
+        end
+        (s === nothing || isempty(cs)) ? nothing : (cs, s)
+    end
+    has_it(t) = safe_iscall(t) && !isempty(arguments(t)) &&
+        ((opname(operation(t)) in SHIFT_TRIG && length(arguments(t)) == 1 && split_prod(arguments(t)[1]) !== nothing) ||
+         any(has_it, arguments(t)))
+    has_it(f) || return nothing
+    b = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    function rw(t)
+        (safe_iscall(t) && !isempty(arguments(t))) || return t
+        args = Any[rw(a) for a in arguments(t)]
+        sp = (opname(operation(t)) in SHIFT_TRIG && length(args) == 1) ? split_prod(args[1]) : nothing
+        sp === nothing && return term_rebuild(b, t, args)
+        cs, s = sp
+        n = opname(operation(s))
+        ts = Any[]
+        for (j, a) in enumerate(arguments(s))
+            neg = n === :- && (j > 1 || length(arguments(s)) == 1)
+            push!(ts, mk(b, :*, (neg ? Any[b.lift(-1)] : Any[])..., cs..., a))
+        end
+        term_rebuild(b, t, Any[length(ts) == 1 ? ts[1] : mk(b, :+, ts...)])
+    end
+    rw(f)
+end
 
 # step SL: every trigonometric or hyperbolic argument with x is r·(e + f x), r rational, one of them with a
 # parameter shift e (sin(e + f x)·cos(2e + 2f x)): y = e + f x, x = (y - e)/f, dx = dy/f, and y = e + f x is
