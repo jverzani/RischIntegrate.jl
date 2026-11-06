@@ -3193,7 +3193,8 @@ end
                    (:(x / (asinh(4) + x)), "asinh(4)"), (:((x + cosh(cos(4))) / (x * (x + 1 / (12x)))), "cosh(cos(4))"),
                    (:(x * exp(sin(1))), "exp(sin(1))"))
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)
-        @test occursin(c, string(F)) && dcheck(f, F)
+        # (asin 5 is not real: the exact answer instead of the Float64 check)
+        @test c == "asin(5)" ? string(F) == "x + (-1 * asin(5)) * log(asin(5) + x)" : occursin(c, string(F)) && dcheck(f, F)
     end
     @test string(Risch.risch_integrate(:(x ^ 2 * atanh(1 // 3)), :x; build = build, lift = identity)) == "(1//6 * log(2)) * x ^ 3"
     # √2 beside a parameter and the √π of the erf (SymJ writes 1/√(2π) as √2/(2√π))
