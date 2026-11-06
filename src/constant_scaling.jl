@@ -216,3 +216,33 @@ function const_scaled(f, xk::String, d::Int, σ::Q, bd::Builder)
     F === nothing && return nothing
     to_term(mulp(F, sconst(S(σ, Q(0)))))
 end
+
+# step CB: a rational function over B(√d) whose log part has residues of degree > 2 there (RootSums are over ℚ and
+# ℚ(i)(t₁, …) only), with its denominator over B: el = g + √d h with g, h ∈ B(x), each integrated over B as a term
+# in bd.x, and ∫ el = ∫ g + √d ∫ h. A constant √d need not be in the
+# field of the log part (2√3/((w - 1/w)² + 1), SymPy #23688: over ℚ(√3, i) an irreducible quartic factor of the
+# resultant). Nothing when el is not over such a field.
+function integrate_sqrt_basis_split(el::Frac{UPoly{C}}, bd::Builder, verify::Bool) where {C}
+    C <: QSB || return nothing
+    d, B = C.parameters[1], C.parameters[2]
+    num, den = el.num, el.den
+    # (a denominator with √d is left to other routes: times its conjugate, 1/(x² + √2) = (x² - √2)/(x⁴ - 2) loses
+    # step SQ's atan form)
+    all(c -> iszero(c.b), den.c) || return nothing
+    dB = UPoly{B}(B[c.a for c in den.c])
+    parts = (UPoly{B}(B[c.a for c in num.c]), UPoly{B}(B[c.b for c in num.c]))
+    ans = Any[]
+    for (k, p) in enumerate(parts)
+        iszero(p) && continue
+        G = risch_integrate(frac_term(bd, Frac(p, dB)), bd.x; build = bd.build, lift = bd.lift, verify = verify)
+        if k == 2
+            s = mk(bd, :sqrt, bd.lift(d))
+            G = G isa IntegralWithRootSums ?
+                IntegralWithRootSums(mk(bd, :*, s, G.elementary), Any[ScaledRootSum(s, rs) for rs in G.rootsums], G.var) :
+                mk(bd, :*, s, G)
+        end
+        push!(ans, G)
+    end
+    isempty(ans) && return nothing
+    length(ans) == 1 ? ans[1] : add_answers(bd, ans, string(bd.x))
+end

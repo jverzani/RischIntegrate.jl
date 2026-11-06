@@ -168,9 +168,12 @@ end
 mentions_var(s::String, xk::String) = occursin(Regex("(*UCP)(?<!\\w)\\Q" * xk * "\\E(?!\\w)"), s)
 function check_leaf(t, xk::String)
     s = string(t)
+    # (the leaf is the exception's `term`: a caller can map the integral over a value of its own, such as the cases
+    # of an inner definite integral, SymPy #23610)
     (s != xk && mentions_var(s, xk)) && throw(RischNotImplemented(
-        "the leaf $s mentions $xk but is not a term the TermInterface methods open " *
-        "(iscall is false; a wrapper type such as Symbolics' Num must be unwrapped first)"))
+        "the leaf $s (a $(nameof(typeof(t)))) mentions $xk but is not a term the TermInterface methods open " *
+        "(iscall is false): unwrap a wrapper type such as Symbolics' Num first, and map the integral over a value " *
+        "that is not a term (a piecewise or cases result)", t))
     nothing
 end
 check_leaves(t, xk::String) = isnode(t) ? foreach(a -> check_leaves(a, xk), arguments(t)) : check_leaf(t, xk)

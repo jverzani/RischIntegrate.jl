@@ -2997,6 +2997,36 @@ end
           "x * acos(exp(x))"
 end
 
+# SymPy #23688: a constant √d (step 10e's ℚ(i)(√d)) and a log part with residues of degree > 2 there: f = g + √d h,
+# g and h integrated over ℚ(i) (step CB)
+@testset "residues of degree > 2 beside a constant √d (SymPy #23688)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(w = $x0)), e))
+    for f in (:(2 * sqrt(3) / ((w - 1 / w) ^ 2 + 1)), :(sqrt(3) * w ^ 2 / (w ^ 4 - w ^ 2 + 1)), :(sqrt(2) / (w ^ 3 + 2)),
+              :((1 + sqrt(3) * w) / (w ^ 4 - w ^ 2 + 1)))
+        F = Risch.risch_integrate(f, :w; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        for x0 in (0.3, -0.9, 2.5)                          # (w > -2^(1/3): step BN's log(1 + w/2^(1/3)))
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    # SymPy #23610: a leaf that is not a term but mentions the variable (an inner definite integral's cases) is refused
+    # with the leaf as the exception's term
+    leaf = "cases([a > 0] => w, [a < 0] => 2w)"
+    err = try
+        Risch.risch_integrate(Expr(:call, :*, leaf, :w), :w; build = build, lift = identity)
+    catch e
+        e
+    end
+    @test err isa Risch.RischNotImplemented && err.term === leaf && occursin("String", err.msg)
+    w = SymEngine.symbols("w")
+    g = 2 * sqrt(SymEngine.Basic(3)) / ((w - 1 / w) ^ 2 + 1)
+    F = Risch.risch_integrate(g, w)
+    for x0 in (0.3, -1.7)
+        @test abs(SymEngine.N(SymEngine.subs(SymEngine.diff(F, w) - g, w => x0))) < 1e-10
+    end
+end
+
 # SymPy #24518: |c| of a term free of x is an opaque constant (a definite integral's degenerate cases give |ζ ω|)
 @testset "abs of a constant term (SymPy #24518)" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
