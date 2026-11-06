@@ -476,7 +476,20 @@ function integrate_subst(f, xk::String, ::Type{S}, φ, radval, bt::Builder, veri
     g = el * liftto(T, to_K0(T, dφ), levelof(T, el))     # f(φ(t), …) φ'(t)
     T, g = minimal(T, g)
     bd = Builder(bt.build, bt.lift, bt.x, T.consts)
-    F = integrate_built(T, g, bd, verify; pos = pos)
+    F = try
+        integrate_built(T, g, bd, verify; pos = pos)
+    catch e
+        # residues of degree > 2 over ℚ(i)(√d) (step 10e's constant √d): g = g₀ + √d g₁ over ℚ(i) (step CB)
+        # (in the variable x standing for t, then t put back, as for step BN below: t is a term such as (√(3 - x²) - √3)/x)
+        (e isa RischNotImplemented && startswith(e.msg, "the logarithmic part has residues of degree > 2") &&
+         isempty(T.levels) && xvar !== nothing) || rethrow()
+        bx = Builder(bt.build, bt.lift, xvar, T.consts)
+        # (an answer with RootSums is not kept: the refusal leaves later routes their closed forms, step RM)
+        F2 = integrate_sqrt_basis_split(g, bx, verify)
+        (F2 === nothing || F2 isa IntegralWithRootSums) && rethrow()
+        tback(t) = isnode(t) ? term_rebuild(bx, t, Any[tback(s) for s in arguments(t)]) : (string(t) == xk ? bt.x : t)
+        return subst_answer(F2, tback, bx)
+    end
     # a RootSum for a binomial denominator in t (1/(t²(a³ - t³)) from t = x^(1/3)): step BN, in the variable
     # x standing for t, then t put back
     # (not for a non-real g, step CI: it is printed in the variable x)
