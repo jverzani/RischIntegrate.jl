@@ -485,15 +485,8 @@ function integrate_halfangle_radicals(f, x; build = nothing, lift = nothing, ver
     subst_answer(G, back, bd)
 end
 
-# Step TQ: radicals of a + b tan(L) (L = a x + b, as in step HT) by t = tan(L) itself, when the rest of the integrand
-# is a rational function of tan L (Bioche: invariant under L ↦ L + π): tan → t, cot → 1/t, and in each product
-# sinʲ cosᵏ secˡ cscᵐ with j + k - l - m even, sin = t w⁻¹, cos = w⁻¹, w = √(1 + t²), so the w's give (1 + t²)^(integer);
-# dx = dt/(a (1 + t²)). The radicand stays linear in t: √(1 + i t) is step LC's, where step HT's t = tan(L/2) made it
-# a quadratic over ℚ(i), which no step takes (cot(c + d x)² √(a + i a tan(c + d x)), cos⁴/(a + i a tan)^(3/2)).
-# t = tan(L) is put back (an antiderivative on each interval between the poles of tan L).
-function integrate_tan_radicals(f, x; build = nothing, lift = nothing, verify::Bool = true)
-    @nospecialize f x
-    xk = string(x)
+# the one argument L of the trigonometric functions in f, when x appears only in them, else nothing
+function single_trig_arg(f, xk::String)
     args = Any[]
     function scan(t)
         safe_iscall(t) && !isempty(arguments(t)) || return string(t) != xk
@@ -504,21 +497,21 @@ function integrate_tan_radicals(f, x; build = nothing, lift = nothing, verify::B
         all(scan, arguments(t))
     end
     (scan(f) && !isempty(args)) || return nothing
-    L = args[1]
-    Ls = string(L)
-    all(a -> string(a) == Ls, args) || return nothing
-    any(((_, u),) -> has_op(u, :tan) || has_op(u, :cot), collect_radicals(f, xk)) || return nothing
-    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
-    pp = poly_parts(bd, L, xk)
-    (pp === nothing || !haskey(pp, 1) || maximum(keys(pp)) != 1) && return nothing
-    a = pp[1]
+    Ls = string(args[1])
+    all(a -> string(a) == Ls, args) ? args[1] : nothing
+end
+# the trigonometric function of L that u is (:sin, …, :csc), else nothing
+function trig_of(u, Ls::String)
+    (safe_iscall(u) && !isempty(arguments(u)) && opname(operation(u)) in HT_TRIG && length(arguments(u)) == 1 &&
+     string(arguments(u)[1]) == Ls) ? opname(operation(u)) : nothing
+end
+# u -> u in t = tan L (the builder's variable), or nothing when u is not a rational function of tan L (step TQ)
+function tan_walker(bd::Builder, Ls::String)
     t = bd.x
     one_ = bd.lift(1)
     W2 = mk(bd, :+, one_, mk(bd, :^, t, bd.lift(2)))
     pw(b, e) = e == 1 ? b : mk(bd, :^, b, bd.lift(e))
-    trig(u) = (safe_iscall(u) && !isempty(arguments(u)) && opname(operation(u)) in HT_TRIG &&
-               length(arguments(u)) == 1 && string(arguments(u)[1]) == Ls) ? opname(operation(u)) : nothing
-    function walk(u)                                    # u in t, or nothing (not a rational function of tan L)
+    function walk(u)
         (safe_iscall(u) && !isempty(arguments(u))) || return u
         n = opname(operation(u))
         if n === :+ || n === :-
@@ -528,7 +521,7 @@ function integrate_tan_radicals(f, x; build = nothing, lift = nothing, verify::B
         end
         fs = product_factors!(Any[], u, 1)
         if length(fs) == 1 && fs[1][2] == 1 && fs[1][1] === u      # a call: tan, cot, a radical, …
-            k = trig(u)
+            k = trig_of(u, Ls)
             k === :tan && return t
             k === :cot && return mk(bd, :/, one_, t)
             k === nothing || return nothing                         # sin, cos, sec, csc to an odd power
@@ -539,7 +532,7 @@ function integrate_tan_radicals(f, x; build = nothing, lift = nothing, verify::B
         w = 0
         parts = Any[]
         for (b, e) in fs
-            k = trig(b)
+            k = trig_of(b, Ls)
             if k === :sin
                 push!(parts, pw(t, e)); w -= e
             elseif k === :cos
@@ -558,6 +551,29 @@ function integrate_tan_radicals(f, x; build = nothing, lift = nothing, verify::B
         w == 0 || push!(parts, pw(W2, w ÷ 2))
         isempty(parts) ? one_ : length(parts) == 1 ? parts[1] : mk(bd, :*, parts...)
     end
+end
+
+# Step TQ: radicals of a + b tan(L) (L = a x + b, as in step HT) by t = tan(L) itself, when the rest of the integrand
+# is a rational function of tan L (Bioche: invariant under L ↦ L + π): tan → t, cot → 1/t, and in each product
+# sinʲ cosᵏ secˡ cscᵐ with j + k - l - m even, sin = t w⁻¹, cos = w⁻¹, w = √(1 + t²), so the w's give (1 + t²)^(integer);
+# dx = dt/(a (1 + t²)). The radicand stays linear in t: √(1 + i t) is step LC's, where step HT's t = tan(L/2) made it
+# a quadratic over ℚ(i), which no step takes (cot(c + d x)² √(a + i a tan(c + d x)), cos⁴/(a + i a tan)^(3/2)).
+# t = tan(L) is put back (an antiderivative on each interval between the poles of tan L).
+function integrate_tan_radicals(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    L = single_trig_arg(f, xk)
+    L === nothing && return nothing
+    Ls = string(L)
+    any(((_, u),) -> has_op(u, :tan) || has_op(u, :cot), collect_radicals(f, xk)) || return nothing
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    pp = poly_parts(bd, L, xk)
+    (pp === nothing || !haskey(pp, 1) || maximum(keys(pp)) != 1) && return nothing
+    a = pp[1]
+    t = bd.x
+    one_ = bd.lift(1)
+    W2 = mk(bd, :+, one_, mk(bd, :^, t, bd.lift(2)))
+    walk = tan_walker(bd, Ls)
     ft = walk(f)
     ft === nothing && return nothing
     g = mk(bd, :/, ft, mk(bd, :*, a, W2))
@@ -577,4 +593,185 @@ function integrate_tan_radicals(f, x; build = nothing, lift = nothing, verify::B
     back(u) = haskey(radmap, string(u)) ? radmap[string(u)] :
               isnode(u) ? term_rebuild(bd, u, Any[back(s) for s in arguments(u)]) : (string(u) == xk ? tL : u)
     subst_answer(G, back, bd)
+end
+
+# Step TS: products of powers of sec L (odd, or a radical of e sec L, e cos L) and radicals of a ± i a tan L, the rest
+# rational in tan L. With t = tan L, w = 1 + i t, w̄ = 1 - i t, sec² L = w w̄ exactly, and each radical ρ = B^(1/q) of the
+# integrand has an exponent vector in (w, w̄) (sec ↦ (½, ½), a + i a t ↦ (1, 0), a - i a t ↦ (0, 1)), the integrand's
+# radicals together (P, Q). When P, Q or P + Q is an integer (Chebyshev: else the integral is not elementary,
+# √(e sec L) (a + i a tan L) is elliptic), one product V of the radicals (and sec L, w, w̄, constants) has V^N equal to
+# w̄, w or w/w̄ exactly, and the integrand is M · R(t) Vʲ with R rational and M a product of the radicals whose
+# exponent vector is 0: Mᴷ is a constant, so M is constant on intervals. ∫ R(t) Y^(j/N) dt (Y = w̄, w, w/w̄: one
+# linear or Möbius radicand over ℚ(i), step LC) is then put back with Y^(1/N) ↦ V and t ↦ tan L; V, not the
+# principal root of Y, keeps the answer an antiderivative where sec L < 0 (Rubi 4.3.1.2 sec³ (a + i a tan)^(3/2),
+# (e sec)^(5/2) (a + i a tan)^(3/2), 1/((e cos)^(7/2) √(a + i a tan))).
+function integrate_sec_tan_radicals(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    L = single_trig_arg(f, xk)
+    L === nothing && return nothing
+    Ls = string(L)
+    I_ = find_imag_unit(f)
+    I_ === nothing && return nothing
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    pp = poly_parts(bd, L, xk)
+    (pp === nothing || !haskey(pp, 1) || maximum(keys(pp)) != 1) && return nothing
+    aL = pp[1]
+    t = bd.x
+    one_ = bd.lift(1)
+    walk = tan_walker(bd, Ls)
+    pw(b, e) = isone(e) ? b : mk(bd, :^, b, bd.lift(e))
+    w = mk(bd, :+, one_, mk(bd, :*, I_, t))
+    wb = mk(bd, :+, one_, mk(bd, :*, bd.lift(-1), I_, t))
+    tL = mk(bd, :tan, L)
+    wL = mk(bd, :+, one_, mk(bd, :*, I_, tL))                 # (w, w̄ in x, for V and M)
+    wbL = mk(bd, :+, one_, mk(bd, :*, bd.lift(-1), I_, tL))
+    ev = numeric_evaluator(xk, f)
+    # a base B of a radical: (constant factors, exponent vector) with B = Π constants · sec^k · (α ± i α tan)^m
+    function base_vector(B)
+        cs = Any[]
+        v = (Q(0), Q(0))
+        for (b, e) in product_factors!(Any[], B, 1)
+            if !has_x(b, xk)
+                leaf_rational(b) == 1 || push!(cs, pw(b, e))
+                continue
+            end
+            k = trig_of(b, Ls)
+            if k === :sec || k === :cos
+                h = Q(k === :sec ? e : -e) // 2
+                v = (v[1] + h, v[2] + h)
+                continue
+            end
+            k === nothing || return nothing
+            safe_iscall(b) && opname(operation(b)) in (:+, :-) || return nothing
+            bt = walk(b)
+            bt === nothing && return nothing
+            lp = poly_parts(bd, bt, xk)
+            (lp === nothing || sort(collect(keys(lp))) != [0, 1]) && return nothing
+            α, β = lp[0], lp[1]
+            z = try
+                ev(β, 0.0) / ev(α, 0.0)
+            catch
+                return nothing
+            end
+            if abs(z - im) < 1e-10
+                v = (v[1] + e, v[2])
+            elseif abs(z + im) < 1e-10
+                v = (v[1], v[2] + e)
+            else
+                return nothing
+            end
+            leaf_rational(α) == 1 || push!(cs, pw(α, e))
+        end
+        cs, v
+    end
+    rads = Any[]                  # (ρ = B^(1/q), q, power p of ρ in f, vector of ρ, constant of B)
+    sw = 0                        # the power of sec L in f
+    rest = Any[]                  # the rest of f in t
+    consts = Any[]
+    for (b, e) in product_factors!(Any[], f, 1)
+        if !has_x(b, xk)
+            leaf_rational(b) == 1 || push!(consts, pw(b, e))
+            continue
+        end
+        k = trig_of(b, Ls)
+        if k === :sin
+            push!(rest, pw(t, e)); sw -= e
+        elseif k === :cos
+            sw -= e
+        elseif k === :sec
+            sw += e
+        elseif k === :csc
+            push!(rest, pw(t, -e)); sw += e
+        else
+            rp = radical_parts(b)
+            if rp !== nothing && has_x(rp[2], xk)
+                bv = base_vector(rp[2])
+                bv === nothing && return nothing
+                r = rp[1] * e
+                q = Int(denominator(rp[1]))
+                v = (bv[2][1] / q, bv[2][2] / q)
+                push!(rads, (pw(rp[2], Q(1) // q), q, Int(numerator(rp[1])) * e, v, bv[1]))
+            else
+                bt = walk(b)
+                bt === nothing && return nothing
+                push!(rest, pw(bt, e))
+            end
+        end
+    end
+    # (else step TQ's: even powers of sec L, radicals of a ± i a tan L alone)
+    (isodd(sw) || any(r -> !iszero(r[4][1]) && !iszero(r[4][2]), rads)) || return nothing
+    P = sum(r[3] * r[4][1] for r in rads; init = Q(sw) // 2)
+    Qv = sum(r[3] * r[4][2] for r in rads; init = Q(sw) // 2)
+    isint(c) = isone(denominator(c))
+    d, N = if isint(P) && isint(Qv)
+        (Q(0), Q(0)), 1
+    elseif isint(P)
+        (Q(0), Q(1) // denominator(Qv)), Int(denominator(Qv))
+    elseif isint(Qv)
+        (Q(1) // denominator(P), Q(0)), Int(denominator(P))
+    elseif isint(P + Qv)
+        (Q(1) // denominator(P), -Q(1) // denominator(P)), Int(denominator(P))
+    else
+        return nothing
+    end
+    # V = Π ρₖ^eₖ secᵉ⁰ w^(-h₁) w̄^(-h₂) with vector d, Vᴺ a rational function of t (eₖ N/qₖ, e₀ N integers, e₀ N even)
+    gens = Any[(r[1], r[2], r[4], r[5]) for r in rads]
+    push!(gens, (mk(bd, :sec, L), 2, (Q(1) // 2, Q(1) // 2), Any[]))
+    best = nothing
+    if N > 1
+        ranges = [(-(g[2] - 1)):(g[2] - 1) for g in gens]
+        for es in Iterators.product(ranges...)
+            all(k -> isint(Q(es[k] * N) // gens[k][2]), eachindex(gens)) || continue
+            v = (sum(es[k] * gens[k][3][1] for k in eachindex(gens)), sum(es[k] * gens[k][3][2] for k in eachindex(gens)))
+            (isint(v[1] - d[1]) && isint(v[2] - d[2])) || continue
+            c = 4 * sum(abs, es) + abs(Int(v[1] - d[1])) + abs(Int(v[2] - d[2]))
+            (best === nothing || c < best[1]) && (best = (c, es, (Int(v[1] - d[1]), Int(v[2] - d[2]))))
+        end
+        best === nothing && return nothing
+    end
+    # V′ = V · Π cₖ^(-eₖ/qₖ) (the constants of the bases out, principal powers: V′ᴺ = Y exactly)
+    Vf = Any[]
+    if N > 1
+        es, h = best[2], best[3]
+        for (k, g) in enumerate(gens)
+            iszero(es[k]) && continue
+            push!(Vf, pw(g[1], es[k]))
+            for c in g[4]
+                leaf_rational(c) == 1 || push!(Vf, pw(c, -Q(es[k]) // g[2]))
+            end
+        end
+        h[1] == 0 || push!(Vf, pw(wL, -h[1]))
+        h[2] == 0 || push!(Vf, pw(wbL, -h[2]))
+    end
+    V = isempty(Vf) ? one_ : length(Vf) == 1 ? Vf[1] : mk(bd, :*, Vf...)
+    Y = d[2] == 0 ? w : d[1] == 0 ? wb : mk(bd, :/, w, wb)
+    j = N == 1 ? 0 : Int(N * (iszero(d[1]) ? Qv : P))
+    a0, b0 = Int(P - j * d[1]), Int(Qv - j * d[2])
+    # M = (radicals of f) / (V′ʲ wᵃ⁰ w̄ᵇ⁰): exponent vector 0
+    Mn = Any[pw(r[1], r[3]) for r in rads]
+    sw == 0 || push!(Mn, pw(mk(bd, :sec, L), sw))
+    Md = Any[]
+    j == 0 || push!(Md, pw(V, j))
+    a0 == 0 || push!(Md, pw(wL, a0))
+    b0 == 0 || push!(Md, pw(wbL, b0))
+    prodt(v) = isempty(v) ? one_ : length(v) == 1 ? v[1] : mk(bd, :*, v...)
+    M = mk(bd, :/, prodt(vcat(consts, Mn)), leaf_rational(aL) == 1 ? prodt(Md) : mk(bd, :*, aL, prodt(Md)))
+    gpart = Any[rest...]
+    a0 == 0 || push!(gpart, pw(w, a0))
+    b0 == 0 || push!(gpart, pw(wb, b0))
+    j == 0 || push!(gpart, pw(Y, Q(j) // N))
+    g = mk(bd, :/, prodt(gpart), mk(bd, :+, one_, mk(bd, :^, t, bd.lift(2))))
+    G = risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    Ys = string(Y)
+    function back(u)
+        isnode(u) || return string(u) == xk ? tL : u
+        rp = radical_parts(u)
+        (rp !== nothing && string(rp[2]) == Ys) && return pw(V, rp[1] * N)
+        term_rebuild(bd, u, Any[back(s) for s in arguments(u)])
+    end
+    H = subst_answer(G, back, bd)
+    H === nothing && return nothing
+    H isa IntegralWithRootSums && return nothing
+    mk(bd, :*, M, H)
 end

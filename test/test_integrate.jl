@@ -3072,6 +3072,29 @@ end
     end
 end
 
+# odd and fractional powers of sec(c + d x) with radicals of a + i a tan(c + d x) (stratified sample 1767-1782): one
+# radical V of w̄, w or w/w̄ (w = 1 + i tan), a product of the integrand's radicals (step TS); checked where sec < 0 too
+@testset "powers of sec with radicals of a + i a tan(c + d x) (step TS)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    cfix(ex) = ex == :(sqrt(-1)) || ex === :I ? im : ex isa Expr ? Expr(ex.head, map(cfix, ex.args)...) : ex
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x0))), :(a = 1.3), :(c = 0.4), :(d = 1.7), :(e = 0.2)),
+                                     cfix(e)))
+    for g in (:(sec(x) * sqrt(1 + I * tan(x))),
+              :(sec(c + d * x) ^ 3 * (a + I * a * tan(c + d * x)) ^ (3 // 2)),
+              :((e * sec(c + d * x)) ^ (5 // 2) * (a + sqrt(-1) * a * tan(c + d * x)) ^ (3 // 2)),
+              :(1 / ((e * sec(c + d * x)) ^ (3 // 2) * sqrt(a + I * a * tan(c + d * x)))),
+              :(1 / ((e * cos(c + d * x)) ^ (7 // 2) * sqrt(a + I * a * tan(c + d * x)))))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        for x0 in (0.3, 1.1, 2.2, -0.7, 3.0)                 # (sec(0.4 + 1.7·2.2) < 0)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(g, x0); rtol = 1e-5)
+        end
+    end
+    # √(e sec) (a + i a tan) is elliptic ((P, Q) = (5/4, 1/4)): not this step's
+    @test Risch.integrate_sec_tan_radicals(:(sqrt(e * sec(c + d * x)) * (a + I * a * tan(c + d * x))), :x;
+                                           build = build, lift = identity) === nothing
+end
+
 # RootSum answers with parameters, evaluated at parameter values: F(x => a, b => 1.5, …)
 @testset "RootSum answers evaluated at parameter values" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
