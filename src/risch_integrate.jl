@@ -106,9 +106,16 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         # SymPy #26509) has no real form, whatever the route; by parts takes it out (step AP), else the refusal stands
         # (the substitutions below ran for minutes over ℚ(i)(a, b, c, cos a, sin a), each refused the same way)
         if e isa RischNotImplemented && occursin("no real form", e.msg) && has_imag_unit(f)
+            g = integrate_gaussian_trig(f, x; build = build, lift = lift, verify = verify)   # e^(-x² + 2ix) (step GT)
+            g === nothing || return g
             g = try_parts(f, x; build = build, lift = lift, verify = verify)
             g === nothing || return g
             throw(e)
+        end
+        if e isa NotElementary
+            # xⁿ e^(α x² + β x + δ) with sin, cos of linear arguments: erf of a complex shift (step GT)
+            g = integrate_gaussian_trig(f, x; build = build, lift = lift, verify = verify)
+            g === nothing || return g
         end
         g = try
             # x·R(sin, cos): Clausen's function (step CL); logʲ(x) L(w x)/x, L = atan, log or li2: polylogarithms
@@ -232,6 +239,12 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             r = integrate_opaque_sqrts(f, x; build = build, lift = lift, verify = verify)
             r === nothing || return r
         end
+        # a constant radical factor beside a parameter and a transcendental constant of the answer (√2 (x + a)² e^(-x²/2),
+        # as SymJ writes (x + a)² e^(-x²/2)/√(2π): SymPy #22075): every factor free of x out of the integral (step FX)
+        if e isa RischNotImplemented && occursin("transcendental constants, but the constant field was fixed", e.msg)
+            r = integrate_free_factors_out(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
+        end
         # a u-substitution may have failed only for want of a special function in the term type: once
         # through Expr, keeping the answer when it has special terms
         if !(f isa Expr) && !EXPR_RETRY[]
@@ -289,7 +302,7 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     xk = string(x)
     g = merge_exp_powers(f, x, build, lift)            # (bʷ)^r = b^(w r), b > 0 constant (step EP)
     g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
-    if !any(n -> has_op(f, n), INV_HYP)                # exp(c log u) = u^c (step XL; atanh, acoth after step AL)
+    if !has_invhyp(f, xk)                              # exp(c log u) = u^c (step XL; atanh, acoth after step AL)
         g = rewrite_exp_logs(f, x, build, lift)
         g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
     end
@@ -328,7 +341,7 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
     has_op(f, :acot) && return risch_integrate(rewrite_acot(f, x, build, lift), x; build = build, lift = lift,
                                                verify = verify)     # acot(u) = atan(1/u) (step AC)
-    if any(n -> has_op(f, n), INV_HYP)
+    if has_invhyp(f, xk)
         # asinh(c x): y = c x first (step AL); then derivative-divides (∫ asinh(x)/√(1 + x²) = asinh(x)²/2, step
         # US) and A·L by parts (∫ asinh x = x asinh x - √(x² + 1), step AP), so the answer keeps L; else
         # atanh, acoth, asinh, acosh, acsch, asech as logs (step IH)

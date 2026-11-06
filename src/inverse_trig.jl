@@ -37,6 +37,10 @@ end
 #   asinh u = log(u + √(u² + 1)),      acosh u = log(u + √(u² - 1))  (u ≥ 1),
 #   acsch u = asinh(1/u),              asech u = acosh(1/u) = log((1 + √(1 - u²))/u)  (0 < u ≤ 1)
 const INV_HYP = (:atanh, :acoth, :asinh, :acosh, :acsch, :asech)
+# an inverse hyperbolic function that `rewrite_invhyp` writes as logs: of x, or atanh, acoth of a constant
+invhyp_rewritable(n, a, xk::String) = n in INV_HYP && (has_x(a, xk) || n in (:atanh, :acoth))
+has_invhyp(t, xk::String) = safe_iscall(t) && !isempty(arguments(t)) &&
+    ((length(arguments(t)) == 1 && invhyp_rewritable(opname(operation(t)), arguments(t)[1], xk)) || any(a -> has_invhyp(a, xk), arguments(t)))
 function rewrite_invhyp(f, x, build, lift)
     @nospecialize f x
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
@@ -47,7 +51,9 @@ function rewrite_invhyp(f, x, build, lift)
         safe_iscall(t) && !isempty(arguments(t)) || return t
         args = Any[rw(a) for a in arguments(t)]
         n = opname(operation(t))
-        if n in INV_HYP && length(args) == 1
+        # (asinh 4 of a constant: log(4 + √17) needs a log over ℚ(√17), so it stays an opaque constant, step OC;
+        # atanh, acoth of a constant are logs of constants of the field)
+        if length(args) == 1 && invhyp_rewritable(n, args[1], string(x))
             n === :asech && return mk(bd, :log, mk(bd, :/, mk(bd, :+, bd.lift(1), mk(bd, :sqrt, mk(bd, :+, bd.lift(1), neg(sq(args[1]))))),
                                                    args[1]))
             u = n === :acsch ? mk(bd, :/, bd.lift(1), args[1]) : args[1]
@@ -150,7 +156,7 @@ function collect_arcs(f, xk::String, out = Any[]; fns = (:asin, :acos, :acsc, :a
     if safe_iscall(f)
         args = arguments(f)
         n = opname(operation(f))
-        n in fns && length(args) == 1 && push!(out, (n, args[1], f))
+        n in fns && length(args) == 1 && has_x(args[1], xk) && push!(out, (n, args[1], f))   # (asin 5: a constant)
         for a in args
             collect_arcs(a, xk, out; fns = fns)
         end
@@ -630,6 +636,7 @@ function numeric_antiderivative(f, G, xk::String)
     ev = numeric_evaluator(xk, f, G)
     cx = has_imag_unit(f)                               # (a complex integrand: compared where it is finite, step CI)
     found = 0
+    h = 0.0
     for x0 in (0.13, 0.27, 0.41, 0.58, 0.83, 1.21, 1.77, 2.6, -0.37, -1.4)
         fv, dG = try
             fv = ev(f, x0)
@@ -639,7 +646,16 @@ function numeric_antiderivative(f, G, xk::String)
             continue
         end
         (isfinite(fv) && isfinite(dG) && (cx || abs(imag(fv)) <= 1e-10 * max(1.0, abs(fv)))) || continue
-        abs(dG - fv) <= 1e-4 * max(1.0, abs(fv)) || return false
+        if abs(dG - fv) > 1e-4 * max(1.0, abs(fv))
+            # a high frequency (e^(-40000 i x z), SymPy #21741: the error h²ω²/6 of the difference is 2·10⁻⁴):
+            # Richardson's (4 D(h/2) - D(h))/3, error O(h⁴ω⁴)
+            dR = try
+                (4 * (ev(G, x0 + h / 2) - ev(G, x0 - h / 2)) / h - dG) / 3
+            catch
+                return false
+            end
+            abs(dR - fv) <= 1e-4 * max(1.0, abs(fv)) || return false
+        end
         (found += 1) == 2 && return true
     end
     true

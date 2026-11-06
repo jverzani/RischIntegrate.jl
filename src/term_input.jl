@@ -12,7 +12,8 @@ function leaf_rational(t)
     t isa Integer && return Q(t)
     t isa Rational && return Q(t)
     t isa AbstractFloat && return isfinite(t) ? rationalize(BigInt, t) : nothing
-    if t isa Function
+    # (a callable leaf only: a term of SymJ is callable too, and sqrt(2)() = 1.414… is not the rational 77227930//54608393)
+    if t isa Function && !isnode(t)
         v = try
             t()
         catch
