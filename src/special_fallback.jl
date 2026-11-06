@@ -98,6 +98,9 @@ function integrate_imag_param(f, x; build = nothing, lift = nothing, verify::Boo
     @nospecialize f x
     IMAG_PARAM[] && return nothing
     xk = string(x)
+    # (i only outside the radicals, (a + i a tan(c + d x))⁴ beside sec^(13/2): the second integration finds nothing
+    # the first did not, and took up to 4 minutes)
+    any(((_, u),) -> has_imag_unit(u), collect_radicals(f, xk)) || return nothing
     leaves = Dict{String,Any}()
     collect_leaves!(leaves, f)
     haskey(leaves, IMAG_PARAM_NAME) && return nothing
