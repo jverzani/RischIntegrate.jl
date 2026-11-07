@@ -3192,6 +3192,7 @@ end
     f = :(1 / (a + b * tan(x) ^ 2))
     F = Risch.risch_integrate(f, :x; build = build, lift = identity)
     @test isapprox(ev(F, pi / 2 + 1e-7), ev(F, pi / 2 - 1e-7); atol = 1e-5)
+end
 
 # SymPy round 7: erf of a complex shift (step GT, #21362, #21041); inverse trigonometric and nested constants as opaque
 # constants (step OC, #21024, #21034); the numeric check at a high frequency (#21741); every x-free factor out of the
