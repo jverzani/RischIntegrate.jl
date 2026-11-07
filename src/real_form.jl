@@ -26,6 +26,68 @@ function sigma_kinds(T::Tower)
     kinds
 end
 
+# step EC: exp(w) with w = α + iβ, α and β real rational functions of x, neither zero (exp((1 + i) z), SymPy #20034):
+# exp(α) exp(iβ), whose generators are real and exp(i·real), where exp(w) alone is neither. f rewritten so, or nothing
+# (i as a leaf, a Complex number, or a node: SymJ's (-1)^(1/2))
+has_complex_leaf(t) = is_imag_unit(t) || (isnode(t) ? any(has_complex_leaf, arguments(t)) : (t isa Complex && !iszero(imag(t))))
+function split_complex_exps(f, x, build, lift)
+    @nospecialize f x
+    xk = string(x)
+    b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    changed = false
+    function rw(t)
+        isnode(t) || return t
+        args = Any[rw(a) for a in arguments(t)]
+        n = opname(operation(t))
+        # exp(w), or ℯ^w (SymJ's exp)
+        w = (n === :exp && length(args) == 1) ? args[1] :
+            (n === :^ && length(args) == 2 && is_e_const(args[1])) ? args[2] : nothing
+        if w !== nothing && depends_on(w, xk) && has_complex_leaf(w)
+            p = complex_rational_parts(w, xk, b0)
+            if p !== nothing && p[1] !== nothing && p[2] !== nothing
+                changed = true
+                return mk(b0, :*, mk(b0, :exp, p[1]), mk(b0, :exp, mk(b0, :*, b0.lift(im), p[2])))
+            end
+        end
+        term_rebuild(b0, t, args)
+    end
+    g = rw(f)
+    changed ? g : nothing
+end
+
+# ∫ f by step EC, through Expr (a term type may merge exp(α) exp(iβ) back into exp(α + iβ): SymJ's ℯ^z ℯ^(i z)), the
+# answer put back in the user's terms; nothing when no exponential splits. (Not again inside: the split integrand
+# has none left to split.)
+const EC_ACTIVE = Ref(false)
+function integrate_split_complex_exps(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    EC_ACTIVE[] && return nothing
+    xk = string(x)
+    leaves = Dict{String,Any}()
+    collect_leaves!(leaves, f)
+    toexpr(t) = is_imag_unit(t) ? :im : (safe_iscall(t) && !isempty(arguments(t))) ?
+        Expr(:call, opname(operation(t)), (toexpr(a) for a in arguments(t))...) : term_to_expr(t)
+    g = split_complex_exps(toexpr(f), Symbol(xk), expr_build, identity)
+    g === nothing && return nothing
+    EC_ACTIVE[] = true
+    F = try
+        risch_integrate(g, Symbol(xk); build = expr_build, lift = identity, verify = verify)
+    finally
+        EC_ACTIVE[] = false
+    end
+    F isa IntegralWithRootSums && return nothing
+    f isa Expr && return F
+    b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    function back(ex)                                   # Expr → the user's term type
+        ex === :im && return b0.lift(im)
+        ex isa Symbol && return haskey(leaves, string(ex)) ? leaves[string(ex)] : ex === :ℯ ? mk(b0, :exp, b0.lift(1)) : ex
+        ex isa Number && return b0.lift(ex)
+        ex isa Expr && ex.head === :call || return ex
+        b0.build(op_function(ex), (back(a) for a in ex.args[2:end])...)
+    end
+    back(F)
+end
+
 # σ on an element of level i (needs the kinds of levels 1..i)
 function tconj(T::Tower, kinds, f, i::Int)
     i == 0 && return frac(cpconj_g(T.consts, f.num), cpconj_g(T.consts, f.den))   # x real
