@@ -227,6 +227,12 @@ function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
         bq = biquad_log_part(A, D)
         bq === nothing || return bq
     end
+    # over ℚ(a, …) (step BQP; not with i as a parameter, step IP: its real forms assume real parameters, and
+    # 1 + ⅈ² vanishes once ⅈ = i)
+    if degree(hard) > 0 && rational_tfield(C) && degree(D) in (4, 5) && !IMAG_PARAM[]
+        bq = biquad_log_part(A, D)
+        bq === nothing || return bq
+    end
     degree(hard) > 0 && push!(unresolved, (hard, A, D))
     logs, atans, unresolved, quads
 end
