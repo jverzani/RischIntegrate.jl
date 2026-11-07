@@ -56,6 +56,15 @@ impolylog(n::Integer, ρ::Real, φ::Real) = imag(PolyLog.li(n, ρ * cis(φ)))
 clausen(n::Real, φ::Real) = clausen(Int(n), φ)
 repolylog(n::Real, ρ::Real, φ::Real) = repolylog(Int(n), ρ, φ)
 impolylog(n::Real, ρ::Real, φ::Real) = impolylog(Int(n), ρ, φ)
+# (the numeric check of an answer evaluates in ComplexF64, `numeric_evaluator`: real arguments with a zero
+# imaginary part as real; else a DomainError, as for these real functions)
+real_args(f, vs...) = all(v -> abs(imag(v)) <= 1e-12 * max(1.0, abs(v)), vs) ? f(map(real, vs)...) :
+                      throw(DomainError(vs, "$(nameof(f)): the arguments are not real"))
+# (Real or Complex only: a symbolic Number, SymEngine's Basic, builds the term)
+const RealOrComplex = Union{Real,Complex}
+clausen(n::RealOrComplex, φ::RealOrComplex) = real_args(clausen, n, φ)
+repolylog(n::RealOrComplex, ρ::RealOrComplex, φ::RealOrComplex) = real_args(repolylog, n, ρ, φ)
+impolylog(n::RealOrComplex, ρ::RealOrComplex, φ::RealOrComplex) = real_args(impolylog, n, ρ, φ)
 OPS[:ReLi] = repolylog
 OPS[:ImLi] = impolylog
 

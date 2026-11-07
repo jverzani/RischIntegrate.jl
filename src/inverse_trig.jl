@@ -631,7 +631,9 @@ function numeric_evaluator(xk::String, ts...)
 end
 
 # G′ = f numerically (central differences) at two points where f is real and finite, with the parameters at
-# fixed positive values; true when no such points are found or a term cannot be evaluated
+# fixed positive values (one such point when there is only one). False when no point is found: an answer that
+# cannot be evaluated anywhere is not accepted (step IP's real form over ℚ(ⅈ) had 1/(1 + ⅈ²), which threw
+# at every point once ⅈ = i)
 function numeric_antiderivative(f, G, xk::String)
     ev = numeric_evaluator(xk, f, G)
     cx = has_imag_unit(f)                               # (a complex integrand: compared where it is finite, step CI)
@@ -658,7 +660,7 @@ function numeric_antiderivative(f, G, xk::String)
         end
         (found += 1) == 2 && return true
     end
-    true
+    found > 0
 end
 
 # f = (s₁ + s₂ + …)·R with a factor that is a sum, one of whose summands has an operation `isop` (a + b asinh x):
