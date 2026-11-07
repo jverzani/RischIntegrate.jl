@@ -89,6 +89,28 @@ function special_exp(T::Tower, i::Int, j::Int, α)
         push!(extras, liftto(T, theta(T, l), m)^(-j) * D(T, m, W) / W)
         push!(kinds, (:Eigen, W))
     end
+    # (Ei(jU + k θ_l))' = θ^j u^k (jU + k θ_l)'/(jU + k θ_l) for a level θ_l = log u below and k = ±1, 2, when
+    # jU + k θ_l is a constant times the squarefree normal part of α's denominator: x^n/log x = θ/θ_l with
+    # θ = exp(n log x), Ei((n + 1) log x) (SymPy #20740; a numeric n has no exp level and is found as Ei of log x)
+    if !isone(α.den) && m > 0
+        dn, _ = split_factor(T, m, α.den)
+        Pn = quo(dn, gcd(dn, deriv(dn)))
+        if degree(Pn) > 0
+            Pf = frac(Pn)
+            for (l, lvl) in enumerate(T.levels[1:m])
+                lvl.kind === :log || continue
+                θl = liftto(T, theta(T, l), m)
+                ul = liftto(T, lvl.arg, m)
+                for k in (1, -1, 2)
+                    W = jU + lq(T, Q(k), m) * θl
+                    (iszero(W) || is_constant(T, W) || !ok_arg(W)) && continue
+                    dconst_value(T, W / Pf) === nothing && continue
+                    push!(extras, ul^k * D(T, m, W) / W)
+                    push!(kinds, (:Eilog, W))
+                end
+            end
+        end
+    end
     if m == 0 && isone(jU.den) && degree(jU.num) == 2
         # A x² + B x + C₀, A a constant of the field: rational, or with parameters (e^(-a x² + b x), SymPy #26922),
         # its sign (erf for A < 0, erfi for A > 0) from `param_sign`: the sign oracle (step SO), else the
@@ -127,6 +149,8 @@ function special_exp(T::Tower, i::Int, j::Int, α)
             push!(terms, SpecialTerm(:Ei, c, jq * t, jU - lconst(T, jq * t, m), Q(0), d))
         elseif kd[1] === :Eigen
             push!(terms, SpecialTerm(:Ei, c, zero(C), lq(T, Q(j), m) * kd[2], Q(0), d))
+        elseif kd[1] === :Eilog
+            push!(terms, SpecialTerm(:Ei, c, zero(C), kd[2], Q(0), d))
         else
             Ac, sA = kd[2]
             B, C0 = jU.num.c[2], jU.num.c[1]

@@ -105,6 +105,10 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         # step CI: a generator of the tower that is not real (atan(w) with w not real: x² atan(c + (1 + ic) tan(bx + a)),
         # SymPy #26509) has no real form, whatever the route; by parts takes it out (step AP), else the refusal stands
         # (the substitutions below ran for minutes over ℚ(i)(a, b, c, cos a, sin a), each refused the same way)
+        if e isa RischNotImplemented && occursin("neither real nor exp(i·real)", e.msg)
+            g = integrate_split_complex_exps(f, x; build = build, lift = lift, verify = verify)   # exp(α + iβ) (step EC)
+            g === nothing || return g
+        end
         if e isa RischNotImplemented && occursin("no real form", e.msg) && has_imag_unit(f)
             g = integrate_gaussian_trig(f, x; build = build, lift = lift, verify = verify)   # e^(-x² + 2ix) (step GT)
             g === nothing || return g

@@ -428,13 +428,55 @@ end
 #   ∫ A erf(u) = Q erf(u) - (2a/√π) ∫ Q e^(-u²),   erfi: Q erfi(u) - (2a/√π) ∫ Q e^(u²)
 # when Q is elementary (no RootSum) and the second integral is found (erf terms: step SF). A sum of such terms and
 # terms free of erf; nothing when f has another use of erf, or a part is refused.
+const ERF_DEPTH = Ref(0)
 function try_erf(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
-    xk = string(x)
     haserf(t) = isnode(t) && (opname(operation(t)) in (:erf, :erfi) || any(haserf, arguments(t)))
     haserf(f) || return nothing
+    # (by parts twice at most: ∫ Q e^(-u²) can be ∫ erf(v) e^(-w²) again, and then the first integral, SymPy #19846)
+    ERF_DEPTH[] >= 2 && return nothing
+    ERF_DEPTH[] += 1
+    try
+        try_erf_parts(f, x, haserf; build = build, lift = lift, verify = verify)
+    finally
+        ERF_DEPTH[] -= 1
+    end
+end
+
+# ∫ erf(u) κ e^w (u linear, w quadratic in x) when κ e^w is not a constant times erf(u)′ ∝ e^(-u²) (w + u² not
+# constant; erfi: w - u²): not elementary, even over K(erf u). With θ = erf(u) a primitive over K = ℚ(x, e^w, e^(-u²)),
+# an antiderivative in K(θ) is c θ² + A θ + B (c constant, A, B ∈ K): A′ = κ e^w - 2c θ′, so ∫ (κ e^w - c′ e^(-u²)) ∈ K.
+# The exponents w and -u² differ by a non-constant, so each term must have its own antiderivative in K (the Risch
+# equations of distinct exponentials are separate), and ∫ κ e^w with w quadratic has none
+function erf_gaussian_mismatch(xs, u, isf::Bool, xk::String, b0::Builder)
+    length(xs) == 1 || return false
+    t = xs[1]
+    w = nothing
+    if isnode(t) && opname(operation(t)) === :exp && length(arguments(t)) == 1
+        w = arguments(t)[1]
+    elseif isnode(t) && opname(operation(t)) === :^ && length(arguments(t)) == 2 && is_e_const(arguments(t)[1])
+        w = arguments(t)[2]
+    end
+    w === nothing && return false
+    quad(v) = try
+        T, el = build_tower(v, xk)
+        (isempty(T.levels) && isone(el.den)) ? degree(el.num) : -1
+    catch err
+        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        -1
+    end
+    quad(w) == 2 || return false
+    u2 = mk(b0, :^, u, b0.lift(2))
+    d = quad(isf ? mk(b0, :+, w, u2) : mk(b0, :+, w, mk(b0, :*, b0.lift(-1), u2)))
+    d > 0                                              # (d = 0: a constant multiple, erf(u)²/2; -1: undecided)
+end
+
+function try_erf_parts(f, x, haserf; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
     b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     terms, rest = Any[], Any[]
+    nsum = length(gamma_summands(f))
     for (t, sg) in gamma_summands(f)
         if !haserf(t)
             push!(rest, sg == 1 ? t : mk(b0, :*, b0.lift(-1), t))
@@ -465,6 +507,9 @@ function try_erf(f, x; build = nothing, lift = nothing, verify::Bool = true)
         c = isempty(cs) ? (sg == 1 ? nothing : b0.lift(-1)) : mk(b0, :*, b0.lift(sg), cs...)
         ex = mk(b0, :exp, isf ? mk(b0, :*, b0.lift(-1), mk(b0, :^, u, b0.lift(2))) : mk(b0, :^, u, b0.lift(2)))
         if !isempty(xs)
+            # (f this one summand: another one with erf(u) could combine with it)
+            (nsum == 1 && erf_gaussian_mismatch(xs, u, isf, xk, b0)) && throw(NotElementary(
+                "∫ erf(u) e^w with w quadratic, e^w not a constant times erf(u)′: no elementary antiderivative (over K(erf u))"))
             A = length(xs) == 1 ? xs[1] : mk(b0, :*, xs...)
             tt = try
                 Qt = risch_integrate(A, x; build = build, lift = lift, verify = verify)
