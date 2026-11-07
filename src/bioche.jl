@@ -23,6 +23,13 @@ function θinv(R::Frac{UPoly{C}}, c::C) where {C}       # R(c/θ)
     frac(θinv_poly(R.num, c) * θ^degree(R.den), θinv_poly(R.den, c) * θ^degree(R.num))
 end
 θscale(R::Frac{UPoly{C}}, c::C) where {C} = frac(θscale_poly(R.num, c), θscale_poly(R.den, c))
+# R(c/θ) == σ R and R(cθ) == R, as cross products (no gcd: the gcds of `frac` over a constant field with seven
+# parameters took minutes, sample 3:473)
+function θinv_is(R::Frac{UPoly{C}}, c::C, σ::Int) where {C}
+    θ = xpoly(C)
+    θinv_poly(R.num, c) * θ^degree(R.den) * R.den == scale(cfromQ(C, Q(σ)), R.num * θinv_poly(R.den, c) * θ^degree(R.num))
+end
+θscale_is(R::Frac{UPoly{C}}, c::C) where {C} = θscale_poly(R.num, c) * R.den == R.num * θscale_poly(R.den, c)
 
 # θ^(-sh)·M = Σ aⱼ θʲ, symmetric (aⱼ = a₋ⱼ), as a polynomial in s = (θ + 1/θ)/2, or nothing
 function sym_laurent_to_s(M::UPoly{C}, sh::Int) where {C}
@@ -102,15 +109,15 @@ function bioche(f, x; build = nothing, lift = nothing)
     θel = frac(xpoly(K1))
     one1 = one(θel)
     li(c) = lconst(T, c, 1)
-    if θinv(R, one(C)) == -R                             # s = cos u
+    if θinv_is(R, one(C), -1)                            # s = cos u
         kind = :cos
         g = sym_to_s(R * frac(scale(-2 * I, θp), θp^2 - one(P)))
         sel = (θel + one1 / θel) * li(inv(two))
-    elseif θinv(R, -one(C)) == -R                        # s = sin u
+    elseif θinv_is(R, -one(C), -1)                       # s = sin u
         kind = :sin
         g = sym_to_s(θscale(R * frac(scale(two, θp), θp^2 + one(P)), I))
         sel = (θel - one1 / θel) * li(inv(2 * I))
-    elseif θscale(R, -one(C)) == R                       # s = tan u
+    elseif θscale_is(R, -one(C))                         # s = tan u
         kind = :tan
         g = tan_to_s(R)
         sel = li(-I) * (θel * θel - one1) / (θel * θel + one1)
@@ -137,15 +144,40 @@ function bioche(f, x; build = nothing, lift = nothing)
     # or not, the answer holds between the real poles of g, on (-π, π) when the parameters leave none,
     # e.g. |a| < 1 for 1/(1 + a cos u); the general route has no parameter forms to offer instead. So the
     # count is not needed there: its Sturm sequence over ℚ(a, b, cos c, sin c) took minutes, sample 1910)
-    (kind === :half || real_root_count(gq.den, rng..., sg) == 0) || return nothing
-    res = integrate_rational(gq)
+    # step TP: for s = tan u, real poles of g are poles of f (cot u, csc u: s = 0); the answer on each interval
+    # between them, with log w² /2 for a log argument w that has real roots (the general route took minutes with
+    # parameters: cot⁶/(a + b tan²)³, sample 1:476)
+    realpoles = false
+    if kind !== :half
+        nr = real_root_count(gq.den, rng..., sg)
+        if nr != 0
+            # (with parameters only: without them the general route is quick, and its cot forms shorter, cot⁴ x)
+            (kind === :tan && any(c -> c.kind === :sym, T.consts)) || return nothing
+            # (undecided with parameters, a + b s² for a b of unknown sign: the full route, step TQ2)
+            nr === nothing && return bioche_tan_full(f, x, gq, k, T; build = build, lift = lift)
+            realpoles = true
+        end
+    end
+    res = try
+        integrate_rational(gq)
+    catch e
+        # step TQ2: residues over the parameters (1/(a + b s²): ±1/(2√(-ab))), which `integrate_rational` does not
+        # take; the full route has the parameter forms (atan(√(b/a) s)/√(ab))
+        (e isa RischNotImplemented && kind === :tan && any(c -> c.kind === :sym, T.consts)) || rethrow()
+        return bioche_tan_full(f, x, gq, k, T; build = build, lift = lift)
+    end
     # residues of degree > 2 (step TR): a RootSum in s = cos u or sin u (over ℚ, real and continuous
     # since g has no pole in [-1, 1]); for s = tan u see step TT below
     unres = res.unresolved
+    if realpoles && (!isempty(unres) || any(q -> !(q isa QuadAtan), res.quads))
+        return any(c -> c.kind === :sym, T.consts) ? bioche_tan_full(f, x, gq, k, T; build = build, lift = lift) : nothing
+    end
     # step TB: for s = tan u without RootSums, the general route (TC/TH) gives a linear term plus atans
     # of trigonometric ratios with nonvanishing denominators (no tan, no correction terms); use it when
     # it is elementary and needed no tan(u/2) form, else the tan form below
-    if kind === :tan && isempty(unres)
+    # (not with three or more parameters: over ℚ(i)(a, b, c, d) the general route took minutes, (a + b tan)³(c + d tan)²,
+    # where the tan form takes seconds)
+    if kind === :tan && isempty(unres) && !realpoles && count(c -> c.kind === :sym, T.consts) < 3
         HALF_ANGLE_FORMS[] = 0
         r = try
             Tg, elg = build_tower(f, xk)
@@ -158,9 +190,20 @@ function bioche(f, x; build = nothing, lift = nothing)
         (r === nothing || r isa IntegralWithRootSums || HALF_ANGLE_FORMS[] > 0) || return r
     end
     # each log argument has constant sign on the range: log(-w) where it is negative (at s = 0)
-    w0s = [sg(peval(w, zero(RC))) for (c, w) in res.logs]
-    any(isnothing, w0s) && return nothing
-    logs = Tuple{RC,UPoly{RC}}[(c, w0 < 0 ? -w : w) for ((c, w), w0) in zip(res.logs, w0s)]
+    logs = Tuple{RC,UPoly{RC}}[]
+    for (c, w) in res.logs
+        if realpoles                                     # (step TP) a log argument with real roots: (c/2) log w²
+            nw = real_root_count(w, nothing, nothing, sg)
+            nw === nothing && return nothing
+            if nw > 0
+                push!(logs, (c / cfromQ(RC, Q(2)), w * w))
+                continue
+            end
+        end
+        w0 = sg(peval(w, zero(RC)))
+        w0 === nothing && return nothing
+        push!(logs, (c, w0 < 0 ? -w : w))
+    end
     # log((U + √dV)/(U - √dV)) with a negative ratio: the same as log((dV + √dU)/(dV - √dU))
     quads = Any[]
     for q in res.quads
@@ -283,4 +326,71 @@ function half_to_s(R::Frac{UPoly{C}}) where {C}
     N, Dn = hom(R.num), hom(R.den)                      # R(θ) = N/Dn · b^(dd - dn)
     N, Dn = dd >= dn ? (N * b^(dd - dn), Dn) : (N, Dn * b^(dn - dd))
     frac(scale(cfromQ(C, Q(2)), N), Dn * P(C[one(C), zero(C), one(C)]))
+end
+
+# step TQ2: ∫ g(s) ds (s = tan u, u = k x) by the full route in Expr (g's parameters as symbols), s = tan u put back,
+# with the jump correction K (u - atan(tan u)), K = Σ c (σ₊ - σ₋)/2 over the terms c atan(p) (σ± the signs of p at
+# s = ±∞, at the parameters' generic values, as step SY). Checked numerically; nothing when the answer has a RootSum
+# or a special function, or an atan argument does not go to ±∞ at both ends.
+function bioche_tan_full(f, x, gq, k, T; build = nothing, lift = nothing)
+    @nospecialize f x
+    xk = string(x)
+    sk = "s_tan"
+    bx = Builder(expr_build, identity, Symbol(sk), T.consts)
+    pt(p) = isempty(p.c) ? 0 : mk(bx, :+, (iszero(c) ? 0 : mk(bx, :*, cterm(bx, c), mk(bx, :^, Symbol(sk), j - 1)) for (j, c) in enumerate(p.c))...)
+    leaves = Dict{String,Any}()
+    toexpr(t) = safe_iscall(t) && !isempty(arguments(t)) ?
+        Expr(:call, opname(operation(t)), (toexpr(a) for a in arguments(t))...) :
+        (t isa Symbol || t isa Number) ? t : (s = term_to_expr(t); s isa Symbol && (leaves[string(s)] = t); s)
+    g = toexpr(mk(bx, :/, pt(gq.num), pt(gq.den)))
+    G = try
+        risch_integrate(g, Symbol(sk); build = expr_build, lift = identity)
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        return nothing
+    end
+    (G isa IntegralWithRootSums || has_special(G)) && return nothing
+    # the jump coefficient over the terms c·atan(p) of G (a sum of products)
+    ev = numeric_evaluator(sk, G)
+    flat(t) = (t isa Expr && t.head === :call && t.args[1] === :+) ? Any[u for a in t.args[2:end] for u in flat(a)] : Any[t]
+    terms = flat(G)
+    J = Any[]
+    for t in terms
+        fs = (t isa Expr && t.head === :call && t.args[1] === :*) ? t.args[2:end] : Any[t]
+        ia = findall(u -> u isa Expr && u.head === :call && u.args[1] === :atan, fs)
+        if isempty(ia)
+            has_op(t, :atan) && return nothing
+            continue
+        end
+        length(ia) == 1 || return nothing
+        p = fs[ia[1]].args[2]
+        c = Any[fs[j] for j in eachindex(fs) if j != ia[1]]
+        has_x(Expr(:call, :*, 1, c...), sk) && return nothing
+        vp, vm = try
+            real(ev(p, 1e8)), real(ev(p, -1e8))
+        catch
+            return nothing
+        end
+        (abs(vp) > 1e4 && abs(vm) > 1e4) || return nothing
+        σ = (Int(sign(vp)) - Int(sign(vm))) // 2
+        σ == 0 || push!(J, σ == 1 ? (isempty(c) ? 1 : Expr(:call, :*, c...)) : Expr(:call, :*, σ, c...))
+    end
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    ut = isone(k) ? bd.x : mk(bd, :*, cterm(bd, k), bd.x)
+    st = mk(bd, :tan, ut)
+    function back(ex)
+        ex === Symbol(sk) && return st
+        ex isa Symbol && return haskey(leaves, string(ex)) ? leaves[string(ex)] : ex === :ℯ ? mk(bd, :exp, bd.lift(1)) :
+                                ex in (:π, :pi) ? bd.lift(π) : ex
+        ex isa Number && return ex isa Rational ? cterm(bd, Q(ex)) : bd.lift(ex)
+        (ex isa Expr && ex.head === :call) || return ex
+        bd.build(op_function(ex), (back(a) for a in ex.args[2:end])...)
+    end
+    H = back(G)
+    if !isempty(J)
+        K = back(length(J) == 1 ? J[1] : Expr(:call, :+, J...))
+        H = mk(bd, :+, H, mk(bd, :*, K, mk(bd, :+, ut, mk(bd, :*, bd.lift(-1), mk(bd, :atan, st)))))
+    end
+    numeric_antiderivative(f, H, xk) || return nothing
+    H
 end
