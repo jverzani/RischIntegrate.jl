@@ -3192,4 +3192,45 @@ end
     f = :(1 / (a + b * tan(x) ^ 2))
     F = Risch.risch_integrate(f, :x; build = build, lift = identity)
     @test isapprox(ev(F, pi / 2 + 1e-7), ev(F, pi / 2 - 1e-7); atol = 1e-5)
+
+# SymPy round 7: erf of a complex shift (step GT, #21362, #21041); inverse trigonometric and nested constants as opaque
+# constants (step OC, #21024, #21034); the numeric check at a high frequency (#21741); every x-free factor out of the
+# integral when the field refuses (step FX, #22075)
+@testset "SymPy round 7: complex Gaussians, opaque constants, high frequencies" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(erf = SpecialFunctions.erf), :(erfi = SpecialFunctions.erfi),
+                                                :(x = $x0), :(a = 0.7)), e))
+    dcheck(f, F) = all(x0 -> isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, complex(x0)); rtol = 1e-6, atol = 1e-9),
+                       (0.3, 1.2, -0.8, 2.1))
+    for f in (:(sin(x) * exp(-x ^ 2)), :(sin(2x) * exp(-x ^ 2)), :(cos(x) * exp(-x ^ 2)), :(exp(-x ^ 2 + 2im * x)),
+              :(x ^ 2 * cos(3x + 1) * exp(-2 * x ^ 2 + x)), :(sin(x) ^ 2 * exp(-x ^ 2)), :(exp(x ^ 2) * cos(x)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("erf", string(F)) && dcheck(f, F)
+    end
+    # the elementary part in real form: no i outside the erf terms
+    F = Risch.risch_integrate(:(x * exp(-x ^ 2) * sin(x)), :x; build = build, lift = identity)
+    @test occursin("-1//2 * exp(-1 * x ^ 2) * sin(x)", string(F))
+    for (f, c) in ((:(x / (atan(4) + x)), "atan(4)"), (:(x / (asin(5) + x)), "asin(5)"), (:(x / (acos(1 // 3) + x)), "acos(1 // 3)"),
+                   (:(x / (asinh(4) + x)), "asinh(4)"), (:((x + cosh(cos(4))) / (x * (x + 1 / (12x)))), "cosh(cos(4))"),
+                   (:(x * exp(sin(1))), "exp(sin(1))"))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        # (asin 5 is not real: the exact answer instead of the Float64 check)
+        @test c == "asin(5)" ? string(F) == "x + (-1 * asin(5)) * log(asin(5) + x)" : occursin(c, string(F)) && dcheck(f, F)
+    end
+    @test string(Risch.risch_integrate(:(x ^ 2 * atanh(1 // 3)), :x; build = build, lift = identity)) == "(1//6 * log(2)) * x ^ 3"
+    # √2 beside a parameter and the √π of the erf (SymJ writes 1/√(2π) as √2/(2√π))
+    for f in (:(sqrt(2) * (x + a) ^ 2 * exp(-x ^ 2 / 2)), :(sqrt(2) * (x + a) ^ 2 * exp(-x ^ 2 / 2) / sqrt(pi)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test dcheck(f, F)
+    end
+    F = Risch.risch_integrate(:(exp(-40000im * x * z)), :z; build = build, lift = identity)
+    @test occursin("40000", string(F))
+    z = SymEngine.symbols("z"); y = SymEngine.symbols("y")
+    g = exp(-40000 * SymEngine.IM * y * z)
+    G = Risch.risch_integrate(g, z)
+    @test abs(SymEngine.N(SymEngine.subs(SymEngine.diff(G, z) - g, y => 0.7, z => 0.3))) < 1e-6
+    w = SymEngine.symbols("w")
+    g = w / (atan(SymEngine.Basic(4)) + w)
+    G = Risch.risch_integrate(g, w)
+    @test abs(SymEngine.N(SymEngine.subs(SymEngine.diff(G, w) - g, w => 0.9))) < 1e-10
 end

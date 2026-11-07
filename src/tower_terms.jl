@@ -43,6 +43,10 @@ exp_arg(t) = !isnode(t) ? nothing : (opname(operation(t)) === :exp && length(arg
 
 const ALGEBRAIC = (:sqrt, :cbrt)
 const TRIG = (:sin, :cos, :tan, :cot, :sec, :csc, :atan, :abs)
+nested_transc(t) = safe_iscall(t) && !isempty(arguments(t)) &&
+    (opname(operation(t)) in (:sin, :cos, :tan, :cot, :sec, :csc, :sinh, :cosh, :tanh, :coth, :sech, :csch, :exp, :atan) ||
+     opname(operation(t)) in INV_CONST || any(nested_transc, arguments(t)))
+const INV_CONST = (:atan, :acot, :asin, :acos, :asec, :acsc, :asinh, :acosh, :atanh, :acoth, :asech, :acsch)
 
 function parse_tower(t, T::Tower)
     @nospecialize t
@@ -83,6 +87,19 @@ function parse_tower(t, T::Tower)
                 n === :sec && return lconst(T, cfromQ(C, Q(2)), l) / c2       # sec = 1/cos
                 return lconst(T, ci + ci, l) / s2i                            # csc = 1/sin
             end
+            # step OC: an inverse trigonometric or hyperbolic function of a constant (atan 4, asin 5: SymPy #21024,
+            # #21034) is an opaque constant (as a parameter, step SY): nothing in the integrand differentiates it, and
+            # its value would need π or a radical the field does not have (atan 0 = 0 stays exact)
+            if n in INV_CONST && length(args) == 1 && !has_x(args[1], T.xk)
+                n === :atan || return sym_const(T, t)
+                c = try
+                    make_atan(T, parse_tower(args[1], T))
+                catch e
+                    (e isa RischNotImplemented && startswith(e.msg, "atan of a nonzero constant")) || rethrow()
+                    nothing
+                end
+                return c === nothing ? sym_const(T, t) : c
+            end
             if n === :atan && length(args) == 1                  # step TA
                 return make_atan(T, parse_tower(args[1], T))
             end
@@ -94,6 +111,12 @@ function parse_tower(t, T::Tower)
                 u = parse_tower(args[2], T)
                 has_x(args[2], T.xk) && return make_exp(T, u)       # E^u = exp(u)
                 return const_exp_or_opaque(T, t, u)
+            end
+            # exp or a hyperbolic function of a constant with a transcendental function in it (cosh(cos 4), SymPy
+            # #21034): an opaque constant, before its argument brings e^(4i) into the field (as const_exp_or_opaque)
+            if n in (:exp, :sinh, :cosh, :tanh, :coth, :sech, :csch) && length(args) == 1 && !has_x(args[1], T.xk) &&
+               nested_transc(args[1])
+                return sym_const(T, t)
             end
             a = Any[parse_tower(u, T) for u in args]
             if n === :+
@@ -116,6 +139,16 @@ function parse_tower(t, T::Tower)
             elseif n === :log && length(a) == 1
                 return make_log(T, a[1])
             elseif n in (:sinh, :cosh, :tanh, :coth, :sech, :csch) && length(a) == 1
+                # (of a constant whose exp the field has no generator for, cosh(cos 4): an opaque constant, as for
+                # exp, SymPy #21034)
+                if !has_x(args[1], T.xk)
+                    try
+                        make_exp(T, a[1])
+                    catch e
+                        (e isa RischNotImplemented && startswith(e.msg, "exp of the constant")) || rethrow()
+                        return sym_const(T, t)
+                    end
+                end
                 e1 = make_exp(T, a[1])
                 e2 = make_exp(T, -a[1])
                 p, m = unify(T, e1, e2)
