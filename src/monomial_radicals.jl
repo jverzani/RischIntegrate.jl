@@ -513,6 +513,7 @@ function tan_walker(bd::Builder, Ls::String)
     pw(b, e) = e == 1 ? b : mk(bd, :^, b, bd.lift(e))
     function walk(u)
         (safe_iscall(u) && !isempty(arguments(u))) || return u
+        leaf_rational(u) === nothing || return u                # (an exponent 5/2 kept, not 5 * 2^-1)
         n = opname(operation(u))
         if n === :+ || n === :-
             as = Any[walk(s) for s in arguments(u)]
@@ -553,6 +554,76 @@ function tan_walker(bd::Builder, Ls::String)
     end
 end
 
+# a square root (or its odd powers) of a + b tan L, a or b a parameter, L the one trigonometric argument of f: the
+# radicals that step TQ takes before steps MR and HT
+function tan_linear_radicand(e, u, f, x)
+    @nospecialize u f x
+    xk = string(x)
+    (denominator(e) == 2 && (has_op(u, :tan) || has_op(u, :cot)) && has_param(u, xk)) || return false
+    L = single_trig_arg(f, xk)
+    L === nothing && return false
+    try
+        bd = Builder(expr_build, identity, :t__)
+        ut = tan_walker(bd, string(L))(u)
+        ut === nothing && return false
+        T, el = build_tower(ut, "t__")
+        isempty(T.levels) && degree(el.den) == 0 && degree(el.num) == 1
+    catch err
+        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        false
+    end
+end
+
+# Step TQS: g = r(t) ρ (ρ the radicals of one radicand with a parameter, r ∈ ℚ(a, …)(t)) whose denominator has
+# 1 + t² beside other factors H: r = P₁/(1 + t²)ᵐ + P₂/H, the two parts integrated apart. In u = √(a + b t),
+# 1 + t² is the even quartic (u² - a)² + b² (step BQP), and the residues of H's factors are found alone, where
+# those of the product over ℚ(a, b) were not (cot(c + d x)/√(a + b tan(c + d x))). The parts, or nothing.
+function tan_split_parts(g, xk::String, bd::Builder)
+    # (not over ℚ(i): 1 + t² = (1 + i t)(1 - i t) shares factors with the rest, and i, as I, would be a parameter)
+    (has_imag_unit(g) || has_leaf(g, "I")) && return nothing
+    rad, rest = Any[], Any[]
+    for (b, e) in product_factors!(Any[], g, 1)
+        rp = radical_parts(b)
+        push!(rp !== nothing && has_x(rp[2], xk) ? rad : rest, (b, e))
+    end
+    isempty(rad) && return nothing
+    us = string(radical_parts(rad[1][1])[2])
+    all(((b, _),) -> string(radical_parts(b)[2]) == us, rad) || return nothing
+    has_param(radical_parts(rad[1][1])[2], xk) || return nothing
+    pw(b, e) = e == 1 ? b : mk(bd, :^, b, bd.lift(e))
+    prod_(ts) = isempty(ts) ? bd.lift(1) : length(ts) == 1 ? ts[1] : mk(bd, :*, ts...)
+    T, el = try
+        build_tower(prod_(Any[pw(b, e) for (b, e) in rest]), xk)
+    catch err
+        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        return nothing
+    end
+    isempty(T.levels) || return nothing
+    C = ctype(T)
+    (C === Q || rational_tfield(C)) || return nothing
+    P = UPoly{C}
+    W = P(C[one(C), zero(C), one(C)])
+    H, m = el.den, 0
+    while degree(H) >= 2
+        q, rm = divrem(H, W)
+        iszero(rm) || break
+        H, m = q, m + 1
+    end
+    (m > 0 && degree(H) > 0) || return nothing
+    Wm = one(P)
+    for _ in 1:m
+        Wm = Wm * W
+    end
+    s, _, gg = gcdex(H, Wm)                            # s H + t Wᵐ = gg ∈ C
+    degree(gg) == 0 || return nothing
+    P1 = rem(el.num * s * P(C[inv(gg.c[1])]), Wm)
+    P2, r2 = divrem(el.num - P1 * H, Wm)
+    iszero(r2) || return nothing
+    bt = Builder(bd.build, bd.lift, bd.x, T.consts)
+    ρ = prod_(Any[pw(b, e) for (b, e) in rad])
+    Any[mk(bt, :*, frac_term(bt, frac(p, d)), ρ) for (p, d) in ((P1, Wm), (P2, H)) if !iszero(p)]
+end
+
 # Step TQ: radicals of a + b tan(L) (L = a x + b, as in step HT) by t = tan(L) itself, when the rest of the integrand
 # is a rational function of tan L (Bioche: invariant under L ↦ L + π): tan → t, cot → 1/t, and in each product
 # sinʲ cosᵏ secˡ cscᵐ with j + k - l - m even, sin = t w⁻¹, cos = w⁻¹, w = √(1 + t²), so the w's give (1 + t²)^(integer);
@@ -577,7 +648,18 @@ function integrate_tan_radicals(f, x; build = nothing, lift = nothing, verify::B
     ft = walk(f)
     ft === nothing && return nothing
     g = mk(bd, :/, ft, mk(bd, :*, a, W2))
-    G = risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    G = nothing
+    parts = tan_split_parts(g, xk, bd)
+    if parts !== nothing
+        Gs = try
+            Any[risch_integrate(h, x; build = build, lift = lift, verify = verify) for h in parts]
+        catch e
+            e isa RischNotImplemented || rethrow()
+            nothing
+        end
+        (Gs === nothing || any(F -> F isa IntegralWithRootSums, Gs)) || (G = mk(bd, :+, Gs...))
+    end
+    G === nothing && (G = risch_integrate(g, x; build = build, lift = lift, verify = verify))
     tL = mk(bd, :tan, L)
     radmap = Dict{String,Any}()
     function radicals!(u)

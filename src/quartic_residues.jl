@@ -163,21 +163,49 @@ end
 #     ∫ (x² + q)/G = (1/s) (atan((2x + r)/s) + atan((2x - r)/s)),
 #     ∫ (x² - q)/G = (1/(2r)) log((x² - r x + q)/(x² + r x + q)),
 # all continuous on ℝ. The term keeps its derivative A/G (Rubi's form, with √(√2 ± 1) for 1/(x⁸ + 4)).
-struct BiquadTerm
-    A::QX
-    G::QX
+struct BiquadTerm{P}
+    A::P
+    G::P
 end
 derivative_of(q::BiquadTerm) = frac(q.A, q.G)
 tower_quad(q::BiquadTerm) = BaseTerms(q, derivative_of(q))
 is_biquad(g::QX) = degree(g) == 4 && iszero(g.c[2]) && iszero(g.c[4]) && isone(g.c[5]) && g.c[1] > 0 &&
                    g.c[3]^2 < 4 * g.c[1]
+# over a parameter field ℚ(a, …) (step BQP): x⁴ + b x² + c with 4c - b² positive for all real parameters, as its
+# normal form shows (num and den even in each parameter with positive coefficients: 4b² for (x² - a)² + b²), so
+# that c > 0 and the real forms below hold wherever they are defined
+function pos_even(p::UPoly)
+    iszero(p) && return false
+    for (k, c) in enumerate(p.c)
+        iszero(c) && continue
+        (isodd(k - 1) || !pos_even(c)) && return false
+    end
+    true
+end
+pos_even(c::Q) = c > 0
+pos_even(c::Frac) = pos_even(c.num) && pos_even(c.den)
+pos_even(c) = false
+is_biquad(g::UPoly{C}) where {C<:Frac} = degree(g) == 4 && iszero(g.c[2]) && iszero(g.c[4]) && isone(g.c[5]) &&
+                                         pos_even(4 * g.c[1] - g.c[3]^2)
 
 # A/D (D squarefree, monic) with the even quartic factors of D split off as `BiquadTerm`s, the rest by `log_part`;
 # nothing when D has none
 function biquad_log_part(A::QX, D::QX)
     gs = filter(is_biquad, factor_Q(D))
     isempty(gs) && return nothing
-    logs, atans, unresolved, quads = Tuple{Q,QX}[], Tuple{Q,Frac{QX}}[], Any[], Any[]
+    biquad_split(A, D, gs)
+end
+# over ℚ(a, …): D an even quartic, or x times one (x √(a + b t) in the integrand, step PR's u = √(a + b t))
+function biquad_log_part(A::UPoly{C}, D::UPoly{C}) where {C<:Frac}
+    G = D
+    if degree(D) == 5 && iszero(D.c[1])
+        G = UPoly{C}(D.c[2:end])
+    end
+    is_biquad(G) || return nothing
+    biquad_split(A, D, [G])
+end
+function biquad_split(A::UPoly{C}, D::UPoly{C}, gs) where {C}
+    logs, atans, unresolved, quads = Tuple{C,UPoly{C}}[], Tuple{C,Frac{UPoly{C}}}[], Any[], Any[]
     for G in gs
         H = quo(D, G)
         s, t, g = gcdex(H, G)                           # s H + t G = 1
@@ -186,43 +214,48 @@ function biquad_log_part(A::QX, D::QX)
         A, D = rem(A * t, H), H
     end
     if degree(D) > 0 && !iszero(A)
-        l2, a2, u2, q2 = log_part(A, D)
+        l2, a2, u2, q2 = log_part(A, monic(D))
+        isempty(u2) || return nothing
         append!(logs, l2); append!(atans, a2); append!(unresolved, u2); append!(quads, q2)
     end
     logs, atans, unresolved, quads
 end
 
-function to_term(b, q::BiquadTerm)
-    co(p, k) = k <= length(p.c) ? p.c[k] : Q(0)
+function to_term(b, q::BiquadTerm{P}) where {P}
+    C = eltype(q.G.c)
+    cq(v) = cfromQ(C, Q(v))
+    co(p, k) = k <= length(p.c) ? p.c[k] : zero(C)
     a0, a1, a2, a3 = co(q.A, 1), co(q.A, 2), co(q.A, 3), co(q.A, 4)
     bb, c = q.G.c[3], q.G.c[1]
     x = b.x
-    rt(v::Q) = (s = rat_sqrt(v); s === nothing ? mk(b, :sqrt, cterm(b, v)) : cterm(b, s))
-    sc(c, t) = isone(c) ? t : mk(b, :*, c isa Q ? cterm(b, c) : c, t)
+    rt(v) = (s = csqrt(v); s === nothing ? mk(b, :sqrt, cterm(b, v)) : cterm(b, s))
+    sc(c, t) = isone(c) ? t : mk(b, :*, cterm(b, c), t)
     x2 = mk(b, :^, x, b.lift(2))
     ts = Any[]
-    iszero(a3) || push!(ts, sc(a3 / 4, mk(b, :log, poly_term(b, q.G))))
-    k = a1 - a3 * bb / 2
+    iszero(a3) || push!(ts, sc(a3 / cq(4), mk(b, :log, poly_term(b, q.G))))
+    k = a1 - a3 * bb / cq(2)
     if !iszero(k)
-        e = 4c - bb^2
+        e = cq(4) * c - bb^2
         se = rt(e)
-        arg = mk(b, :/, poly_term(b, QX(Q[bb, 0, 2])), se)
+        arg = mk(b, :/, poly_term(b, P(C[bb, zero(C), cq(2)])), se)
         push!(ts, mk(b, :*, mk(b, :/, cterm(b, k), se), mk(b, :atan, arg)))
     end
     if !iszero(a0) || !iszero(a2)
-        sq = rat_sqrt(c)
+        sq = csqrt(c)
         qt = rt(c)
         # (2q ∓ b) under the square roots, as terms
-        two_q = sq === nothing ? mk(b, :*, b.lift(2), qt) : cterm(b, 2sq)
-        rarg = sq === nothing ? mk(b, :+, two_q, cterm(b, -bb)) : cterm(b, 2sq - bb)
-        sarg = sq === nothing ? mk(b, :+, two_q, cterm(b, bb)) : cterm(b, 2sq + bb)
-        r = sq !== nothing && rat_sqrt(2sq - bb) !== nothing ? cterm(b, rat_sqrt(2sq - bb)) : mk(b, :sqrt, rarg)
-        s = sq !== nothing && rat_sqrt(2sq + bb) !== nothing ? cterm(b, rat_sqrt(2sq + bb)) : mk(b, :sqrt, sarg)
+        two_q = sq === nothing ? mk(b, :*, b.lift(2), qt) : cterm(b, cq(2) * sq)
+        rarg = sq === nothing ? mk(b, :+, two_q, cterm(b, -bb)) : cterm(b, cq(2) * sq - bb)
+        sarg = sq === nothing ? mk(b, :+, two_q, cterm(b, bb)) : cterm(b, cq(2) * sq + bb)
+        rs = sq === nothing ? nothing : csqrt(cq(2) * sq - bb)
+        ss = sq === nothing ? nothing : csqrt(cq(2) * sq + bb)
+        r = rs === nothing ? mk(b, :sqrt, rarg) : cterm(b, rs)
+        s = ss === nothing ? mk(b, :sqrt, sarg) : cterm(b, ss)
         # α, β = a₂/2 ± a₀/(2q)
-        a0q = iszero(a0) ? nothing : mk(b, :/, cterm(b, a0 / 2), qt)
-        α = a0q === nothing ? cterm(b, a2 / 2) : iszero(a2) ? a0q : mk(b, :+, cterm(b, a2 / 2), a0q)
-        β = a0q === nothing ? cterm(b, a2 / 2) :
-            iszero(a2) ? mk(b, :*, b.lift(-1), a0q) : mk(b, :+, cterm(b, a2 / 2), mk(b, :*, b.lift(-1), a0q))
+        a0q = iszero(a0) ? nothing : mk(b, :/, cterm(b, a0 / cq(2)), qt)
+        α = a0q === nothing ? cterm(b, a2 / cq(2)) : iszero(a2) ? a0q : mk(b, :+, cterm(b, a2 / cq(2)), a0q)
+        β = a0q === nothing ? cterm(b, a2 / cq(2)) :
+            iszero(a2) ? mk(b, :*, b.lift(-1), a0q) : mk(b, :+, cterm(b, a2 / cq(2)), mk(b, :*, b.lift(-1), a0q))
         rx = mk(b, :*, r, x)
         twox = mk(b, :*, b.lift(2), x)
         at1 = mk(b, :atan, mk(b, :/, mk(b, :+, twox, r), s))
@@ -235,18 +268,18 @@ function to_term(b, q::BiquadTerm)
 end
 
 # the x-jump at ±∞ of the two linear atans (bioche), as a term, or nothing
-function biquad_jump(b, q::BiquadTerm)
-    co(p, k) = k <= length(p.c) ? p.c[k] : Q(0)
+function biquad_jump(b, q::BiquadTerm{P}) where {P}
+    C = eltype(q.G.c)
+    cq(v) = cfromQ(C, Q(v))
+    co(p, k) = k <= length(p.c) ? p.c[k] : zero(C)
     a0, a2 = co(q.A, 1), co(q.A, 3)
     (iszero(a0) && iszero(a2)) && return nothing
-    t = to_term(b, BiquadTerm(QX(Q[a0, 0, a2]), q.G))       # (only the even part has linear atans)
-    nothing === t && return nothing
     c, bb = q.G.c[1], q.G.c[3]
-    sq = rat_sqrt(c)
+    sq = csqrt(c)
     qt = sq === nothing ? mk(b, :sqrt, cterm(b, c)) : cterm(b, sq)
-    sarg = sq === nothing ? mk(b, :+, mk(b, :*, b.lift(2), qt), cterm(b, bb)) : cterm(b, 2sq + bb)
+    sarg = sq === nothing ? mk(b, :+, mk(b, :*, b.lift(2), qt), cterm(b, bb)) : cterm(b, cq(2) * sq + bb)
     s = mk(b, :sqrt, sarg)
-    a0q = iszero(a0) ? nothing : mk(b, :/, cterm(b, a0 / 2), qt)
-    α = a0q === nothing ? cterm(b, a2 / 2) : iszero(a2) ? a0q : mk(b, :+, cterm(b, a2 / 2), a0q)
+    a0q = iszero(a0) ? nothing : mk(b, :/, cterm(b, a0 / cq(2)), qt)
+    α = a0q === nothing ? cterm(b, a2 / cq(2)) : iszero(a2) ? a0q : mk(b, :+, cterm(b, a2 / cq(2)), a0q)
     mk(b, :/, mk(b, :*, b.lift(2), α), s)                   # 2 atans, coefficient α/s, σ = +1 each
 end

@@ -2877,7 +2877,15 @@ end
     end
     F = Risch.risch_integrate(:((A + B * tan(d * x + c)) / tan(d * x + c) ^ (3 / 2) / (a + im * a * tan(d * x + c)) ^ 2), :x;
                               build = build, lift = identity)
-    @test F isa Risch.IntegralWithRootSums && occursin("im", string(F.elementary))
+    # (the quartic u⁴ + 1 of u = √tan over ℚ(A, B, a) in real form, step BQP: no RootSums)
+    @test !(F isa Risch.IntegralWithRootSums) && occursin("im", string(F))
+    evp(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7), :(A = 0.6), :(B = -1.7), :(c = 0.2),
+                                                  :(d = 0.9)), e))
+    for x0 in (0.3, 1.2, 3.6)
+        @test isapprox((evp(F, x0 + 1e-6) - evp(F, x0 - 1e-6)) / 2e-6,
+                       evp(:((A + B * tan(d * x + c)) / tan(d * x + c) ^ (3 / 2) / (a + im * a * tan(d * x + c)) ^ 2), x0);
+                       rtol = 1e-6)
+    end
 end
 
 # SymPy #26509: x² atan(c + (1 + ic) tan(bx + a)) ran for minutes in the substitutions (steps US and TS2, over
@@ -3234,4 +3242,31 @@ end
     g = w / (atan(SymEngine.Basic(4)) + w)
     G = Risch.risch_integrate(g, w)
     @test abs(SymEngine.N(SymEngine.subs(SymEngine.diff(G, w) - g, w => 0.9))) < 1e-10
+end
+
+# √(a + b tan L) with parameters: in u = √(a + b t) (t = tan L, step TQ) the factor 1 + t² is the even quartic
+# (u² - a)² + b², in real form over ℚ(a, b) (step BQP); its part split off the rest of the integrand (step TQS)
+@testset "radicals of a + b tan with parameters (steps BQP, TQS)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0, b0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7), :(b = $b0), :(c = -0.4), :(d = 0.9),
+                                                :(A = 0.6), :(B = -1.7)), e))
+    # the even quartic alone, over ℚ(a, b)
+    for f in (:(w ^ 2 / ((w ^ 2 - a) ^ 2 + b ^ 2)), :(1 / ((w ^ 2 - a) ^ 2 + b ^ 2)), :((w ^ 3 + w + 1) / (w * ((w ^ 2 - a) ^ 2 + b ^ 2))))
+        F = Risch.risch_integrate(f, :w; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        evw(e, w0) = Core.eval(Main, Expr(:let, Expr(:block, :(w = $w0), :(a = 0.7), :(b = 1.3)), e))
+        for w0 in (0.3, 1.1, 0.7, 2.4)                   # (w > 0: log w in the third)
+            @test isapprox((evw(F, w0 + 1e-6) - evw(F, w0 - 1e-6)) / 2e-6, evw(f, w0); rtol = 1e-5, atol = 1e-7)
+        end
+    end
+    for f in (:(sqrt(a + b * tan(x))), :(1 / sqrt(a + b * tan(x))), :(sqrt(a + b * tan(c + d * x))),
+              :(cot(x) ^ 3 * sqrt(a + b * tan(x))), :(tan(x) ^ 4 / (a + b * tan(x)) ^ (5 / 2)),
+              :(cot(x) / sqrt(a + b * tan(x))), :(cot(x) ^ 2 / (a + b * tan(x)) ^ (5 / 2)),
+              :(cot(x) ^ 3 * (A + B * tan(x)) / (a + b * tan(x)) ^ (3 / 2)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        for b0 in (1.3, 2.2), x0 in (0.2, 0.9, 1.2, 4.0, -2.5)       # (a + b tan > 0 there)
+            @test isapprox((ev(F, x0 + 1e-6, b0) - ev(F, x0 - 1e-6, b0)) / 2e-6, ev(f, x0, b0); rtol = 1e-5, atol = 1e-7)
+        end
+    end
 end
