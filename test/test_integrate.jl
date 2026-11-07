@@ -3171,3 +3171,25 @@ end
         @test_throws Risch.RischNotImplemented Risch.risch_integrate(f, :x; build = build, lift = identity)
     end
 end
+
+# rational functions of tan with parameters (stratified-scan timeouts in 4.3 Tangent): real poles of g(s) at s = 0
+# (cot, csc) with log w²/2 (step TP), parameter residues by the full route with the atan jump correction (step TQ2),
+# no step TB with three or more parameters, Bioche's symmetry tests as cross products
+@testset "rational functions of tan with parameters (steps TP, TQ2)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7), :(b = 1.3), :(c = -0.4), :(d = 0.9),
+                                                :(e = 0.3), :(f = 1.1)), e))
+    for f in (:(cot(x) ^ 2 / (2 + 3 * tan(x) ^ 2)), :(cot(x) ^ 2 / (a + b * tan(x) ^ 2)), :(csc(x) ^ 4 / (a + b * tan(x) ^ 2) ^ 2),
+              :(cot(e + f * x) ^ 6 / (a + b * tan(e + f * x) ^ 2) ^ 2), :((a + b * tan(x)) ^ 3 * (c + d * tan(x)) ^ 2),
+              :(1 / (a + b * tan(x) ^ 2)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        for x0 in (0.2, 0.9, 1.7, 2.6, -0.8, 4.0)          # (both sides of the poles of tan and cot)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5, atol = 1e-7)
+        end
+    end
+    # the antiderivative is continuous where tan jumps (x = π/2) when the integrand is: the jump correction
+    f = :(1 / (a + b * tan(x) ^ 2))
+    F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+    @test isapprox(ev(F, pi / 2 + 1e-7), ev(F, pi / 2 - 1e-7); atol = 1e-5)
+end
