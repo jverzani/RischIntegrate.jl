@@ -3290,3 +3290,34 @@ end
         end
     end
 end
+
+# SymPy round 8: ∫ erf(u) e^w with mismatched Gaussians decided non-elementary, not by parts back and forth (#19846);
+# exp(α + iβ) as exp(α) exp(iβ) (step EC, #20034); Ei((n + 1) log x) for x^n/log x with a symbolic n (#20740)
+@testset "SymPy round 8: erf by parts, complex exponentials, Ei of a log" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(erf = SpecialFunctions.erf), :(expinti = SpecialFunctions.expinti),
+                                                :(x = $x0), :(z = $x0), :(n = 0.7), :(a = 0.7)), e))
+    dcheck(f, F, pts) = all(x0 -> isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6), pts)
+    for f in (:(erf(x - 1) * exp(-x ^ 2)), :(erf(x) * exp(-(x - 1) ^ 2)), :(erf(x) * exp(-x ^ 2 / 2)), :(erfi(x) * exp(x ^ 2 + x)))
+        @test_throws Risch.NotElementary Risch.risch_integrate(f, :x; build = build, lift = identity)
+    end
+    for f in (:(erf(x) * exp(-x ^ 2)), :(erf(2x + 1) * exp(-(2x + 1) ^ 2)), :(erf(x) * exp(x)))   # (still by parts)
+        @test dcheck(f, Risch.risch_integrate(f, :x; build = build, lift = identity), (0.3, 1.1, -0.8))
+    end
+    for f in (:(exp((1 + im) * z)), :(exp(z + 2im * z)), :(z * exp((2 - 3im) * z)), :(exp(a * z + im * z)))
+        F = Risch.risch_integrate(f, :z; build = build, lift = identity)
+        @test dcheck(f, F, (0.3, 1.1, -0.8))
+    end
+    for (f, s) in ((:(x ^ n / log(x)), "expinti((1 + n) * log(x))"), (:(x ^ n / log(x) ^ 2), "expinti((1 + n) * log(x))"),
+                   (:(x ^ n / log(x) ^ 3), "expinti((1 + n) * log(x))"), (:(x ^ (n - 1) / log(x)), "expinti(n * log(x))"))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin(s, string(F)) && dcheck(f, F, (0.4, 1.7, 2.9))
+    end
+    # SymEngine (no expinti for its terms: the answer kept as an Expr by the special-function fallback)
+    x, z, n = SymEngine.symbols("x z n")
+    for g in (exp((1 + SymEngine.IM) * z), exp(z + 2 * SymEngine.IM * z))
+        G = Risch.risch_integrate(g, z)
+        @test abs(SymEngine.N(SymEngine.subs(SymEngine.diff(G, z) - g, z => 1.3))) < 1e-10
+    end
+    @test occursin("expinti((1 + n) * log(x))", string(Risch.risch_integrate(x ^ n / log(x), x)))
+end
