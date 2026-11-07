@@ -554,12 +554,12 @@ function tan_walker(bd::Builder, Ls::String)
     end
 end
 
-# a square root (or its odd powers) of a + b tan L, a or b a parameter, L the one trigonometric argument of f: the
-# radicals that step TQ takes before steps MR and HT
-function tan_linear_radicand(e, u, f, x)
+# a square root (or its odd powers) of a + b tan L, a or b a parameter (param = true), L the one trigonometric argument
+# of f: the radicals that step TQ takes before steps MR and HT
+function tan_linear_radicand(e, u, f, x; param::Bool = true)
     @nospecialize u f x
     xk = string(x)
-    (denominator(e) == 2 && (has_op(u, :tan) || has_op(u, :cot)) && has_param(u, xk)) || return false
+    (denominator(e) == 2 && (has_op(u, :tan) || has_op(u, :cot)) && (!param || has_param(u, xk))) || return false
     L = single_trig_arg(f, xk)
     L === nothing && return false
     try
@@ -573,6 +573,11 @@ function tan_linear_radicand(e, u, f, x)
         false
     end
 end
+
+# two square roots of different radicands a + b tan L (step TR, parameters or not: √tan √(1 + tan) had a RootSum
+# from step RM's merged quadratic radicand), or one with a parameter: step TQ first
+tq_first(f, x, rads) = any(((e, u),) -> tan_linear_radicand(e, u, f, x), rads) ||
+    length(unique(string(u) for (e, u) in rads if tan_linear_radicand(e, u, f, x; param = false))) >= 2
 
 # Step TQS: g = r(t) ρ (ρ the radicals of one radicand with a parameter, r ∈ ℚ(a, …)(t)) whose denominator has
 # 1 + t² beside other factors H: r = P₁/(1 + t²)ᵐ + P₂/H, the two parts integrated apart. In u = √(a + b t),
@@ -624,6 +629,137 @@ function tan_split_parts(g, xk::String, bd::Builder)
     Any[mk(bt, :*, frac_term(bt, frac(p, d)), ρ) for (p, d) in ((P1, Wm), (P2, H)) if !iszero(p)]
 end
 
+# Step TR: square roots of two radicands L₁ = a₁ + b₁t, L₂ = a₂ + b₂t (in t = tan L, step TQ) to odd powers:
+# √L₁^(2k₁+1) √L₂^(2k₂+1) = L₁^k₁ L₂^(k₂+1) u with u = √L₁/√L₂, exactly on every branch ((√L₂)² = L₂).
+# t = (a₁ - a₂u²)/(b₂u² - b₁), dt = 2u(a₂b₁ - a₁b₂)/(b₂u² - b₁)² du make the integrand rational in u. Its
+# denominator's factors are known (u, b₂u² - b₁ for t = ∞, and the images of the rest's factors: 1 + t² gives the
+# even quartic (a₁ - a₂u²)² + (b₂u² - b₁)², step BQP), so it is split by partial fractions over ℚ(a, …) without
+# factoring there, and each part integrated alone; u = √L₁/√L₂ is put back. Rubi 4.3.2.1 √tan (a + b tan)^(5/2),
+# (a + b tan)^(3/2)/(c + d tan)^(3/2). The answer, or nothing.
+function integrate_two_linear_radicals(g, x, bd::Builder; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize g x
+    xk = string(x)
+    rads = Dict{String,Tuple{Any,Q}}()
+    rest = Any[]
+    for (b, e) in product_factors!(Any[], g, 1)
+        rp = radical_parts(b)
+        if rp !== nothing && has_x(rp[2], xk)
+            denominator(rp[1]) == 2 || return nothing
+            k = string(rp[2])
+            rads[k] = (rp[2], get(rads, k, (rp[2], Q(0)))[2] + e * rp[1])
+        else
+            isempty(collect_radicals(b, xk)) || return nothing
+            push!(rest, (b, e))
+        end
+    end
+    length(rads) == 2 || return nothing
+    (L1, E1), (L2, E2) = sort(collect(values(rads)); by = r -> string(r[1]))
+    (isinteger(E1) || isinteger(E2)) && return nothing        # (one odd radical: one radicand, step TQ)
+    lin(L) = (pp = poly_parts(bd, L, xk); (pp === nothing || maximum(keys(pp)) != 1) ? nothing :
+              (get(pp, 0, bd.lift(0)), pp[1]))
+    c1, c2 = lin(L1), lin(L2)
+    (c1 === nothing || c2 === nothing) && return nothing
+    (a1, b1), (a2, b2) = c1, c2
+    u = bd.x
+    neg(t) = mk(bd, :*, bd.lift(-1), t)
+    u2 = mk(bd, :^, u, bd.lift(2))
+    den = mk(bd, :+, mk(bd, :*, b2, u2), neg(b1))              # b₂u² - b₁
+    tu = mk(bd, :/, mk(bd, :+, a1, neg(mk(bd, :*, a2, u2))), den)
+    sub(t) = isnode(t) ? term_rebuild(bd, t, Any[sub(a) for a in arguments(t)]) : (string(t) == xk ? tu : t)
+    pw(b, e) = e == 1 ? b : mk(bd, :^, b, bd.lift(e))
+    k1, k2 = Int(E1 - Q(1) // 2), Int(E2 - Q(1) // 2)
+    dt = mk(bd, :/, mk(bd, :*, bd.lift(2), u, mk(bd, :+, mk(bd, :*, a2, b1), neg(mk(bd, :*, a1, b2)))), pw(den, 2))
+    fs = Any[pw(sub(b), e) for (b, e) in rest]
+    k1 == 0 || push!(fs, pw(sub(L1), k1))
+    k2 + 1 == 0 || push!(fs, pw(sub(L2), k2 + 1))
+    push!(fs, u, dt)
+    gu = mk(bd, :*, fs...)
+    T, el = try
+        build_tower(gu, xk)
+    catch err
+        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        return nothing
+    end
+    isempty(T.levels) || return nothing
+    C = ctype(T)
+    (C === Q || rational_tfield(C)) || return nothing
+    P = UPoly{C}
+    # the known factors, in the field of el
+    cands = P[P(C[zero(C), one(C)])]
+    for t in Any[den, (sub(b) for (b, e) in rest if e < 0)...]
+        φ = try
+            parse_tower(t, T)
+        catch err
+            (err isa RischNotImplemented || err isa RischError || err isa NewConstants || err isa Restart) || rethrow()
+            return nothing
+        end
+        for q in (φ.num, φ.den)
+            degree(q) > 0 && push!(cands, monic(q))
+        end
+    end
+    parts = known_factor_parts(el, cands)
+    parts === nothing && return nothing
+    bt = Builder(bd.build, bd.lift, bd.x, T.consts)
+    Gs = Any[]
+    for φ in parts
+        G = try
+            risch_integrate(frac_term(bt, φ), x; build = build, lift = lift, verify = verify)
+        catch err
+            (err isa RischNotImplemented || err isa NotElementary) || rethrow()
+            return nothing
+        end
+        G isa IntegralWithRootSums && return nothing
+        push!(Gs, G)
+    end
+    G = length(Gs) == 1 ? Gs[1] : mk(bd, :+, Gs...)
+    ub = mk(bd, :/, mk(bd, :sqrt, L1), mk(bd, :sqrt, L2))
+    back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(a) for a in arguments(t)]) : (string(t) == xk ? ub : t)
+    back(G)
+end
+
+# el = Σ Pᵢ/Fᵢ^mᵢ (+ a polynomial in the last part) for the factors Fᵢ of el's denominator among `cands` (pairwise
+# coprime; what is left of the denominator is one more factor): the parts (el alone for one factor), or nothing
+# (cands not coprime)
+function known_factor_parts(el::Frac{UPoly{C}}, cands) where {C}
+    P = UPoly{C}
+    D = el.den
+    facs = Tuple{P,Int}[]
+    for F in cands
+        any(((G, _),) -> G == F, facs) && continue
+        m = 0
+        while degree(D) >= degree(F)
+            q, r = divrem(D, F)
+            iszero(r) || break
+            D, m = q, m + 1
+        end
+        m > 0 && push!(facs, (F, m))
+    end
+    degree(D) > 0 && push!(facs, (monic(D), 1))
+    length(facs) <= 1 && return Frac{P}[el]                    # (one factor: el whole)
+    N = el.num * P(C[inv(lc(el.den))])
+    Drest = one(P)
+    for (F, m) in facs, _ in 1:m
+        Drest = Drest * F
+    end
+    parts = Frac{P}[]
+    for (F, m) in facs[1:end-1]
+        Fm = one(P)
+        for _ in 1:m
+            Fm = Fm * F
+        end
+        H = quo(Drest, Fm)
+        s, _, gg = gcdex(H, Fm)
+        degree(gg) == 0 || return nothing
+        P1 = rem(N * s * P(C[inv(gg.c[1])]), Fm)
+        N, r = divrem(N - P1 * H, Fm)
+        iszero(r) || return nothing
+        iszero(P1) || push!(parts, frac(P1, Fm))
+        Drest = H
+    end
+    iszero(N) || push!(parts, frac(N, Drest))
+    parts
+end
+
 # Step TQ: radicals of a + b tan(L) (L = a x + b, as in step HT) by t = tan(L) itself, when the rest of the integrand
 # is a rational function of tan L (Bioche: invariant under L ↦ L + π): tan → t, cot → 1/t, and in each product
 # sinʲ cosᵏ secˡ cscᵐ with j + k - l - m even, sin = t w⁻¹, cos = w⁻¹, w = √(1 + t²), so the w's give (1 + t²)^(integer);
@@ -648,8 +784,8 @@ function integrate_tan_radicals(f, x; build = nothing, lift = nothing, verify::B
     ft = walk(f)
     ft === nothing && return nothing
     g = mk(bd, :/, ft, mk(bd, :*, a, W2))
-    G = nothing
-    parts = tan_split_parts(g, xk, bd)
+    G = integrate_two_linear_radicals(g, x, bd; build = build, lift = lift, verify = verify)
+    parts = G === nothing ? tan_split_parts(g, xk, bd) : nothing
     if parts !== nothing
         Gs = try
             Any[risch_integrate(h, x; build = build, lift = lift, verify = verify) for h in parts]

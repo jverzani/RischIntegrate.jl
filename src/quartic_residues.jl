@@ -172,7 +172,8 @@ tower_quad(q::BiquadTerm) = BaseTerms(q, derivative_of(q))
 is_biquad(g::QX) = degree(g) == 4 && iszero(g.c[2]) && iszero(g.c[4]) && isone(g.c[5]) && g.c[1] > 0 &&
                    g.c[3]^2 < 4 * g.c[1]
 # over a parameter field ℚ(a, …) (step BQP): x⁴ + b x² + c with 4c - b² positive for all real parameters, as its
-# normal form shows (num and den even in each parameter with positive coefficients: 4b² for (x² - a)² + b²), so
+# normal form shows (num and den even in each parameter with positive coefficients: 4b² for (x² - a)² + b²; or a
+# square: 4(a₁b₂ - a₂b₁)² for (a₁ - a₂x²)² + (b₂x² - b₁)², step TR), so
 # that c > 0 and the real forms below hold wherever they are defined
 function pos_even(p::UPoly)
     iszero(p) && return false
@@ -186,7 +187,7 @@ pos_even(c::Q) = c > 0
 pos_even(c::Frac) = pos_even(c.num) && pos_even(c.den)
 pos_even(c) = false
 is_biquad(g::UPoly{C}) where {C<:Frac} = degree(g) == 4 && iszero(g.c[2]) && iszero(g.c[4]) && isone(g.c[5]) &&
-                                         pos_even(4 * g.c[1] - g.c[3]^2)
+                                         (e = 4 * g.c[1] - g.c[3]^2; pos_even(e) || csqrt(e) !== nothing)
 
 # A/D (D squarefree, monic) with the even quartic factors of D split off as `BiquadTerm`s, the rest by `log_part`;
 # nothing when D has none
