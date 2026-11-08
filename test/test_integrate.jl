@@ -3271,6 +3271,26 @@ end
     end
 end
 
+# two radicands a₁ + b₁ tan, a₂ + b₂ tan to odd powers of their square roots: u = √L₁/√L₂ (step TR), the image of
+# 1 + t² an even quartic in u whose 4γ - β² is the square 4(a₁b₂ - a₂b₁)² (step BQP)
+@testset "two radicands of a + b tan (step TR)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7), :(b = 1.3), :(c = 0.4), :(d = 0.9),
+                                                :(A = 0.6), :(B = -1.7)), e))
+    for f in (:(sqrt(tan(x)) * sqrt(1 + tan(x))), :(sqrt(tan(x)) * (a + b * tan(x)) ^ (5 / 2)),
+              :(1 / (sqrt(tan(x)) * (a + b * tan(x)) ^ (3 / 2))), :(1 / (tan(x) ^ (3 / 2) * (a + b * tan(x)) ^ (5 / 2))),
+              :((A + B * tan(x)) / (tan(x) ^ (3 / 2) * (a + b * tan(x)) ^ (5 / 2))),
+              :((a + b * tan(x)) ^ (3 / 2) / (c + d * tan(x)) ^ (3 / 2)), :(1 / (sqrt(c + d * tan(x)) * (a + b * tan(x)) ^ (5 / 2))),
+              :((a + b * tan(2x + 1)) ^ (3 / 2) / sqrt(tan(2x + 1))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        for x0 in (0.3, 0.9, 1.2, 4.0)                    # (tan x > 0, every radicand positive)
+            occursin("2x", string(f)) && (x0 = (x0 - 1) / 2 + π / 2)   # (tan(2x + 1) = tan x0 > 0 there)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
 # SymPy round 8: ∫ erf(u) e^w with mismatched Gaussians decided non-elementary, not by parts back and forth (#19846);
 # exp(α + iβ) as exp(α) exp(iβ) (step EC, #20034); Ei((n + 1) log x) for x^n/log x with a symbolic n (#20740)
 @testset "SymPy round 8: erf by parts, complex exponentials, Ei of a log" begin

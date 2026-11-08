@@ -467,9 +467,9 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         r === nothing || return r
     end
     if any(((_, u),) -> radicand_element(u, xk) === nothing, rads)
-        # a radicand a + b tan L with a parameter: step TQ first (step MR's s = tan L, then step PR, takes RootSums
-        # over ℚ(a, b, …) for half a minute before it gives up: cot(c + d x)²/(a + b tan(c + d x))^(5/2))
-        if !has_imag_unit(f) && any(((e, u),) -> tan_linear_radicand(e, u, f, x), rads)
+        # a radicand a + b tan L with a parameter, or two such radicands: step TQ first (step MR's s = tan L, then
+        # step PR, takes RootSums over ℚ(a, b, …) for half a minute before it gives up: cot(c + d x)²/(a + b tan(c + d x))^(5/2))
+        if !has_imag_unit(f) && tq_first(f, x, rads)
             r = try
                 integrate_tan_radicals(f, x; build = build, lift = lift, verify = verify)
             catch e
@@ -751,7 +751,7 @@ function radicand_fallbacks(f, x; build, lift, verify::Bool)
     cx = has_imag_unit(h)
     # (a radicand a + b tan L with a parameter: step HT's t = tan(L/2) makes it a quartic over ℚ(a, b), which
     # no step takes, after minutes: step TQ first)
-    tq1 = cx || any(((e, u),) -> tan_linear_radicand(e, u, h, x), collect_radicals(h, string(x)))
+    tq1 = cx || tq_first(h, x, collect_radicals(h, string(x)))
     if tq1
         r = tq()
         r === nothing || return r
