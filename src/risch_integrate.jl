@@ -102,6 +102,8 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             return integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
         end
         (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        # step TQ's final refusal of a radicand of degree 3 or 4 in tan L with a parameter: no other route
+        (e isa RischNotImplemented && startswith(e.msg, TAN_ELLIPTIC_MSG)) && throw(e)
         # step CI: a generator of the tower that is not real (atan(w) with w not real: x² atan(c + (1 + ic) tan(bx + a)),
         # SymPy #26509) has no real form, whatever the route; by parts takes it out (step AP), else the refusal stands
         # (the substitutions below ran for minutes over ℚ(i)(a, b, c, cos a, sin a), each refused the same way)
@@ -338,6 +340,7 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     catch e
         e isa RischNotImplemented || rethrow()         # (refused in y: the addition formulas may still do)
         (occursin("no real form", e.msg) && has_imag_unit(f)) && rethrow()   # (not this one: step CI)
+        startswith(e.msg, TAN_ELLIPTIC_MSG) && rethrow()   # (nor step TQ's final refusal: step TS2 took minutes)
         nothing
     end
     r === nothing || return r
@@ -467,6 +470,20 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         r === nothing || return r
     end
     if any(((_, u),) -> radicand_element(u, xk) === nothing, rads)
+        # a radicand of degree 3 or 4 in tan L with a parameter (cot² √(a + b tan² + c tan⁴), Rubi 4.3.9: elliptic in
+        # general): step TQ's answer or refusal is final (in y = d + e x, steps US and MR worked over ℚ(a, …, e) for
+        # minutes; with numbers, step TQ's t decides, the hyperelliptic Jacobian test)
+        if !has_imag_unit(f) && any(((e, u),) -> tan_linear_radicand(e, u, f, x; deg = 3) ||
+                                                 tan_linear_radicand(e, u, f, x; deg = 4), rads)
+            r = try
+                integrate_tan_radicals(f, x; build = build, lift = lift, verify = verify)
+            catch e
+                e isa RischNotImplemented || rethrow()
+                throw(RischNotImplemented(TAN_ELLIPTIC_MSG * " (" * e.msg * ")"))
+            end
+            r === nothing && throw(RischNotImplemented(TAN_ELLIPTIC_MSG))
+            return r
+        end
         # a radicand a + b tan L with a parameter, or two such radicands: step TQ first (step MR's s = tan L, then
         # step PR, takes RootSums over ℚ(a, b, …) for half a minute before it gives up: cot(c + d x)²/(a + b tan(c + d x))^(5/2))
         if !has_imag_unit(f) && tq_first(f, x, rads)
