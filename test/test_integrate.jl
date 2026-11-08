@@ -2580,12 +2580,13 @@ end
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
         end
     end
-    # a RootSum in s = tan x, its variable standing for tan x (Rubi 229), evaluated on both sides of π/2
+    # Rubi 229, on both sides of π/2: a quadratic radicand in tan x, now in closed form by step TQR (it was a RootSum
+    # in s = tan x, put back by `subst_answer`)
     f = :(sqrt(tan(x) ^ 2 + 2 * tan(x) + 2))
     F = Risch.risch_integrate(f, :x; build = build, lift = identity)
-    @test F isa Risch.IntegralWithRootSums
+    @test !(F isa Risch.IntegralWithRootSums)
     for x0 in (0.31, -0.4, 1.2, 2.0)
-        @test isapprox((F(x0 + 1e-5) - F(x0 - 1e-5)) / 2e-5, ev(f, x0); rtol = 1e-6)
+        @test isapprox((ev(F, x0 + 1e-5) - ev(F, x0 - 1e-5)) / 2e-5, ev(f, x0); rtol = 1e-6)
     end
 end
 
@@ -3320,4 +3321,25 @@ end
         @test abs(SymEngine.N(SymEngine.subs(SymEngine.diff(G, z) - g, z => 1.3))) < 1e-10
     end
     @test occursin("expinti((1 + n) * log(x))", string(Risch.risch_integrate(x ^ n / log(x), x)))
+end
+
+# one radicand a + b tan + c tan² (step TQR): S(t)/√Q split over t, 1 + t², Q; the 1 + t² part from ∫ dt/((t - i)√Q)
+# in real form (√(a - c + ib) = P + iP′, Rubi 4.3.9's √(a - c ± √((a - c)² + b²))), the t-poles by ln|…| forms
+@testset "a + b tan + c tan² under a square root (step TQR)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0, p) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = $(p[1])), :(b = $(p[2])), :(c = $(p[3]))), e))
+    dcheck(f, F, ps) = all(p -> all(x0 -> isapprox((ev(F, x0 + 1e-6, p) - ev(F, x0 - 1e-6, p)) / 2e-6, ev(f, x0, p); rtol = 1e-5),
+                                    (0.3, 0.9, 1.2, 4.0, -0.4)), ps)
+    # (b² > 4ac too where the answer is TQR's alone; the polynomial and Q-power parts follow step PR's 4ac > b²)
+    for (f, ps) in ((:(1 / sqrt(a + b * tan(x) + c * tan(x) ^ 2)), ((0.7, 0.5, 0.4), (0.7, 1.3, 0.4), (2.0, -0.5, 1.5))),
+                    (:(cot(x) / sqrt(a + b * tan(x) + c * tan(x) ^ 2)), ((0.7, 0.5, 0.4), (0.7, 1.3, 0.4))),
+                    (:(cot(x) ^ 2 * sqrt(a + b * tan(x) + c * tan(x) ^ 2)), ((0.7, 0.5, 0.4), (2.0, -0.5, 1.5))),
+                    (:(tan(x) ^ 5 / (a + b * tan(x) + c * tan(x) ^ 2) ^ (3 / 2)), ((0.7, 0.5, 0.4),)),
+                    (:(sqrt(a + b * tan(x) + c * tan(x) ^ 2) * tan(x) ^ 5), ((0.7, 0.5, 0.4),)),
+                    (:(1 / sqrt(2 + 3 * tan(x) + 5 * tan(x) ^ 2)), ((0, 0, 0),)),        # (no RootSum: TQ first)
+                    (:(cot(2x + 1) / sqrt(1 + tan(2x + 1) + tan(2x + 1) ^ 2)), ((0, 0, 0),)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        @test dcheck(f, F, ps)
+    end
 end

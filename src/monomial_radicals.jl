@@ -556,7 +556,7 @@ end
 
 # a square root (or its odd powers) of a + b tan L, a or b a parameter (param = true), L the one trigonometric argument
 # of f: the radicals that step TQ takes before steps MR and HT
-function tan_linear_radicand(e, u, f, x; param::Bool = true)
+function tan_linear_radicand(e, u, f, x; param::Bool = true, deg::Int = 1)
     @nospecialize u f x
     xk = string(x)
     (denominator(e) == 2 && (has_op(u, :tan) || has_op(u, :cot)) && (!param || has_param(u, xk))) || return false
@@ -567,7 +567,7 @@ function tan_linear_radicand(e, u, f, x; param::Bool = true)
         ut = tan_walker(bd, string(L))(u)
         ut === nothing && return false
         T, el = build_tower(ut, "t__")
-        isempty(T.levels) && degree(el.den) == 0 && degree(el.num) == 1
+        isempty(T.levels) && degree(el.den) == 0 && degree(el.num) == deg
     catch err
         (err isa RischNotImplemented || err isa RischError) || rethrow()
         false
@@ -575,8 +575,10 @@ function tan_linear_radicand(e, u, f, x; param::Bool = true)
 end
 
 # two square roots of different radicands a + b tan L (step TR, parameters or not: √tan √(1 + tan) had a RootSum
-# from step RM's merged quadratic radicand), or one with a parameter: step TQ first
-tq_first(f, x, rads) = any(((e, u),) -> tan_linear_radicand(e, u, f, x), rads) ||
+# from step RM's merged quadratic radicand), or one linear in tan L with a parameter, or quadratic in tan L (step TQR:
+# 1/√(2 + 3 tan + 5 tan²) had a quartic RootSum): step TQ first
+tq_first(f, x, rads) = any(((e, u),) -> tan_linear_radicand(e, u, f, x) ||
+                                        tan_linear_radicand(e, u, f, x; deg = 2, param = false), rads) ||
     length(unique(string(u) for (e, u) in rads if tan_linear_radicand(e, u, f, x; param = false))) >= 2
 
 # Step TQS: g = r(t) ρ (ρ the radicals of one radicand with a parameter, r ∈ ℚ(a, …)(t)) whose denominator has
@@ -627,6 +629,145 @@ function tan_split_parts(g, xk::String, bd::Builder)
     bt = Builder(bd.build, bd.lift, bd.x, T.consts)
     ρ = prod_(Any[pw(b, e) for (b, e) in rad])
     Any[mk(bt, :*, frac_term(bt, frac(p, d)), ρ) for (p, d) in ((P1, Wm), (P2, H)) if !iszero(p)]
+end
+
+# Step TQR: square roots of one radicand Q = a + b t + c t² (in t = tan L, step TQ; b ≠ 0), g = S(t)/√Q with S
+# rational, split by partial fractions over its known factors t, 1 + t², Q:
+#   (αt + β)/(1 + t²): from ∫ dt/((t - t₀)√Q) = -ln((2Q(t₀) + Q′(t₀)(t - t₀) + 2√Q(t₀)√Q)/(t - t₀))/√Q(t₀) at t₀ = i,
+#     in real form with √Q(i) = √(a - c + ib) = P + iP′, P = √((r + a - c)/2), P′ = b/(2P), r = √((a - c)² + b²):
+#     -((αP - βP′)/r) ½ ln((N₁² + N₂²)/(1 + t²)) - ((αP′ + βP)/r) atan((N₁ + N₂t)/(N₁t - N₂)),
+#     N₁ = 2a + bt + 2P√Q, N₂ = b + 2ct + 2P′√Q (Rubi 4.3.9's nested √(a - c ± r));
+#   1/tʲ: I₁ = -ln|(2a + bt + 2√a√Q)/t|/√a, I₀ = ln|b + 2ct + 2√c√Q|/√c, and from (√Q/tʲ⁻¹)′,
+#     (j - 1) a Iⱼ = -√Q/tʲ⁻¹ + (3/2 - j) b Iⱼ₋₁ + (2 - j) c Iⱼ₋₂   (a, c > 0, the parameter convention);
+#   the rest (a polynomial, powers of Q) by the usual route. The answer, or nothing (another power of 1 + t²).
+function integrate_tan_quadratic_radical(g, x, bd::Builder; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize g x
+    xk = string(x)
+    U, E = nothing, Q(0)
+    rest = Any[]
+    for (b, e) in product_factors!(Any[], g, 1)
+        rp = radical_parts(b)
+        if rp !== nothing && has_x(rp[2], xk)
+            denominator(rp[1]) == 2 || return nothing
+            U === nothing && (U = rp[2])
+            string(rp[2]) == string(U) || return nothing
+            E += e * rp[1]
+        else
+            isempty(collect_radicals(b, xk)) || return nothing
+            push!(rest, (b, e))
+        end
+    end
+    (U === nothing || isinteger(E)) && return nothing
+    pp = poly_parts(bd, U, xk)
+    (pp === nothing || maximum(keys(pp)) != 2) && return nothing
+    a, b, c = get(pp, 0, bd.lift(0)), get(pp, 1, bd.lift(0)), pp[2]
+    (leaf_rational(a) == 0 || leaf_rational(b) == 0) && return nothing
+    pw(t, e) = e == 1 ? t : mk(bd, :^, t, bd.lift(e))
+    k = Int(E + Q(1) // 2)
+    fs = Any[pw(t, e) for (t, e) in rest]
+    k == 0 || push!(fs, pw(U, k))
+    St = isempty(fs) ? bd.lift(1) : length(fs) == 1 ? fs[1] : mk(bd, :*, fs...)
+    # (one field for S and Q: the tower of S + Q has the constants of both)
+    T, el, Up = try
+        T, _ = build_tower(mk(bd, :+, St, U), xk)
+        T, parse_tower(St, T), parse_tower(U, T)
+    catch err
+        (err isa RischNotImplemented || err isa RischError || err isa NewConstants || err isa Restart) || rethrow()
+        return nothing
+    end
+    isempty(T.levels) || return nothing
+    C = ctype(T)
+    (C === Q || rational_tfield(C)) || return nothing
+    P = UPoly{C}
+    X = P(C[zero(C), one(C)])
+    W = P(C[one(C), zero(C), one(C)])
+    isone(Up.den) || return nothing
+    parts0 = known_factor_parts(el, P[X, W, monic(Up.num)])
+    parts0 === nothing && return nothing
+    # (a part with the polynomial part of el, a lone factor's: that polynomial apart, by the usual route)
+    parts = Frac{P}[]
+    for φ in parts0
+        qq, rr = divrem(φ.num, φ.den)
+        iszero(qq) || degree(φ.den) == 0 || push!(parts, frac(qq))
+        push!(parts, degree(φ.den) == 0 ? φ : frac(rr, φ.den))
+    end
+    filter!(φ -> !iszero(φ), parts)
+    bt = Builder(bd.build, bd.lift, bd.x, T.consts)
+    t = bd.x
+    neg(v) = mk(bd, :*, bd.lift(-1), v)
+    sq(v) = mk(bd, :sqrt, v)
+    sQ = sq(U)
+    co(p, i) = i <= length(p.c) ? p.c[i] : zero(C)
+    out = Any[]
+    Is = Dict{Int,Any}()
+    function I(j)
+        haskey(Is, j) && return Is[j]
+        # (½ ln(u²) for ln|u|: (2a + bt + 2√a√Q)/t changes sign with t, b + 2ct + 2√c√Q where b² > 4ac)
+        lnabs(u) = mk(bd, :*, bd.lift(1 // 2), mk(bd, :log, pw(u, 2)))
+        v = if j == 0
+            mk(bd, :/, lnabs(mk(bd, :+, b, mk(bd, :*, bd.lift(2), c, t), mk(bd, :*, bd.lift(2), sq(c), sQ))), sq(c))
+        elseif j == 1
+            neg(mk(bd, :/, lnabs(mk(bd, :/, mk(bd, :+, mk(bd, :*, bd.lift(2), a), mk(bd, :*, b, t),
+                                                    mk(bd, :*, bd.lift(2), sq(a), sQ)), t)), sq(a)))
+        else
+            num = mk(bd, :+, neg(mk(bd, :/, sQ, pw(t, j - 1))), mk(bd, :*, bd.lift(Q(3) // 2 - j), b, I(j - 1)),
+                     mk(bd, :*, bd.lift(2 - j), c, I(j - 2)))
+            mk(bd, :/, num, mk(bd, :*, bd.lift(j - 1), a))
+        end
+        Is[j] = v
+    end
+    for φ in parts
+        D = φ.den
+        if D == W
+            αc, βc = co(φ.num, 2), co(φ.num, 1)
+            two = bd.lift(2)
+            # u p + v q, the zero coefficients left out
+            function comb(u, p, v, q)
+                ts = Any[]
+                iszero(u) || push!(ts, isone(u) ? p : mk(bd, :*, cterm(bt, u), p))
+                iszero(v) || push!(ts, isone(v) ? q : mk(bd, :*, cterm(bt, v), q))
+                length(ts) == 1 ? ts[1] : mk(bd, :+, ts...)
+            end
+            r = sq(mk(bd, :+, pw(mk(bd, :+, a, neg(c)), 2), pw(b, 2)))
+            Pr = sq(mk(bd, :/, mk(bd, :+, r, a, neg(c)), two))
+            P2 = mk(bd, :/, b, mk(bd, :*, two, Pr))
+            N1 = mk(bd, :+, mk(bd, :*, two, a), mk(bd, :*, b, t), mk(bd, :*, two, Pr, sQ))
+            N2 = mk(bd, :+, b, mk(bd, :*, two, c, t), mk(bd, :*, two, P2, sQ))
+            L = mk(bd, :*, bd.lift(1 // 2), mk(bd, :log, mk(bd, :/, mk(bd, :+, pw(N1, 2), pw(N2, 2)), mk(bd, :+, bd.lift(1), pw(t, 2)))))
+            Θ = mk(bd, :atan, mk(bd, :/, mk(bd, :+, N1, mk(bd, :*, N2, t)), mk(bd, :+, mk(bd, :*, N1, t), neg(N2))))
+            k1 = mk(bd, :/, comb(αc, Pr, -βc, P2), r)
+            k2 = mk(bd, :/, comb(αc, P2, βc, Pr), r)
+            push!(out, neg(mk(bd, :+, mk(bd, :*, k1, L), mk(bd, :*, k2, Θ))))
+        elseif degree(D) >= 1 && D == X^degree(D)
+            kk = degree(D)
+            for j in 1:kk
+                p = co(φ.num, kk - j + 1)                   # p_{k-j}/tʲ
+                iszero(p) || push!(out, mk(bd, :*, cterm(bt, p), I(j)))
+            end
+        elseif degree(D) >= 2 && any(m -> D == W^m, 2:degree(D))
+            return nothing
+        else
+            # Qᵐ of the denominator into the power of the radical: P Q^(-m - 1/2) (the route refuses P/Q beside 1/√Q)
+            Uq = monic(Up.num)
+            m, Dr = 0, D
+            while degree(Dr) >= degree(Uq)
+                qq, rr = divrem(Dr, Uq)
+                iszero(rr) || break
+                Dr, m = qq, m + 1
+            end
+            ψ = m == 0 ? φ : frac(φ.num * P(C[lc(Up.num)^m]), Dr)     # (D = Dr (Q/lc)ᵐ)
+            G = try
+                risch_integrate(mk(bd, :*, frac_term(bt, ψ), mk(bd, :^, U, bd.lift(-m - 1 // 2))), x; build = build, lift = lift,
+                                verify = verify)
+            catch err
+                (err isa RischNotImplemented || err isa NotElementary) || rethrow()
+                return nothing
+            end
+            G isa IntegralWithRootSums && return nothing
+            push!(out, G)
+        end
+    end
+    isempty(out) ? nothing : length(out) == 1 ? out[1] : mk(bd, :+, out...)
 end
 
 # Step TR: square roots of two radicands L₁ = a₁ + b₁t, L₂ = a₂ + b₂t (in t = tan L, step TQ) to odd powers:
@@ -784,7 +925,8 @@ function integrate_tan_radicals(f, x; build = nothing, lift = nothing, verify::B
     ft = walk(f)
     ft === nothing && return nothing
     g = mk(bd, :/, ft, mk(bd, :*, a, W2))
-    G = integrate_two_linear_radicals(g, x, bd; build = build, lift = lift, verify = verify)
+    G = integrate_tan_quadratic_radical(g, x, bd; build = build, lift = lift, verify = verify)
+    G === nothing && (G = integrate_two_linear_radicals(g, x, bd; build = build, lift = lift, verify = verify))
     parts = G === nothing ? tan_split_parts(g, xk, bd) : nothing
     if parts !== nothing
         Gs = try
