@@ -114,13 +114,19 @@ out, simplify(out)
 ```
 """
 function integrate(ex, xabs::Tuple...; kw...)
+    isempty(xabs) && throw(ArgumentError("integrate: no variable of integration (integrate(ex, x) or integrate(ex, (x, a, b)))"))
     val = ex
     for (x, a, b) in xabs
         ∫f = integrate(val, x; kw...)
-        val = ∫f(x=>b) - ∫f(x=>a)
+        # (a Julia number, the antiderivative of 0 or 0.0, SymPy #18631: constant in x, so 0; not a symbolic Number such
+        # as SymEngine's Basic x, the antiderivative of 1)
+        val = ∫f isa RealOrComplex ? zero(∫f) : ∫f(x=>b) - ∫f(x=>a)
     end
     val
 end
+
+# no variable of integration (integrate(sin(x)) returned sin(x)): an error, not a guess of the variable
+integrate(ex; kw...) = throw(ArgumentError("integrate: no variable of integration (integrate(ex, x) or integrate(ex, (x, a, b)))"))
 
 include("precompile.jl")
 
