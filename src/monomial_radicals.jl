@@ -581,6 +581,8 @@ tq_first(f, x, rads) = any(((e, u),) -> tan_linear_radicand(e, u, f, x) ||
                                         tan_linear_radicand(e, u, f, x; deg = 2, param = false), rads) ||
     length(unique(string(u) for (e, u) in rads if tan_linear_radicand(e, u, f, x; param = false))) >= 2
 
+const TAN_ELLIPTIC_MSG = "a radicand of degree 3 or 4 in tan with a parameter, elliptic in general: not integrated"
+
 # Step TQS: g = r(t) ρ (ρ the radicals of one radicand with a parameter, r ∈ ℚ(a, …)(t)) whose denominator has
 # 1 + t² beside other factors H: r = P₁/(1 + t²)ᵐ + P₂/H, the two parts integrated apart. In u = √(a + b t),
 # 1 + t² is the even quartic (u² - a)² + b² (step BQP), and the residues of H's factors are found alone, where

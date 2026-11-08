@@ -3343,3 +3343,24 @@ end
         @test dcheck(f, F, ps)
     end
 end
+
+# a radicand of degree 4 in tan with parameters (Rubi 4.3.9, cot² √(a + b tan² + c tan⁴): EllipticE, F, Π): step TQ's
+# refusal final, in seconds (steps US, MR and TS2 over ℚ(a, …, e) ran for minutes); with numbers, NotElementary
+# (hyperelliptic Jacobian); the elementary ones (an odd tan, u = tan²) still found
+@testset "a + b tan² + c tan⁴ under a square root (step TQ final)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    for f in (:(cot(d + e * x) ^ 2 * sqrt(a + b * tan(d + e * x) ^ 2 + c * tan(d + e * x) ^ 4)),
+              :(sqrt(a + b * tan(x) ^ 2 + c * tan(x) ^ 4)))
+        t = @elapsed err = try
+            Risch.risch_integrate(f, :x; build = build, lift = identity)
+        catch e
+            e
+        end
+        @test err isa Risch.RischNotImplemented && startswith(err.msg, Risch.TAN_ELLIPTIC_MSG)
+        @test t < 60
+    end
+    @test_throws Risch.NotElementary Risch.risch_integrate(:(cot(x) ^ 2 * sqrt(2 + 3 * tan(x) ^ 2 + 5 * tan(x) ^ 4)), :x;
+                                                           build = build, lift = identity)
+    # (still integrated by step TQ's route, u = tan²; its answer follows step PR's sign convention for the parameters)
+    @test Risch.risch_integrate(:(tan(x) / sqrt(a + b * tan(x) ^ 2 + c * tan(x) ^ 4)), :x; build = build, lift = identity) isa Expr
+end
