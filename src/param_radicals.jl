@@ -153,8 +153,10 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     end
     G = risch_integrate(g, x; build = b0.build, lift = b0.lift, verify = verify)
     if G isa IntegralWithRootSums                       # a RootSum over ℚ(a, …): scale by a parameter (step PS)
-        G = integrate_scaled_radicals(g, x; build = b0.build, lift = b0.lift, verify = verify)
-        G === nothing && return nothing
+        G2 = integrate_scaled_radicals(g, x; build = b0.build, lift = b0.lift, verify = verify)
+        # (else the answer with its RootSum, as for numbers: atan(r/√(d² + s²))/(d² + s²)^(3/2), SymPy #19188, whose
+        # d = 1 has one too)
+        G2 === nothing || (G = G2)
     end
     cg === nothing || (G = G isa IntegralWithRootSums ?
         IntegralWithRootSums(mk(b0, :*, cg, G.elementary), Any[ScaledRootSum(cg, rs) for rs in G.rootsums], G.var) :
@@ -167,7 +169,7 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
         isempty(args) && return t
         b0.build(op_function(t), (walk_back(a) for a in args)...)
     end
-    walk_back(G)
+    G isa IntegralWithRootSums ? subst_answer(G, walk_back, b0) : walk_back(G)
 end
 
 # ---------------------------------------------------------------------------
