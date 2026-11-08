@@ -3343,3 +3343,36 @@ end
         @test dcheck(f, F, ps)
     end
 end
+
+# SymPy round 9: integrate without a variable is an error, not the integrand back (#18036 batch); a Julia number
+# integrand in a definite integral (#18631); step PR's answer with a RootSum kept when step PS cannot scale it away
+# (atan(r/√(d² + s²))/(d² + s²)^(3/2), #19188, whose d = 1 has a RootSum too)
+@testset "SymPy round 9: no variable, number integrands, a parameter radical with a RootSum" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    @test_throws ArgumentError integrate(:(sin(x)))
+    @test_throws ArgumentError integrate(:(x ^ 2 + 1))
+    @test integrate(0, (:x, 0, 1)) == 0
+    @test integrate(0.0, (:x, 0, 1)) == 0.0
+    x = SymEngine.symbols("x")
+    @test_throws ArgumentError integrate(sin(x))
+    @test integrate(0, (x, 0, 1)) == 0
+    @test SymEngine.N(integrate(1, (x, 0, 1))) == 1
+    vals = Dict(:d => 13 // 10, :r => 7 // 10)
+    sub(e) = e isa Symbol ? get(vals, e, e) : e isa Expr ? Expr(e.head, map(sub, e.args)...) : e
+    bk(t) = Risch.isnode(t) ? sub(t) : get(vals, t, t)
+    fixrs(r) = r isa Risch.ScaledRootSum ? Risch.ScaledRootSum(bk(r.factor), fixrs(r.rs)) :
+               Risch.TermRootSum(r.poly, r.coeffs, r.var, r.pterms === nothing ? nothing :
+                                 Any[t === nothing ? nothing : bk(t) for t in r.pterms])
+    for f in (:(-r * atan(r / sqrt(d ^ 2 + s ^ 2)) / (2 * (d ^ 2 + s ^ 2) ^ (3 // 2))),
+              :(atan(1 / sqrt(d ^ 2 + s ^ 2)) / (d ^ 2 + s ^ 2) ^ (3 // 2)))
+        F = Risch.risch_integrate(f, :s; build = build, lift = identity)
+        @test F isa Risch.IntegralWithRootSums
+        # (the parameters' values in the answer, the RootSum's polynomial too)
+        Fn = Risch.subst_answer(F, bk, Risch.Builder(build, identity, :s))
+        Fn = Risch.IntegralWithRootSums(Fn.elementary, Any[fixrs(r) for r in Fn.rootsums], Fn.var)
+        fn = sub(f)
+        for s0 in (0.3, 1.1, -0.7, 2.5)
+            @test isapprox((Fn(s0 + 1e-5) - Fn(s0 - 1e-5)) / 2e-5, Core.eval(Main, Expr(:let, :(s = $s0), fn)); rtol = 1e-6)
+        end
+    end
+end
