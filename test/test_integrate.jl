@@ -3397,3 +3397,25 @@ end
         end
     end
 end
+
+# SymPy round 10 (#16951): a symbol named E is a symbol, not Euler's number (a leaf printed E is e only when it is the
+# term type's own exp(1): SymEngine's E; Expr's e is :ℯ)
+@testset "SymPy round 10: a symbol named E" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    @test !Risch.is_e_const(:E) && Risch.is_e_const(:ℯ)
+    @test string(Risch.risch_integrate(:(1 / (E - x)), :x; build = build, lift = identity)) == "-1 * log(-1 * E + x)"
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(E = 0.7)), e))
+    # (at a point where each answer is real: log(x - E) for x > E, √(2(E - x)) for x < E)
+    for (f, x0) in ((:(exp(E * x)), -0.4), (:(1 / (E - x)), 1.5), (:(sqrt(2 * (E - x))), -0.4))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+    end
+    x, E = SymEngine.symbols("x E")
+    @test !Risch.is_e_const(E) && Risch.is_e_const(SymEngine.E)
+    for f in (exp(E * x), 1 / (E - x))
+        F = Risch.risch_integrate(f, x)
+        @test abs(SymEngine.N(SymEngine.subs(SymEngine.diff(F, x) - f, x => -0.4, E => 0.7))) < 1e-10
+    end
+    # Euler's number itself still is e
+    @test occursin("exp(1)", string(Risch.risch_integrate(1 / (SymEngine.E - x), x)))
+end
