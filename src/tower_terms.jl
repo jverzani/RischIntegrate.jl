@@ -12,9 +12,18 @@ function fold_op(T::Tower, op, els)
     acc
 end
 
-# The constant e, however the package prints it: Julia's ℯ, SymEngine's `E`, or
-# `exp(1)` (SymEngine builds exp(u) as the power E^u).
-is_e_const(t) = !safe_iscall(t) && string(t) in ("ℯ", "E", "exp(1)")
+# The constant e, however the package prints it: Julia's ℯ, or `exp(1)` (SymEngine builds exp(u) as the power E^u).
+# A leaf printed `E` is e only when it is the term type's own e, exp(one(t)) (SymEngine's E, SymJ's constant node);
+# a symbol a user named E is not (SymPy #16951: ∫ 1/(E - x) was -log(x - ℯ)), nor Expr's :E (e is :ℯ there)
+is_e_const(t) = !safe_iscall(t) && (s = string(t); s == "ℯ" || s == "exp(1)" || (s == "E" && is_own_e(t)))
+function is_own_e(t)
+    t isa Symbol && return false
+    try
+        isequal(t, exp(one(t)))
+    catch
+        false
+    end
+end
 # the imaginary unit, however the package prints it (Julia's im, SymEngine's I)
 # (SymJ: the power (-1)^(1/2); Expr: im, sqrt(-1))
 function is_imag_unit(t)
