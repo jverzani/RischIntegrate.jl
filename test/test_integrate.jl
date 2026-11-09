@@ -3419,3 +3419,20 @@ end
     # Euler's number itself still is e
     @test occursin("exp(1)", string(Risch.risch_integrate(1 / (SymEngine.E - x), x)))
 end
+
+# a factor that is a sum of atans (SymJ's (1/x)(atan(4x) - atan(2x)), SymPy #17058), refused whole ("not decided with
+# atan in the tower"): term by term (distribute_sum_factor, with differences and nested sums flattened)
+@testset "a sum of atans as a factor, term by term" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    Main.eval(:(const impolylog = $(Risch.impolylog)))
+    ev(e, x0) = Core.eval(Main, Expr(:let, :(x = $x0), e))
+    for f in (:((1 / x) * (atan(4x) - atan(2x))), :((1 / x) * ((atan(3x) + atan(x)) - atan(2x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("impolylog", string(F))
+        for x0 in (0.3, 1.1, 2.4)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    x = SymEngine.symbols("x")
+    @test occursin("impolylog", string(Risch.risch_integrate((1 / x) * (atan(4x) - atan(2x)), x)))
+end

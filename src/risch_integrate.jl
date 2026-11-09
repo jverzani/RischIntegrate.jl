@@ -104,6 +104,12 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         (e isa RischNotImplemented || e isa NotElementary) || rethrow()
         # step TQ's final refusal of a radicand of degree 3 or 4 in tan L with a parameter: no other route
         (e isa RischNotImplemented && startswith(e.msg, TAN_ELLIPTIC_MSG)) && throw(e)
+        # a factor that is a sum of atans, refused whole (atan(4x) and atan(2x) as two levels of one tower): term by
+        # term, (1/x)(atan(4x) - atan(2x)) as SymJ writes it (SymPy #17058; the expanded sum gives Ti₂ terms)
+        if e isa RischNotImplemented && startswith(e.msg, "not decided with atan in the tower")
+            r = distribute_sum_factor(f, x, string(x), n -> n in (:atan, :acot); build = build, lift = lift, verify = verify)
+            r === nothing || return r
+        end
         # step CI: a generator of the tower that is not real (atan(w) with w not real: x² atan(c + (1 + ic) tan(bx + a)),
         # SymPy #26509) has no real form, whatever the route; by parts takes it out (step AP), else the refusal stands
         # (the substitutions below ran for minutes over ℚ(i)(a, b, c, cos a, sin a), each refused the same way)

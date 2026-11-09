@@ -663,19 +663,33 @@ function numeric_antiderivative(f, G, xk::String)
     found > 0
 end
 
-# f = (s₁ + s₂ + …)·R with a factor that is a sum, one of whose summands has an operation `isop` (a + b asinh x):
+# f = (s₁ + s₂ + …)·R with a factor that is a sum (or difference), one of whose summands has an operation `isop`
+# (a + b asinh x; atan(4x) - atan(2x)):
 # ∫ f = Σ ∫ sᵢ R, each by the usual route (so by parts where sᵢ = b L). Nothing when f has no such factor, or a
 # term is refused or not elementary (the terms can cancel; the caller's route then sees f whole).
 function distribute_sum_factor(f, x, xk::String, isop; build, lift, verify::Bool)
     @nospecialize f x
     fs = product_factors!(Any[], f, 1)
     hasop(t) = safe_iscall(t) && !isempty(arguments(t)) && (isop(opname(operation(t))) || any(hasop, arguments(t)))
-    j = findfirst(((t, e),) -> e == 1 && safe_iscall(t) && opname(operation(t)) === :+ && hasop(t), fs)
+    issum(t) = safe_iscall(t) && (opname(operation(t)) === :+ || (opname(operation(t)) === :- && length(arguments(t)) == 2))
+    j = findfirst(((t, e),) -> e == 1 && issum(t) && hasop(t), fs)
     j === nothing && return nothing
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     rest = Any[e == 1 ? t : mk(bd, :^, t, bd.lift(e)) for (i, (t, e)) in enumerate(fs) if i != j]
+    # the summands, nested sums and differences flattened (Expr's (atan(3x) + atan(x)) - atan(2x))
+    terms = Any[]
+    function flat!(t, sg)
+        if safe_iscall(t) && opname(operation(t)) === :+
+            foreach(a -> flat!(a, sg), arguments(t))
+        elseif safe_iscall(t) && opname(operation(t)) === :- && length(arguments(t)) == 2
+            flat!(arguments(t)[1], sg); flat!(arguments(t)[2], -sg)
+        else
+            push!(terms, sg == 1 ? t : mk(bd, :*, bd.lift(-1), t))
+        end
+    end
+    flat!(fs[j][1], 1)
     Fs = Any[]
-    for s in arguments(fs[j][1])
+    for s in terms
         F = try
             risch_integrate(isempty(rest) ? s : mk(bd, :*, s, rest...), x; build = build, lift = lift, verify = verify)
         catch e
