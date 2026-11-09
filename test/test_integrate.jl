@@ -3436,3 +3436,27 @@ end
     x = SymEngine.symbols("x")
     @test occursin("impolylog", string(Risch.risch_integrate((1 / x) * (atan(4x) - atan(2x)), x)))
 end
+
+# a symbolic power of a function of tan L (Rubi 4.3: (a + b tan(e + f x))ᵐ/(c + d tan(e + f x))², tanᵐ(…)/√(a + b tan)):
+# in t = tan L first, before step SL (the tower over ℚ(i)(a, …, m) did not finish), the decision final
+@testset "symbolic powers of tan (step TQ first, decided in t)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    for f in (:((a + b * tan(e + f * x)) ^ m / (c + d * tan(e + f * x)) ^ 2),
+              :((tan(c + d * x) ^ m * (A + B * tan(c + d * x) + C * tan(c + d * x) ^ 2)) / sqrt(a + b * tan(c + d * x))))
+        t = @elapsed err = try
+            Risch.risch_integrate(f, :x; build = build, lift = identity)
+        catch e
+            e
+        end
+        @test err isa Risch.NotElementary && startswith(err.msg, Risch.TAN_SYMBOLIC_NE)
+        @test t < 90
+    end
+    # the elementary ones still found
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7), :(b = 1.3), :(m = 0.6), :(c = 0.2), :(d = 1.1)), e))
+    for f in (:(tan(x) ^ m * sec(x) ^ 2), :((a + b * tan(c + d * x)) ^ m * sec(c + d * x) ^ 2), :(tan(x) ^ (m + 1) + tan(x) ^ (m - 1)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.3, 0.9, 1.2)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
