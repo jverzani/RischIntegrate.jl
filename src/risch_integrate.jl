@@ -103,7 +103,8 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         end
         (e isa RischNotImplemented || e isa NotElementary) || rethrow()
         # step TQ's final refusal of a radicand of degree 3 or 4 in tan L with a parameter: no other route
-        (e isa RischNotImplemented && startswith(e.msg, TAN_ELLIPTIC_MSG)) && throw(e)
+        (e isa RischNotImplemented && (startswith(e.msg, TAN_ELLIPTIC_MSG) || startswith(e.msg, TAN_SYMBOLIC_MSG))) && throw(e)
+        (e isa NotElementary && startswith(e.msg, TAN_SYMBOLIC_NE)) && throw(e)   # (decided in t = tan L)
         # a factor that is a sum of atans, refused whole (atan(4x) and atan(2x) as two levels of one tower): term by
         # term, (1/x)(atan(4x) - atan(2x)) as SymJ writes it (SymPy #17058; the expanded sum gives Ti₂ terms)
         if e isa RischNotImplemented && startswith(e.msg, "not decided with atan in the tower")
@@ -341,12 +342,26 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
     g = distribute_trig_args(f, x, xk, build, lift)    # sin(a (t - x)) = sin(a t - a x) (step TD)
     g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    # a symbolic power of a function of tan L ((a + b tan(e + f x))ᵐ): in t = tan L (step TQ, which takes L = e + f x
+    # itself), before step SL and the radical steps, the decision final (t and atan t are elementary, so ∫ is
+    # elementary in x iff it is in t; a NotElementary stands)
+    if tan_symbolic_power(f, xk)
+        r = try
+            integrate_tan_radicals(f, x; build = build, lift = lift, verify = verify, radicals = false)
+        catch e
+            e isa NotElementary && throw(NotElementary(TAN_SYMBOLIC_NE * e.msg))
+            e isa RischNotImplemented || rethrow()
+            throw(RischNotImplemented(TAN_SYMBOLIC_MSG * " (" * e.msg * ")"))
+        end
+        r === nothing || return r
+    end
     r = try                                            # sin(e + f x): y = e + f x (step SL)
         integrate_linear_shift(f, x; build = build, lift = lift, verify = verify)
     catch e
         e isa RischNotImplemented || rethrow()         # (refused in y: the addition formulas may still do)
         (occursin("no real form", e.msg) && has_imag_unit(f)) && rethrow()   # (not this one: step CI)
-        startswith(e.msg, TAN_ELLIPTIC_MSG) && rethrow()   # (nor step TQ's final refusal: step TS2 took minutes)
+        (startswith(e.msg, TAN_ELLIPTIC_MSG) || startswith(e.msg, TAN_SYMBOLIC_MSG)) && rethrow()   # (nor step TQ's final
+        # refusals: step TS2 took minutes)
         nothing
     end
     r === nothing || return r

@@ -583,6 +583,21 @@ tq_first(f, x, rads) = any(((e, u),) -> tan_linear_radicand(e, u, f, x) ||
 
 const TAN_ELLIPTIC_MSG = "a radicand of degree 3 or 4 in tan with a parameter, elliptic in general: not integrated"
 
+# a power of a function of tan L or cot L with a symbolic exponent ((a + b tan(e + f x))ᵐ, tan(c + d x)ᵐ): step TQ's
+# t = tan L first (the tower over ℚ(i)(a, …, m), tan L through exp(2iL), did not finish its Risch equations in
+# minutes; over ℚ(a, …, m)(t) they decide in seconds), its answer or decision final
+const TAN_SYMBOLIC_MSG = "a symbolic power of a function of tan, refused in t = tan: not integrated"
+const TAN_SYMBOLIC_NE = "in t = tan: "
+function tan_symbolic_power(t, xk::String)
+    isnode(t) || return false
+    args = arguments(t)
+    if opname(operation(t)) === :^ && length(args) == 2 && !depends_on(args[2], xk) && leaf_rational(args[2]) === nothing &&
+       has_symbol(args[2]) && (has_op(args[1], :tan) || has_op(args[1], :cot))
+        return true
+    end
+    any(a -> tan_symbolic_power(a, xk), args)
+end
+
 # Step TQS: g = r(t) ρ (ρ the radicals of one radicand with a parameter, r ∈ ℚ(a, …)(t)) whose denominator has
 # 1 + t² beside other factors H: r = P₁/(1 + t²)ᵐ + P₂/H, the two parts integrated apart. In u = √(a + b t),
 # 1 + t² is the even quartic (u² - a)² + b² (step BQP), and the residues of H's factors are found alone, where
@@ -909,13 +924,13 @@ end
 # dx = dt/(a (1 + t²)). The radicand stays linear in t: √(1 + i t) is step LC's, where step HT's t = tan(L/2) made it
 # a quadratic over ℚ(i), which no step takes (cot(c + d x)² √(a + i a tan(c + d x)), cos⁴/(a + i a tan)^(3/2)).
 # t = tan(L) is put back (an antiderivative on each interval between the poles of tan L).
-function integrate_tan_radicals(f, x; build = nothing, lift = nothing, verify::Bool = true)
+function integrate_tan_radicals(f, x; build = nothing, lift = nothing, verify::Bool = true, radicals::Bool = true)
     @nospecialize f x
     xk = string(x)
     L = single_trig_arg(f, xk)
     L === nothing && return nothing
     Ls = string(L)
-    any(((_, u),) -> has_op(u, :tan) || has_op(u, :cot), collect_radicals(f, xk)) || return nothing
+    (!radicals || any(((_, u),) -> has_op(u, :tan) || has_op(u, :cot), collect_radicals(f, xk))) || return nothing
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     pp = poly_parts(bd, L, xk)
     (pp === nothing || !haskey(pp, 1) || maximum(keys(pp)) != 1) && return nothing
