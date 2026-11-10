@@ -245,7 +245,8 @@ function run_tests(x, evalat, name)
         @test antiderivative_ok(F, sqrt(x) + sqrt(x + 1) + sqrt(x + 2), 2.0, evalat)
         @test_throws Risch.NotElementary Risch.risch_integrate(sqrt(x^3 + 1) + sqrt(x^3 + 2) + sqrt(x^3 + 3), x)  # phase 3a
         @test_throws Risch.NotElementary Risch.risch_integrate(1 / sqrt(x^3 + 1), x)  # elliptic (SI2 phase 1)
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(sqrt(log(x)), x)
+        # √(log x): x = eᵘ (step LU, round 11), an erfi answer (its special terms kept as Expr for SymEngine)
+        @test occursin("erfi", string(Risch.risch_integrate(sqrt(log(x)), x)))
         F = Risch.risch_integrate(sqrt(x + sqrt(x + 1)), x)   # nested: u = √(x + 1) (step NR)
         @test antiderivative_ok(F, sqrt(x + sqrt(x + 1)), 2.0, evalat)
     end
@@ -3458,6 +3459,37 @@ end
         for x0 in (0.3, 0.9, 1.2)
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
         end
+    end
+end
+
+# SymPy round 11: a ratio of float exponents with huge terms refused at once, then term by term (#15498); a sum with a
+# RootSum term by term (#15726); exp of a sum with a part free of the variable split (step EK, #15648); radicals of
+# log x by x = eᵘ (step LU, #15640); a complex Gaussian, cos(x²) e^(-x²) (step GT, #15292)
+@testset "SymPy round 11: float exponents, RootSum sums, exp splits, √log, complex Gaussians" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0, v, ps...) = Core.eval(Main, Expr(:let, Expr(:block, :($v = $x0), :(erf = SpecialFunctions.erf),
+                                                       :(erfi = SpecialFunctions.erfi), ps...), e))
+    dcheck(f, F, v, pts, ps...) = all(x0 -> isapprox((ev(F, x0 + 1e-6, v, ps...) - ev(F, x0 - 1e-6, v, ps...)) / 2e-6,
+                                                       ev(f, x0, v, ps...); rtol = 1e-6), pts)
+    t = @elapsed F = Risch.risch_integrate(:(2.0 - 3.0 * exp(-1.66666666666667 * s) - 4.0 * exp(-s / 120)), :s;
+                                           build = build, lift = identity)
+    @test t < 30 && dcheck(:(2.0 - 3.0 * exp(-1.66666666666667 * s) - 4.0 * exp(-s / 120)), F, :s, (0.3, 1.1, 2.4))
+    f = :(a1 / (V - b) - a2 / (V ^ 2 + 2b * V - b ^ 2) - a3 / V)
+    F = Risch.risch_integrate(f, :V; build = build, lift = identity)
+    @test !(F isa Risch.IntegralWithRootSums) &&
+          dcheck(f, F, :V, (1.3, 2.1, 4.0), :(a1 = 0.7), :(a2 = 1.3), :(a3 = -0.4), :(b = 0.6))
+    f = :((1 - exp(-c * y)) * (1 - exp(-c * (x - y))))
+    F = Risch.risch_integrate(f, :y; build = build, lift = identity)
+    @test dcheck(f, F, :y, (0.3, 1.1, 2.4), :(c = 0.7), :(x = 1.3))
+    for f in (:(sqrt(log(x)) / x ^ 2), :(1 / (x ^ 2 * sqrt(log(x)))), :(x * sqrt(log(x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("erf", string(F)) && dcheck(f, F, :x, (1.3, 2.1, 4.0))
+    end
+    for f in (:(exp(-x ^ 2) * cos(x ^ 2)), :(exp(-x ^ 2) * sin(x ^ 2)), :(cos(x ^ 2)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("erf", string(F)) &&
+              all(x0 -> isapprox((ev(F, complex(x0 + 1e-6), :x) - ev(F, complex(x0 - 1e-6), :x)) / 2e-6, ev(f, x0, :x); rtol = 1e-6),
+                  (0.3, 1.1, -0.8))
     end
 end
 

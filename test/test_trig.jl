@@ -81,7 +81,8 @@ function run_tests(x, evalat, name)
     end
 
     @testset "$name: decided non-elementary / outside the supported class" begin
-        @test_throws Risch.NotElementary Risch.risch_integrate(sin(x^2), x)          # Fresnel: no real form
+        # Fresnel: erf of √(±i) x since step GT takes complex x² coefficients (round 11, SymPy #15292)
+        @test occursin("erf", string(Risch.risch_integrate(sin(x^2), x)))
         @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) * sin(x) / x, x)   # Ei((1+i)x)
         # ∫ x sin x log x = log x (sin x - x cos x) + cos x - Si(x): an answer when found (the tower
         # order follows the package's term order), else a decision or a refusal

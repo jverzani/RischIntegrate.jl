@@ -94,6 +94,19 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             r2 = integrate_binomial_scaled(f, x; build = build, lift = lift, verify = verify)
             r2 === nothing || return r2
         end
+        # a RootSum for a sum: term by term (step LS), kept when it has fewer RootSums (a1/(V - b) - a2/(V² + 2bV - b²)
+        # - a3/V, SymPy #15726: the residue polynomial of the whole factors over ℚ(a1, a2, a3, b), which is not found;
+        # each term alone gives logs)
+        if r isa IntegralWithRootSums
+            r2 = try
+                try_sum_split(f, x; build = build, lift = lift, verify = verify)
+            catch e
+                (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+                nothing
+            end
+            nrs(F) = F isa IntegralWithRootSums ? length(F.rootsums) : 0
+            (r2 !== nothing && nrs(r2) < nrs(r)) && return r2
+        end
         r
     catch e
         # the term type has no method for a special function of the answer: through Expr, the special terms
@@ -107,6 +120,18 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         (e isa NotElementary && startswith(e.msg, TAN_SYMBOLIC_NE)) && throw(e)   # (decided in t = tan L)
         # a factor that is a sum of atans, refused whole (atan(4x) and atan(2x) as two levels of one tower): term by
         # term, (1/x)(atan(4x) - atan(2x)) as SymJ writes it (SymPy #17058; the expanded sum gives Ti₂ terms)
+        # an exp of a constant met inside an exp's argument ((1 - e^(-c y))(1 - e^(-c (x - y))) in y, SymPy #15648:
+        # e^(-c (x - y)) = e^(-c x) e^(c y)): each exp's argument split into its parts with and without y (step EK)
+        # radicals of log x: x = eᵘ (step LU)
+        if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg)
+            r = integrate_log_radicals(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
+        end
+        if e isa RischNotImplemented && startswith(e.msg, "exp of the constant")
+            r = integrate_rewritten_expr(f, x, (fe, xs) -> split_exp_constants(fe, xs, expr_build, identity), EK_ACTIVE;
+                                         build = build, lift = lift, verify = verify)
+            r === nothing || return r
+        end
         if e isa RischNotImplemented && startswith(e.msg, "not decided with atan in the tower")
             r = distribute_sum_factor(f, x, string(x), n -> n in (:atan, :acot); build = build, lift = lift, verify = verify)
             r === nothing || return r
@@ -1027,6 +1052,43 @@ function integrate_linear_shift(f, x; build = nothing, lift = nothing, verify::B
     back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? L : t)
     subst_answer(G, back, bd)
 end
+const EK_ACTIVE = Ref(false)
+# step EK: exp(u) with u = p(y) + q, q ≠ 0 free of y (u a polynomial in y over the parameters): exp(q) exp(p(y)), so
+# that exp(q) is a constant of its own (opaque, step SY) instead of one met while relating exp(u) to another
+# exponential. f rewritten so, or nothing
+function split_exp_constants(f, x, build, lift)
+    @nospecialize f x
+    xk = string(x)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    changed = false
+    function rw(t)
+        isnode(t) || return t
+        args = Any[rw(a) for a in arguments(t)]
+        n = opname(operation(t))
+        u = (n === :exp && length(args) == 1) ? args[1] :
+            (n === :^ && length(args) == 2 && is_e_const(args[1])) ? args[2] : nothing
+        if u !== nothing && depends_on(u, xk)
+            T, el = try
+                build_tower(u, xk)
+            catch err
+                (err isa RischNotImplemented || err isa RischError) || rethrow()
+                (nothing, nothing)
+            end
+            if T !== nothing && isempty(T.levels) && isone(el.den) && degree(el.num) >= 1 && !iszero(el.num.c[1])
+                b = Builder(bd.build, bd.lift, bd.x, T.consts)
+                C = eltype(el.num.c)
+                q = cterm(b, el.num.c[1])
+                p = poly_term(b, UPoly{C}(C[zero(C); el.num.c[2:end]]))
+                changed = true
+                return mk(bd, :*, mk(bd, :exp, q), mk(bd, :exp, p))
+            end
+        end
+        term_rebuild(bd, t, args)
+    end
+    g = rw(f)
+    changed ? g : nothing
+end
+
 # step SQ: ∫ f with its constant square roots opaque (independent indeterminates s₆, s₃, s₂). The answer holds for
 # generic values; at s₆ = √6, … it is checked numerically: a hidden zero (a denominator that vanishes by a relation
 # such as s₆ = s₂s₃ or s₂² = 2) shows as a wrong derivative. A NotElementary for generic values says nothing here.

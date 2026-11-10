@@ -349,8 +349,17 @@ function run_tests(x, evalat, name)
         # terms (exp(1)), base level, log/exp levels and base-level RootSums inside a tower
         re_simpson(g, a, b; n = 1000) = (h = (b - a) / n;
             h / 3 * (g(a) + g(b) + sum((isodd(k) ? 4 : 2) * g(a + k * h) for k in 1:(n - 1))))
+        # (exp(x) + 1/(x³ + ℯ): term by term since round 11 (a RootSum for the sum, step BN's closed form for
+        # 1/(x³ + ℯ) alone)
+        let f = exp(x) + 1/(x^3 + ℯ)
+            F = Risch.risch_integrate(f, x)
+            @test !(F isa Risch.IntegralWithRootSums)
+            for a in (1.3, 2.1, 2.9)
+                @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5, atol = 1e-9)
+            end
+        end
         for f in (1/(x^3 + x + ℯ), 1/(x*(log(x)^3 + log(x) + ℯ)), exp(x)/(exp(3x) + ℯ*exp(x) + 1),
-                  exp(x) + 1/(x^3 + ℯ), 1/((x^2 + 1)*(x^4 + x + ℯ)),
+                  1/((x^2 + 1)*(x^4 + x + ℯ)),
                   # step ST: the e-free factor split off at a log / an exp level
                   1/(x*(log(x)^2 + 1)*(log(x)^4 + log(x) + ℯ)), exp(x)/((exp(2x) + 1)*(exp(4x) + exp(x) + ℯ)))
             F = Risch.risch_integrate(f, x)

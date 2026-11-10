@@ -11,11 +11,11 @@
 # The answer is checked numerically (complex erf). Nothing when f is not of this form or has no α ≠ 0.
 # ---------------------------------------------------------------------------
 const CQ = Complex{Q}
-const GTKey = Tuple{Int,Q,CQ,CQ}                       # (n, α, β, δ) for xⁿ e^(α x² + β x + δ)
+const GTKey = Tuple{Int,CQ,CQ,CQ}                      # (n, α, β, δ) for xⁿ e^(α x² + β x + δ)
 
 function gt_parse(t, xk::String)
     D = Dict{GTKey,CQ}
-    k0 = (0, Q(0), CQ(0), CQ(0))
+    k0 = (0, CQ(0), CQ(0), CQ(0))
     addto!(d, k, c) = (iszero(c) || (d[k] = get(d, k, CQ(0)) + c); d)
     function mul(a, b)
         d = D()
@@ -33,14 +33,14 @@ function gt_parse(t, xk::String)
         end
         cs
     end
-    function expo(u)                                   # e^u, u quadratic
+    function expo(u)                                   # e^u, u quadratic (α complex too: e^(i x²), SymPy #15292)
         cs = quad(u)
-        (cs === nothing || !iszero(imag(cs[3]))) && return nothing
-        D(GTKey((0, real(cs[3]), cs[2], cs[1])) => CQ(1))
+        cs === nothing && return nothing
+        D(GTKey((0, cs[3], cs[2], cs[1])) => CQ(1))
     end
     function pr(t)
         if !safe_iscall(t) || isempty(arguments(t))
-            string(t) == xk && return D(GTKey((1, Q(0), CQ(0), CQ(0))) => CQ(1))
+            string(t) == xk && return D(GTKey((1, CQ(0), CQ(0), CQ(0))) => CQ(1))
             is_imag_unit(t) && return D(k0 => CQ(0, 1))
             r = leaf_rational(t)
             r !== nothing && return iszero(r) ? D() : D(k0 => CQ(r))
@@ -76,7 +76,7 @@ function gt_parse(t, xk::String)
             # a divisor c e^δ only
             (length(ps[2]) == 1 && (k = first(keys(ps[2])); k[1] == 0 && iszero(k[2]) && iszero(k[3]))) || return nothing
             k, c = first(ps[2])
-            return mul(ps[1], D(GTKey((0, Q(0), CQ(0), -k[4])) => inv(c)))
+            return mul(ps[1], D(GTKey((0, CQ(0), CQ(0), -k[4])) => inv(c)))
         elseif n === :^ && length(ps) == 2
             p = leaf_rational(args[2])
             (p !== nothing && isone(denominator(p)) && 0 <= p <= 12) || return nothing
@@ -85,10 +85,11 @@ function gt_parse(t, xk::String)
             return expo(ps[1])
         elseif n in (:sin, :cos, :sinh, :cosh) && length(ps) == 1
             cs = quad(ps[1])
-            (cs === nothing || !iszero(cs[3]) || !iszero(imag(cs[1])) || !iszero(imag(cs[2]))) && return nothing
+            # (a real argument, linear or quadratic: cos(x²) = (e^(i x²) + e^(-i x²))/2, α = ±i)
+            (cs === nothing || !iszero(imag(cs[1])) || !iszero(imag(cs[2])) || !iszero(imag(cs[3]))) && return nothing
             w = n in (:sin, :cos) ? CQ(0, 1) : CQ(1)         # e^(±w u)
-            kp = GTKey((0, Q(0), w * cs[2], w * cs[1]))
-            km = GTKey((0, Q(0), -w * cs[2], -w * cs[1]))
+            kp = GTKey((0, w * cs[3], w * cs[2], w * cs[1]))
+            km = GTKey((0, -w * cs[3], -w * cs[2], -w * cs[1]))
             half = CQ(1 // 2)
             n === :cos && return D(kp => half, km => half)
             n === :cosh && return D(kp => half, km => half)
@@ -116,7 +117,7 @@ function integrate_gaussian_trig(f, x; build = nothing, lift = nothing, verify::
     (d === nothing || isempty(d) || length(d) > 200 || all(k -> iszero(k[2]), keys(d))) && return nothing
     # the integral as Σ c xᵏ e^L (elementary) + Σ c ∫ e^L (erf terms)
     el = Dict{GTKey,CQ}()
-    ef = Dict{Tuple{Q,CQ,CQ},CQ}()
+    ef = Dict{Tuple{CQ,CQ,CQ},CQ}()
     addto!(dd, k, c) = (iszero(c) || (dd[k] = get(dd, k, CQ(0)) + c))
     for ((n, α, β, δ), c) in d
         if iszero(α) && iszero(β)
@@ -168,27 +169,41 @@ function integrate_gaussian_trig(f, x; build = nothing, lift = nothing, verify::
         iszero(c) || push!(ts, num(c))
         isempty(ts) ? nothing : length(ts) == 1 ? ts[1] : mk(bd, :+, ts...)
     end
-    # the elementary part: xᵏ e^(α x² + Re β x + Re δ) (cos φ, sin φ), φ = Im β x + Im δ with Im β > 0 (or = 0, Im δ ≥ 0)
-    basis = Dict{Tuple{Int,Q,Q,Q,Q,Q,Symbol},CQ}()
+    # the elementary part: xᵏ e^(Re α x² + Re β x + Re δ) (cos φ, sin φ), φ = Im α x² + Im β x + Im δ, its sign so that
+    # (Im α, Im β, Im δ) is lexicographically ≥ 0
+    basis = Dict{Tuple{Int,Q,Q,Q,Q,Q,Q,Symbol},CQ}()
     for ((k, α, β, δ), c) in el
-        sb, sd = imag(β), imag(δ)
-        s = (sb < 0 || (iszero(sb) && sd < 0)) ? -1 : 1
-        key(kind) = (k, α, real(β), real(δ), s * sb, s * sd, kind)
+        sa_, sb, sd = imag(α), imag(β), imag(δ)
+        s = (sa_ < 0 || (iszero(sa_) && (sb < 0 || (iszero(sb) && sd < 0)))) ? -1 : 1
+        key(kind) = (k, real(α), real(β), real(δ), s * sa_, s * sb, s * sd, kind)
         addto!(basis, key(:cos), c)
-        (iszero(sb) && iszero(sd)) || addto!(basis, key(:sin), c * CQ(0, s))   # e^(iφ) = cos φ + i sin φ
+        (iszero(sa_) && iszero(sb) && iszero(sd)) || addto!(basis, key(:sin), c * CQ(0, s))   # e^(iφ) = cos φ + i sin φ
     end
     terms = Any[]
-    for ((k, α, rb, rd, ib, id, kind), c) in sort!(collect(basis); by = p -> (p[1][1], p[1][7]))
+    for ((k, ra, rb, rd, ia, ib, id, kind), c) in sort!(collect(basis); by = p -> (p[1][1], p[1][8]))
         iszero(c) && continue
-        L = lin(α, rb, rd)
-        φ = lin(Q(0), ib, id)
+        L = lin(ra, rb, rd)
+        φ = lin(ia, ib, id)
         push!(terms, prodt(Any[cnum(c), xpow(k), L === nothing ? nothing : mk(bd, :exp, L),
                                φ === nothing ? nothing : mk(bd, kind, φ)]))
     end
-    for ((α, β, δ), c) in sort!(collect(ef); by = p -> (p[1][1], imag(p[1][2]), real(p[1][2])))
+    for ((α, β, δ), c) in sort!(collect(ef); by = p -> (real(p[1][1]), imag(p[1][1]), imag(p[1][2]), real(p[1][2])))
         iszero(c) && continue
         κ = δ - β^2 / (4α)
         h = β / (2α)
+        if !iszero(imag(α))
+            # a complex α (cos(x²) e^(-x²)): e^κ √π/(2√-α) erf(√-α (x + h)), √-α the principal complex root; the
+            # conjugate terms' imaginary parts cancel
+            sq = mk(bd, :sqrt, cnum(-α))
+            xh = iszero(h) ? X : mk(bd, :+, X, cnum(h))
+            E = lin(Q(0), Q(0), real(κ))
+            ϕ = lin(Q(0), Q(0), imag(κ))
+            eκ = Any[E === nothing ? nothing : mk(bd, :exp, E),
+                     ϕ === nothing ? nothing : mk(bd, :+, mk(bd, :cos, ϕ), mk(bd, :*, I_, mk(bd, :sin, ϕ)))]
+            push!(terms, prodt(Any[cnum(c / 2), eκ..., mk(bd, :/, mk(bd, :sqrt, bd.lift(π)), sq), mk(bd, :erf, mk(bd, :*, sq, xh))]))
+            continue
+        end
+        α = real(α)
         a = abs(α)
         sa = isone(a) ? nothing : mk(bd, :sqrt, num(a))
         xh = iszero(h) ? X : mk(bd, :+, X, cnum(h))
