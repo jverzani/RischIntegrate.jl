@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usage — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=de969c7a">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=5066a906">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Usage — RischIntegrate.jl">
   <meta property="og:title" content="Usage — RischIntegrate.jl">
@@ -266,7 +266,9 @@ catch e
     sprint(showerror, e)
 end</code></pre>
 </div>
-<pre class="md-output md-output-text"><code class="nohighlight ansi">&quot;RischNotImplemented: radical of a non-rational expression (log(x)): only radicals of rational functions of x are supported&quot;</code></pre>
+<div class="md-math md-math-display">
+\[ - \frac{1}{2} \mathrm{erfi}\left( \sqrt{\log\left( x \right)} \right) \sqrt{\pi} + e^{\log\left( x \right)} \sqrt{\log\left( x \right)}\]
+</div>
 </div>
 <h2 id="Non-elementary-algebraic-integrals:-F" class="md-heading">Non-elementary algebraic integrals: ₂F₁<a href="#Non-elementary-algebraic-integrals:-F" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
 <p>For a radical of a binomial <code class="md-code-inline">α + βxⁿ</code> (<code class="md-code-inline">α &gt; 0</code>), the part of a non-elementary integral that is left after the algebraic and logarithmic parts is written with Gauss&#39;s hypergeometric function (<code class="md-code-inline">HypergeometricFunctions._₂F₁</code>), as Rubi does: <code class="md-code-inline">∫ xᵐ(α + βxⁿ)^q dx = α^q x^(m+1)/(m+1) ₂F₁(-q, (m+1)/n; (m+1)/n + 1; -βxⁿ/α)</code>. The answer is an <code class="md-code-inline">IntegralWithRootSums</code> (the ₂F₁ terms are evaluated numerically):</p>
@@ -345,6 +347,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=de969c7a"></script>
+  <script src="../assets/materialdocs.js?v=5066a906"></script>
 </body>
 </html>
