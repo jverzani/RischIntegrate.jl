@@ -3492,3 +3492,19 @@ end
                   (0.3, 1.1, -0.8))
     end
 end
+
+# two radicands over ℚ(i) (step TR, Rubi 4.3 (A + B tan)/(cot^(5/2) (a + i a tan)^(5/2))): √cot = σ/√tan with
+# σ = √(1/t)√t = ±1, then u = √L₁/√L₂ and each part as g_re + i g_im; the answer times σ holds where tan < 0 too
+@testset "two radicands over ℚ(i), √cot as σ/√tan (step TR)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    cfix(ex) = ex === :I ? im : ex isa Expr ? Expr(ex.head, map(cfix, ex.args)...) : ex
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x0))), :(a = 1.3), :(A = 0.6), :(B = -1.1), :(c = 0.4),
+                                                :(d = 1.7)), cfix(e)))
+    for (f, pts) in ((:((A + B * tan(c + d * x)) / (cot(c + d * x) ^ (5 / 2) * (a + I * a * tan(c + d * x)) ^ (5 / 2))), (0.3, 0.6, 2.0, -0.4)),)
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        for x0 in pts
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+end
