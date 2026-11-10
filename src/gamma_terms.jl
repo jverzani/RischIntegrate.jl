@@ -257,6 +257,37 @@ function try_gamma_log(f, x; build = nothing, lift = nothing, verify::Bool = tru
     back(G)
 end
 
+# step LU: radicals of log x (√(log x)/x², SymPy #15640), which the radical steps refuse (log x is no rational
+# function of x): x = eᵘ, ∫ f(eᵘ) eᵘ du with log x ↦ u (√u e⁻ᵘ: an erf answer), then u = log x; for x > 0. The
+# answer, or nothing
+function integrate_log_radicals(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    islogx(t) = isnode(t) && opname(operation(t)) === :log && length(arguments(t)) == 1 && string(arguments(t)[1]) == xk
+    haslog(t) = islogx(t) || (isnode(t) && any(haslog, arguments(t)))
+    any(((_, u),) -> haslog(u), collect_radicals(f, xk)) || return nothing
+    b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    ex = mk(b0, :exp, b0.x)
+    sub(t) = islogx(t) ? b0.x : isnode(t) ? term_rebuild(b0, t, Any[sub(a) for a in arguments(t)]) : (string(t) == xk ? ex : t)
+    g = sub(f)
+    haslog(g) && return nothing
+    G = try
+        risch_integrate(mk(b0, :*, g, ex), x; build = build, lift = lift, verify = verify)
+    catch e
+        # (a term type without erfi, SymEngine's: SpecialFunctions' generic erfi calls float on the term; the
+        # special terms kept as Expr instead, as for its other special-function answers)
+        if (e isa MethodError || e isa ArgumentError) && !(f isa Expr)
+            return integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
+        end
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        return nothing
+    end
+    G isa IntegralWithRootSums && return nothing
+    lx = mk(b0, :log, b0.x)
+    back(t) = isnode(t) ? term_rebuild(b0, t, Any[back(a) for a in arguments(t)]) : (string(t) == xk ? lx : t)
+    back(G)
+end
+
 # H4: ∫ c xˢ cos(bx), ∫ c xˢ sin(bx) for s ∉ ℤ rational (x > 0), by the series termwise:
 #   ∫ xˢ cos(bx) = x^(s+1)/(s+1) ₁F₂((s+1)/2; 1/2, (s+3)/2; -b²x²/4)
 #   ∫ xˢ sin(bx) = b x^(s+2)/(s+2) ₁F₂((s+2)/2; 3/2, (s+4)/2; -b²x²/4)

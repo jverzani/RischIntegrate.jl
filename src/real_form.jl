@@ -55,25 +55,24 @@ function split_complex_exps(f, x, build, lift)
     changed ? g : nothing
 end
 
-# ∫ f by step EC, through Expr (a term type may merge exp(α) exp(iβ) back into exp(α + iβ): SymJ's ℯ^z ℯ^(i z)), the
-# answer put back in the user's terms; nothing when no exponential splits. (Not again inside: the split integrand
-# has none left to split.)
-const EC_ACTIVE = Ref(false)
-function integrate_split_complex_exps(f, x; build = nothing, lift = nothing, verify::Bool = true)
+# ∫ f by a rewrite `rw(fe, x)` of its Expr form fe (nothing: no change), integrated through Expr and put back in the
+# user's terms: a term type may undo the rewrite (SymJ merges exp(α) exp(iβ) back into exp(α + iβ), e^(-c x) e^(c y)
+# into e^(-c (x - y))), which looped refusal and rewrite. `active` guards against the rewrite inside its own integral.
+function integrate_rewritten_expr(f, x, rw, active::Ref{Bool}; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
-    EC_ACTIVE[] && return nothing
+    active[] && return nothing
     xk = string(x)
     leaves = Dict{String,Any}()
     collect_leaves!(leaves, f)
     toexpr(t) = is_imag_unit(t) ? :im : (safe_iscall(t) && !isempty(arguments(t))) ?
         Expr(:call, opname(operation(t)), (toexpr(a) for a in arguments(t))...) : term_to_expr(t)
-    g = split_complex_exps(toexpr(f), Symbol(xk), expr_build, identity)
+    g = rw(toexpr(f), Symbol(xk))
     g === nothing && return nothing
-    EC_ACTIVE[] = true
+    active[] = true
     F = try
         risch_integrate(g, Symbol(xk); build = expr_build, lift = identity, verify = verify)
     finally
-        EC_ACTIVE[] = false
+        active[] = false
     end
     F isa IntegralWithRootSums && return nothing
     f isa Expr && return F
@@ -87,6 +86,10 @@ function integrate_split_complex_exps(f, x; build = nothing, lift = nothing, ver
     end
     back(F)
 end
+const EC_ACTIVE = Ref(false)
+integrate_split_complex_exps(f, x; build = nothing, lift = nothing, verify::Bool = true) =
+    integrate_rewritten_expr(f, x, (fe, xs) -> split_complex_exps(fe, xs, expr_build, identity), EC_ACTIVE;
+                             build = build, lift = lift, verify = verify)
 
 # σ on an element of level i (needs the kinds of levels 1..i)
 function tconj(T::Tower, kinds, f, i::Int)

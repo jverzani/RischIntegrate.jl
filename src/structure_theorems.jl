@@ -33,6 +33,10 @@ function make_exp(T::Tower, u)
             ρ = r[ri]
             iszero(ρ) && continue
             if lv.kind === :exp
+                # (a ratio of huge terms, from floats taken exactly (1.66666666666667 s beside s/120, SymPy #15498):
+                # the generator exp(s/N) and θ^huge took minutes; refused, step LS integrates the terms apart)
+                (abs(numerator(ρ)) > MAX_EXP_RATIO || denominator(ρ) > MAX_EXP_RATIO) && throw(RischNotImplemented(
+                    "exponentials whose arguments have the ratio $ρ: too large a common generator"))
                 denominator(ρ) == 1 || throw(Restart(lv.seq, Int(denominator(ρ))))
                 res = res * liftto(T, theta(T, i), top)^Int(numerator(ρ))
             else
@@ -50,6 +54,9 @@ function make_exp(T::Tower, u)
     th = theta(T, top + 1)
     s == 1 ? th : th^s
 end
+
+# the largest numerator or denominator of a ratio of exponential arguments taken as one generator
+const MAX_EXP_RATIO = 1000
 
 # the times make_log identified log(-w) with log(w), dropping the constant iπ (counted for the power parse)
 const NEG_LOG_DROPPED = Ref(0)
