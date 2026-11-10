@@ -3449,7 +3449,7 @@ end
             e
         end
         @test err isa Risch.NotElementary && startswith(err.msg, Risch.TAN_SYMBOLIC_NE)
-        @test t < 90
+        @test t < 300                 # (a regression to a timeout, not a speed bound: macOS CI took 94 s)
     end
     # the elementary ones still found
     ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7), :(b = 1.3), :(m = 0.6), :(c = 0.2), :(d = 1.1)), e))
