@@ -3449,7 +3449,7 @@ end
             e
         end
         @test err isa Risch.NotElementary && startswith(err.msg, Risch.TAN_SYMBOLIC_NE)
-        @test t < 90
+        @test t < 300                 # (a regression to a timeout, not a speed bound: macOS CI took 94 s)
     end
     # the elementary ones still found
     ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 0.7), :(b = 1.3), :(m = 0.6), :(c = 0.2), :(d = 1.1)), e))
@@ -3457,6 +3457,22 @@ end
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)
         for x0 in (0.3, 0.9, 1.2)
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+end
+
+# two radicands over ℚ(i) (step TR, Rubi 4.3 (A + B tan)/(cot^(5/2) (a + i a tan)^(5/2))): √cot = σ/√tan with
+# σ = √(1/t)√t = ±1, then u = √L₁/√L₂ and each part as g_re + i g_im; the answer times σ holds where tan < 0 too
+@testset "two radicands over ℚ(i), √cot as σ/√tan (step TR)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    cfix(ex) = ex === :I ? im : ex isa Expr ? Expr(ex.head, map(cfix, ex.args)...) : ex
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x0))), :(a = 1.3), :(A = 0.6), :(B = -1.1), :(c = 0.4),
+                                                :(d = 1.7)), cfix(e)))
+    for (f, pts) in ((:((A + B * tan(c + d * x)) / (cot(c + d * x) ^ (5 / 2) * (a + I * a * tan(c + d * x)) ^ (5 / 2))), (0.3, 0.6, 2.0, -0.4)),)
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test !(F isa Risch.IntegralWithRootSums)
+        for x0 in pts
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
         end
     end
 end
