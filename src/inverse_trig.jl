@@ -620,7 +620,18 @@ function numeric_evaluator(xk::String, ts...)
     sort!(names)
     function ev(t, x0)
         if safe_iscall(t) && !isempty(arguments(t))
-            return ComplexF64(op_function(t)((ev(a, x0) for a in arguments(t))...))
+            fn = op_function(t)
+            as = ComplexF64[ev(a, x0) for a in arguments(t)]
+            v = try
+                fn(as...)
+            catch e
+                # a real-only function with no Complex method (SpecialFunctions' expinti, sinint, cosint, as a
+                # SymbolicUtils answer keeps them) at real arguments: their real parts (else the answer threw at
+                # every point and was rejected, Apostol 165, ℯᵗ log(1 + t))
+                (e isa MethodError && all(a -> abs(imag(a)) <= 1e-12 * max(1.0, abs(a)), as)) || rethrow()
+                fn(map(real, as)...)
+            end
+            return ComplexF64(v)
         end
         s = string(t)
         s == xk && return ComplexF64(x0)

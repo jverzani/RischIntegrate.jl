@@ -3508,3 +3508,14 @@ end
         end
     end
 end
+
+# the numeric check evaluates in ComplexF64: a real-only special function (SpecialFunctions' expinti, sinint, cosint:
+# no Complex methods) is called with the real parts of real arguments, so an answer with it is checked, not rejected
+# for throwing at every point (Apostol 165 with SymbolicUtils terms, ℯᵗ log(1 + t), since the stricter check of #117)
+@testset "numeric check of answers with real-only special functions" begin
+    f = :(exp(t) * log(1 + t))
+    G = :(exp(t) * log(1 + t) - exp(-1) * expinti(1 + t))
+    @test Risch.numeric_antiderivative(f, G, "t")
+    @test !Risch.numeric_antiderivative(f, :(exp(t) * log(1 + t) + expinti(1 + t)), "t")   # (a wrong answer still fails)
+    @test Risch.numeric_antiderivative(:(sin(t) / t), :(sinint(t)), "t")
+end
