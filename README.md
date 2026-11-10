@@ -34,9 +34,6 @@ Since `Expr` objects support `TermInterface.jl`, the package can be used without
 @integrate(sin(x), (x, 0, pi))    # 2.0
 ```
 
-This is possible, as `Expr` objects support `TermInterface.jl`.
-
-
 There are some subtleties: other names are parameters, `$v` puts in the value of a variable `v`;
 The bounds are evaluated as Julia values, so in an iterated integral over a region that is not a
 rectangle, a bound in the variable of an outer integral must be quoted.
@@ -46,7 +43,7 @@ rectangle, a bound in the variable of an outer integral must be quoted.
 
 ## Comparisons
 
-The Apostol badge links to a report comparing coverage and performance on 175 problems from Apostol's *Calculus* with this package with different symbolic systems in Julia, the `RischMethod` of `SymbolicIntegration.jl`, and Giac's own implementation of integration. Giac is faster; `RischIntegrate.jl` has slightly better coverage.
+The Apostol badge links to a report comparing coverage and performance on 175 problems from Apostol's *Calculus* with this package with different symbolic systems in Julia, the `RischMethod` of `SymbolicIntegration.jl`, and Giac's own implementation of integration. Giac is an order of magnitude faster; `RischIntegrate.jl` has slightly better coverage.
 
 Development was greatly aided by a wider set of 1680 sample problems collected by [`SymbolicIntegration.jl`](https://github.com/JuliaSymbolics/SymbolicIntegration.jl), the results are:
 
