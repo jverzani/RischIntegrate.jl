@@ -799,12 +799,21 @@ function integrate_two_linear_radicals(g, x, bd::Builder; build = nothing, lift 
     xk = string(x)
     rads = Dict{String,Tuple{Any,Q}}()
     rest = Any[]
+    σs = Any[]                                                # √(1/M) √M = ±1 for each odd power of √(1/M)
     for (b, e) in product_factors!(Any[], g, 1)
         rp = radical_parts(b)
         if rp !== nothing && has_x(rp[2], xk)
             denominator(rp[1]) == 2 || return nothing
-            k = string(rp[2])
-            rads[k] = (rp[2], get(rads, k, (rp[2], Q(0)))[2] + e * rp[1])
+            R, E = rp[2], e * rp[1]
+            # a radicand 1/M (√cot = √(1/t)): (1/M)^E = σ M^(-E) with σ = √(1/M) √M, constant ±1 on intervals
+            if safe_iscall(R) && opname(operation(R)) === :/ && length(arguments(R)) == 2 &&
+               leaf_rational(arguments(R)[1]) == 1
+                M = arguments(R)[2]
+                isodd(numerator(2E)) && push!(σs, mk(bd, :*, mk(bd, :sqrt, R), mk(bd, :sqrt, M)))
+                R, E = M, -E
+            end
+            k = string(R)
+            rads[k] = (R, get(rads, k, (R, Q(0)))[2] + E)
         else
             isempty(collect_radicals(b, xk)) || return nothing
             push!(rest, (b, e))
@@ -840,7 +849,8 @@ function integrate_two_linear_radicals(g, x, bd::Builder; build = nothing, lift 
     end
     isempty(T.levels) || return nothing
     C = ctype(T)
-    (C === Q || rational_tfield(C)) || return nothing
+    cx = is_complex_field(C)
+    (C === Q || rational_tfield(C) || cx) || return nothing
     P = UPoly{C}
     # the known factors, in the field of el
     cands = P[P(C[zero(C), one(C)])]
@@ -859,20 +869,44 @@ function integrate_two_linear_radicals(g, x, bd::Builder; build = nothing, lift 
     parts === nothing && return nothing
     bt = Builder(bd.build, bd.lift, bd.x, T.consts)
     Gs = Any[]
-    for φ in parts
-        G = try
-            risch_integrate(frac_term(bt, φ), x; build = build, lift = lift, verify = verify)
-        catch err
-            (err isa RischNotImplemented || err isa NotElementary) || rethrow()
-            return nothing
-        end
-        G isa IntegralWithRootSums && return nothing
-        push!(Gs, G)
+    # over ℚ(i)(…) (√tan beside (a + i a tan)^(5/2), Rubi 4.3 4:470): each part as g_re + i g_im, real rational
+    # functions of u integrated apart; their real forms continue analytically to the complex u (as in step LC)
+    integ(h) = try
+        F = risch_integrate(h, x; build = build, lift = lift, verify = verify)
+        F isa IntegralWithRootSums ? nothing : F
+    catch err
+        (err isa RischNotImplemented || err isa NotElementary) || rethrow()
+        nothing
     end
+    cj(p) = P(C[cconj_g(T.consts, c) for c in p.c])
+    for φ in parts
+        if cx
+            # φ = φ_re + i φ_im with φ_re = (φ + σφ)/2, φ_im = (φ - σφ)/(2i) (σ: i ↦ -i on the coefficients)
+            σφ = frac(cj(φ.num), cj(φ.den))
+            two = cfromQ(C, Q(2))
+            re = (φ + σφ) * frac(P(C[inv(two)]))
+            imp = (φ - σφ) * frac(P(C[inv(two * cimag(C))]))
+            hr = iszero(re) ? nothing : frac_term(bt, re)
+            hi = iszero(imp) ? nothing : frac_term(bt, imp)
+            Gr = hr === nothing ? nothing : integ(hr)
+            Gi = hi === nothing ? nothing : integ(hi)
+            ((hr !== nothing && Gr === nothing) || (hi !== nothing && Gi === nothing)) && return nothing
+            ts = Any[]
+            Gr === nothing || push!(ts, Gr)
+            Gi === nothing || push!(ts, mk(bd, :*, bd.lift(im), Gi))
+            isempty(ts) || push!(Gs, length(ts) == 1 ? ts[1] : mk(bd, :+, ts...))
+        else
+            G = integ(frac_term(bt, φ))
+            G === nothing && return nothing
+            push!(Gs, G)
+        end
+    end
+    isempty(Gs) && return nothing
     G = length(Gs) == 1 ? Gs[1] : mk(bd, :+, Gs...)
     ub = mk(bd, :/, mk(bd, :sqrt, L1), mk(bd, :sqrt, L2))
     back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(a) for a in arguments(t)]) : (string(t) == xk ? ub : t)
-    back(G)
+    G = back(G)
+    isempty(σs) ? G : mk(bd, :*, σs..., G)
 end
 
 # el = Σ Pᵢ/Fᵢ^mᵢ (+ a polynomial in the last part) for the factors Fᵢ of el's denominator among `cands` (pairwise
