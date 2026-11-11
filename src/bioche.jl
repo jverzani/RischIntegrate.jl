@@ -227,6 +227,13 @@ function bioche(f, x; build = nothing, lift = nothing)
         end
         check_with_rootsums(res, rss, gq) ||
             throw(RischError("internal check failed: derivative of the result (with RootSums) differs from the integrand"))
+        # s = tan(u/2) with parameters: the RootSum's real form (atan(s √((a - 1)/(a + 1))) for 1/(a + cos u)) jumps at
+        # u = π, which the correction below (over res's own atans) does not see; the full route takes the jumps of
+        # its answer's atans (Jeffrey and Rich, ACM TOMS 20 (1994): the spurious discontinuities of tan(u/2))
+        if kind === :half && any(c -> c.kind === :sym, T.consts)
+            r = bioche_tan_full(f, x, gq, k, T; build = build, lift = lift, half = true)
+            r === nothing || return r
+        end
         if kind !== :tan
             rss = RC === Q ? rss : Any[base_term_rootsum(bs, rs) for rs in rss]
             E = to_term(bs, res)
@@ -332,7 +339,7 @@ end
 # with the jump correction K (u - atan(tan u)), K = Σ c (σ₊ - σ₋)/2 over the terms c atan(p) (σ± the signs of p at
 # s = ±∞, at the parameters' generic values, as step SY). Checked numerically; nothing when the answer has a RootSum
 # or a special function, or an atan argument does not go to ±∞ at both ends.
-function bioche_tan_full(f, x, gq, k, T; build = nothing, lift = nothing)
+function bioche_tan_full(f, x, gq, k, T; build = nothing, lift = nothing, half::Bool = false)
     @nospecialize f x
     xk = string(x)
     sk = "s_tan"
@@ -350,7 +357,30 @@ function bioche_tan_full(f, x, gq, k, T; build = nothing, lift = nothing)
         return nothing
     end
     (G isa IntegralWithRootSums || has_special(G)) && return nothing
-    # the jump coefficient over the terms c·atan(p) of G (a sum of products)
+    # (s = tan(u/2) spans the real line on (-π, π): a log of the full route, log(s + c) without |·|, turns negative on
+    # part of it (1/(a + b cos u)², b > a); those answers stay with the Bioche forms, which take log(-w) there)
+    half && has_op(G, :log) && return nothing
+    # the jump coefficient over the terms c·atan(p) of G (a sum of products), each p at s = ±10⁸ with the parameters
+    # where every p is real: the generic values, else larger ones (an answer with √(a² - 1) holds for a > 1, and
+    # a = 0.8 makes p complex: 1/(a + cos u) by s = tan(u/2), half)
+    # (the parameters: the symbols of G other than s, as Expr leaves; `leaves` only holds the user's non-Symbol leaves)
+    syms!(acc, t) = t isa Symbol ? (t in (Symbol(sk), :π, :pi, :ℯ, :im) || push!(acc, string(t)); acc) :
+                    t isa Expr ? (foreach(a -> syms!(acc, a), t.head === :call ? t.args[2:end] : t.args); acc) : acc
+    names = sort!(unique([syms!(String[], G); [string(l) for l in keys(leaves)]]))
+    function evat(vals)
+        function e(t, s0)
+            if t isa Expr && t.head === :call
+                return op_function(t)((e(a, s0) for a in t.args[2:end])...)
+            end
+            t === Symbol(sk) && return complex(s0)
+            ip = findfirst(==(string(t)), names)          # (not `k`: the closure would assign bioche_tan_full's k)
+            ip === nothing || return complex(vals[ip])
+            t in (:π, :pi) && return complex(π)
+            t === :ℯ && return complex(ℯ)
+            t isa Number && return complex(float(t))
+            throw(RischError("no value for $t"))
+        end
+    end
     ev = numeric_evaluator(sk, G)
     flat(t) = (t isa Expr && t.head === :call && t.args[1] === :+) ? Any[u for a in t.args[2:end] for u in flat(a)] : Any[t]
     terms = flat(G)
@@ -366,17 +396,26 @@ function bioche_tan_full(f, x, gq, k, T; build = nothing, lift = nothing)
         p = fs[ia[1]].args[2]
         c = Any[fs[j] for j in eachindex(fs) if j != ia[1]]
         has_x(Expr(:call, :*, 1, c...), sk) && return nothing
-        vp, vm = try
-            real(ev(p, 1e8)), real(ev(p, -1e8))
-        catch
-            return nothing
+        vp, vm = nothing, nothing
+        for vals in ([0.5 + 0.3j for j in eachindex(names)], [2.0 + 1.7j for j in eachindex(names)], [5.0 + 3.1j for j in eachindex(names)])
+            a, b = try
+                e = evat(vals)
+                e(p, 1e8), e(p, -1e8)
+            catch
+                continue
+            end
+            (abs(imag(a)) <= 1e-8 * abs(a) && abs(imag(b)) <= 1e-8 * abs(b)) || continue
+            vp, vm = real(a), real(b)
+            break
         end
+        vp === nothing && return nothing
         (abs(vp) > 1e4 && abs(vm) > 1e4) || return nothing
         σ = (Int(sign(vp)) - Int(sign(vm))) // 2
         σ == 0 || push!(J, σ == 1 ? (isempty(c) ? 1 : Expr(:call, :*, c...)) : Expr(:call, :*, σ, c...))
     end
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
-    ut = isone(k) ? bd.x : mk(bd, :*, cterm(bd, k), bd.x)
+    kk = half ? k / 2 : k                                # s = tan(k u/2): u/2 in the role of u
+    ut = isone(kk) ? bd.x : mk(bd, :*, cterm(bd, kk), bd.x)
     st = mk(bd, :tan, ut)
     function back(ex)
         ex === Symbol(sk) && return st
