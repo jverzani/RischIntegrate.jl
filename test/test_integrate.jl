@@ -3520,6 +3520,46 @@ end
     @test Risch.numeric_antiderivative(:(sin(t) / t), :(sinint(t)), "t")
 end
 
+# products of sines and cosines of rational multiples of one frequency over xᵐ (step TX): the Borwein integrals
+# Bₖ = Π_{i = 1, 3, …, 2k-1} sin(x/i)/(x/i), to a sum by product-to-sum, each term by parts to Si, Ci (the tower took
+# exp(i x/L), L = lcm(1, 3, …): B₄ for minutes, B₅ refused). ∫₀^∞ Bₖ = π/2 for k ≤ 7, and π/2 - 2.31…·10⁻¹¹ for k = 8,
+# from the answer: Si → π/2 at ∞, and at ε → 0 (the x^(1-m) terms cancel) in BigFloat with Si, Ci by their series
+@testset "Borwein integrals: trig products over xᵐ (step TX)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    Bk(k) = Expr(:call, :*, (:(sin(x / $i) / (x / $i)) for i in 1:2:(2k - 1))...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(sinint = SpecialFunctions.sinint),
+                                                :(cosint = SpecialFunctions.cosint)), e))
+    Fs = Dict{Int,Any}()
+    for k in 1:8
+        t = @elapsed F = Risch.risch_integrate(Bk(k), :x; build = build, lift = identity)
+        Fs[k] = F
+        @test t < 60 && occursin("sinint", string(F))
+        for x0 in (2.3, 5.9)
+            @test isapprox((ev(F, x0 + 1e-5) - ev(F, x0 - 1e-5)) / 2e-5, ev(Bk(k), x0); rtol = 1e-6, atol = 1e-9)
+        end
+    end
+    setprecision(4096) do
+        Si(z) = (s = zero(z); t = z; n = 0; while true; τ = t / ((2n + 1) * factorial(big(2n + 1))); s += τ;
+                 abs(τ) < eps(z) && break; n += 1; t *= -z ^ 2; end; s)
+        Ci(z) = (s = Base.MathConstants.eulergamma + log(z); n = 1; t = -z ^ 2; while true; τ = t / (2n * factorial(big(2n)));
+                 s += τ; abs(τ) < eps(z) && break; n += 1; t *= -z ^ 2; end; s)
+        sub(e, v) = e === :x ? v : e isa Expr ? Expr(e.head, map(a -> sub(a, v), e.args)...) : e
+        hasx(e) = e === :x || (e isa Expr && any(hasx, e.args))
+        cval(e) = Core.eval(Main, e) * big(1)
+        lim∞(e) = !hasx(e) ? cval(e) : !(e isa Expr && e.head === :call) ? big(0) : e.args[1] === :sinint ? big(π) / 2 :
+                  e.args[1] === :+ ? sum(lim∞(a) for a in e.args[2:end]) :
+                  e.args[1] === :* ? (xs = [a for a in e.args[2:end] if hasx(a)];
+                                      length(xs) == 1 ? prod((cval(a) for a in e.args[2:end] if !hasx(a)); init = big(1)) * lim∞(xs[1]) : big(0)) :
+                  big(0)
+        at(e, v) = Core.eval(Main, Expr(:let, Expr(:block, :(sinint = $Si), :(cosint = $Ci)), sub(e, v)))
+        ε = big(10) ^ -12
+        for (k, δ) in ((7, big(0)), (8, big(π) * (big(1) // 2 - big(467807924713440738696537864469) // big(935615849440640907310521750000))))
+            v = lim∞(Fs[k]) - at(Fs[k], ε) + ε                 # (+ ε: ∫₀^ε Bₖ ≈ ε)
+            @test abs(v - (big(π) / 2 - δ)) < 1e-20
+        end
+    end
+end
+
 # no spurious jumps of tan(u/2) (Jeffrey and Rich, ACM TOMS 20 (1994)): with a parameter, 1/(a + cos x) by s = tan(x/2) had
 # a RootSum whose real form 2/√(a² - 1) atan(tan(x/2)…) jumped by -2π/√(a² - 1) at x = π; the full route's atans get the
 # correction J (x/2 - atan(tan(x/2))) (step TQ2 for s = tan(u/2)). The answers are continuous where the integrand is
