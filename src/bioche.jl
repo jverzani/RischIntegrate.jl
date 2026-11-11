@@ -384,7 +384,18 @@ function bioche_tan_full(f, x, gq, k, T; build = nothing, lift = nothing, half::
         end
     end
     ev = numeric_evaluator(sk, G)
-    flat(t) = (t isa Expr && t.head === :call && t.args[1] === :+) ? Any[u for a in t.args[2:end] for u in flat(a)] : Any[t]
+    # the summands, products distributed over the sums that hold an atan (1/(a + b cos u)²: c (r(s) + atan(p)/2))
+    function flat(t)
+        t isa Expr && t.head === :call || return Any[t]
+        t.args[1] === :+ && return Any[u for a in t.args[2:end] for u in flat(a)]
+        t.args[1] === :* || return Any[t]
+        fs = t.args[2:end]
+        j = findfirst(u -> u isa Expr && u.head === :call && u.args[1] in (:+, :*) && has_op(u, :atan), fs)
+        j === nothing && return Any[t]
+        rest = Any[fs[i] for i in eachindex(fs) if i != j]
+        prod(u) = (u isa Expr && u.head === :call && u.args[1] === :*) ? u.args[2:end] : Any[u]
+        Any[w for v in flat(fs[j]) for w in flat(Expr(:call, :*, rest..., prod(v)...))]
+    end
     terms = flat(G)
     J = Any[]
     for t in terms
@@ -399,7 +410,10 @@ function bioche_tan_full(f, x, gq, k, T; build = nothing, lift = nothing, half::
         c = Any[fs[j] for j in eachindex(fs) if j != ia[1]]
         has_x(Expr(:call, :*, 1, c...), sk) && return nothing
         vp, vm = nothing, nothing
-        for vals in ([0.5 + 0.3j for j in eachindex(names)], [2.0 + 1.7j for j in eachindex(names)], [5.0 + 3.1j for j in eachindex(names)])
+        # (increasing values, then decreasing ones: 1/(a + b cos u) has √(a² - b²) when the oracle says a > b)
+        n = length(names)
+        for vals in ([0.5 + 0.3j for j in 1:n], [2.0 + 1.7j for j in 1:n], [5.0 + 3.1j for j in 1:n],
+                     [0.5 + 0.3(n + 1 - j) for j in 1:n], [2.0 + 1.7(n + 1 - j) for j in 1:n], [5.0 + 3.1(n + 1 - j) for j in 1:n])
             a, b = try
                 e = evat(vals)
                 e(p, 1e8), e(p, -1e8)
@@ -413,7 +427,7 @@ function bioche_tan_full(f, x, gq, k, T; build = nothing, lift = nothing, half::
         vp === nothing && return nothing
         (abs(vp) > 1e4 && abs(vm) > 1e4) || return nothing
         σ = (Int(sign(vp)) - Int(sign(vm))) // 2
-        σ == 0 || push!(J, σ == 1 ? (isempty(c) ? 1 : Expr(:call, :*, c...)) : Expr(:call, :*, σ, c...))
+        σ == 0 || push!(J, σ == 1 ? (isempty(c) ? 1 : length(c) == 1 ? c[1] : Expr(:call, :*, c...)) : Expr(:call, :*, σ, c...))
     end
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     kk = half ? k / 2 : k                                # s = tan(k u/2): u/2 in the role of u

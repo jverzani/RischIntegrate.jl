@@ -3579,3 +3579,18 @@ end
         @test all(p -> abs(jump(F, p, 0)) < 1e-6, (-π, π, 3π))
     end
 end
+
+# a > b for a + b cos x (by the caller's sign oracle; undecided, the parameter values a = 1, b = 2 give the b > a forms
+# with √(b² - a²)): atan forms with √(a² - b²), continuous at the poles of tan(x/2). The jump coefficient was read at
+# increasing parameter values only (b > a, complex atan arguments), and missed atans inside products (1/(a + b cos x)²)
+@testset "a > b: real and continuous answers for a + b cos x (sign oracle)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = 1.3), :(b = 0.7)), e))
+    orac(p) = (v = ev(p, 0.0); v isa Real ? Int(sign(v)) : nothing)
+    for f in (:(1 / (a + b * cos(x))), :(1 / (a + b * sin(x))), :(cos(x) / (a + b * cos(x))), :(1 / (a + b * cos(x))^2),
+              :(sin(x)^2 / (a + b * cos(x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity, sign = orac)
+        @test all(p -> abs(ev(F, p + 1e-9) - ev(F, p - 1e-9)) < 1e-6, (-π, π, 3π))
+        @test all(x0 -> isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6), (0.5, 3.3))
+    end
+end
