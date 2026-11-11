@@ -369,7 +369,67 @@ function integrate_power_radicands(f, x; build = nothing, lift = nothing, verify
     G isa IntegralWithRootSums && return nothing
     (iseven(q) && isodd(ps[1])) || return G
     root = q == 2 ? mk(bd, :sqrt, ut) : mk(bd, :^, ut, bd.lift(1 // q))
-    mk(bd, :*, G, mk(bd, :/, root, Wt))
+    H = mk(bd, :*, G, mk(bd, :/, root, Wt))
+    (C === QI && q == 2) || return H
+    corr = sign_jump_correction(bd, G, Wt, kq, xk)
+    corr === nothing ? H : mk(bd, :+, H, corr)
+end
+
+# step PW's jumps: for q = 2 and p odd, H = G·√U/(√d W) = G·sign(W) jumps at the real zeros of W (√(1 + cos x):
+# H = 2√2 sin(x/2) sign(cos(x/2)), by -4√2 at x = π, so ∫₀^2π gave 0). For W = a cos θ + b sin θ (θ = kq x;
+# W = R cos(θ - δ), δ = atan2(b, a)) the zeros θₖ = δ + π/2 + kπ are evenly spaced, and when the jumps there are
+# one J (G periodic, alternating in sign at the zeros), S = θ - atan((a sin θ - b cos θ)/(a cos θ + b sin θ)),
+# θ - δ - atan(tan(θ - δ)) + δ, jumps by π at each: H - (J/π) S is continuous. J is taken numerically and
+# recognized as r or r√d' (r a small rational, d' a small squarefree integer); nothing (H as it is) otherwise, as when
+# the jumps grow (x√(1 + cos x)).
+function sign_jump_correction(bd::Builder, G, Wt, kq::Q, xk::String)
+    ev = numeric_evaluator(xk, G, Wt)
+    rv(t, x0) = (v = try ev(t, x0) catch; return nothing end; abs(imag(v)) <= 1e-9 * max(1.0, abs(v)) ? real(v) : nothing)
+    k = Float64(kq)
+    a, b = rv(Wt, 0.0), rv(Wt, (π / 2) / k)
+    (a === nothing || b === nothing) && return nothing
+    # W = a cos θ + b sin θ (no constant, no higher harmonics)
+    for θ in (0.37, 1.9, 4.4)
+        w = rv(Wt, θ / k)
+        (w !== nothing && abs(w - (a * cos(θ) + b * sin(θ))) <= 1e-9 * max(1.0, abs(a) + abs(b))) || return nothing
+    end
+    # a : b exactly (W's scale does not matter in the ratio)
+    m = max(abs(a), abs(b))
+    m > 0 || return nothing
+    small(v) = (r = rationalize(v; tol = 1e-12); (denominator(r) <= 1000 && abs(r - v) <= 1e-10) ? Q(r) : nothing)
+    aq, bq = small(a / m), small(b / m)
+    (aq === nothing || bq === nothing) && return nothing
+    δ = atan(b, a)
+    # the jumps at four zeros: J = G(xₖ)·(sign of W after - before)
+    Js = Float64[]
+    for kk in -1:2
+        x0 = (δ + π / 2 + kk * π) / k
+        h = 1e-6 * max(1.0, abs(x0))
+        g = rv(G, x0)
+        (wl = rv(Wt, x0 - h); wr = rv(Wt, x0 + h))
+        (g === nothing || wl === nothing || wr === nothing) && return nothing
+        push!(Js, g * (sign(wr) - sign(wl)))
+    end
+    J = Js[1]
+    all(j -> abs(j - J) <= 1e-8 * max(1.0, abs(J)), Js) || return nothing
+    abs(J) <= 1e-12 && return nothing
+    # J exactly: a rational, or a rational times √d' for a small squarefree d'
+    Jt = nothing
+    for d in (1, 2, 3, 5, 6, 7, 10)
+        r = small(J / sqrt(d))
+        r === nothing && continue
+        Jt = d == 1 ? cterm(bd, r) : mk(bd, :*, cterm(bd, r), mk(bd, :sqrt, bd.lift(d)))
+        break
+    end
+    Jt === nothing && return nothing
+    θt = isone(kq) ? bd.x : mk(bd, :*, cterm(bd, kq), bd.x)
+    sθ, cθ = mk(bd, :sin, θt), mk(bd, :cos, θt)
+    lin(p, u, q, v) = (ts = Any[]; iszero(p) || push!(ts, isone(p) ? u : mk(bd, :*, cterm(bd, p), u));
+                       iszero(q) || push!(ts, isone(q) ? v : mk(bd, :*, cterm(bd, q), v));
+                       length(ts) == 1 ? ts[1] : mk(bd, :+, ts...))
+    ratio = mk(bd, :/, lin(aq, sθ, -bq, cθ), lin(aq, cθ, bq, sθ))
+    S = mk(bd, :+, θt, mk(bd, :*, bd.lift(-1), mk(bd, :atan, ratio)))
+    mk(bd, :*, mk(bd, :*, bd.lift(-1), mk(bd, :/, Jt, bd.lift(π))), S)
 end
 
 # ---------------------------------------------------------------------------

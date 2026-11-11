@@ -3594,3 +3594,27 @@ end
         @test all(x0 -> isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6), (0.5, 3.3))
     end
 end
+
+# step PW's sign: √(1 + cos x) = √2|cos(x/2)| integrated as G·sign(W) jumped at the zeros of W (by -4√2 at x = π, so
+# ∫₀^2π gave 0, and SymJ's ∫∫ |e^(2πix) + e^(2πiy)| over the unit square 0 instead of 4/π). For W = a cos θ + b sin θ
+# and equal jumps J, the staircase -(J/π)(θ - atan((a sin θ - b cos θ)/(a cos θ + b sin θ))) makes the answer continuous
+@testset "continuous answers for √(1 ± cos x), √(1 ± sin x) (step PW)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0)), e))
+    for (f, ps, I) in ((:(sqrt(1 + cos(x))), (-π, π, 3π), (0, 2π, 4sqrt(2))),
+                       (:(sqrt(2 + 2 * cos(2 * pi * x))), (0.5, 1.5), (0, 1, 4 / π)),
+                       (:(sqrt(1 - cos(x))), (0, 2π), (1, 1 + 2π, 4sqrt(2))),   # (W = sin(x/2): 0/0 at 0)
+                       (:(sqrt(1 + sin(x))), (-π / 2, 3π / 2), (0, 2π, 4sqrt(2))),
+                       (:(sqrt(1 - sin(x))), (π / 2,), (0, 2π, 4sqrt(2))),
+                       (:(cos(x) * sqrt(1 + cos(x))), (π, 3π), (0, 2π, 4sqrt(2) / 3)),
+                       (:(sqrt(1 + cos(x)) ^ 3), (π,), (0, 2π, 16sqrt(2) / 3)),
+                       (:(sqrt(1 + cos(2x))), (π / 2, 3π / 2), (0, π, 2sqrt(2))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test all(p -> abs(ev(F, p + 1e-4) - ev(F, p - 1e-4)) < 1e-3, ps)
+        @test all(x0 -> isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6), (0.4, 1.3, 2.2))
+        @test isapprox(ev(F, I[2]) - ev(F, I[1]), I[3]; rtol = 1e-8)
+    end
+    # growing jumps (x√(1 + cos x)): no staircase, the answer as before
+    F = Risch.risch_integrate(:(x * sqrt(1 + cos(x))), :x; build = build, lift = identity)
+    @test !occursin("atan", string(F))
+end
