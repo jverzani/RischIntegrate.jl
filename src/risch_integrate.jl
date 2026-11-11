@@ -338,6 +338,12 @@ end
 function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     xk = string(x)
+    g = rewrite_sinc(f, x, build, lift)                # sinc(u) = sin(πu)/(πu), Julia's normalized sinc
+    g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    # products of sines and cosines of rational multiples of one frequency over xᵐ (the Borwein integrals): to a sum,
+    # each term by parts to Si, Ci (step TX; the tower took exp(i x/45045) for eight factors)
+    r = integrate_trig_products(f, x; build = build, lift = lift, verify = verify)
+    r === nothing || return r
     g = merge_exp_powers(f, x, build, lift)            # (bʷ)^r = b^(w r), b > 0 constant (step EP)
     g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
     if !has_invhyp(f, xk)                              # exp(c log u) = u^c (step XL; atanh, acoth after step AL)

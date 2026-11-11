@@ -199,7 +199,9 @@ function poly_parts(bd::Builder, B, xk::String)
         cs, n = Any[], 0
         for (s, e) in product_factors!(Any[], t, 1)
             if !depends_on(s, xk)
-                push!(cs, e == 1 ? s : mk(bd, :^, s, bd.lift(e)))
+                # (a number to a power as a rational: SymbolicUtils evaluates 3^-1 and raises a DomainError)
+                q = e == 1 ? nothing : leaf_rational(s)
+                push!(cs, e == 1 ? s : (q !== nothing && !iszero(q)) ? cterm(bd, Q(q)^e) : mk(bd, :^, s, bd.lift(e)))
             elseif !safe_iscall(s) && string(s) == xk && e >= 1
                 n += e
             else
