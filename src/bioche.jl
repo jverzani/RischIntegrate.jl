@@ -230,7 +230,9 @@ function bioche(f, x; build = nothing, lift = nothing)
         # s = tan(u/2) with parameters: the RootSum's real form (atan(s √((a - 1)/(a + 1))) for 1/(a + cos u)) jumps at
         # u = π, which the correction below (over res's own atans) does not see; the full route takes the jumps of
         # its answer's atans (Jeffrey and Rich, ACM TOMS 20 (1994): the spurious discontinuities of tan(u/2))
-        if kind === :half && any(c -> c.kind === :sym, T.consts)
+        # (quadratic RootSums only: of degree 4, cos⁴u/(a + b cos u + c cos²u), the full route over ℚ(a, b, c) took over an
+        # hour to return a RootSum again)
+        if kind === :half && any(c -> c.kind === :sym, T.consts) && all(rs -> degree(rs.poly) <= 2, rss)
             r = bioche_tan_full(f, x, gq, k, T; build = build, lift = lift, half = true)
             r === nothing || return r
         end
