@@ -3559,3 +3559,23 @@ end
         end
     end
 end
+
+# no spurious jumps of tan(u/2) (Jeffrey and Rich, ACM TOMS 20 (1994)): with a parameter, 1/(a + cos x) by s = tan(x/2) had
+# a RootSum whose real form 2/√(a² - 1) atan(tan(x/2)…) jumped by -2π/√(a² - 1) at x = π; the full route's atans get the
+# correction J (x/2 - atan(tan(x/2))) (step TQ2 for s = tan(u/2)). The answers are continuous where the integrand is
+@testset "no spurious jumps at the poles of tan(x/2) (Weierstrass substitution)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0, a) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(a = $a)), e))
+    jump(F, p, a) = ev(F, p + 1e-9, a) - ev(F, p - 1e-9, a)
+    for f in (:(1 / (a + cos(x))), :(1 / (a + sin(x))), :(cos(x) / (a + cos(x))), :(1 / (a + cos(2x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for a in (1.3, 2.5)                              # (a > 1: no real poles)
+            @test all(p -> abs(jump(F, p, a)) < 1e-6, (-π, π / 2, π, 3π / 2, 3π))
+            @test isapprox((ev(F, 2.0 + 1e-6, a) - ev(F, 2.0 - 1e-6, a)) / 2e-6, ev(f, 2.0, a); rtol = 1e-6)
+        end
+    end
+    for f in (:(1 / (2 + cos(x))), :(1 / (5 - 4cos(x))), :(1 / (3 + 2cos(x) + sin(x))))   # (already continuous)
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test all(p -> abs(jump(F, p, 0)) < 1e-6, (-π, π, 3π))
+    end
+end
