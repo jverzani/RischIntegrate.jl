@@ -1613,6 +1613,24 @@ end
     end
 end
 
+# step SL with exp(r L) beside the shifted argument L = a c + b c x (sample 2606); step HL: a hyperbolic function of
+# k log(u) in a radicand, rational in uᵏ, sech^e as cosh^(-e) (sample 2607). Checked for x < 0 too (complex logs)
+@testset "exp beside a shifted argument (step SL), hyperbolic functions of a logarithm (step HL)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x0))), :(a = 0.4), :(b = 1.3), :(c = 0.7)), e))
+    for (f, pts) in ((:(exp(c * (a + b * x)) * sqrt(sech(a * c + b * c * x) ^ 2)), (-2.0, -0.3, 0.5, 1.7)),
+                     (:(exp(2 * (a + b * x)) * sinh(a + b * x)), (-1.0, 0.5)),
+                     (:(x ^ 2 / sech(2 * log(c * x)) ^ (3 / 2)), (0.3, 1.1, 2.5)),
+                     (:(sinh(3 * log(x)) / sqrt(cosh(log(x) / 2) ^ 2)), (0.4, 1.5)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in pts
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+    # x √cosh(2 log x) = √((x⁴ + 1)/2): elliptic
+    @test_throws Risch.NotElementary Risch.risch_integrate(:(x * sqrt(cosh(2 * log(x)))), :x; build = build, lift = identity)
+end
+
 # step PB: a binomial radicand with parameters, a + b xⁿ (n ≥ 3), by x = |a/b|^(1/n) u (sample 453, 481, 484,
 # 455, 454, 479, 574). Checked on both sides of 0, with a < b and a > b
 @testset "binomial radicand with parameters (step PB)" begin
