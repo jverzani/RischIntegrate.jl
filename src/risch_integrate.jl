@@ -558,6 +558,19 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         r === nothing || return r
     end
     if any(((_, u),) -> radicand_element(u, xk) === nothing, rads)
+        # a hyperbolic function of k·log(u) in a radicand: rational in uᵏ (step HL)
+        if any(((_, u),) -> has_op_in_hl(u), rads)
+            g = rewrite_hyp_log(f, x, build, lift)
+            if g !== nothing
+                r = try
+                    risch_integrate(g, x; build = build, lift = lift, verify = verify)
+                catch e
+                    (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+                    nothing
+                end
+                r === nothing || return r
+            end
+        end
         # radicals of trigonometric monomials of one argument, several or with a constant factor: one radical,
         # the answer times σ (step MN)
         if !MN_ACTIVE[]
@@ -1060,12 +1073,14 @@ function integrate_linear_shift(f, x; build = nothing, lift = nothing, verify::B
     LINEAR_SHIFT[] && return nothing
     xk = string(x)
     # the arguments; x elsewhere only algebraically, or inside atan, acot, asin, acos, log (exp(c x) would become
-    # exp(c (y - e)/f))
+    # exp(c (y - e)/f), unless c x is a rational multiple of L)
     args = Any[]
     function collect_args(t)
         (safe_iscall(t) && !isempty(arguments(t))) || return true
         n = opname(operation(t))
-        if n in SHIFT_TRIG && length(arguments(t)) == 1 && has_x(arguments(t)[1], xk)
+        # (exp too, when its argument is a rational multiple of L: exp(c (a + b x)) √(sech(a c + b c x)²), sample 2606;
+        # any other exp argument makes a ratio below irrational and the step returns nothing, as before)
+        if (n in SHIFT_TRIG || n === :exp) && length(arguments(t)) == 1 && has_x(arguments(t)[1], xk)
             push!(args, arguments(t)[1])
             return true
         end
@@ -1100,7 +1115,8 @@ function integrate_linear_shift(f, x; build = nothing, lift = nothing, verify::B
     X = mk(bd, :/, mk(bd, :+, y, mk(bd, :*, bd.lift(-1), b)), a)
     function walk(t)
         isnode(t) || return string(t) == xk ? X : t
-        if opname(operation(t)) in SHIFT_TRIG && length(arguments(t)) == 1 && haskey(ratio, string(arguments(t)[1]))
+        if (opname(operation(t)) in SHIFT_TRIG || opname(operation(t)) === :exp) && length(arguments(t)) == 1 &&
+           haskey(ratio, string(arguments(t)[1]))
             r = ratio[string(arguments(t)[1])]
             return term_rebuild(bd, t, Any[isone(r) ? y : mk(bd, :*, cterm(bd, r), y)])
         end
@@ -1116,6 +1132,65 @@ function integrate_linear_shift(f, x; build = nothing, lift = nothing, verify::B
     back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? L : t)
     subst_answer(G, back, bd)
 end
+# step HL: hyperbolic functions of k·log(u), k ∈ ℚ, written with s = uᵏ (= exp(k log u), on the principal branch too):
+# cosh = (s + 1/s)/2, sinh = (s - 1/s)/2, and their quotients; first sech(A)^e = cosh(A)^(-e) (cosh A > 0 for real A),
+# so that a radicand is not a reciprocal (x²/sech(2 log(c x))^(3/2), sample 2607: ((c x)² + (c x)⁻²)/2)^(3/2)).
+# f rewritten so, or nothing.
+const HL_HYP = (:sinh, :cosh, :tanh, :coth, :sech, :csch)
+has_op_in_hl(t) = safe_iscall(t) && !isempty(arguments(t)) &&
+    ((opname(operation(t)) in HL_HYP && any(a -> safe_iscall(a) && (opname(operation(a)) === :log || has_op_log(a)), arguments(t))) ||
+     any(has_op_in_hl, arguments(t)))
+has_op_log(t) = safe_iscall(t) && !isempty(arguments(t)) && (opname(operation(t)) === :log || any(has_op_log, arguments(t)))
+function rewrite_hyp_log(f, x, build, lift)
+    @nospecialize f x
+    xk = string(x)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    # (k, u) when A = k·log(u), k rational
+    function klog(A)
+        k, u = Q(1), nothing
+        for (t, e) in product_factors!(Any[], A, 1)
+            r = leaf_rational(t)
+            if r !== nothing
+                k *= Q(r)^e
+            elseif u === nothing && e == 1 && safe_iscall(t) && opname(operation(t)) === :log && length(arguments(t)) == 1 &&
+                   has_x(arguments(t)[1], xk)
+                u = arguments(t)[1]
+            else
+                return nothing
+            end
+        end
+        u === nothing ? nothing : (k, u)
+    end
+    changed = false
+    function rw(t)
+        isnode(t) || return t
+        args = arguments(t)
+        n = opname(operation(t))
+        rp = radical_parts(t)
+        if rp !== nothing && safe_iscall(rp[2]) && opname(operation(rp[2])) === :sech && length(arguments(rp[2])) == 1 &&
+           klog(arguments(rp[2])[1]) !== nothing
+            changed = true
+            return rw(mk(bd, :^, mk(bd, :cosh, arguments(rp[2])[1]), cterm(bd, -rp[1])))
+        end
+        if n in HL_HYP && length(args) == 1
+            kl = klog(args[1])
+            if kl !== nothing
+                k, u = kl
+                changed = true
+                s = isone(k) ? u : isinteger(k) ? mk(bd, :^, u, bd.lift(Int(k))) : mk(bd, :^, u, cterm(bd, k))
+                h = cterm(bd, Q(1) // 2)
+                Sp = mk(bd, :*, h, mk(bd, :+, s, mk(bd, :^, s, bd.lift(-1))))
+                Sm = mk(bd, :*, h, mk(bd, :+, s, mk(bd, :*, bd.lift(-1), mk(bd, :^, s, bd.lift(-1)))))
+                return n === :cosh ? Sp : n === :sinh ? Sm : n === :tanh ? mk(bd, :/, Sm, Sp) :
+                       n === :coth ? mk(bd, :/, Sp, Sm) : n === :sech ? mk(bd, :/, bd.lift(1), Sp) : mk(bd, :/, bd.lift(1), Sm)
+            end
+        end
+        term_rebuild(bd, t, Any[rw(a) for a in args])
+    end
+    g = rw(f)
+    changed ? g : nothing
+end
+
 const EK_ACTIVE = Ref(false)
 # step EK: exp(u) with u = p(y) + q, q ≠ 0 free of y (u a polynomial in y over the parameters): exp(q) exp(p(y)), so
 # that exp(q) is a constant of its own (opaque, step SY) instead of one met while relating exp(u) to another
