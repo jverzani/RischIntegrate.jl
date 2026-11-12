@@ -226,6 +226,10 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             r = try
                 radicand_fallbacks(f, x; build = build, lift = lift, verify = verify)
             catch e2
+                (e2 isa RischNotImplemented || e2 isa NotElementary) || rethrow()
+                # Σ xᵏ gₖ by parts, the gₖ radicals of trigonometric functions (step PX)
+                px = try_poly_radical_parts(f, x; build = build, lift = lift, verify = verify)
+                px === nothing || return px
                 # not elementary after step HT (sin^(7/2) cos^(3/2), an elliptic integral): step HS's ₂F₁ first
                 (e2 isa NotElementary && HYP_ANSWERS[]) || rethrow()
                 g = trig_symbolic_or_fallback(f, x; build = build, lift = lift, verify = verify)
@@ -259,6 +263,8 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
                 end
             end
             r_rs === nothing || return r_rs
+            r = try_poly_radical_parts(f, x; build = build, lift = lift, verify = verify)   # step PX
+            r === nothing || return r
         end
         # sinᵖ cosʳ with a fractional exponent beside a symbolic one (sin^(7/2) cosᵐ), or a term type that keeps
         # sin^(3/2) as a radical: the ₂F₁ of step HS (at any depth: the special-function fallback's Expr call)
@@ -323,6 +329,7 @@ function hidden_zero(f, G, xk::String)
     big >= 2
 end
 const EXPR_RETRY = Ref(false)                           # no nested Expr retries
+const MN_ACTIVE = Ref(false)                            # inside step MN's integral of g (no second rewriting)
 const RISCH_DEPTH = Ref(0)                              # nested risch_integrate calls (step RK: the outermost only)
 # the integral of g, from a step that only rescales or shifts (steps IT, SL), at the depth of the caller: ∫ c g
 # and ∫ g(e + f x) get the outermost call's fallbacks (steps RK, HT, RM) as ∫ g does
@@ -562,6 +569,28 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
                     nothing
                 end
                 r === nothing || return r
+            end
+        end
+        # radicals of trigonometric monomials of one argument, several or with a constant factor: one radical,
+        # the answer times σ (step MN)
+        if !MN_ACTIVE[]
+            m = merge_monomial_radicals(f, x, xk, build, lift)
+            if m !== nothing
+                g, σ = m
+                MN_ACTIVE[] = true
+                r = try
+                    risch_integrate(g, x; build = build, lift = lift, verify = verify)
+                catch e
+                    (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+                    nothing
+                finally
+                    MN_ACTIVE[] = false
+                end
+                if r !== nothing
+                    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+                    r isa IntegralWithRootSums || return mk(bd, :*, σ, r)
+                    return IntegralWithRootSums(mk(bd, :*, σ, r.elementary), Any[ScaledRootSum(σ, rs) for rs in r.rootsums], r.var)
+                end
             end
         end
         # a radicand of degree 3 or 4 in tan L with a parameter (cot² √(a + b tan² + c tan⁴), Rubi 4.3.9: elliptic in

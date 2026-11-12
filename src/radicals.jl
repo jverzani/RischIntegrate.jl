@@ -195,6 +195,80 @@ function split_radicand_content(f, x, xk::String, build, lift)
     changed ? g : nothing
 end
 
+# step MN: f = h ∏ (cⱼ Mⱼ)^(eⱼ), radicals of monomials Mⱼ in the six trigonometric (or hyperbolic) functions of one
+# argument L, cⱼ free of x, h free of radicals, two or more such radicals (one alone is step RK's): the product is
+# σ ∏ cⱼ^(eⱼ) sᴾ cᵠ (s, c = sin L, cos L, or sinh L, cosh L), written tanᴾ c^(P+Q) when P, Q ∉ ℤ and P + Q ∈ ℤ (the
+# elementary case of sᴾ cᵠ, Chebyshev's: cos^(1/3)/sin^(1/3) = cot^(1/3), (c sin x)^(3/2)/(d cos x)^(15/2) =
+# c^(3/2)/d^(15/2) tan^(3/2) sec⁶ x). Radicals of one radicand cancel: cos^(7/2) (A + B cos x)/(b cos x)^(5/2) =
+# σ b^(-5/2) cos x (A + B cos x). σ = (the radicals)/(their rewriting) has σ^q = 1 and is constant on each interval
+# where f is continuous, so σ ∫ g is ∫ f there. (g, σ), or nothing.
+const MN_TRIG = Dict(:sin => (1, 0), :cos => (0, 1), :tan => (1, -1), :cot => (-1, 1), :sec => (0, -1), :csc => (-1, 0))
+const MN_HYP = Dict(:sinh => (1, 0), :cosh => (0, 1), :tanh => (1, -1), :coth => (-1, 1), :sech => (0, -1), :csch => (-1, 0))
+function merge_monomial_radicals(f, x, xk::String, build, lift)
+    @nospecialize f x
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    pw(t, k) = k == 1 ? t : mk(bd, :^, t, bd.lift(k))
+    hs, orig, consts = Any[], Any[], Any[]
+    L, hyp = nothing, false
+    P, Qe = Q(0), Q(0)
+    nrad, hasc = 0, false
+    for (t, e) in product_factors!(Any[], f, 1)
+        rp = radical_parts(t)
+        if rp === nothing || !has_x(rp[2], xk)
+            isempty(collect_radicals(t, xk)) || return nothing
+            push!(hs, (t, e))
+            continue
+        end
+        E = e * rp[1]
+        a, b = 0, 0
+        craw = Tuple{Any,Int}[]                         # (built once the radicand is known to be a monomial)
+        for (u, k) in product_factors!(Any[], rp[2], 1)
+            if !has_x(u, xk)
+                push!(craw, (u, k))
+                continue
+            end
+            (safe_iscall(u) && length(arguments(u)) == 1) || return nothing
+            n = opname(operation(u))
+            fam = haskey(MN_TRIG, n) ? false : haskey(MN_HYP, n) ? true : return nothing
+            Lu = arguments(u)[1]
+            if L === nothing
+                L, hyp = Lu, fam
+            elseif hyp != fam || string(Lu) != string(L)
+                return nothing
+            end
+            (da, db) = (fam ? MN_HYP : MN_TRIG)[n]
+            a += k * da; b += k * db
+        end
+        (a == 0 && b == 0) && return nothing
+        nrad += 1
+        push!(orig, pw(t, e))
+        # (a number's power folded: SymbolicUtils' exact ^ refuses 2^-1)
+        cs = Any[(r = leaf_rational(u); r === nothing ? pw(u, k) : cterm(bd, Q(r)^k)) for (u, k) in craw]
+        if !isempty(cs)
+            hasc = true
+            c = length(cs) == 1 ? cs[1] : mk(bd, :*, cs...)
+            push!(consts, E == Q(1) // 2 ? mk(bd, :sqrt, c) : mk(bd, :^, c, bd.lift(E)))
+        end
+        P += a * E; Qe += b * E
+    end
+    (L === nothing || nrad < 2) && return nothing
+    sn, cn, tn = hyp ? (:sinh, :cosh, :tanh) : (:sin, :cos, :tan)
+    fp(n, p) = iszero(p) ? nothing : isone(p) ? mk(bd, n, L) :
+               isinteger(p) ? mk(bd, :^, mk(bd, n, L), bd.lift(Int(p))) :
+               p == Q(1) // 2 ? mk(bd, :sqrt, mk(bd, n, L)) : mk(bd, :^, mk(bd, n, L), bd.lift(p))
+    new = (!isinteger(P) && !isinteger(Qe) && isinteger(P + Qe)) ? Any[fp(tn, P), fp(cn, P + Qe)] :
+          Any[fp(sn, P), fp(cn, Qe)]
+    filter!(!isnothing, new)
+    # a single radical, as it came, with no constant to take out: nothing to do
+    (nrad == 1 && !hasc && length(new) == 1 && string(new[1]) == string(orig[1])) && return nothing
+    g = Any[Any[(r = leaf_rational(t); r === nothing ? pw(t, e) : cterm(bd, Q(r)^e)) for (t, e) in hs]..., consts..., new...]
+    gt = isempty(g) ? bd.lift(1) : length(g) == 1 ? g[1] : mk(bd, :*, g...)
+    den = Any[consts..., new...]
+    σ = mk(bd, :/, length(orig) == 1 ? orig[1] : mk(bd, :*, orig...),
+           isempty(den) ? bd.lift(1) : length(den) == 1 ? den[1] : mk(bd, :*, den...))
+    (gt, σ)
+end
+
 # step RM: f = h ∏ uᵢ^(kᵢ/2), square roots of two or more radicands with a trigonometric or hyperbolic function, h free
 # of radicals: the radicals of odd kᵢ merged into one, ∏ uᵢ^(kᵢ/2) = σ ∏ uᵢ^((kᵢ-1)/2) √(∏ uᵢ), σ = ∏ √uᵢ/√(∏ uᵢ).
 # σ = ±1 is constant on each interval, so σ ∫ g is ∫ f there. (g, σ), or nothing. (a + a sec x)^(5/2)/cos(x)^(5/2):
