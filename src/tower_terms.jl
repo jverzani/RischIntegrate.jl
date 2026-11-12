@@ -176,7 +176,10 @@ function parse_tower(t, T::Tower)
                 if k !== nothing
                     kq = crational(k)
                     if kq !== nothing
-                        isone(denominator(kq)) && abs(kq) <= 10_000 && return base^Int(numerator(kq))
+                        isone(denominator(kq)) && abs(kq) <= BIG_POWER && return base^Int(numerator(kq))
+                        isone(denominator(kq)) && throw(RischNotImplemented(
+                            "the integer power $(numerator(kq)) exceeds $BIG_POWER (powers are expanded as polynomials; only a lone " *
+                            "(a x + b)^n takes the power rule, step BP)", t))
                         throw(RischNotImplemented("rational power $kq is an algebraic (radical) function"))
                     end
                     # a non-rational constant exponent (a parameter, e, …): u^k = exp(k log u) (SY)
@@ -188,7 +191,14 @@ function parse_tower(t, T::Tower)
                 NEG_LOG_DROPPED[] == n0 || throw(RischNotImplemented(
                     "the power $(t) needs log(-w) beside log(w): its principal value differs by e^(iπk)"))
                 p, m = unify(T, ex, lg)
-                return make_exp(T, p * m)
+                L0 = length(T.levels)
+                r = make_exp(T, p * m)
+                # a new level θ = t: printed as t (`prints`), not exp(ex·log(base)) with log(base) = log(w) - log c
+                # (not with a parse hook: t is then in the user's variable while the tower's is a substituted one,
+                # 2^√x with u = √x printed 2^√√x, Apostol 69)
+                (T.subst === nothing && length(T.levels) == L0 + 1 && T.levels[end].kind === :exp && r == theta(T, L0 + 1)) &&
+                    (T.prints[L0 + 1] = t)
+                return r
             else
                 throw(RischNotImplemented("unsupported operation `$n`", t))
             end
@@ -265,6 +275,7 @@ function build_tower(f, xk::String; constants::Union{Nothing,Type} = nothing, su
         T = Tower(C, xk, scales, copy(consts))
         T.subst = subst
         try
+            foreach(t -> parse_tower(t, T), param_logs_first(f, xk))
             el = parse_tower(f, T)
             return minimize ? minimal(T, el) : (T, el)     # (minimize = false: levels a parse hook used stay)
         catch e
@@ -288,6 +299,26 @@ function build_tower(f, xk::String; constants::Union{Nothing,Type} = nothing, su
     throw(RischError("could not find a consistent exponential generator"))
 end
 
+# the logs log(u) of f with a parameter in u, when f also has a power with a non-rational exponent: parsed first, so
+# that they are levels of their own. Parsed after the power (x^n log(a x)), the power's log x was the level and log(a x)
+# became log x + log a, which holds only up to 2πi (a, x < 0: F' - f = -6.2i, SymPy #12994); first, the power is
+# exp(n (log(a x) - log a)), printed as x^n (`prints`), and the answer has the user's log(a x)
+function param_logs_first(f, xk::String)
+    logs, haspow = Any[], Ref(false)
+    function walk(t)
+        isnode(t) || return
+        n, args = opname(operation(t)), arguments(t)
+        if n === :log && length(args) == 1 && has_x(args[1], xk) && has_param(args[1], xk)
+            any(l -> string(l) == string(t), logs) || push!(logs, t)
+        elseif n === :^ && length(args) == 2 && has_x(args[1], xk) && !has_x(args[2], xk) && leaf_rational(args[2]) === nothing
+            haspow[] = true
+        end
+        foreach(walk, args)
+    end
+    walk(f)
+    haspow[] ? logs : Any[]
+end
+
 # drop top levels that the element does not involve
 function minimal(T::Tower, el)
     i = levelof(T, el)
@@ -303,7 +334,17 @@ end
 # --- tower element -> term ----------------------------------------------------
 function theta_term(b::Builder, T::Tower, i::Int)
     lv = T.levels[i]
+    haskey(T.prints, i) && return reterm(b, T.prints[i], T.xk)
     mk(b, lv.kind, tower_to_term(b, T, lv.arg))
+end
+# a term of the input rebuilt with b (x as b.x, numbers by cterm, the other leaves, parameters, as they are)
+function reterm(b::Builder, t, xk::String)
+    if isnode(t)
+        return mk(b, opname(operation(t)), Any[reterm(b, a, xk) for a in arguments(t)]...)
+    end
+    string(t) == xk && return b.x
+    r = leaf_rational(t)
+    r === nothing ? t : cterm(b, Q(r))
 end
 function poly_theta_term(b::Builder, T::Tower, i::Int, p)
     iszero(p) && return b.lift(0)

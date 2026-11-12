@@ -24,9 +24,13 @@ mutable struct Tower{C}          # C: type of the constants of the differential 
     nexp::Int
     consts::Vector{ConstGen}  # meaning of the generators of C when C = ℚ(t₁, …, tₖ) (Step 6)
     subst::Any                # parse hook (term, T) -> element or nothing (Step 10: radicals)
+    # printed forms of exp levels made by a power u^k (k not rational): the user's u^k, not exp(k log u), whose log u
+    # may be log(w) - log c for another level log(w) (x^n beside log(a x): (a x)^n/a^n, which is x^n only up to
+    # e^(2πikn)); θ' = k θ u'/u holds for the principal u^k on every branch
+    prints::Dict{Int,Any}
 end
 Tower(::Type{C}, xk::String, scales::Dict{Int,Int}, consts::Vector{ConstGen} = ConstGen[]) where {C} =
-    Tower{C}(xk, Level[], DataType[Frac{UPoly{C}}], scales, 0, consts, nothing)
+    Tower{C}(xk, Level[], DataType[Frac{UPoly{C}}], scales, 0, consts, nothing, Dict{Int,Any}())
 ctype(::Tower{C}) where {C} = C
 
 # --- interface every constant field C must provide ----------------------------
@@ -194,6 +198,7 @@ end
 function add_level!(T::Tower, kind::Symbol, arg, dtheta, seq::Int)
     K = T.Ts[end]
     push!(T.levels, Level(kind, arg, dtheta, seq))
+    delete!(T.prints, length(T.levels))                 # (a print of a level since dropped)
     push!(T.Ts, Frac{UPoly{K}})
     nothing
 end
@@ -219,6 +224,7 @@ function change_constants(T::Tower, ::Type{C2}, φ) where {C2}
         dθ2 = UPoly{K2}(K2[map_constants(T, T2, c, φ, j) for c in lv.dtheta.c])
         add_level!(T2, lv.kind, arg2, dθ2, lv.seq)
     end
+    merge!(T2.prints, T.prints)
     T2
 end
 change_constants(T::Tower, T2::Tower, f, φ) = map_constants(T, T2, f, φ, levelof(T, f))

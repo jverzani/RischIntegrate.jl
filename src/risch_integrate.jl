@@ -335,9 +335,38 @@ function as_outer(fn)
     end
 end
 
+# step BP: K (a x + b)^n with an integer |n| > 10_000, K free of x: (a x + b)^(n+1)/(a (n + 1)) by the power rule. The
+# tower expands integer powers (capped at 10_000: a dense polynomial of degree n), so these were refused (SymPy #12446:
+# x^100000, (2x)^5638654). The base is kept whole: (2x)^5638655/11277310, not 2^5638654 x^5638654 (a 5.6-million-bit
+# coefficient, an Int overflow for a term type that evaluates powers of numbers)
+const BIG_POWER = 10_000
+function integrate_big_power(f, x, build, lift)
+    @nospecialize f x
+    xk = string(x)
+    fs = (safe_iscall(f) && opname(operation(f)) === :*) ? collect(arguments(f)) : Any[f]
+    ip = findall(t -> has_x(t, xk), fs)
+    length(ip) == 1 || return nothing
+    t = fs[ip[1]]
+    (safe_iscall(t) && opname(operation(t)) === :^ && length(arguments(t)) == 2) || return nothing
+    B, ex = arguments(t)
+    n = leaf_rational(ex)
+    (n !== nothing && isone(denominator(n)) && abs(n) > BIG_POWER) || return nothing
+    n = numerator(n)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    pp = poly_parts(bd, B, xk)
+    (pp === nothing || !haskey(pp, 1) || !issubset(keys(pp), (0, 1))) && return nothing
+    a = pp[1]
+    d = (r = leaf_rational(a); r === nothing ? mk(bd, :*, a, cterm(bd, Q(n + 1))) : cterm(bd, Q(r) * (n + 1)))
+    G = mk(bd, :/, mk(bd, :^, B, cterm(bd, Q(n + 1))), d)
+    K = Any[fs[i] for i in eachindex(fs) if i != ip[1]]
+    isempty(K) ? G : mk(bd, :*, K..., G)
+end
+
 function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     xk = string(x)
+    r = integrate_big_power(f, x, build, lift)        # (a x + b)^n, |n| > 10_000: the power rule (step BP)
+    r === nothing || return r
     g = rewrite_sinc(f, x, build, lift)                # sinc(u) = sin(πu)/(πu), Julia's normalized sinc
     g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
     # products of sines and cosines of rational multiples of one frequency over xᵐ (the Borwein integrals): to a sum,
