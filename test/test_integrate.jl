@@ -1584,6 +1584,33 @@ end
                                                                 build = build, lift = identity)
 end
 
+# step MN: radicals of trigonometric monomials of one argument merged into one, the answer times σ (sample 1300, 1613,
+# 1651, 1658, 2641); step PX: Σ xᵏ gₖ by parts, each gₖ x xᵏ an elliptic integral, the sum not (sample 1354, 1568, 1789).
+# Checked in all four quadrants on the principal branch (complex where a radicand is negative: σ is a root of unity),
+# x/csc(x)^(3/2) - x √csc(x)/3 where it is real (sin x > 0: step HT's ∫ of the coefficient holds there), the hyperbolic
+# one away from tanh ≈ 1 (cancellation in the logs)
+@testset "products of trig-monomial radicals (step MN), polynomial times radicals by parts (step PX)" begin
+    build(op, args...) = Expr(:call, nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x0))), :(a = 0.4), :(b = 1.3), :(c = 0.7), :(d = 1.1),
+                                                  :(A = 0.9), :(B = -0.6), :(C = 1.3)), e))
+    all4 = (-2.5, -0.4, 0.3, 1.2, 2.0, 3.6, 5.0)
+    for (f, pts) in ((:((c * sin(x)) ^ (3 / 2) / (d * cos(x)) ^ (15 / 2)), all4),
+                     (:(cos(x) ^ (7 / 2) * (A + B * cos(x)) / (b * cos(x)) ^ (5 / 2)), all4),
+                     (:((A + C * cos(a + b * x) ^ 2) / (cos(a + b * x) ^ (3 / 2) * (b * cos(a + b * x)) ^ (5 / 2))), all4),
+                     (:(cosh(a + b * x) ^ (2 / 3) / sinh(a + b * x) ^ (2 / 3)), (-2.5, -0.4, 0.3, 1.2, 2.0)),
+                     (:(cos(x) ^ (1 / 3) / sin(x) ^ (1 / 3)), all4),
+                     (:(x / csc(x) ^ (3 / 2) - (1 / 3) * x * sqrt(csc(x))), (-5.0, 0.3, 2.0, 7.0)),
+                     (:(x / cos(a + b * x) ^ (3 / 2) + x * sqrt(cos(a + b * x))), all4),
+                     (:(-4x / (b * sqrt(tan(a + b * x))) + x ^ 2 * sqrt(tan(a + b * x)) + x ^ 2 / tan(a + b * x) ^ (3 / 2)), all4))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in pts
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
+    # x² √cos x stays refused (elliptic): step PX needs every coefficient's integral
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(x ^ 2 * sqrt(cos(x))), :x; build = build, lift = identity)
+end
+
 # step US with u = sin x: a fractional power is not taken inside a product or quotient of factors with x,
 # √(sin x/cos² x) = √(sin x)/|cos x| (it gave √(sin x)/cos x, the wrong sign where cos x < 0); a power of a
 # lone factor still is. Checked where cos x < 0 too (sin x > 0: f real)

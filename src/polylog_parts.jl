@@ -80,6 +80,87 @@ function try_log_polylog(f, x; build = nothing, lift = nothing, verify::Bool = t
     length(terms) == 1 ? terms[1] : mk(bd, :+, terms...)
 end
 
+# Step PX: f = Σₖ xᵏ gₖ, x elsewhere only inside the arguments of functions, with a radical refused for its
+# radicand (x/csc(x)^(3/2) - x √csc(x)/3, Rubi 1354: each summand an elliptic integral, the sum is not), by parts
+# from the top power down: ∫ xⁿ gₙ = xⁿ Gₙ - n ∫ xⁿ⁻¹ Gₙ, Gₙ = ∫ gₙ, so -n Gₙ joins gₙ₋₁; the answer is Σ xᵏ Gₖ with
+# Gₖ = ∫ (gₖ - (k + 1) Gₖ₊₁). Each ∫ at the caller's depth (its radical fallbacks, step HT); nothing when one is
+# refused or has RootSums.
+const PXPARTS = Ref(false)                              # no nested step PX
+# G = 0 at three generic points (b⁻¹·0, a coefficient's integral that cancels), parameters at `numeric_evaluator`'s values
+function numeric_zero(G, xk::String)
+    ev = try numeric_evaluator(xk, G) catch; return false end
+    all(x0 -> (v = try ev(G, x0) catch; NaN end; isfinite(v) && abs(v) < 1e-13), (0.41, 1.21, 0.27))
+end
+function try_poly_radical_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    PXPARTS[] && return nothing
+    xk = string(x)
+    isx(t) = !safe_iscall(t) && string(t) == xk
+    # x bare: outside the arguments of every function but +, -, *, /, ^
+    bare(t) = isx(t) || (safe_iscall(t) && !isempty(arguments(t)) && opname(operation(t)) in (:+, :-, :*, :/, :^) &&
+                         any(bare, arguments(t)))
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    pw(t, e) = e == 1 ? t : mk(bd, :^, t, bd.lift(e))
+    function summands(u, sg, out)
+        if safe_iscall(u) && opname(operation(u)) === :+
+            foreach(a -> summands(a, sg, out), arguments(u))
+        elseif safe_iscall(u) && opname(operation(u)) === :- && length(arguments(u)) == 2
+            summands(arguments(u)[1], sg, out); summands(arguments(u)[2], -sg, out)
+        elseif safe_iscall(u) && opname(operation(u)) === :- && length(arguments(u)) == 1
+            summands(arguments(u)[1], -sg, out)
+        else
+            push!(out, (u, sg))
+        end
+        out
+    end
+    C = Dict{Int,Vector{Any}}()
+    for (t, sg) in summands(f, 1, Tuple{Any,Int}[])
+        k, gs = 0, Any[]
+        for (u, e) in product_factors!(Any[], t, 1)
+            if isx(u)
+                e >= 0 || return nothing
+                k += e
+            else
+                bare(u) && return nothing
+                push!(gs, pw(u, e))
+            end
+        end
+        sg == -1 && pushfirst!(gs, bd.lift(-1))
+        push!(get!(C, k, Any[]), isempty(gs) ? bd.lift(1) : length(gs) == 1 ? gs[1] : mk(bd, :*, gs...))
+    end
+    n = maximum(keys(C))
+    n >= 1 || return nothing
+    any(gs -> any(g -> !isempty(collect_radicals(g, xk)), gs), values(C)) || return nothing
+    PXPARTS[] = true
+    try
+        out = Any[]
+        carry = nothing
+        for k in n:-1:0
+            gs = copy(get(C, k, Any[]))
+            carry === nothing || push!(gs, carry)
+            if isempty(gs)
+                carry = nothing
+                continue
+            end
+            g = length(gs) == 1 ? gs[1] : mk(bd, :+, gs...)
+            G = as_outer(() -> risch_integrate(g, x; build = build, lift = lift, verify = verify))
+            G isa IntegralWithRootSums && return nothing
+            if leaf_rational(G) == 0 || numeric_zero(G, xk)
+                carry = nothing
+                continue
+            end
+            push!(out, k == 0 ? G : mk(bd, :*, pw(bd.x, k), G))
+            carry = k == 0 ? nothing : mk(bd, :*, bd.lift(-k), G)
+        end
+        isempty(out) ? bd.lift(0) : length(out) == 1 ? out[1] : mk(bd, :+, out...)
+    catch err
+        (err isa RischNotImplemented || err isa NotElementary) || rethrow()
+        nothing
+    finally
+        PXPARTS[] = false
+    end
+end
+
 # Step XP: ∫ P(x) R(e^(kx)) not elementary (P a polynomial, R rational in exponentials of x with x nowhere else:
 # x/(eˣ - 1), SymPy #30167), by parts with Q = ∫ R elementary: P Q - ∫ P′ Q, the second integral by the usual
 # route (∫ log(1 - eˣ) = -Li₂(eˣ), step 8a). ∫ x/(eˣ - 1) = x (log(eˣ - 1) - x) + x²/2 - ∫ log(eˣ - 1).
