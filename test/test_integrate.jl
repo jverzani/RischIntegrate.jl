@@ -3618,3 +3618,35 @@ end
     F = Risch.risch_integrate(:(x * sqrt(1 + cos(x))), :x; build = build, lift = identity)
     @test !occursin("atan", string(F))
 end
+
+# SymPy round 13: integer powers beyond the tower's cap of 10_000 by the power rule (step BP, #12446); the branch of a
+# symbolic power beside a log with a parameter (#12994, #14613): x^n is printed as x^n, not (a x)^n/a^n, and log(a x)
+# is a level of its own, not log x + log a (both hold only up to 2πi: F' - f = -6.2i at a = -2, x = -3)
+@testset "SymPy round 13: large integer powers, branches of symbolic powers" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    @test Risch.risch_integrate(:(x ^ 100000), :x; build = build, lift = identity) == :(x ^ 100001 / 100001)
+    @test Risch.risch_integrate(:((2x) ^ 5638654), :x; build = build, lift = identity) == :((2x) ^ 5638655 / 11277310)
+    F = Risch.risch_integrate(:(3 * (2x + 1) ^ 10001), :x; build = build, lift = identity)
+    ev1(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0)), e))
+    @test isapprox((ev1(F, big"-0.5" + big"1e-30") - ev1(F, big"-0.5" - big"1e-30")) / big"2e-30", 0; atol = 1e-20)
+    @test occursin("10002", string(F))
+    e = try Risch.risch_integrate(:(x ^ 10001 * (x + 1) ^ 10001), :x; build = build, lift = identity) catch err; err end
+    @test e isa Risch.RischNotImplemented && occursin("exceeds 10000", e.msg)
+    x = SymEngine.symbols(:x)
+    @test string(Risch.risch_integrate(x ^ 100000, x)) == "(1/100001)*x^100001"
+    for (f, vals) in ((:(x ^ n * log(a * x)), (:a => -2.0, :x => -3.0, :n => 0.5)),
+                      (:(x ^ n * log(a * x)), (:a => -2.0, :x => -3.0, :n => 1 / 3)),
+                      (:(x ^ n * log(a * x) ^ 2), (:a => -2.0, :x => -3.0, :n => 0.5)),
+                      (:(x ^ n * log(a * x)), (:a => 2.0, :x => 3.0, :n => 0.5)),
+                      (:((c * x) ^ m * (b * x ^ n) ^ p), (:c => -1.0, :x => -1.0, :m => 0.5, :b => 1.0, :n => 1.0, :p => 1.0)),
+                      (:((c * x) ^ m * (b * x) ^ p), (:c => -1.0, :x => -1.3, :m => 0.5, :b => 2.0, :p => 0.3)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        env(x0) = Expr(:block, (:($(p.first) = $(p.first == :x ? x0 : complex(p.second))) for p in vals)...)
+        ev(e, x0) = Core.eval(Main, Expr(:let, env(x0), e))
+        x0 = complex(Dict(vals)[:x])
+        @test abs((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6 - ev(f, x0)) < 1e-6
+    end
+    # the answer of #12994 has the user's log(a x) and x^n
+    @test string(Risch.risch_integrate(:(x ^ n * log(a * x)), :x; build = build, lift = identity)) ==
+          "((-1 / (1 + 2n + n ^ 2)) * x + ((1 / (1 + n)) * x) * log(a * x)) * x ^ n"
+end
