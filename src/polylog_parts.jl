@@ -86,6 +86,8 @@ end
 # Gₖ = ∫ (gₖ - (k + 1) Gₖ₊₁). Each ∫ at the caller's depth (its radical fallbacks, step HT); nothing when one is
 # refused or has RootSums.
 const PXPARTS = Ref(false)                              # no nested step PX
+has_op_in(t, ns) = safe_iscall(t) && !isempty(arguments(t)) && (opname(operation(t)) in ns || any(a -> has_op_in(a, ns), arguments(t)))
+const PX_FUNCS = (:sin, :cos, :tan, :cot, :sec, :csc, :sinh, :cosh, :tanh, :coth, :sech, :csch, :exp, :log)
 # G = 0 at three generic points (b⁻¹·0, a coefficient's integral that cancels), parameters at `numeric_evaluator`'s values
 function numeric_zero(G, xk::String)
     ev = try numeric_evaluator(xk, G) catch; return false end
@@ -96,8 +98,9 @@ function try_poly_radical_parts(f, x; build = nothing, lift = nothing, verify::B
     PXPARTS[] && return nothing
     xk = string(x)
     isx(t) = !safe_iscall(t) && string(t) == xk
-    # x bare: outside the arguments of every function but +, -, *, /, ^
-    bare(t) = isx(t) || (safe_iscall(t) && !isempty(arguments(t)) && opname(operation(t)) in (:+, :-, :*, :/, :^) &&
+    # x bare: outside the arguments of the trigonometric, hyperbolic, exponential and logarithmic functions (x in a
+    # radicand, √(1 + x²), is bare: Apostol 19 is no case for step PX)
+    bare(t) = isx(t) || (safe_iscall(t) && !isempty(arguments(t)) && !(opname(operation(t)) in PX_FUNCS) &&
                          any(bare, arguments(t)))
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     pw(t, e) = e == 1 ? t : mk(bd, :^, t, bd.lift(e))
@@ -130,7 +133,7 @@ function try_poly_radical_parts(f, x; build = nothing, lift = nothing, verify::B
     end
     n = maximum(keys(C))
     n >= 1 || return nothing
-    any(gs -> any(g -> !isempty(collect_radicals(g, xk)), gs), values(C)) || return nothing
+    any(gs -> any(g -> !isempty(collect_radicals(g, xk)) && has_op_in(g, RM_FUNCS), gs), values(C)) || return nothing
     PXPARTS[] = true
     try
         out = Any[]

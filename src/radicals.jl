@@ -216,15 +216,15 @@ function merge_monomial_radicals(f, x, xk::String, build, lift)
         rp = radical_parts(t)
         if rp === nothing || !has_x(rp[2], xk)
             isempty(collect_radicals(t, xk)) || return nothing
-            push!(hs, pw(t, e))
+            push!(hs, (t, e))
             continue
         end
         E = e * rp[1]
         a, b = 0, 0
-        cs = Any[]
+        craw = Tuple{Any,Int}[]                         # (built once the radicand is known to be a monomial)
         for (u, k) in product_factors!(Any[], rp[2], 1)
             if !has_x(u, xk)
-                push!(cs, pw(u, k))
+                push!(craw, (u, k))
                 continue
             end
             (safe_iscall(u) && length(arguments(u)) == 1) || return nothing
@@ -242,6 +242,8 @@ function merge_monomial_radicals(f, x, xk::String, build, lift)
         (a == 0 && b == 0) && return nothing
         nrad += 1
         push!(orig, pw(t, e))
+        # (a number's power folded: SymbolicUtils' exact ^ refuses 2^-1)
+        cs = Any[(r = leaf_rational(u); r === nothing ? pw(u, k) : cterm(bd, Q(r)^k)) for (u, k) in craw]
         if !isempty(cs)
             hasc = true
             c = length(cs) == 1 ? cs[1] : mk(bd, :*, cs...)
@@ -259,7 +261,7 @@ function merge_monomial_radicals(f, x, xk::String, build, lift)
     filter!(!isnothing, new)
     # a single radical, as it came, with no constant to take out: nothing to do
     (nrad == 1 && !hasc && length(new) == 1 && string(new[1]) == string(orig[1])) && return nothing
-    g = Any[hs..., consts..., new...]
+    g = Any[Any[(r = leaf_rational(t); r === nothing ? pw(t, e) : cterm(bd, Q(r)^e)) for (t, e) in hs]..., consts..., new...]
     gt = isempty(g) ? bd.lift(1) : length(g) == 1 ? g[1] : mk(bd, :*, g...)
     den = Any[consts..., new...]
     σ = mk(bd, :/, length(orig) == 1 ? orig[1] : mk(bd, :*, orig...),
