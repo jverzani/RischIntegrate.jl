@@ -573,7 +573,73 @@ function integrate_el(T::Tower, i::Int, f)::ElemIntegral
 end
 
 # d/dx of the antiderivative, computed in the tower, must equal the integrand
+# (with ≥ CHECK_IMAGE_DEPTH parameters in the constants: checked at two images of them first, step CK)
+const CHECK_IMAGE_DEPTH = 3
 function check_tower(T::Tower, L::Int, res::ElemIntegral, f)
+    if fdepth(ctype(T)) >= CHECK_IMAGE_DEPTH
+        r = check_tower_images(T, L, res, f)
+        r === nothing || return r
+    end
+    check_tower_exact(T, L, res, f)
+end
+
+# step CK: the check with the parameters t₁, …, tₖ of the constants replaced by numbers (two points of `cimage`).
+# φ is a ring homomorphism on the constants that commutes with D (they are constants), so a difference at an image
+# is a difference (false is final); equal images at two points are taken as equal (the derivative check over
+# ℚ(i)(a, …, g) of (d + e x)³ (f + g x) (a + b asin(c x)), sample 2320, was 70% of its time). nothing (the exact
+# check) when an image is undefined (a denominator vanishes there) or a term has no stored derivative.
+struct ImageUndefined <: Exception end
+function check_tower_images(T::Tower, L::Int, res::ElemIntegral, f)
+    all(q -> q isa SpecialTerm || q isa BaseTerms || q isa TowerRootSum || q isa BaseRootSum || q isa TowerRealForm ||
+             q isa DilogTerm || q isa DilogPairTerm || q isa DilogQuadTerm || q isa DilogGroup || q isa DilogConjTerm,
+        res.quads) || return nothing
+    B = fbase(ctype(T))
+    for k in (0, 1)
+        φ(c) = (v = cimage(c, k); v === nothing ? throw(ImageUndefined()) : convert(B, v))
+        ok = try
+            T2 = change_constants(T, B, φ)
+            img(g) = change_constants(T, T2, liftto(T, g, L), φ)
+            tot = D(T2, L, img(res.v))
+            for (c, w) in res.logs
+                w2 = img(w)
+                tot = tot + lconst(T2, φ(c), L) * (D(T2, L, w2) / w2)
+            end
+            for (c, u) in res.atans
+                u2 = map_constants(T, T2, u, φ, 0)
+                tot = tot + lconst(T2, φ(c), L) * liftto(T2, dx(u2) / (one(T2.Ts[1]) + u2 * u2), L)
+            end
+            for q in res.quads
+                tot = tot + img(q.deriv)
+            end
+            tot == img(f)
+        catch e
+            (e isa ImageUndefined || e isa DivideError) || rethrow()
+            return nothing
+        end
+        ok || return false
+    end
+    true
+end
+
+# step CK for D v == g alone (the real form's rational part, to_term_real): true/false at two images, nothing if one
+# is undefined
+function check_D_images(T::Tower, L::Int, v, g)
+    B = fbase(ctype(T))
+    for k in (0, 1)
+        φ(c) = (w = cimage(c, k); w === nothing ? throw(ImageUndefined()) : convert(B, w))
+        ok = try
+            T2 = change_constants(T, B, φ)
+            D(T2, L, change_constants(T, T2, v, φ)) == change_constants(T, T2, g, φ)
+        catch e
+            (e isa ImageUndefined || e isa DivideError) || rethrow()
+            return nothing
+        end
+        ok || return false
+    end
+    true
+end
+
+function check_tower_exact(T::Tower, L::Int, res::ElemIntegral, f)
     tot = D(T, L, liftto(T, res.v, L))
     for (c, w) in res.logs
         w = liftto(T, w, L)
