@@ -3695,3 +3695,29 @@ end
     @test string(Risch.risch_integrate(:(x ^ n * log(a * x)), :x; build = build, lift = identity)) ==
           "((-1 / (1 + 2n + n ^ 2)) * x + ((1 / (1 + n)) * x) * log(a * x)) * x ^ n"
 end
+
+# a printed input term rebuilt with subtraction (reterm: (d + e x)^(-3 - 2p), KeyError :- from the OPS table); step PR's
+# answer with a RootSum only as a last resort (atan(a x)/(c + d x²)^(7/2): by parts used a RootSum whose logs took the
+# wrong branch at a = 1.13, c = 2.13, d = 3.13; the outermost retry with step PR deferred is elementary)
+@testset "terms rebuilt with subtraction; step PR's RootSum answers last" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    for (f, vals) in ((:((d + e * x) ^ (-3 - 2p) * (a ^ 2 + 2 * a * b * x + b ^ 2 * x ^ 2) ^ p),
+                       (:a => 1.13, :b => 2.13, :d => 3.13, :e => 4.13, :p => 5.13)),
+                      (:(x ^ (-1 - (1 / 4) * n) / (b * x ^ n + c * x ^ (2n))), (:b => 1.13, :c => 2.13, :n => 3.13)),
+                      (:((a + b * x) ^ m * (c + d * x) ^ (-4 - m) * (e + f * x)),
+                       (:a => 1.13, :b => 2.13, :c => 3.13, :d => 4.13, :e => 5.13, :f => 6.13, :m => 7.13)),
+                      (:(atan(a * x) / (c + d * x ^ 2) ^ (7 / 2)), (:a => 1.13, :c => 2.13, :d => 3.13)),
+                      (:(atan(a * x) / (c + d * x ^ 2) ^ (9 / 2)), (:a => 1.13, :c => 2.13, :d => 3.0)),
+                      (:(atan(a * x) / (c + d * x ^ 2) ^ (7 / 2)), (:a => 0.5, :c => 1.0, :d => 2.0)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        # (the atan integrands without a RootSum; x^(-1 - n/4)/(b xⁿ + c x²ⁿ) has one)
+        occursin("atan", string(f)) && @test F isa Expr
+        env(x0) = Expr(:block, :(x = $x0), (:($(p.first) = $(complex(p.second))) for p in vals)...)
+        ev(e, x0) = Core.eval(Main, Expr(:let, env(x0), e))
+        Fv(t) = F isa Risch.IntegralWithRootSums ? complex(F(:x => real(t), vals...)) : ev(F, t)
+        for x0 in (0.31, 0.57, 1.7)
+            fv = ev(f, complex(x0))
+            @test abs((Fv(complex(x0 + 1e-6)) - Fv(complex(x0 - 1e-6))) / 2e-6 - fv) < 1e-5 * max(1, abs(fv))
+        end
+    end
+end

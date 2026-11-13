@@ -156,6 +156,9 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
         G2 = integrate_scaled_radicals(g, x; build = b0.build, lift = b0.lift, verify = verify)
         # (else the answer with its RootSum, as for numbers: atan(r/√(d² + s²))/(d² + s²)^(3/2), SymPy #19188, whose
         # d = 1 has one too)
+        # (deferred in the outermost retry, PR_DEFER: see risch_integrate)
+        G2 === nothing && PR_DEFER[] && return nothing
+        G2 === nothing && (PR_ROOTSUM[] = true)
         G2 === nothing || (G = G2)
     end
     cg === nothing || (G = G isa IntegralWithRootSums ?
