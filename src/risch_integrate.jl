@@ -469,6 +469,26 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         # asinh(c x): y = c x first (step AL); then derivative-divides (∫ asinh(x)/√(1 + x²) = asinh(x)²/2, step
         # US) and A·L by parts (∫ asinh x = x asinh x - √(x² + 1), step AP), so the answer keeps L; else
         # atanh, acoth, asinh, acosh, acsch, asech as logs (step IH)
+        # acosh(u) beside a radical of k (u² - 1): the radical in u² - 1, the answer times s = √R/√(u² - 1) (step AH)
+        if !AH_ACTIVE[] && has_op(f, :acosh)
+            m = acosh_radical_ratio(f, x, xk, build, lift)
+            if m !== nothing
+                g, σ, bd = m
+                AH_ACTIVE[] = true
+                r = try
+                    risch_integrate(g, x; build = build, lift = lift, verify = verify)
+                catch e
+                    (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+                    nothing
+                finally
+                    AH_ACTIVE[] = false
+                end
+                if r !== nothing
+                    r isa IntegralWithRootSums || return mk(bd, :*, σ, r)
+                    return IntegralWithRootSums(mk(bd, :*, σ, r.elementary), Any[ScaledRootSum(σ, rs) for rs in r.rootsums], r.var)
+                end
+            end
+        end
         hs = collect_arcs(f, xk; fns = INV_HYP)
         r = try
             isempty(hs) ? nothing : integrate_arcs_scaled(f, x, hs; build = build, lift = lift, verify = verify)

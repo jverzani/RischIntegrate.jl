@@ -3721,3 +3721,44 @@ end
         end
     end
 end
+
+# conjugates of normalized fractions without gcds (conj_frac, conj_frac_rev), the derivative check at two images of the
+# parameters (step CK; ℚ(i)(a, …, g) for (d + e x)³ (f + g x) (a + b asin(c x)): > 600 s, now seconds), acosh(u)
+# beside radicals of k (u² - 1) in u² - 1, the answer times √R/√(u² - 1) (step AH)
+@testset "parameter-heavy inverse trig: conjugates, checks at images (step CK), acosh radicals (step AH)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    vals = (:a => 1.13, :b => 2.13, :c => 3.13, :d => 4.13, :e => 5.13, :f => 6.13, :g => 7.13, :h => 8.13)
+    env(x0) = Expr(:block, :(x = $x0), (:($(p.first) = $(complex(p.second))) for p in vals)...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, env(x0), e))
+    dcheck(F, f, x0) = (fv = ev(f, complex(x0));
+                        abs((ev(F, complex(x0) + 1e-6) - ev(F, complex(x0) - 1e-6)) / 2e-6 - fv) < 1e-5 * max(1, abs(fv)))
+    for f in (:((d + e * x) ^ 3 * (f + g * x) * (a + b * asin(c * x))),
+              :(x ^ 2 * (d + e * x ^ 2) ^ 2 * (a + b * asec(c * x))))
+        t = @elapsed F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test F isa Expr
+        @test t < 200
+        for x0 in (0.13, 0.29, -0.21)
+            @test dcheck(F, f, x0)
+        end
+    end
+    Risch.CONJ_CHECK[] = true                           # (conj_frac, conj_frac_rev compared with frac)
+    try
+        f = :((d + e * x) * (a + b * asin(c * x)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test all(x0 -> dcheck(F, f, x0), (0.13, -0.21))
+    finally
+        Risch.CONJ_CHECK[] = false
+    end
+    # step AH: real where c x ≥ 1, checked also for |c x| < 1 and c x < -1 (s is constant on each interval)
+    for f in (:((f + g * x) * (d - c ^ 2 * d * x ^ 2) ^ (3 / 2) * (a + b * acosh(c * x))),
+              :(((f + g * x) ^ 2 * (a + b * acosh(c * x))) / (d - c ^ 2 * d * x ^ 2) ^ (3 / 2)),
+              :((x ^ 4 * (a + b * acosh(c * x))) / (d - c ^ 2 * d * x ^ 2) ^ (5 / 2)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test F isa Expr && occursin("sqrt(d - c ^ 2 * d * x ^ 2) / sqrt", string(F))
+        for x0 in (0.57, 1.7, 0.13, -0.21, -0.9)
+            @test dcheck(F, f, x0)
+        end
+    end
+    # no radical proportional to u² - 1: nothing (d + e x² is not)
+    @test Risch.acosh_radical_ratio(:((a + b * acosh(c * x)) / (d + e * x ^ 2) ^ (7 / 2)), :x, "x", build, identity) === nothing
+end
