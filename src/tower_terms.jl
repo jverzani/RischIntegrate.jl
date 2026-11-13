@@ -340,7 +340,7 @@ end
 # a term of the input rebuilt with b (x as b.x, numbers by cterm, the other leaves, parameters, as they are)
 function reterm(b::Builder, t, xk::String)
     if isnode(t)
-        return mk(b, opname(operation(t)), Any[reterm(b, a, xk) for a in arguments(t)]...)
+        return b.build(op_function(t), Any[reterm(b, a, xk) for a in arguments(t)]...)
     end
     string(t) == xk && return b.x
     r = leaf_rational(t)

@@ -47,6 +47,32 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             err isa SignOracleZero ? throw(RischNotImplemented(err.msg)) : rethrow()
         end
     end
+    # step PR's answers with a RootSum (a parameter radical whose RootSum step PS cannot scale away) only as a last
+    # resort: an outermost answer that used one is tried again with them deferred, and an answer without a RootSum is
+    # kept (atan(a x)/(c + d x²)^(7/2), samples 2385/2386: by parts used such a RootSum, whose logs took the wrong
+    # branch at some parameter values; another route gives an elementary answer)
+    if RISCH_DEPTH[] == 0 && !PR_DEFER[] && !PR_OUTER[]
+        PR_OUTER[] = true
+        PR_ROOTSUM[] = false
+        F = try
+            risch_integrate(f, x; build = build, lift = lift, verify = verify)
+        finally
+            PR_OUTER[] = false
+        end
+        if F isa IntegralWithRootSums && PR_ROOTSUM[]
+            PR_DEFER[] = true
+            F2 = try
+                risch_integrate(f, x; build = build, lift = lift, verify = verify)
+            catch e
+                (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+                nothing
+            finally
+                PR_DEFER[] = false
+            end
+            (F2 === nothing || F2 isa IntegralWithRootSums) || return F2
+        end
+        return F
+    end
     # step HZ: with an opaque constant radical, the outermost answer evaluated numerically; a hidden zero (a denominator that vanishes identically
     # by a relation the field does not know, √(-1/n²)² = -1/n² for an opaque constant radical: sample 2228)
     # shows as an answer orders of magnitude larger than the integrand at generic points, and is refused
@@ -330,6 +356,9 @@ function hidden_zero(f, G, xk::String)
 end
 const EXPR_RETRY = Ref(false)                           # no nested Expr retries
 const MN_ACTIVE = Ref(false)                            # inside step MN's integral of g (no second rewriting)
+const PR_DEFER = Ref(false)                           # step PR: no answer with a RootSum (the outermost retry)
+const PR_OUTER = Ref(false)                           # (inside the outermost call that watches step PR)
+const PR_ROOTSUM = Ref(false)                         # step PR gave an answer with a RootSum
 const RISCH_DEPTH = Ref(0)                              # nested risch_integrate calls (step RK: the outermost only)
 # the integral of g, from a step that only rescales or shifts (steps IT, SL), at the depth of the caller: ∫ c g
 # and ∫ g(e + f x) get the outermost call's fallbacks (steps RK, HT, RM) as ∫ g does
