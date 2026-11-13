@@ -127,7 +127,26 @@ function cconj(c::QSB{d,B}) where {d,B}
     B === Q && return QSB{d,B}(c.a, -c.b)
     throw(RischError("conjugation on ℚ(i)(√d) with d < 0: use √d = i√(-d) instead"))
 end
-cconj(c::Frac{<:UPoly}) = frac(cpconj(c.num), cpconj(c.den))
+# a conjugate of a normalized fraction (num, den coprime, den monic) under a field automorphism that fixes the
+# variable and 1 (complex conjugation, σ on real generators): the images are coprime and den stays monic, so no gcd
+# (a gcd over ℚ(i)(a, b, …) per coefficient: 90% of the time of (d + e x)³ (f + g x) (a + b asin(c x)), sample 2320)
+const CONJ_CHECK = Ref(false)                       # (tests: compare with frac)
+function conj_frac(n::P, d::P) where {P<:UPoly}
+    CONJ_CHECK[] && (frac(n, d) == Frac{P}(n, d) || throw(RischError("conj_frac: not in normal form")))
+    Frac{P}(n, d)
+end
+cconj(c::Frac{<:UPoly}) = conj_frac(cpconj(c.num), cpconj(c.den))
+# the same with θ ↦ 1/θ (a trigonometric level, τ = e^(i a)): p/q ↦ p̃ θ^deg q / (q̃ θ^deg p) for the reversed conjugates
+# p̃, q̃ (nr, dr), which are coprime and prime to θ (p̃(0) is the conjugate of lc p ≠ 0); the gcd is θ^min(deg p, deg q)
+function conj_frac_rev(nr::P, dr::P, dp::Int, dq::Int) where {P<:UPoly}
+    k = min(dp, dq)
+    θ = xpoly(eltype(nr.c))
+    n, d = nr * θ^(dq - k), dr * θ^(dp - k)
+    l = lc(d)
+    r = isone(l) ? Frac{P}(n, d) : Frac{P}(scale_div(n, l), scale_div(d, l))
+    CONJ_CHECK[] && (frac(nr * θ^dq, dr * θ^dp) == r || throw(RischError("conj_frac_rev: not in normal form")))
+    r
+end
 cpconj(p::UPoly{T}) where {T} = UPoly{T}(T[cconj(c) for c in p.c])
 
 # σ on a constant of ℚ(i)(t₁, …, tₖ) knowing what the generators are (Step 7, part 3): a real
@@ -137,10 +156,9 @@ function cconj_g(gens, c::Frac{<:UPoly})
     iszero(c) && return c                           # (degree of the zero numerator is -1)
     k = cdepth(typeof(c))
     n, d = cpconj_g(gens, c.num), cpconj_g(gens, c.den)
-    (k <= length(gens) && gens[k].kind === :expi) || return frac(n, d)
-    t = xpoly(eltype(c.num.c))                      # τ ↦ 1/τ:  p(τ) ↦ τ^(-deg p) p̃(τ)
-    rv(p) = typeof(p)(reverse(p.c))
-    frac(rv(n) * t^degree(c.den), rv(d) * t^degree(c.num))
+    (k <= length(gens) && gens[k].kind === :expi) || return conj_frac(n, d)
+    rv(p) = typeof(p)(reverse(p.c))                 # τ ↦ 1/τ:  p(τ) ↦ τ^(-deg p) p̃(τ)
+    conj_frac_rev(rv(n), rv(d), degree(c.num), degree(c.den))
 end
 cpconj_g(gens, p::UPoly{T}) where {T} = UPoly{T}(T[cconj_g(gens, c) for c in p.c])
 

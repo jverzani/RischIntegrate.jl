@@ -28,7 +28,7 @@ function feval(U::Frac{UPoly{C}}, r::C) where {C}
 end
 
 # σ at level 0 (x real), for the real-form filters of special terms
-conj0(T::Tower, f) = frac(cpconj_g(T.consts, f.num), cpconj_g(T.consts, f.den))
+conj0(T::Tower, f) = conj_frac(cpconj_g(T.consts, f.num), cpconj_g(T.consts, f.den))
 
 # ∫ α θ^j (θ = exp(U), level i) with Ei / erf terms: (y, terms) with ∫ α θ^j = y θ^j + Σ terms
 function special_exp(T::Tower, i::Int, j::Int, α)

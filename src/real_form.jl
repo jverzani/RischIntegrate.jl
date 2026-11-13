@@ -93,13 +93,13 @@ integrate_split_complex_exps(f, x; build = nothing, lift = nothing, verify::Bool
 
 # σ on an element of level i (needs the kinds of levels 1..i)
 function tconj(T::Tower, kinds, f, i::Int)
-    i == 0 && return frac(cpconj_g(T.consts, f.num), cpconj_g(T.consts, f.den))   # x real
+    i == 0 && return conj_frac(cpconj_g(T.consts, f.num), cpconj_g(T.consts, f.den))   # x real
     iszero(f) && return f
     n = tconj_poly(T, kinds, f.num, i)
     d = tconj_poly(T, kinds, f.den, i)
-    kinds[i] === :real && return frac(n, d)
-    θ = xpoly(T.Ts[i])          # θ ↦ 1/θ: p(θ) ↦ θ^(-deg p) p̃(θ), p̃ = reversed conjugated coefficients
-    frac(n * θ^degree(f.den), d * θ^degree(f.num))
+    kinds[i] === :real && return conj_frac(n, d)
+    # θ ↦ 1/θ: p(θ) ↦ θ^(-deg p) p̃(θ), p̃ = reversed conjugated coefficients (n, d)
+    conj_frac_rev(n, d, degree(f.num), degree(f.den))
 end
 function tconj_poly(T::Tower, kinds, p::UPoly, i::Int)
     K = T.Ts[i]
@@ -438,7 +438,9 @@ function to_term_real(b::Builder, T::Tower, L::Int, res::ElemIntegral, f; pos = 
     C = ctype(T)
     v = liftto(T, res.v, L)
     vr = (v + tconj(T, kinds, v, L)) * lconst(T, inv(cfromQ(C, Q(2))), L)
-    tot = D(T, L, vr)
+    # (with ≥ CHECK_IMAGE_DEPTH parameters, D vr is checked at images of them at the end, step CK)
+    img = fdepth(C) >= CHECK_IMAGE_DEPTH
+    tot = img ? zero(v) : D(T, L, vr)
     ts = Any[]
     iszero(vr) || push!(ts, real_term(b, T, kinds, vr, L))
     function emit!(TT, kk, pieces)              # push the terms, return Σ derivatives (in TT)
@@ -502,8 +504,9 @@ function to_term_real(b::Builder, T::Tower, L::Int, res::ElemIntegral, f; pos = 
                                              real_log_pieces(T2, k2, a2, W2))))
         tot = tot + change_constants(T2, T, ds, qs_down)
     end
-    tot == liftto(T, f, L) ||
-        throw(RischError("internal check failed: the real form of the antiderivative does not differentiate back"))
+    ok = img ? check_D_images(T, L, vr, liftto(T, f, L) - tot) : nothing
+    ok === nothing && (ok = (img ? tot + D(T, L, vr) : tot) == liftto(T, f, L))
+    ok || throw(RischError("internal check failed: the real form of the antiderivative does not differentiate back"))
     isempty(ts) && return b.lift(0)
     length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
 end

@@ -859,3 +859,53 @@ function try_parts_sum(f, x; build = nothing, lift = nothing, verify::Bool = tru
     (G !== nothing && verify && !numeric_antiderivative(f, G, xk)) && return nothing
     G
 end
+
+# ---------------------------------------------------------------------------
+# Step AH: acosh(u), u linear in x, beside radicals of R = k (u² - 1), k constant (d - c²d x² with acosh(c x), Rubi
+# 7.2.4): R^p = s^(2p) (u² - 1)^p with s = √R/√(u² - 1), constant (on each interval; principal branches,
+# R^p = (√R)^(2p)). The integrand f = s^n g with g in u² - 1, the radicand of acosh's own derivative
+# 1/(√(u - 1) √(u + 1)) where u ≥ 1, and ∫ f = s^n ∫ g. (With R kept, by parts reached √R beside asin's
+# substitution and the u-substitution fallback spent minutes building towers: sample 2743.) Top-level factors only;
+# nothing when no radical is proportional to u² - 1 (other than u² - 1 itself) or R appears elsewhere.
+# ---------------------------------------------------------------------------
+const AH_ACTIVE = Ref(false)
+function acosh_radical_ratio(f, x, xk::String, build, lift)
+    @nospecialize f x
+    us = Any[]
+    walk(t) = safe_iscall(t) && !isempty(arguments(t)) &&
+              (opname(operation(t)) === :acosh ? push!(us, arguments(t)[1]) : foreach(walk, arguments(t)))
+    walk(f)
+    (isempty(us) || any(u -> string(u) != string(us[1]), us)) && return nothing
+    u = us[1]
+    Tu, eu = try build_tower(u, xk) catch e; (e isa RischNotImplemented || e isa RischError) ? (nothing, nothing) : rethrow() end
+    (Tu === nothing || !isempty(Tu.levels) || !isone(eu.den) || degree(eu.num) != 1) && return nothing
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    Qt = mk(bd, :+, mk(bd, :^, u, bd.lift(2)), bd.lift(-1))
+    sQ = string(Qt)
+    function proportional(R)
+        string(R) == sQ && return false
+        T, el = try build_tower(mk(bd, :/, R, Qt), xk) catch e; (e isa RischNotImplemented || e isa RischError) ? (nothing, nothing) : rethrow() end
+        T !== nothing && isempty(T.levels) && const_value(T, el) !== nothing
+    end
+    fs = product_factors!(Any[], f, 1)
+    out, σs, Rs = Any[], Any[], Set{String}()
+    for (t, e) in fs
+        rp = radical_parts(t)
+        if rp !== nothing && denominator(rp[1]) == 2 && has_leaf(rp[2], xk) && proportional(rp[2])
+            p = rp[1]
+            push!(out, mk(bd, :^, Qt, bd.lift(p * e)))
+            n = Int(2p * e)
+            s = mk(bd, :/, mk(bd, :sqrt, rp[2]), mk(bd, :sqrt, Qt))
+            push!(σs, n == 1 ? s : mk(bd, :^, s, bd.lift(n)))
+            push!(Rs, string(rp[2]))
+        else
+            push!(out, e == 1 ? t : mk(bd, :^, t, bd.lift(e)))
+        end
+    end
+    isempty(σs) && return nothing
+    g = length(out) == 1 ? out[1] : mk(bd, :*, out...)
+    sg = string(g)
+    any(R -> occursin(R, sg), Rs) && return nothing
+    σ = length(σs) == 1 ? σs[1] : mk(bd, :*, σs...)
+    g, σ, bd
+end
