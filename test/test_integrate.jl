@@ -3763,3 +3763,20 @@ end
     # no radical proportional to u² - 1: nothing (d + e x² is not)
     @test Risch.acosh_radical_ratio(:((a + b * acosh(c * x)) / (d + e * x ^ 2) ^ (7 / 2)), :x, "x", build, identity) === nothing
 end
+
+# SymPy round 14: a radical of log(1/x) (#11876): log(xᵏ) = k log x for x > 0 in step LU's x = eᵘ; a radical of π/x
+# (#11891): π and ℯ split out of the radicand like a parameter (step RK), √(π/x) = √π √(1/x)
+@testset "SymPy round 14: radicals of log(1/x) and of π/x" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(π = pi), :(erf = $(Risch.erf))), e))
+    for f in (:(sqrt(log(1 / x))), :(sqrt(log(x ^ -1))), :(sqrt(log(1 / x)) * x), :(log(1 / sqrt(x)) ^ (3 / 2)),
+              :(sqrt(pi / x)), :(sqrt(pi * x)), :(x * sqrt(pi / x)), :(sqrt(2pi / x ^ 3)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test F isa Expr
+        for x0 in (0.13, 0.57)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    # π kept as the constant √π, not a float
+    @test occursin("sqrt(pi)", string(Risch.risch_integrate(:(sqrt(pi / x)), :x; build = build, lift = identity)))
+end
