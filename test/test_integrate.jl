@@ -1587,9 +1587,28 @@ end
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
         end
     end
-    # (1 + sec x)(1 - sec x) = -tan² x ≤ 0: nowhere real, not merged (the answer for √U had a sign change)
-    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(sec(x) * (a + a * sec(x)) ^ (3 / 2) * (c - c * sec(x)) ^ (3 / 2)), :x;
-                                                                build = build, lift = identity)
+    # (1 + sec x)(1 - sec x) = -tan² x ≤ 0: nowhere real. Refused while the answer for the merged √U had a sign change;
+    # now a c (1 - sec²) = -a c tan², a constant times a square, by its branches (step SQ with s rational): checked over
+    # two periods, in 256 bits with zero imaginary parts made +0 (complex Float64 takes sqrt(-t - 0im) on the other side)
+    function evb(ex, vals)
+        z = ex isa Symbol ? (haskey(vals, ex) ? vals[ex] : Core.eval(Main, ex)) : ex isa Number ? ex :
+            (ex isa Expr && ex.head === :call) ?
+                (ex.args[1] isa Symbol ? Core.eval(Main, ex.args[1]) : ex.args[1])(map(a -> evb(a, vals), ex.args[2:end])...) :
+            Core.eval(Main, ex)
+        w = Complex{BigFloat}(z)
+        iszero(imag(w)) ? Complex(real(w), big(0.0)) : w
+    end
+    f = :(sec(x) * (a + a * sec(x)) ^ (3 / 2) * (c - c * sec(x)) ^ (3 / 2))
+    F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+    setprecision(BigFloat, 256) do
+        at(t) = Dict{Symbol,Any}(:x => Complex{BigFloat}(t), :a => Complex{BigFloat}(big"0.7"), :c => Complex{BigFloat}(big"0.3"))
+        h = big"1e-30"
+        for k in 0:8:59
+            x0 = big(-6.2) + k * big"0.211"
+            fv = evb(f, at(x0))
+            @test abs((evb(F, at(x0 + h)) - evb(F, at(x0 - h))) / 2h - fv) <= big"1e-18" * max(1, abs(fv))
+        end
+    end
 end
 
 # step MN: radicals of trigonometric monomials of one argument merged into one, the answer times σ (sample 1300, 1613,
@@ -3898,6 +3917,43 @@ end
                   :(x / exp(atanh(a * x))), :((1 - a ^ 2 * x ^ 2) / exp(3 * acoth(a * x))))   # (σ out of a denominator)
             F = Risch.risch_integrate(f, :x; build = build, lift = identity)
             at(t) = Dict{Symbol,Any}(:x => Complex{BigFloat}(t), :a => Complex{BigFloat}(big"1.13"))
+            h = big"1e-30"
+            for x0 in big.((0.31, 0.62, 1.7, 3.1, -0.31, -0.62, -1.7, -3.1))
+                (occursin("asin", string(F)) && 1.13 * x0 > 1) && continue
+                fv = evb(f, at(x0))
+                @test abs((evb(F, at(x0 + h)) - evb(F, at(x0 - h))) / 2h - fv) <= big"1e-20" * max(1, abs(fv))
+            end
+        end
+    end
+end
+
+# exponentials of atanh, acoth beside radicals with parameters (Rubi 7.3.6, 7.4.2): step XL's integrand tried again with
+# step RK's split when refused for a radicand (c^(3/2) (1 - 1/(a x))^(3/2), below the outermost call); step AL's y = a x
+# with a rational radicand through the tower (c - c/(a x) ↦ c - c/y); √(c s²) with s rational by its branches (step SQ:
+# (1 - y²)²/y² after step NR's i, √(1 - y²) √(1 - 1/y²)). Checked on every interval (|a x| < 1, |a x| > 1, x < 0) as
+# the step XL testset above does (256 bits, zero imaginary parts made +0; asin of an argument > 1 left out)
+@testset "exponentials of atanh, acoth with radicals of parameters (steps XL, RK, AL, SQ)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    function evb(ex, vals)
+        z = ex isa Symbol ? (haskey(vals, ex) ? vals[ex] : Core.eval(Main, ex)) : ex isa Number ? ex :
+            (ex isa Expr && ex.head === :call) ?
+                (ex.args[1] isa Symbol ? Core.eval(Main, ex.args[1]) : ex.args[1])(map(a -> evb(a, vals), ex.args[2:end])...) :
+            Core.eval(Main, ex)
+        w = Complex{BigFloat}(z)
+        iszero(imag(w)) ? Complex(real(w), big(0.0)) : w
+    end
+    setprecision(BigFloat, 256) do
+        for f in (:((c - c / (a * x)) ^ (9 / 2) / exp(atanh(a * x))), :(exp(atanh(a * x)) * (c - c / (a ^ 2 * x ^ 2)) ^ (7 / 2)),
+                  :(exp(3 * atanh(a * x)) * x * sqrt(c - c / (a ^ 2 * x ^ 2))), :(exp(acoth(a * x)) * (c - c / (a * x)) ^ (3 / 2)),
+                  :(sqrt(c - c / (a * x)) / (exp(acoth(a * x)) * x)), :(exp(acoth(a * x)) / (c - a ^ 2 * c * x ^ 2) ^ (5 / 2)),
+                  :((c - a ^ 2 * c * x ^ 2) ^ (3 / 2) / exp(acoth(a * x))), :(sqrt(1 - x ^ 2) * sqrt(1 - 1 / x ^ 2)),
+                  # (and √(a + a sec) √(c - c sec): the merged radicand a c (1 - sec²) = -a c tan², a constant times a
+                  # square, Rubi 4.5.2.1)
+                  :(sec(e + f * x) * (a + a * sec(e + f * x)) ^ (3 / 2) * sqrt(c - c * sec(e + f * x))))
+            F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+            @test F isa Expr
+            at(t) = Dict{Symbol,Any}(:x => Complex{BigFloat}(t), :a => Complex{BigFloat}(big"1.13"), :c => Complex{BigFloat}(big"2.13"),
+                                     :e => Complex{BigFloat}(big"0.4"), :f => Complex{BigFloat}(big"1.3"))
             h = big"1e-30"
             for x0 in big.((0.31, 0.62, 1.7, 3.1, -0.31, -0.62, -1.7, -3.1))
                 (occursin("asin", string(F)) && 1.13 * x0 > 1) && continue

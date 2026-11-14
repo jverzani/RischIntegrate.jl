@@ -420,6 +420,12 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         if any(((_, m),) -> m >= 2, sfN) || any(((_, m),) -> m >= 2, sfD) || degree(N) >= 2 || degree(Dd) >= 2
             V = prod((p for (p, m) in sfD if isodd(m)); init = one(P))
             w = scale(lc(N) / lc(Dd), prod((p for (p, m) in sfN if isodd(m)); init = one(P)) * V)
+            # u = c s² with s rational ((1 - x²)²/x², from √(1 - x²) √(1 - 1/x²) after step NR's i: Rubi 7.3.6, 7.4.2):
+            # the branches √u = ±s√c, as for a polynomial s (step SQ)
+            if degree(w) == 0
+                sr = frac(prod((p^(m ÷ 2) for (p, m) in sfN); init = one(P)), prod((p^(m ÷ 2) for (p, m) in sfD); init = one(P)))
+                return integrate_square_branches(f, x, xk, uo, uterm, sr, w, b0, verify)
+            end
             if degree(w) >= 1
                 sq = frac(prod((p^(m ÷ 2) for (p, m) in sfN); init = one(P)),
                           prod((p^(m ÷ 2) for (p, m) in sfD); init = one(P)) * V)
@@ -631,14 +637,15 @@ function integrate_const_times_square(f, xk::String, uo, uterm, sp::UPoly{Q}, w:
     F0 === nothing ? (T1 === nothing ? b0.lift(0) : T1) : T1 === nothing ? F0 : mk(b0, :+, F0, T1)
 end
 
-# step SQ, u = c·s² with other (constant) radicals: on each branch √u = ±s√c, so with F± = ∫ f|_{√u = ±s√c},
+# step SQ, u = c·s² (s a polynomial or rational function) with other (constant) radicals: on each branch √u = ±s√c, so with F± = ∫ f|_{√u = ±s√c},
 # ∫ f = (F₊ + F₋)/2 + σ (F₊ - F₋)/2, σ = sign(s) = (√u/s)/√c (locally constant)
-function integrate_square_branches(f, x, xk::String, uo, uterm, sp::UPoly{Q}, w::UPoly{Q}, b0::Builder, verify::Bool)
+function integrate_square_branches(f, x, xk::String, uo, uterm, sp::Union{UPoly{Q},Frac{UPoly{Q}}}, w::UPoly{Q}, b0::Builder,
+                                   verify::Bool)
     @nospecialize f x
     c = w.c[1]
     rc = rat_sqrt(c)
     sqc = rc === nothing ? mk(b0, :sqrt, cterm(b0, c)) : cterm(b0, rc)
-    st = poly_term(b0, sp)
+    st = sp isa UPoly ? poly_term(b0, sp) : frac_term(b0, sp)   # (s rational: u = c S²/T²)
     function rewrite(t, σ)
         safe_iscall(t) || return t
         args = arguments(t)
