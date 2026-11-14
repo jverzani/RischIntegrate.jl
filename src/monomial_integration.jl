@@ -588,8 +588,11 @@ end
 # is a difference (false is final); equal images at two points are taken as equal (the derivative check over
 # ℚ(i)(a, …, g) of (d + e x)³ (f + g x) (a + b asin(c x)), sample 2320, was 70% of its time). nothing (the exact
 # check) when an image is undefined (a denominator vanishes there) or a term has no stored derivative.
+# Not inferred per tower type (@nospecializeinfer, here, in check_D_images and in the element form of
+# change_constants): on Julia 1.13.3/1.13.4 inferring them over a tower with six parameters in its constants took
+# 50 s each (a first call of sin(a + log(c xⁿ) √(-1/(4n²)))² went from 18 s to 116 s, and CI from 25 to 90+ min)
 struct ImageUndefined <: Exception end
-function check_tower_images(T::Tower, L::Int, res::ElemIntegral, f)
+Base.@nospecializeinfer function check_tower_images(@nospecialize(T::Tower), L::Int, @nospecialize(res::ElemIntegral), @nospecialize(f))
     all(q -> q isa SpecialTerm || q isa BaseTerms || q isa TowerRootSum || q isa BaseRootSum || q isa TowerRealForm ||
              q isa DilogTerm || q isa DilogPairTerm || q isa DilogQuadTerm || q isa DilogGroup || q isa DilogConjTerm,
         res.quads) || return nothing
@@ -623,7 +626,7 @@ end
 
 # step CK for D v == g alone (the real form's rational part, to_term_real): true/false at two images, nothing if one
 # is undefined
-function check_D_images(T::Tower, L::Int, v, g)
+Base.@nospecializeinfer function check_D_images(@nospecialize(T::Tower), L::Int, @nospecialize(v), @nospecialize(g))
     B = fbase(ctype(T))
     for k in (0, 1)
         φ(c) = (w = cimage(c, k); w === nothing ? throw(ImageUndefined()) : convert(B, w))
