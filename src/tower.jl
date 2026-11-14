@@ -227,7 +227,9 @@ function change_constants(T::Tower, ::Type{C2}, φ) where {C2}
     merge!(T2.prints, T.prints)
     T2
 end
-change_constants(T::Tower, T2::Tower, f, φ) = map_constants(T, T2, f, φ, levelof(T, f))
+# (not inferred per tower type: see check_tower_images)
+Base.@nospecializeinfer change_constants(@nospecialize(T::Tower), @nospecialize(T2::Tower), @nospecialize(f), @nospecialize(φ)) =
+    map_constants(T, T2, f, φ, levelof(T, f))
 
 function map_constants(T::Tower, T2::Tower, f, φ, i::Int)
     if i == 0
