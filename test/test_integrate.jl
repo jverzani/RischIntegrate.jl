@@ -3874,3 +3874,35 @@ end
         end
     end
 end
+
+# step XL off the real domain of atanh, acoth: exp(n atanh u) = (1 + u)ⁿ (1 - u²)^(-n/2) σⁿ, σ = sign(1 - u), and
+# exp(n acoth u) with v = 1/u, σ = sign(1 + v), for every real u (principal values; without σ the answers were wrong
+# for u > 1, atanh, and -1 < u < 0, acoth). Evaluated node by node in 256 bits with zero imaginary parts made +0 (as
+# the scan's check: sqrt(-t - 0im) takes the other branch); points where the answer has asin of an argument > 1 are
+# left out (∫ 1/√(1 - x²) = asin x fails there too: asin's convention off [-1, 1], Rubi's answers alike)
+@testset "step XL: exponentials of atanh, acoth on every interval" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    function evb(ex, vals)
+        z = ex isa Symbol ? (haskey(vals, ex) ? vals[ex] : Core.eval(Main, ex)) : ex isa Number ? ex :
+            (ex isa Expr && ex.head === :call) ?
+                (ex.args[1] isa Symbol ? Core.eval(Main, ex.args[1]) : ex.args[1])(map(a -> evb(a, vals), ex.args[2:end])...) :
+            Core.eval(Main, ex)
+        w = Complex{BigFloat}(z)
+        iszero(imag(w)) ? Complex(real(w), big(0.0)) : w
+    end
+    setprecision(BigFloat, 256) do
+        for f in (:(exp(atanh(a * x)) * x), :(exp(2 * atanh(a * x)) / x ^ 2), :(exp(acoth(a * x)) * x ^ 2),
+                  :(exp(atanh(a * x)) * sqrt(1 - a ^ 2 * x ^ 2)), :(exp(3 * atanh(a * x)) * x ^ 2), :(exp(-atanh(a * x)) / (1 - a ^ 2 * x ^ 2)),
+                  :(exp(-3 * acoth(a * x)) * x), :(exp(atanh(a * x)) + exp(2 * atanh(a * x))),
+                  :(x * exp(acoth(a * x)) + exp(acoth(a * x)) ^ 2), :(exp(atanh(a * x) / 2)))
+            F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+            at(t) = Dict{Symbol,Any}(:x => Complex{BigFloat}(t), :a => Complex{BigFloat}(big"1.13"))
+            h = big"1e-30"
+            for x0 in big.((0.31, 0.62, 1.7, 3.1, -0.31, -0.62, -1.7, -3.1))
+                (occursin("asin", string(F)) && 1.13 * x0 > 1) && continue
+                fv = evb(f, at(x0))
+                @test abs((evb(F, at(x0 + h)) - evb(F, at(x0 - h))) / 2h - fv) <= big"1e-20" * max(1, abs(fv))
+            end
+        end
+    end
+end

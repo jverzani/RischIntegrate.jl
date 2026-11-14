@@ -409,8 +409,8 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     g = merge_exp_powers(f, x, build, lift)            # (bʷ)^r = b^(w r), b > 0 constant (step EP)
     g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
     if !has_invhyp(f, xk)                              # exp(c log u) = u^c (step XL; atanh, acoth after step AL)
-        g = rewrite_exp_logs(f, x, build, lift)
-        g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
+        gσ = rewrite_exp_logs(f, x, build, lift)
+        gσ === nothing || return integrate_xl(gσ, x; build = build, lift = lift, verify = verify)
     end
     # f free of x, with a parameter or π, e (erf(a√(R²)/√2)/(R²)^(3/2), SymPy #27374): ∫ f = f x, not through a
     # constant field that may not hold all of f's constants beside √2
@@ -495,8 +495,8 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
             e
         end
         r === nothing || r isa Exception || return r
-        g = rewrite_exp_logs(f, x, build, lift)        # exp(c atanh u) = ((1 + u)/(1 - u))^(c/2) (step XL)
-        g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
+        gσ = rewrite_exp_logs(f, x, build, lift)       # exp(c atanh u) = ((1 + u)/(1 - u))^(c/2) (step XL)
+        gσ === nothing || return integrate_xl(gσ, x; build = build, lift = lift, verify = verify)
         r isa Exception && throw(r)
         r = try_usub(f, x; build = build, lift = lift, verify = verify)
         r === nothing || return r
@@ -914,6 +914,17 @@ function trig_symbolic_or_fallback(f, x; build, lift, verify::Bool)
         (e isa MethodError && any(fn -> e.f === fn, SPECIAL_FNS) && !(f isa Expr)) || rethrow()
         integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
     end
+end
+
+# step XL's (g, σ): ∫ g, times σ (a locally constant sign of the odd powers, see `rewrite_exp_logs`) when there is one
+function integrate_xl(gσ, x; build, lift, verify::Bool)
+    @nospecialize gσ x
+    g, σ = gσ
+    F = risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    σ === nothing && return F
+    bd = Builder(build === nothing ? auto_build(g, x) : build, lift === nothing ? auto_lift(g, x) : lift, x)
+    F isa IntegralWithRootSums || return mk(bd, :*, σ, F)
+    IntegralWithRootSums(mk(bd, :*, σ, F.elementary), Any[ScaledRootSum(σ, rs) for rs in F.rootsums], F.var)
 end
 
 function radicand_fallbacks(f, x; build, lift, verify::Bool)
