@@ -3799,3 +3799,32 @@ end
     # π kept as the constant √π, not a float
     @test occursin("sqrt(pi)", string(Risch.risch_integrate(:(sqrt(pi / x)), :x; build = build, lift = identity)))
 end
+
+# SymPy round 15: a polynomial numerator over log x (#9367: SymJ's (x² - 1)·log(x)⁻¹, term by term by step LS);
+# a shifted binomial denominator (#8954: (A + x)⁴ - C⁴, step BN in u = x + A instead of a RootSum)
+@testset "SymPy round 15: numerators over log x, shifted binomial denominators" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    for f in (:((x ^ 2 - 1) * log(x) ^ -1), :((x - 1) * log(x) ^ -1), :((x ^ 2 - 1) / log(x)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("expinti", string(F))
+        evr(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(expinti = $(Risch.expinti))), e))
+        for x0 in (0.13, 0.57, 1.7)
+            @test isapprox((evr(F, x0 + 1e-6) - evr(F, x0 - 1e-6)) / 2e-6, evr(f, x0); rtol = 1e-6)
+        end
+    end
+    for (f, valss) in ((:(1 / ((A + x) ^ 4 - C ^ 4)), ((:A => 1.13, :C => 2.13), (:A => -0.7, :C => 0.4))),
+                       (:(x / ((A + x) ^ 3 + C ^ 3)), ((:A => 1.13, :C => 2.13),)),
+                       (:(1 / ((A + (B - A) * x / L) ^ 4 - C ^ 4)),
+                        ((:A => 1.13, :B => 2.13, :C => 3.13, :L => 4.13), (:A => 2.5, :B => 1.13, :C => 0.7, :L => 1.3))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test F isa Expr && !occursin("RootSum", string(F))
+        for vals in valss
+            env(x0) = Expr(:block, :(x = $x0), (:($(p.first) = $(complex(p.second))) for p in vals)...)
+            ev(e, x0) = Core.eval(Main, Expr(:let, env(x0), e))
+            for x0 in (0.31, 1.7, -2.9)
+                fv = ev(f, complex(x0))
+                @test abs((ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6 - fv) < 1e-5 * max(1, abs(fv))
+            end
+        end
+    end
+end

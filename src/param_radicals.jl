@@ -569,6 +569,7 @@ end
 # ρ^(i+1-j) = |c|^q ρ^m (i + 1 - j = qn + m), so by linearity
 #   ∫ f dx = Σᵢ Nᵢ |c|^(q-k)/λ · ρ^m ∫ uⁱ⁻ʲ/(uⁿ ± 1)ᵏ du,
 # each integral over ℚ (real forms with √3, √2, …); then u = x/ρ. Nothing when one of them needs a RootSum.
+const BN_SHIFTED = Ref(false)
 function integrate_binomial_scaled(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     xk = string(x)
@@ -590,6 +591,27 @@ function integrate_binomial_scaled(f, x; build = nothing, lift = nothing, verify
     c = Qf.c[1]
     pos(c) = param_sign(c, T.consts) == 1
     γ = nothing                                        # Qf = x⁴ + b x² + c: c (u⁴ + γ u² + 1), γ = b/√c
+    # a shifted binomial ((A + x)⁴ - C⁴, SymPy #8954): with s the x^(n-1) coefficient over n lc, f(u - s) has
+    # Qf(u - s) free of u^(n-1); step BN in u, then u = x + s (once: the shifted Qf is not shifted again)
+    if !iszero(Qf.c[n]) && !BN_SHIFTED[]
+        sh = Qf.c[n] / (cfromQ(C, Q(n)) * Qf.c[n + 1])
+        comp(p) = (y = UPoly{C}([-sh, one(C)]); acc = zero(UPoly{C}); for a in reverse(p.c) acc = acc * y + UPoly{C}([a]) end; acc)
+        Qs = comp(Qf)
+        iszero(Qs.c[n]) || return nothing
+        all(iszero, Qs.c[2:(n - 1)]) || (n == 4 && iszero(Qs.c[2])) || return nothing
+        bds = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
+        g = frac_term(bds, frac(comp(el.num), comp(el.den)))
+        BN_SHIFTED[] = true
+        G = try
+            integrate_binomial_scaled(g, x; build = build, lift = lift, verify = verify)
+        finally
+            BN_SHIFTED[] = false
+        end
+        G === nothing && return nothing
+        xs = mk(bds, :+, bds.x, cterm(bds, sh))
+        unshift(t) = isnode(t) ? term_rebuild(bds, t, Any[unshift(a) for a in arguments(t)]) : (string(t) == xk ? xs : t)
+        return unshift(G)
+    end
     if !all(iszero, Qf.c[2:n])                         # Qf = xⁿ + c, or that biquadratic
         (n == 4 && iszero(Qf.c[2]) && iszero(Qf.c[4]) && pos(c)) || return nothing
         b = Qf.c[3]
