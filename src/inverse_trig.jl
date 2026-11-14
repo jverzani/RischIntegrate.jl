@@ -70,10 +70,15 @@ end
 # step XL: exp(c L(u)) with c ∈ ℚ as a product of powers, which the radical steps take (the tower refuses exp of a
 # fractional multiple of a logarithm). Principal values, all u where L(u) is real:
 #   exp(c log u)   = u^c,
-#   exp(c atanh u) = ((1 + u)/(1 - u))^(c/2),  |u| < 1 (the base is positive); (1 + u)ⁿ (1 - u²)^(-n/2) for c = n ∈ ℤ,
-#   exp(c acoth u) = ((u + 1)/(u - 1))^(c/2),  |u| > 1; (1 + 1/u)ⁿ (1 - 1/u²)^(-n/2) for c = n (acoth u = atanh(1/u)).
-# A sum in the exponent is split, exp(a + b) = exp(a) exp(b). nothing if there is no such exp.
-function rewrite_exp_logs(f, x, build, lift)
+#   exp(c atanh u) = ((1 + u)/(1 - u))^(c/2),  every real u (principal power; atanh(u + 0i) = ½ log((1 + u)/(1 - u)));
+#                    (1 + u)ⁿ (1 - u²)^(-n/2) σⁿ for c = n ∈ ℤ, σ = sign(1 - u) = √((1 - u)²)/(1 - u),
+#   exp(c acoth u) = ((u + 1)/(u - 1))^(c/2),  |u| > 1 (for |u| < 1 Julia's acoth takes the other side of the cut);
+#                    (1 + v)ⁿ (1 - v²)^(-n/2) σⁿ for c = n, v = 1/u (acoth u = atanh(1/u)), σ = sign(1 + v),
+# every real u (u = ±1 aside). σ = ±1 is locally constant and only odd n need it (without it the answers were wrong for
+# u > 1, atanh, and -1 < u < 0, acoth: ∫ x exp(atanh(a x))). When every such exp is a factor of f, σ multiplies the answer
+# (returned as the second value, ∫ σ g = σ ∫ g on each interval), else it is written into g.
+# A sum in the exponent is split, exp(a + b) = exp(a) exp(b). nothing if there is no such exp; else (g, σ or nothing).
+function rewrite_exp_logs(f, x, build, lift; inline::Bool = false)
     @nospecialize f x
     xk = string(x)
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
@@ -109,8 +114,17 @@ function rewrite_exp_logs(f, x, build, lift)
         end
         L === :acoth && (u = mk(bd, :/, one_t, u))
         p = mk(bd, :+, one_t, u)
-        mk(bd, :*, pw(p, c), pw(mk(bd, :+, one_t, mk(bd, :*, bd.lift(-1), mk(bd, :^, u, bd.lift(2)))), -c / 2))
+        r = mk(bd, :*, pw(p, c), pw(mk(bd, :+, one_t, mk(bd, :*, bd.lift(-1), mk(bd, :^, u, bd.lift(2)))), -c / 2))
+        isodd(numerator(Q(c))) || return r
+        w = L === :atanh ? mk(bd, :+, one_t, mk(bd, :*, bd.lift(-1), u)) : p
+        σ = mk(bd, :/, mk(bd, :sqrt, mk(bd, :^, w, bd.lift(2))), w)
+        push!(odd, (string(σ), σ, cur_top[]))
+        inline ? mk(bd, :*, σ, r) : r
     end
+    odd = Tuple{String,Any,Bool}[]                      # (key, σ, the exp is a factor of f) of each odd power
+    # (any integer power of such a factor: σ⁻¹ = σ, exp(n L)⁻¹ in the denominator, (c - c/(a x))^(9/2)/exp(atanh(a x)))
+    tops = Any[t for (t, e) in product_factors!(Any[], f, 1) if isinteger(e) && exp_arg(t) !== nothing]
+    cur_top = Ref(false)
     changed = false
     function walk(t)
         safe_iscall(t) || return t
@@ -118,10 +132,12 @@ function rewrite_exp_logs(f, x, build, lift)
         isempty(args) && return t
         nargs = Any[walk(a) for a in args]
         if exp_arg(t) !== nothing
+            istop = any(s -> s === t, tops)
             g = walk(exp_arg(t))
             ts = safe_iscall(g) && opname(operation(g)) === :+ ? collect(Any, arguments(g)) : Any[g]
             ms = map(cl, ts)
             if any(!isnothing, ms)
+                cur_top[] = istop
                 changed = true
                 fs = Any[power(m...) for m in ms if m !== nothing]
                 rest = Any[ts[i] for i in eachindex(ts) if ms[i] === nothing]
@@ -132,7 +148,16 @@ function rewrite_exp_logs(f, x, build, lift)
         all(i -> nargs[i] === args[i], eachindex(args)) ? t : term_rebuild(bd, t, nargs)
     end
     g = walk(f)
-    changed ? g : nothing
+    changed || return nothing
+    isempty(odd) && return (g, nothing)
+    inline && return (g, nothing)
+    all(o -> o[3], odd) || return rewrite_exp_logs(f, x, build, lift; inline = true)   # (an odd power inside a sum)
+    cnt = Dict{String,Tuple{Any,Int}}()
+    for (k, σ, _) in odd
+        cnt[k] = (σ, get(cnt, k, (σ, 0))[2] + 1)
+    end
+    σs = Any[σ for (σ, m) in values(cnt) if isodd(m)]   # (σ² = 1)
+    (g, isempty(σs) ? nothing : length(σs) == 1 ? σs[1] : mk(bd, :*, σs...))
 end
 
 has_op(f, n::Symbol) = safe_iscall(f) && !isempty(arguments(f)) &&
