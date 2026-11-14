@@ -466,14 +466,15 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         # asinh(c x): y = c x first (step AL); then derivative-divides (∫ asinh(x)/√(1 + x²) = asinh(x)²/2, step
         # US) and A·L by parts (∫ asinh x = x asinh x - √(x² + 1), step AP), so the answer keeps L; else
         # atanh, acoth, asinh, acosh, acsch, asech as logs (step IH)
-        # acosh(u) beside a radical of k (u² - 1): the radical in u² - 1, the answer times s = √R/√(u² - 1) (step AH)
+        # acosh(u) beside a radical of k (u² - 1): the radical in u² - 1, the answer times s = √R/(√(u - 1) √(u + 1)) (step AH)
         if !AH_ACTIVE[] && has_op(f, :acosh)
             m = acosh_radical_ratio(f, x, xk, build, lift)
             if m !== nothing
-                g, σ, bd = m
+                g, σ, bd, Qs = m
                 AH_ACTIVE[] = true
                 r = try
-                    risch_integrate(g, x; build = build, lift = lift, verify = verify)
+                    rr = risch_integrate(g, x; build = build, lift = lift, verify = verify)
+                    rr isa IntegralWithRootSums ? rr : rewrite_acosh_radicals(rr, Qs, xk, bd, acosh_radical_rel(bd, xk))
                 catch e
                     (e isa RischNotImplemented || e isa NotElementary) || rethrow()
                     nothing

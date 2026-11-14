@@ -878,20 +878,26 @@ function acosh_branch_radicals(f, F, x, build, lift)
     isempty(us) && return F
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     Qs = Any[(u, mk(bd, :+, mk(bd, :^, u, bd.lift(2)), bd.lift(-1))) for u in values(us)]
-    function rel(r, Qt)                                 # r/Qt: true when 1, :const when another constant
-        T, el = try
-            build_tower(mk(bd, :/, r, Qt), xk)
-        catch e
-            (e isa RischNotImplemented || e isa RischError || e isa NeedComplex) || rethrow()
-            return false
-        end
-        isempty(T.levels) || return false
-        c = const_value(T, el)
-        c === nothing ? false : isone(c) ? true : :const
-    end
+    rel = acosh_radical_rel(bd, xk)                     # r/Qt: true when 1, :const when another constant
     rads = collect_radicals(f, xk)
     Qs = filter(((u, Qt),) -> !any(((e, r),) -> rel(r, Qt) !== false, rads), Qs)
     isempty(Qs) && return F
+    rewrite_acosh_radicals(F, Qs, xk, bd, rel)
+end
+acosh_radical_rel(bd::Builder, xk::String) = function (r, Qt)
+    T, el = try
+        build_tower(mk(bd, :/, r, Qt), xk)
+    catch e
+        (e isa RischNotImplemented || e isa RischError || e isa NeedComplex) || rethrow()
+        return false
+    end
+    isempty(T.levels) || return false
+    c = const_value(T, el)
+    c === nothing ? false : isone(c) ? true : :const
+end
+# F with each radical (u² - 1)^(k/2), (u, u² - 1) ∈ Qs, written (u - 1)^(k/2) (u + 1)^(k/2)
+function rewrite_acosh_radicals(F, Qs, xk::String, bd::Builder, rel)
+    @nospecialize F
     changed = false
     function rw(t)
         safe_iscall(t) && !isempty(arguments(t)) || return t
@@ -913,11 +919,13 @@ end
 
 # ---------------------------------------------------------------------------
 # Step AH: acosh(u), u linear in x, beside radicals of R = k (u² - 1), k constant (d - c²d x² with acosh(c x), Rubi
-# 7.2.4): R^p = s^(2p) (u² - 1)^p with s = √R/√(u² - 1), constant (on each interval; principal branches,
-# R^p = (√R)^(2p)). The integrand f = s^n g with g in u² - 1, the radicand of acosh's own derivative
-# 1/(√(u - 1) √(u + 1)) where u ≥ 1, and ∫ f = s^n ∫ g. (With R kept, by parts reached √R beside asin's
-# substitution and the u-substitution fallback spent minutes building towers: sample 2743.) Top-level factors only;
-# nothing when no radical is proportional to u² - 1 (other than u² - 1 itself) or R appears elsewhere.
+# 7.2.4; acosh(x)/√(x² - 1), k = 1): R^p = s^(2p) Y^(2p) with Y = √(u - 1) √(u + 1), the radical of acosh's own
+# derivative u'/Y, and s = √R/Y, constant on each interval (s² = k; principal branches, R^p = (√R)^(2p)). The
+# integrand f = s^n g with g in Y² = u² - 1, and ∫ f = s^n ∫ g, the inner answer's radicals of u² - 1 written as
+# powers of Y (step AB's rewrite: they stand for Y here, so the answer holds for every x, not only u ≥ 1). (With R
+# kept, by parts reached √R beside asin's substitution and the u-substitution fallback spent minutes building
+# towers: sample 2743.) Top-level factors only; nothing when no radical is proportional to u² - 1 or R appears
+# elsewhere.
 # ---------------------------------------------------------------------------
 function acosh_radical_ratio(f, x, xk::String, build, lift)
     @nospecialize f x
@@ -931,9 +939,8 @@ function acosh_radical_ratio(f, x, xk::String, build, lift)
     (Tu === nothing || !isempty(Tu.levels) || !isone(eu.den) || degree(eu.num) != 1) && return nothing
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     Qt = mk(bd, :+, mk(bd, :^, u, bd.lift(2)), bd.lift(-1))
-    sQ = string(Qt)
+    Y = mk(bd, :*, mk(bd, :sqrt, mk(bd, :+, u, bd.lift(-1))), mk(bd, :sqrt, mk(bd, :+, u, bd.lift(1))))
     function proportional(R)
-        string(R) == sQ && return false
         T, el = try build_tower(mk(bd, :/, R, Qt), xk) catch e; (e isa RischNotImplemented || e isa RischError) ? (nothing, nothing) : rethrow() end
         T !== nothing && isempty(T.levels) && const_value(T, el) !== nothing
     end
@@ -945,7 +952,7 @@ function acosh_radical_ratio(f, x, xk::String, build, lift)
             p = rp[1]
             push!(out, mk(bd, :^, Qt, bd.lift(p * e)))
             n = Int(2p * e)
-            s = mk(bd, :/, mk(bd, :sqrt, rp[2]), mk(bd, :sqrt, Qt))
+            s = mk(bd, :/, mk(bd, :sqrt, rp[2]), Y)
             push!(σs, n == 1 ? s : mk(bd, :^, s, bd.lift(n)))
             push!(Rs, string(rp[2]))
         else
@@ -957,5 +964,5 @@ function acosh_radical_ratio(f, x, xk::String, build, lift)
     sg = string(g)
     any(R -> occursin(R, sg), Rs) && return nothing
     σ = length(σs) == 1 ? σs[1] : mk(bd, :*, σs...)
-    g, σ, bd
+    g, σ, bd, Any[(u, Qt)]
 end
