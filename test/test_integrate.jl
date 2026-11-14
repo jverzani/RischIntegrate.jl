@@ -3894,7 +3894,8 @@ end
         for f in (:(exp(atanh(a * x)) * x), :(exp(2 * atanh(a * x)) / x ^ 2), :(exp(acoth(a * x)) * x ^ 2),
                   :(exp(atanh(a * x)) * sqrt(1 - a ^ 2 * x ^ 2)), :(exp(3 * atanh(a * x)) * x ^ 2), :(exp(-atanh(a * x)) / (1 - a ^ 2 * x ^ 2)),
                   :(exp(-3 * acoth(a * x)) * x), :(exp(atanh(a * x)) + exp(2 * atanh(a * x))),
-                  :(x * exp(acoth(a * x)) + exp(acoth(a * x)) ^ 2), :(exp(atanh(a * x) / 2)))
+                  :(x * exp(acoth(a * x)) + exp(acoth(a * x)) ^ 2), :(exp(atanh(a * x) / 2)),
+                  :(x / exp(atanh(a * x))), :((1 - a ^ 2 * x ^ 2) / exp(3 * acoth(a * x))))   # (σ out of a denominator)
             F = Risch.risch_integrate(f, :x; build = build, lift = identity)
             at(t) = Dict{Symbol,Any}(:x => Complex{BigFloat}(t), :a => Complex{BigFloat}(big"1.13"))
             h = big"1e-30"

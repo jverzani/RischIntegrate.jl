@@ -122,7 +122,8 @@ function rewrite_exp_logs(f, x, build, lift; inline::Bool = false)
         inline ? mk(bd, :*, σ, r) : r
     end
     odd = Tuple{String,Any,Bool}[]                      # (key, σ, the exp is a factor of f) of each odd power
-    tops = Any[t for (t, e) in product_factors!(Any[], f, 1) if e == 1 && exp_arg(t) !== nothing]
+    # (any integer power of such a factor: σ⁻¹ = σ, exp(n L)⁻¹ in the denominator, (c - c/(a x))^(9/2)/exp(atanh(a x)))
+    tops = Any[t for (t, e) in product_factors!(Any[], f, 1) if isinteger(e) && exp_arg(t) !== nothing]
     cur_top = Ref(false)
     changed = false
     function walk(t)
