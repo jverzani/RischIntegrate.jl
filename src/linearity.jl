@@ -23,6 +23,17 @@ function additive_terms(bd::Builder, f)
         ts = additive_terms(bd, args[1])
         return Any[mk(bd, :/, t, args[2]) for t in ts]
     end
+    # the same quotient written as a product N·D⁻¹ (SymJ's (1/2)·y⁻¹·(log(y + 1) - log(1 - y)), SymPy #10851): one
+    # factor a sum, another with a negative exponent
+    if n === :*
+        fs = product_factors!(Any[], f, 1)
+        issum(t) = safe_iscall(t) && (opname(operation(t)) === :+ || (opname(operation(t)) === :- && length(arguments(t)) == 2))
+        js = findall(((t, e),) -> e == 1 && issum(t), fs)
+        (length(js) == 1 && any(((_, e),) -> e < 0, fs)) || return Any[]
+        j = js[1]
+        rest = Any[e == 1 ? t : mk(bd, :^, t, bd.lift(e)) for (i, (t, e)) in enumerate(fs) if i != j]
+        return Any[mk(bd, :*, t, rest...) for t in parts(fs[j][1])]
+    end
     Any[]
 end
 

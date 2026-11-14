@@ -243,12 +243,27 @@ end
 function try_gamma_log(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     xk = string(x)
-    islogx(t) = isnode(t) && opname(operation(t)) === :log && length(arguments(t)) == 1 && string(arguments(t)[1]) == xk
+    # log(xᵏ) = k log x for x > 0, k rational: log(1/x), log(x⁻¹), log(√x) (SymPy #11876, √log(1/x))
+    function xpow(a)
+        string(a) == xk && return Q(1)
+        isnode(a) || return nothing
+        n, as = opname(operation(a)), arguments(a)
+        if n === :/ && length(as) == 2 && leaf_rational(as[1]) == 1
+            k = xpow(as[2]); return k === nothing ? nothing : -k
+        elseif n === :^ && length(as) == 2 && string(as[1]) == xk
+            k = leaf_rational(as[2]); return k === nothing ? nothing : Q(k)
+        elseif n === :sqrt && length(as) == 1
+            k = xpow(as[1]); return k === nothing ? nothing : k / 2
+        end
+        nothing
+    end
+    logk(t) = (isnode(t) && opname(operation(t)) === :log && length(arguments(t)) == 1) ? xpow(arguments(t)[1]) : nothing
+    islogx(t) = logk(t) !== nothing
     haslog(t) = islogx(t) || (isnode(t) && any(haslog, arguments(t)))
     haslog(f) || return nothing
     b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     ex = mk(b0, :exp, b0.x)
-    sub(t) = islogx(t) ? b0.x : isnode(t) ? term_rebuild(b0, t, Any[sub(a) for a in arguments(t)]) : (string(t) == xk ? ex : t)
+    sub(t) = islogx(t) ? (k = logk(t); isone(k) ? b0.x : mk(b0, :*, b0.lift(k), b0.x)) : isnode(t) ? term_rebuild(b0, t, Any[sub(a) for a in arguments(t)]) : (string(t) == xk ? ex : t)
     G = try_gamma(mk(b0, :*, sub(f), ex), x; build = build, lift = lift, verify = verify)
     G === nothing && return nothing
     lx = mk(b0, :log, b0.x)
@@ -263,12 +278,27 @@ end
 function integrate_log_radicals(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     xk = string(x)
-    islogx(t) = isnode(t) && opname(operation(t)) === :log && length(arguments(t)) == 1 && string(arguments(t)[1]) == xk
+    # log(xᵏ) = k log x for x > 0, k rational: log(1/x), log(x⁻¹), log(√x) (SymPy #11876, √log(1/x))
+    function xpow(a)
+        string(a) == xk && return Q(1)
+        isnode(a) || return nothing
+        n, as = opname(operation(a)), arguments(a)
+        if n === :/ && length(as) == 2 && leaf_rational(as[1]) == 1
+            k = xpow(as[2]); return k === nothing ? nothing : -k
+        elseif n === :^ && length(as) == 2 && string(as[1]) == xk
+            k = leaf_rational(as[2]); return k === nothing ? nothing : Q(k)
+        elseif n === :sqrt && length(as) == 1
+            k = xpow(as[1]); return k === nothing ? nothing : k / 2
+        end
+        nothing
+    end
+    logk(t) = (isnode(t) && opname(operation(t)) === :log && length(arguments(t)) == 1) ? xpow(arguments(t)[1]) : nothing
+    islogx(t) = logk(t) !== nothing
     haslog(t) = islogx(t) || (isnode(t) && any(haslog, arguments(t)))
     any(((_, u),) -> haslog(u), collect_radicals(f, xk)) || return nothing
     b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     ex = mk(b0, :exp, b0.x)
-    sub(t) = islogx(t) ? b0.x : isnode(t) ? term_rebuild(b0, t, Any[sub(a) for a in arguments(t)]) : (string(t) == xk ? ex : t)
+    sub(t) = islogx(t) ? (k = logk(t); isone(k) ? b0.x : mk(b0, :*, b0.lift(k), b0.x)) : isnode(t) ? term_rebuild(b0, t, Any[sub(a) for a in arguments(t)]) : (string(t) == xk ? ex : t)
     g = sub(f)
     haslog(g) && return nothing
     G = try

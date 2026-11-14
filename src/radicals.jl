@@ -128,7 +128,7 @@ function split_radicand_content(f, x, xk::String, build, lift)
         for fs in fss
             here = Dict{String,Tuple{Any,Int}}()
             for (t, k) in fs
-                (k > 0 && !has_x(t, xk) && has_param(t, xk)) || continue
+                (k > 0 && !has_x(t, xk) && (has_param(t, xk) || has_pi_e(t))) || continue
                 s = string(t)
                 here[s] = (t, get(here, s, (t, 0))[2] + k)
             end

@@ -1421,7 +1421,15 @@ let
                 @test isapprox(mixed, fv; rtol = 1e-5)
             end
         end
-        @test_throws Risch.RischNotImplemented it(1 / (x^3 + y))                     # roots depend on y
+        # roots that depend on y: the inner answer (…)/y^(2/3), a sum times y^(-2/3), term by term (step LS)
+        F = it(1 / (x^3 + y))
+        @test F isa SymEngine.Basic
+        val2(a, b) = real(ComplexF64(SymEngine.N(SymEngine.subs(F, x => a, y => b))))
+        for (a, b) in ((0.5, 0.7), (1.3, 2.0))
+            h = 1e-4
+            mixed = (val2(a + h, b + h) - val2(a + h, b - h) - val2(a - h, b + h) + val2(a - h, b - h)) / (4h^2)
+            @test isapprox(mixed, 1 / (a^3 + b); rtol = 1e-5)
+        end
         G = Risch.risch_integrate(1 / (x^3 + x + 1), x)                               # definite: F(b) - F(a)
         simp(g, a, b; n = 2000) = (hh = (b - a) / n; hh / 3 * (g(a) + g(b) + sum((isodd(k) ? 4 : 2) * g(a + k * hh) for k in 1:(n - 1))))
         @test isapprox(G(x => 2.0) - G(x => 0.0), simp(t -> 1 / (t^3 + t + 1), 0.0, 2.0); atol = 1e-10)
@@ -3762,4 +3770,61 @@ end
     end
     # no radical proportional to u² - 1: nothing (d + e x² is not)
     @test Risch.acosh_radical_ratio(:((a + b * acosh(c * x)) / (d + e * x ^ 2) ^ (7 / 2)), :x, "x", build, identity) === nothing
+end
+
+# SymPy round 14: a radical of log(1/x) (#11876): log(xᵏ) = k log x for x > 0 in step LU's x = eᵘ; a radical of π/x
+# (#11891): π and ℯ split out of the radicand like a parameter (step RK), √(π/x) = √π √(1/x)
+@testset "SymPy round 14: radicals of log(1/x) and of π/x, quotients written as products" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(π = pi), :(erf = $(Risch.erf))), e))
+    for f in (:(sqrt(log(1 / x))), :(sqrt(log(x ^ -1))), :(sqrt(log(1 / x)) * x), :(log(1 / sqrt(x)) ^ (3 / 2)),
+              :(sqrt(pi / x)), :(sqrt(pi * x)), :(x * sqrt(pi / x)), :(sqrt(2pi / x ^ 3)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test F isa Expr
+        for x0 in (0.13, 0.57)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    # a quotient written as a product N·D⁻¹ with N a sum, term by term (step LS; SymJ's form of (log(1 + y) - log(1 - y))/(2y),
+    # SymPy #10851, #10798): each log(1 ± y)/y gives a dilogarithm
+    for f in (:((1 // 2) * x ^ -1 * (-(log(-x + 1)) + log(x + 1))), :(x ^ -1 * (log(x + 1) - log(1 - x))),
+              :((log(1 + x) - log(1 - x)) / (2x)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("li2", string(F))
+        for x0 in (0.13, 0.57)
+            @test isapprox((Risch.term_value(F, "x", x0 + 1e-6) - Risch.term_value(F, "x", x0 - 1e-6)) / 2e-6,
+                           Risch.term_value(f, "x", x0); rtol = 1e-6)
+        end
+    end
+    # π kept as the constant √π, not a float
+    @test occursin("sqrt(pi)", string(Risch.risch_integrate(:(sqrt(pi / x)), :x; build = build, lift = identity)))
+end
+
+# SymPy round 15: a polynomial numerator over log x (#9367: SymJ's (x² - 1)·log(x)⁻¹, term by term by step LS);
+# a shifted binomial denominator (#8954: (A + x)⁴ - C⁴, step BN in u = x + A instead of a RootSum)
+@testset "SymPy round 15: numerators over log x, shifted binomial denominators" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    for f in (:((x ^ 2 - 1) * log(x) ^ -1), :((x - 1) * log(x) ^ -1), :((x ^ 2 - 1) / log(x)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("expinti", string(F))
+        evr(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(expinti = $(Risch.expinti))), e))
+        for x0 in (0.13, 0.57, 1.7)
+            @test isapprox((evr(F, x0 + 1e-6) - evr(F, x0 - 1e-6)) / 2e-6, evr(f, x0); rtol = 1e-6)
+        end
+    end
+    for (f, valss) in ((:(1 / ((A + x) ^ 4 - C ^ 4)), ((:A => 1.13, :C => 2.13), (:A => -0.7, :C => 0.4))),
+                       (:(x / ((A + x) ^ 3 + C ^ 3)), ((:A => 1.13, :C => 2.13),)),
+                       (:(1 / ((A + (B - A) * x / L) ^ 4 - C ^ 4)),
+                        ((:A => 1.13, :B => 2.13, :C => 3.13, :L => 4.13), (:A => 2.5, :B => 1.13, :C => 0.7, :L => 1.3))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test F isa Expr && !occursin("RootSum", string(F))
+        for vals in valss
+            env(x0) = Expr(:block, :(x = $x0), (:($(p.first) = $(complex(p.second))) for p in vals)...)
+            ev(e, x0) = Core.eval(Main, Expr(:let, env(x0), e))
+            for x0 in (0.31, 1.7, -2.9)
+                fv = ev(f, complex(x0))
+                @test abs((ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6 - fv) < 1e-5 * max(1, abs(fv))
+            end
+        end
+    end
 end
