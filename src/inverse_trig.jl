@@ -243,6 +243,15 @@ function integrate_arcs_scaled(f, x, arcs; build = nothing, lift = nothing, veri
                     push!(ts, k == 0 ? c : mk(bd, :*, c, k == 1 ? y : mk(bd, :^, y, bd.lift(k))))
                 end
                 R = length(ts) == 1 ? ts[1] : mk(bd, :+, ts...)
+            else
+                # a rational radicand in y (c - c/(a x) ↦ c - c/y, Rubi 7.3.6, 7.4.2): through the tower, where a cancels
+                T, el = try
+                    build_tower(R, xk)
+                catch err
+                    (err isa RischNotImplemented || err isa RischError) || rethrow()
+                    (nothing, nothing)
+                end
+                (T !== nothing && isempty(T.levels)) && (R = frac_term(Builder(bd.build, bd.lift, bd.x, T.consts), el))
             end
             return mk(bd, :^, R, cterm(bd, rp[1]))
         end

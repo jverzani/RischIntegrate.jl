@@ -916,11 +916,21 @@ function trig_symbolic_or_fallback(f, x; build, lift, verify::Bool)
     end
 end
 
-# step XL's (g, σ): ∫ g, times σ (a locally constant sign of the odd powers, see `rewrite_exp_logs`) when there is one
+# step XL's (g, σ): ∫ g, times σ (a locally constant sign of the odd powers, see `rewrite_exp_logs`) when there is one.
+# g is integrated in a call of its own, below the outermost, where step RK does not run: when it is refused for a
+# radicand, step RK's split is tried on g there (exp(n acoth(a x)) (c - c/(a x))^(3/2) = (1 + 1/(a x))ⁿ (1 - 1/(a x)²)^(-n/2)
+# (c - c/(a x))^(3/2), Rubi 7.3.6, 7.4.2: c^(3/2) (1 - 1/(a x))^(3/2) for c > 0)
 function integrate_xl(gσ, x; build, lift, verify::Bool)
     @nospecialize gσ x
     g, σ = gσ
-    F = risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    F = try
+        risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    catch e
+        (e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg)) || rethrow()
+        g2 = split_radicand_content(g, x, string(x), build, lift)
+        g2 === nothing && rethrow()
+        risch_integrate(g2, x; build = build, lift = lift, verify = verify)
+    end
     σ === nothing && return F
     bd = Builder(build === nothing ? auto_build(g, x) : build, lift === nothing ? auto_lift(g, x) : lift, x)
     F isa IntegralWithRootSums || return mk(bd, :*, σ, F)
