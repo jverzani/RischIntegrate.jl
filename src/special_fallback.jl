@@ -92,7 +92,6 @@ end
 # symbolic constant (step PR: x = √ⅈ u), and ⅈ = i is put back. The answer, for generic values of ⅈ, is checked
 # numerically at ⅈ = i (the branches of √ⅈ are those of the principal square root). Nothing when it fails, has a
 # RootSum, or i appears outside the user's leaves in a way Expr cannot hold.
-const IMAG_PARAM = Ref(false)
 const IMAG_PARAM_NAME = "ⅈ"
 function integrate_imag_param(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x

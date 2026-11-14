@@ -7,7 +7,6 @@
 #   √x = √2 √y,  √(2 + 4√y + 4y) = √2 √(1 + 2√y + 2y),  √(√2 + √2√y + √2 √(…)) = 2^(1/4) √(1 + √y + √(…)),
 # whose integral is the rational case (step NS). Then y = x/σ.
 # ---------------------------------------------------------------------------
-const CONST_SCALING = Ref(false)                        # no nested uses
 
 function try_const_scaling(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x

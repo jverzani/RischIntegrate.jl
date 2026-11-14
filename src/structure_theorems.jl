@@ -59,7 +59,6 @@ end
 const MAX_EXP_RATIO = 1000
 
 # the times make_log identified log(-w) with log(w), dropping the constant iπ (counted for the power parse)
-const NEG_LOG_DROPPED = Ref(0)
 function make_log(T::Tower, u)
     c = dconst_value(T, u)
     if c !== nothing

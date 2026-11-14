@@ -3828,3 +3828,30 @@ end
         end
     end
 end
+
+# per-call state (SymPy #10450, #10449): the steps' flags and depths are fields of a state made by the outermost
+# call, not module-level Refs. Flags left set outside a call (step AP's PARTS, a depth) no longer reach a call, and
+# concurrent calls on threads give the serial answers (with 4 threads, 45 of 240 calls differed before: refusals,
+# a RischError for a NotElementary, another form of the answer)
+@testset "per-call state: flags outside a call, concurrent calls" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ri(f) = try string(Risch.risch_integrate(f, :x; build = build, lift = identity)) catch e; "error " * string(typeof(e)) end
+    # (inside one call, RISCH_DEPTH = 2 refuses the first and PARTS = true changes the second's answer)
+    f1, f2 = :(sqrt(1 + sin(x)) * sqrt(1 - sin(x))), :(atan(a * x) / (c + d * x ^ 2) ^ (7 / 2))
+    w1, w2 = ri(f1), ri(f2)
+    @test !startswith(w1, "error") && !startswith(w2, "error")
+    @test Risch.in_call_state(() -> (Risch.RISCH_DEPTH[] = 2; ri(f1))) != w1
+    @test Risch.in_call_state(() -> (Risch.PARTS[] = true; ri(f2))) != w2
+    Risch.PARTS[] = true; Risch.RISCH_DEPTH[] = 2
+    try
+        @test ri(f1) == w1 && ri(f2) == w2
+    finally
+        Risch.PARTS[] = false; Risch.RISCH_DEPTH[] = 0
+    end
+    @test Risch.CALL_STATE[] === nothing
+    fs = [:(sqrt(1 + sin(x)) * sqrt(1 - sin(x))), :(x ^ 2 / sqrt(x ^ 6 + x + 1)), :(x ^ 2 * atan(x)), :(1 / (x * sqrt(x ^ 5 + 1))),
+          :(atan(a * x) / (c + d * x ^ 2) ^ (7 / 2)), :(sqrt(7 - 2x ^ 2))]
+    serial = Dict(string(f) => ri(f) for f in fs)
+    res = fetch.([Threads.@spawn (string(f), ri(f)) for f in repeat(fs, 8)])
+    @test all(v == serial[k] for (k, v) in res)
+end

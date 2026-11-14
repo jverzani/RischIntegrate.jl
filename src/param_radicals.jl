@@ -569,7 +569,6 @@ end
 # ρ^(i+1-j) = |c|^q ρ^m (i + 1 - j = qn + m), so by linearity
 #   ∫ f dx = Σᵢ Nᵢ |c|^(q-k)/λ · ρ^m ∫ uⁱ⁻ʲ/(uⁿ ± 1)ᵏ du,
 # each integral over ℚ (real forms with √3, √2, …); then u = x/ρ. Nothing when one of them needs a RootSum.
-const BN_SHIFTED = Ref(false)
 function integrate_binomial_scaled(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     xk = string(x)

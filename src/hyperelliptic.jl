@@ -238,15 +238,21 @@ hyp_invmod(M::P, V::P) where {P<:UPoly} = hyp_solve_mod(one(P), M, V)
 # ℤ/pℤ (p < 2³¹ prime): a field for UPoly, used to filter linear systems (a trivial kernel mod p
 # implies a trivial kernel over ℚ or ℚ(√d): reduction mod a prime can only lower the rank) and for
 # torsion orders. One type for every p (no recompilation per prime): the modulus is HYP_MOD[], set by
-# `with_mod` around each computation.
+# `with_mod` around each computation. HYP_MOD and HYP_NF are read in every operation, so they are module-level
+# Refs (a ScopedValue read made the arithmetic 8x slower), and `with_mod`, `with_nf` hold one reentrant lock while
+# they are set: concurrent calls take turns through these computations (SymPy #10450).
 const HYP_MOD = Ref(2147483647)
+const HYP_NF = Ref{QX}(QX(Q[0, 1]))
+const MODULUS_LOCK = ReentrantLock()
 function with_mod(f, p::Int)
-    old = HYP_MOD[]
-    HYP_MOD[] = p
-    try
-        f()
-    finally
-        HYP_MOD[] = old
+    lock(MODULUS_LOCK) do
+        old = HYP_MOD[]
+        HYP_MOD[] = p
+        try
+            f()
+        finally
+            HYP_MOD[] = old
+        end
     end
 end
 struct ModP
@@ -321,14 +327,15 @@ function hyp_reduction(::Type{QS{d}}) where {d}
 end
 # A number field L = ℚ[z]/(M), M ∈ ℚ[z] monic irreducible, as a field for UPoly (the log part with
 # residues of degree 4). One type for every M: the modulus is HYP_NF[], set by `with_nf`.
-const HYP_NF = Ref{QX}(QX(Q[0, 1]))
 function with_nf(f, M::QX)
-    old = HYP_NF[]
-    HYP_NF[] = M
-    try
-        f()
-    finally
-        HYP_NF[] = old
+    lock(MODULUS_LOCK) do
+        old = HYP_NF[]
+        HYP_NF[] = M
+        try
+            f()
+        finally
+            HYP_NF[] = old
+        end
     end
 end
 struct NFz

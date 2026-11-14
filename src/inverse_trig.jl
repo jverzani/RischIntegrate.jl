@@ -445,7 +445,6 @@ end
 # valid for all real u (t ∈ (-π/2, π/2), cos t > 0). The answer is mapped back with x ↦ atan(u) and
 # cos kt + i sin kt = (1 + i u)^k / (1 + u²)^(k/2) for k ∈ ℤ, tan(t/2) = u/(1 + √(1 + u²)).
 # ---------------------------------------------------------------------------
-const ATAN_SUBST = Ref(false)                           # no nested substitutions
 
 function collect_atans(f, out = Any[])
     if safe_iscall(f)
@@ -559,7 +558,6 @@ end
 # both integrals by the usual route (for g rational in sin, cos: step CL; ∫ x log²x/√(x² + 1): k = 2, then dilogarithms
 # by steps DL, LF).
 # ---------------------------------------------------------------------------
-const PARTS = Ref(false)                                # no nested integration by parts
 const PARTS_FNS = (:atan, :acot, :asin, :acos, :asec, :acsc, :asinh, :acosh, :atanh, :acoth, :acsch, :asech, :log)
 
 function try_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
@@ -868,7 +866,6 @@ end
 # substitution and the u-substitution fallback spent minutes building towers: sample 2743.) Top-level factors only;
 # nothing when no radical is proportional to u² - 1 (other than u² - 1 itself) or R appears elsewhere.
 # ---------------------------------------------------------------------------
-const AH_ACTIVE = Ref(false)
 function acosh_radical_ratio(f, x, xk::String, build, lift)
     @nospecialize f x
     us = Any[]

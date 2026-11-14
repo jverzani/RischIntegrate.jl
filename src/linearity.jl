@@ -8,7 +8,6 @@
 # product or quotient (∏ bᵢ)ⁿ = ∏ bᵢⁿ, so a radicand with even powers of a radical is seen as rational
 # (√(1 - (x/√(1 - x²))²), from ∫ asin(x/√(1 - x²)) by parts; Rubi 265).
 # ---------------------------------------------------------------------------
-const SUM_SPLIT = Ref(0)                                # nesting (at most 2)
 
 function additive_terms(bd::Builder, f)
     safe_iscall(f) || return Any[]

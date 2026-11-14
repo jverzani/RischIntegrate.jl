@@ -6,7 +6,6 @@
 # (p, q, r, s, B, C free of x, possibly symbolic). The integrand f(X(u)) X′(u), with √R ↦ S(u), has the outer
 # radical as a radical of a function of u; it is integrated as usual, and u = √R (resp. x + √R) put back.
 # ---------------------------------------------------------------------------
-const NESTED_SUBST = Ref(false)                         # no nested substitutions
 
 # the radicands of radicals inside the radicands of other radicals of f
 function inner_radicands(f, xk::String)
@@ -127,7 +126,6 @@ end
 # σ = h′/(h′ written in u) = ±1 (sec: tan x/(√(sec x + 1) √(sec x - 1))), constant on each interval, so (σ G)′ = σ² f = f
 # where tan < 0 too (u = cos x: sin x < 0).
 # ---------------------------------------------------------------------------
-const PAIR_SUBST = Ref(0)                               # nesting depth (u = g, then w)
 
 # (g, c) when R = g + c with g a term in x and c rational, else nothing
 function shift_parts(R, xk::String)

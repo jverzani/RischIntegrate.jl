@@ -5,7 +5,6 @@
 #   B_r' + (r/n)(P'/P) B_r = A_r                            ((B yʳ)' = (B' + (r/n) B P'/P) yʳ)
 # solved in K (`rde`); A₀ is integrated as usual. No solution for some r: nothing (no logarithmic part in y).
 # ---------------------------------------------------------------------------
-const TOWER_RADICAL = Ref(false)                        # no nested uses
 
 function try_tower_radical(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x

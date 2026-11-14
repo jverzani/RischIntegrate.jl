@@ -85,7 +85,6 @@ end
 # from the top power down: ∫ xⁿ gₙ = xⁿ Gₙ - n ∫ xⁿ⁻¹ Gₙ, Gₙ = ∫ gₙ, so -n Gₙ joins gₙ₋₁; the answer is Σ xᵏ Gₖ with
 # Gₖ = ∫ (gₖ - (k + 1) Gₖ₊₁). Each ∫ at the caller's depth (its radical fallbacks, step HT); nothing when one is
 # refused or has RootSums.
-const PXPARTS = Ref(false)                              # no nested step PX
 has_op_in(t, ns) = safe_iscall(t) && !isempty(arguments(t)) && (opname(operation(t)) in ns || any(a -> has_op_in(a, ns), arguments(t)))
 const PX_FUNCS = (:sin, :cos, :tan, :cot, :sec, :csc, :sinh, :cosh, :tanh, :coth, :sech, :csch, :exp, :log)
 # G = 0 at three generic points (b⁻¹·0, a coefficient's integral that cancels), parameters at `numeric_evaluator`'s values
@@ -168,7 +167,6 @@ end
 # x/(eˣ - 1), SymPy #30167), by parts with Q = ∫ R elementary: P Q - ∫ P′ Q, the second integral by the usual
 # route (∫ log(1 - eˣ) = -Li₂(eˣ), step 8a). ∫ x/(eˣ - 1) = x (log(eˣ - 1) - x) + x²/2 - ∫ log(eˣ - 1).
 # Nothing when f is not of that kind or a part is refused.
-const XPARTS = Ref(false)                               # no nested step XP
 function try_poly_exp_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     XPARTS[] && return nothing
