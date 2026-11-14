@@ -58,7 +58,7 @@ end
 # ∫ f by a rewrite `rw(fe, x)` of its Expr form fe (nothing: no change), integrated through Expr and put back in the
 # user's terms: a term type may undo the rewrite (SymJ merges exp(α) exp(iβ) back into exp(α + iβ), e^(-c x) e^(c y)
 # into e^(-c (x - y))), which looped refusal and rewrite. `active` guards against the rewrite inside its own integral.
-function integrate_rewritten_expr(f, x, rw, active::Ref{Bool}; build = nothing, lift = nothing, verify::Bool = true)
+function integrate_rewritten_expr(f, x, rw, active; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     active[] && return nothing
     xk = string(x)
@@ -86,7 +86,6 @@ function integrate_rewritten_expr(f, x, rw, active::Ref{Bool}; build = nothing, 
     end
     back(F)
 end
-const EC_ACTIVE = Ref(false)
 integrate_split_complex_exps(f, x; build = nothing, lift = nothing, verify::Bool = true) =
     integrate_rewritten_expr(f, x, (fe, xs) -> split_complex_exps(fe, xs, expr_build, identity), EC_ACTIVE;
                              build = build, lift = lift, verify = verify)
@@ -268,7 +267,6 @@ function rpoly_term(b::Builder, p::UPoly, zt)
 end
 
 # number of times the tan(u/2) form of TC was used (read by `bioche`, step TB)
-const HALF_ANGLE_FORMS = Ref(0)
 
 function continuous_arg_pieces(T::Tower, kinds, j::Int, w)
     C = ctype(T)

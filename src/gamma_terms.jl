@@ -489,7 +489,6 @@ end
 #   ∫ A erf(u) = Q erf(u) - (2a/√π) ∫ Q e^(-u²),   erfi: Q erfi(u) - (2a/√π) ∫ Q e^(u²)
 # when Q is elementary (no RootSum) and the second integral is found (erf terms: step SF). A sum of such terms and
 # terms free of erf; nothing when f has another use of erf, or a part is refused.
-const ERF_DEPTH = Ref(0)
 function try_erf(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     haserf(t) = isnode(t) && (opname(operation(t)) in (:erf, :erfi) || any(haserf, arguments(t)))

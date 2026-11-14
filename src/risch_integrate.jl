@@ -30,6 +30,9 @@ risch_integrate(:(1/(x^2 + a)), :x; signs = Dict(:a => :negative))
 """
 Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize(x); build = nothing, lift = nothing,
                                                   verify::Bool = true, signs = (), sign = nothing)
+    # the outermost call: a state of its own (concurrent calls, SymPy #10450)
+    CALL_STATE[] === nothing && return in_call_state(() -> risch_integrate(f, x; build = build, lift = lift, verify = verify,
+                                                                           signs = signs, sign = sign))
     if !isempty(signs)                                                 # step SO
         F = SignFacts(signs)
         g = sign === nothing ? (p -> facts_sign(F, p)) : (p -> (s = sign(p); s === nothing ? facts_sign(F, p) : s))
@@ -334,7 +337,6 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         RISCH_DEPTH[] -= 1
     end
 end
-const OUTER_CHECK = Ref(false)                          # step HZ: the outermost call checks its answer
 # a radical of a constant with a parameter (√(-1/n²)), which the tower takes as an opaque constant
 has_opaque_radical(t, xk::String) = safe_iscall(t) && !isempty(arguments(t)) &&
     ((rp = radical_parts(t); rp !== nothing && !has_x(rp[2], xk) && has_param(rp[2], xk)) || any(a -> has_opaque_radical(a, xk), arguments(t)))
@@ -354,12 +356,6 @@ function hidden_zero(f, G, xk::String)
     end
     big >= 2
 end
-const EXPR_RETRY = Ref(false)                           # no nested Expr retries
-const MN_ACTIVE = Ref(false)                            # inside step MN's integral of g (no second rewriting)
-const PR_DEFER = Ref(false)                           # step PR: no answer with a RootSum (the outermost retry)
-const PR_OUTER = Ref(false)                           # (inside the outermost call that watches step PR)
-const PR_ROOTSUM = Ref(false)                         # step PR gave an answer with a RootSum
-const RISCH_DEPTH = Ref(0)                              # nested risch_integrate calls (step RK: the outermost only)
 # the integral of g, from a step that only rescales or shifts (steps IT, SL), at the depth of the caller: ∫ c g
 # and ∫ g(e + f x) get the outermost call's fallbacks (steps RK, HT, RM) as ∫ g does
 function as_outer(fn)
@@ -1115,8 +1111,6 @@ end
 # Nothing when there is no such form, or inside another step SL: a substitution below can bring the shift
 # back (∫ (a + b asin(c x))^(-3/2): u = sin t, then cos((v - a)/b) for v = a + b t), and the two would undo
 # each other until the stack overflows; the inner one is left to step TS2.
-const LINEAR_SHIFT = Ref(false)
-const CI_CHECK = Ref(false)                              # step CI: the outer numeric check is running
 function integrate_linear_shift(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     LINEAR_SHIFT[] && return nothing
@@ -1240,7 +1234,6 @@ function rewrite_hyp_log(f, x, build, lift)
     changed ? g : nothing
 end
 
-const EK_ACTIVE = Ref(false)
 # step EK: exp(u) with u = p(y) + q, q ≠ 0 free of y (u a polynomial in y over the parameters): exp(q) exp(p(y)), so
 # that exp(q) is a constant of its own (opaque, step SY) instead of one met while relating exp(u) to another
 # exponential. f rewritten so, or nothing

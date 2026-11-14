@@ -13,7 +13,6 @@
 # U^m - a over b wherever it occurs, so v in another form is still seen as U^m (u = √(x + log x) for
 # (x + 1)√(x + log x)/(x log² x + 2x² log x + x³), Rubi 220).
 # ---------------------------------------------------------------------------
-const USUB_DEPTH = Ref(0)       # nesting of substitutions (at most 2)
 
 isnode(t) = safe_iscall(t) && !isempty(arguments(t))
 depends_on(t, xk::String) = isnode(t) ? any(a -> depends_on(a, xk), arguments(t)) : string(t) == xk

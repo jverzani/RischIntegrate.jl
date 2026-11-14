@@ -6,7 +6,6 @@
 # by composing), f dx = σ H(u) S(u)^(k/2) du with σ = Y/√S(u) = ±1, constant on each interval:
 #   ∫ f = σ G(x + s/x),  G = ∫ H S^(k/2) by the usual route (step PR for parameters).
 # ---------------------------------------------------------------------------
-const RECIPROCAL = Ref(false)                           # no nested reciprocal substitutions
 
 # the polynomial A with Σ_{k=-m..m} L[k+m+1] xᵏ = A(x + s/x), or nothing
 function laurent_to_u(L::Vector{C}, m::Int, s::C) where {C}

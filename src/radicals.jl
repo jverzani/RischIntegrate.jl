@@ -30,7 +30,6 @@ end
 # a negative rational (√-1 for I, Rubi 492: the answer is an identity in the symbol, so holds for √-1 = i),
 # or any constant radical inside step PR for rational radicands (√7, √(7/2): `OPAQUE_CONST_RADICALS`), or a
 # transcendental constant (√π, √(1 + ℯ): SymPy #27374, a polynomial in z with √π in its coefficients was refused)
-const OPAQUE_CONST_RADICALS = Ref(false)
 opaque_radical(u, xk::String) = !has_x(u, xk) && (OPAQUE_CONST_RADICALS[] || has_param(u, xk) || negative_constant(u) || has_pi_e(u))
 has_pi_e(t) = safe_iscall(t) && !isempty(arguments(t)) ? any(has_pi_e, arguments(t)) : (is_e_const(t) || string(t) in ("pi", "π"))
 function negative_constant(u)

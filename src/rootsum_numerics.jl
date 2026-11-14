@@ -79,7 +79,7 @@ function (rs::RootSum)(a::Number)
 end
 
 # values of other leaves (parameters) while an answer is evaluated, `F(x => a, :b => 1.5, …)`; nothing outside
-const LEAF_VALUES = Ref{Union{Nothing,Dict{String,ComplexF64}}}(nothing)
+const LEAF_VALUES = Base.ScopedValues.ScopedValue{Union{Nothing,Dict{String,ComplexF64}}}(nothing)   # (per task: `with`)
 
 # numeric value of a term of the user's package at x = a (TermInterface walk)
 function term_value(t, xk::String, a)
@@ -221,11 +221,7 @@ function (F::IntegralWithRootSums)(p::Pair, ps::Pair...)
     isempty(ps) && return F(p.second)
     all(q -> q.second isa Real && string(q.first) != F.var, ps) || throw(RischNotImplemented(
         "parameter values must be real numbers, for leaves other than $(F.var)"))
-    old = LEAF_VALUES[]
-    LEAF_VALUES[] = Dict{String,ComplexF64}(string(q.first) => ComplexF64(q.second) for q in ps)
-    try
+    Base.ScopedValues.with(LEAF_VALUES => Dict{String,ComplexF64}(string(q.first) => ComplexF64(q.second) for q in ps)) do
         F(p.second)
-    finally
-        LEAF_VALUES[] = old
     end
 end
