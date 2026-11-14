@@ -3855,3 +3855,23 @@ end
     res = fetch.([Threads.@spawn (string(f), ri(f)) for f in repeat(fs, 8)])
     @test all(v == serial[k] for (k, v) in res)
 end
+
+# step AB: acosh(u)' = u'/(√(u - 1) √(u + 1)) everywhere on the principal branch; the tower's √(u² - 1) is that only
+# for Re u ≥ 0, so the answer's radicals of u² - 1 are written √(u - 1) √(u + 1) (∫ acosh x = x acosh x - √(x² - 1)
+# was wrong at x = -0.5, -2.1). Checked on both sides of 0 and beyond ±1 (complex values off u ≥ 1)
+@testset "acosh answers off its real domain (step AB)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    for f in (:(acosh(x)), :(acosh(c * x)), :(x * acosh(c * x)), :(x ^ 2 * acosh(c * x)), :(acosh(a + b * x)), :(x * acosh(x ^ 2)),
+              :(acosh(x) ^ 2), :(acosh(c * x) ^ 2), :(acosh(c * x) / x ^ 2))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        f == :(acosh(x)) && @test occursin("sqrt(x + -1) * sqrt(x + 1)", string(F))
+        ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(t))), :(c = $(complex(1.3))), :(a = $(complex(0.4))),
+                                                  :(b = $(complex(1.7)))), e))
+        for x0 in (2.1, 0.7, 0.3, -0.3, -0.7, -2.1)
+            fv = ev(f, x0)
+            @test abs((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6 - fv) < 1e-4 * max(1, abs(fv))
+        end
+    end
+    # the integrand's own √(x² - 1) is left as it is (it is not √(x - 1) √(x + 1) off x ≥ 1)
+    @test occursin("acosh", string(Risch.risch_integrate(:(acosh(x) / sqrt(x ^ 2 - 1)), :x; build = build, lift = identity)))
+end

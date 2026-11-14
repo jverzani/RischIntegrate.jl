@@ -859,6 +859,59 @@ function try_parts_sum(f, x; build = nothing, lift = nothing, verify::Bool = tru
 end
 
 # ---------------------------------------------------------------------------
+# Step AB: acosh(u) has derivative u'/(√(u - 1) √(u + 1)) on the principal branch, everywhere; the tower writes it
+# with y = √(u² - 1) (y² = u² - 1, the same algebra), equal to √(u - 1) √(u + 1) only for Re u ≥ 0 off the cut:
+# ∫ acosh x = x acosh x - √(x² - 1) is wrong at x = -0.5 (F' = 3.25i, f = 2.09i) and x = -2.1. In the answer of the
+# outermost call, each radical (u² - 1)^(k/2) of an acosh argument u is written (u - 1)^(k/2) (u + 1)^(k/2): the
+# same y, now valid for every x (Rubi's and Mathematica's form). Not when the integrand has a radical of a multiple
+# of u² - 1 itself (that y is the user's √(u² - 1); step AH), nor for a RootSum answer.
+# ---------------------------------------------------------------------------
+function acosh_branch_radicals(f, F, x, build, lift)
+    @nospecialize f F x
+    F isa IntegralWithRootSums && return F
+    xk = string(x)
+    us = Dict{String,Any}()
+    walk(t) = safe_iscall(t) && !isempty(arguments(t)) &&
+              ((opname(operation(t)) === :acosh && length(arguments(t)) == 1 && has_x(arguments(t)[1], xk) &&
+                (us[string(arguments(t)[1])] = arguments(t)[1]); foreach(walk, arguments(t))))
+    walk(f)
+    isempty(us) && return F
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    Qs = Any[(u, mk(bd, :+, mk(bd, :^, u, bd.lift(2)), bd.lift(-1))) for u in values(us)]
+    function rel(r, Qt)                                 # r/Qt: true when 1, :const when another constant
+        T, el = try
+            build_tower(mk(bd, :/, r, Qt), xk)
+        catch e
+            (e isa RischNotImplemented || e isa RischError || e isa NeedComplex) || rethrow()
+            return false
+        end
+        isempty(T.levels) || return false
+        c = const_value(T, el)
+        c === nothing ? false : isone(c) ? true : :const
+    end
+    rads = collect_radicals(f, xk)
+    Qs = filter(((u, Qt),) -> !any(((e, r),) -> rel(r, Qt) !== false, rads), Qs)
+    isempty(Qs) && return F
+    changed = false
+    function rw(t)
+        safe_iscall(t) && !isempty(arguments(t)) || return t
+        rp = radical_parts(t)
+        if rp !== nothing && denominator(rp[1]) == 2 && has_x(rp[2], xk)
+            for (u, Qt) in Qs
+                rel(rp[2], Qt) === true || continue
+                changed = true
+                e = rp[1]
+                pw(b) = e == Q(1) // 2 ? mk(bd, :sqrt, b) : mk(bd, :^, b, bd.lift(e))
+                return mk(bd, :*, pw(mk(bd, :+, u, bd.lift(-1))), pw(mk(bd, :+, u, bd.lift(1))))
+            end
+        end
+        term_rebuild(bd, t, Any[rw(a) for a in arguments(t)])
+    end
+    G = rw(F)
+    changed ? G : F
+end
+
+# ---------------------------------------------------------------------------
 # Step AH: acosh(u), u linear in x, beside radicals of R = k (u² - 1), k constant (d - c²d x² with acosh(c x), Rubi
 # 7.2.4): R^p = s^(2p) (u² - 1)^p with s = √R/√(u² - 1), constant (on each interval; principal branches,
 # R^p = (√R)^(2p)). The integrand f = s^n g with g in u² - 1, the radicand of acosh's own derivative

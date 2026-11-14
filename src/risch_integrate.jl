@@ -31,8 +31,9 @@ risch_integrate(:(1/(x^2 + a)), :x; signs = Dict(:a => :negative))
 Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize(x); build = nothing, lift = nothing,
                                                   verify::Bool = true, signs = (), sign = nothing)
     # the outermost call: a state of its own (concurrent calls, SymPy #10450)
-    CALL_STATE[] === nothing && return in_call_state(() -> risch_integrate(f, x; build = build, lift = lift, verify = verify,
-                                                                           signs = signs, sign = sign))
+    # (and its answer's radicals of u² - 1 for acosh(u) written as √(u - 1) √(u + 1), step AB)
+    CALL_STATE[] === nothing && return in_call_state(() -> acosh_branch_radicals(f,
+        risch_integrate(f, x; build = build, lift = lift, verify = verify, signs = signs, sign = sign), x, build, lift))
     if !isempty(signs)                                                 # step SO
         F = SignFacts(signs)
         g = sign === nothing ? (p -> facts_sign(F, p)) : (p -> (s = sign(p); s === nothing ? facts_sign(F, p) : s))
