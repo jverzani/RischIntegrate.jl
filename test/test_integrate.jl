@@ -1421,7 +1421,15 @@ let
                 @test isapprox(mixed, fv; rtol = 1e-5)
             end
         end
-        @test_throws Risch.RischNotImplemented it(1 / (x^3 + y))                     # roots depend on y
+        # roots that depend on y: the inner answer (…)/y^(2/3), a sum times y^(-2/3), term by term (step LS)
+        F = it(1 / (x^3 + y))
+        @test F isa SymEngine.Basic
+        val2(a, b) = real(ComplexF64(SymEngine.N(SymEngine.subs(F, x => a, y => b))))
+        for (a, b) in ((0.5, 0.7), (1.3, 2.0))
+            h = 1e-4
+            mixed = (val2(a + h, b + h) - val2(a + h, b - h) - val2(a - h, b + h) + val2(a - h, b - h)) / (4h^2)
+            @test isapprox(mixed, 1 / (a^3 + b); rtol = 1e-5)
+        end
         G = Risch.risch_integrate(1 / (x^3 + x + 1), x)                               # definite: F(b) - F(a)
         simp(g, a, b; n = 2000) = (hh = (b - a) / n; hh / 3 * (g(a) + g(b) + sum((isodd(k) ? 4 : 2) * g(a + k * hh) for k in 1:(n - 1))))
         @test isapprox(G(x => 2.0) - G(x => 0.0), simp(t -> 1 / (t^3 + t + 1), 0.0, 2.0); atol = 1e-10)
@@ -3766,7 +3774,7 @@ end
 
 # SymPy round 14: a radical of log(1/x) (#11876): log(xᵏ) = k log x for x > 0 in step LU's x = eᵘ; a radical of π/x
 # (#11891): π and ℯ split out of the radicand like a parameter (step RK), √(π/x) = √π √(1/x)
-@testset "SymPy round 14: radicals of log(1/x) and of π/x" begin
+@testset "SymPy round 14: radicals of log(1/x) and of π/x, quotients written as products" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(π = pi), :(erf = $(Risch.erf))), e))
     for f in (:(sqrt(log(1 / x))), :(sqrt(log(x ^ -1))), :(sqrt(log(1 / x)) * x), :(log(1 / sqrt(x)) ^ (3 / 2)),
@@ -3775,6 +3783,17 @@ end
         @test F isa Expr
         for x0 in (0.13, 0.57)
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    # a quotient written as a product N·D⁻¹ with N a sum, term by term (step LS; SymJ's form of (log(1 + y) - log(1 - y))/(2y),
+    # SymPy #10851, #10798): each log(1 ± y)/y gives a dilogarithm
+    for f in (:((1 // 2) * x ^ -1 * (-(log(-x + 1)) + log(x + 1))), :(x ^ -1 * (log(x + 1) - log(1 - x))),
+              :((log(1 + x) - log(1 - x)) / (2x)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("li2", string(F))
+        for x0 in (0.13, 0.57)
+            @test isapprox((Risch.term_value(F, "x", x0 + 1e-6) - Risch.term_value(F, "x", x0 - 1e-6)) / 2e-6,
+                           Risch.term_value(f, "x", x0); rtol = 1e-6)
         end
     end
     # π kept as the constant √π, not a float
