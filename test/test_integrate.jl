@@ -3732,7 +3732,7 @@ end
 
 # conjugates of normalized fractions without gcds (conj_frac, conj_frac_rev), the derivative check at two images of the
 # parameters (step CK; ℚ(i)(a, …, g) for (d + e x)³ (f + g x) (a + b asin(c x)): > 600 s, now seconds), acosh(u)
-# beside radicals of k (u² - 1) in u² - 1, the answer times √R/√(u² - 1) (step AH)
+# beside radicals of k (u² - 1) in u² - 1, the answer times √R/(√(u - 1) √(u + 1)) (step AH)
 @testset "parameter-heavy inverse trig: conjugates, checks at images (step CK), acosh radicals (step AH)" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     vals = (:a => 1.13, :b => 2.13, :c => 3.13, :d => 4.13, :e => 5.13, :f => 6.13, :g => 7.13, :h => 8.13)
@@ -3757,14 +3757,15 @@ end
     finally
         Risch.CONJ_CHECK[] = false
     end
-    # step AH: real where c x ≥ 1, checked also for 0 < c x < 1 (s is constant on each interval); for c x < 0 the
-    # acosh answers are wrong off the real domain as on main (∫ acosh(c x) itself: a log(u + √(u² - 1)) form)
+    # step AH: real where c x ≥ 1; s = √R/(√(u - 1) √(u + 1)) is constant on each interval and the inner answer is
+    # written in √(u - 1) √(u + 1) (step AB), so every x: 0 < c x < 1 and c x < 0 too (complex values)
     for f in (:((f + g * x) * (d - c ^ 2 * d * x ^ 2) ^ (3 / 2) * (a + b * acosh(c * x))),
               :(((f + g * x) ^ 2 * (a + b * acosh(c * x))) / (d - c ^ 2 * d * x ^ 2) ^ (3 / 2)),
-              :((x ^ 4 * (a + b * acosh(c * x))) / (d - c ^ 2 * d * x ^ 2) ^ (5 / 2)))
+              :((x ^ 4 * (a + b * acosh(c * x))) / (d - c ^ 2 * d * x ^ 2) ^ (5 / 2)),
+              :(acosh(x) / sqrt(x ^ 2 - 1)), :(x * acosh(c * x) / sqrt(c ^ 2 * x ^ 2 - 1)))
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)
-        @test F isa Expr && occursin("sqrt(d - c ^ 2 * d * x ^ 2) / sqrt", string(F))
-        for x0 in (0.57, 1.7, 0.13, 0.25)
+        @test F isa Expr && occursin("sqrt(x + -1) * sqrt(x + 1)", replace(string(F), "c * x" => "x"))
+        for x0 in (0.57, 1.7, 0.13, 0.25, -0.13, -0.25, -0.57, -1.7)
             @test dcheck(F, f, x0)
         end
     end
@@ -3872,6 +3873,4 @@ end
             @test abs((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6 - fv) < 1e-4 * max(1, abs(fv))
         end
     end
-    # the integrand's own √(x² - 1) is left as it is (it is not √(x - 1) √(x + 1) off x ≥ 1)
-    @test occursin("acosh", string(Risch.risch_integrate(:(acosh(x) / sqrt(x ^ 2 - 1)), :x; build = build, lift = identity)))
 end
