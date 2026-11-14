@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usage — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=5779396e">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=b811eb83">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Usage — RischIntegrate.jl">
   <meta property="og:title" content="Usage — RischIntegrate.jl">
@@ -154,7 +154,7 @@ integrate(1 / (x^2 + 2), x)</code></pre>
 <pre><code class="language-julia">integrate(exp(a * x) * sin(x), x)</code></pre>
 </div>
 <div class="md-math md-math-display">
-\[\frac{ - \cos\left( x \right) e^{a x}}{1 + a^{2}} + \frac{a e^{a x} \sin\left( x \right)}{1 + a^{2}}\]
+\[e^{a x} \left( \frac{ - \cos\left( x \right)}{1 + a^{2}} + \frac{a \sin\left( x \right)}{1 + a^{2}} \right)\]
 </div>
 </div>
 <h2 id="Symbolics.jl" class="md-heading">Symbolics.jl<a href="#Symbolics.jl" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
@@ -347,6 +347,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=5779396e"></script>
+  <script src="../assets/materialdocs.js?v=b811eb83"></script>
 </body>
 </html>
