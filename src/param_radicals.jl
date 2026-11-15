@@ -47,8 +47,10 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     kc(c) = frac(P([c]))
     co(p, i) = i <= length(p.c) ? p.c[i] : zero(C)
     # a radicand κ/V, κ free of x ((a²/(a² - x²))^(1/2), SymPy #7109): (V/κ)^(-e), the same value where κ/V > 0 (where
-    # the radical is real), then the shapes below
-    if degree(N) <= 0 && degree(Dn) >= 1 && !iszero(N)
+    # the radical is real), then the shapes below. (V of degree ≥ 2: κ/(linear) is the linear-fractional shape below;
+    # √(1/t) from √cot after t = tan(c + d x))
+    # (κ with a parameter, in the outermost call only: inside step TR's route for sample 1880 it took hours)
+    if RISCH_DEPTH[] == 1 && degree(N) <= 0 && degree(Dn) >= 2 && !iszero(N) && crational(N.c[1]) === nothing
         b1 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
         vt = frac_term(b1, frac(Dn) * kc(inv(N.c[1])))
         function recip(t)
