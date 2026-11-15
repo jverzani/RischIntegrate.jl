@@ -365,11 +365,69 @@ function integrate_power_radicands(f, x; build = nothing, lift = nothing, verify
     pw(p) = p == 1 ? Wt : mk(bd, :^, Wt, bd.lift(p))
     pmap = Dict(string(t) => pw(p) for ((t, _, _), p) in zip(rads, ps))
     sub(t) = haskey(pmap, string(t)) ? pmap[string(t)] : isnode(t) ? term_rebuild(bd, t, Any[sub(s) for s in arguments(t)]) : t
-    G = risch_integrate(sub(f), x; build = build, lift = lift, verify = verify)
-    G isa IntegralWithRootSums && return nothing
-    (iseven(q) && isodd(ps[1])) || return G
+    if !(iseven(q) && isodd(ps[1]))
+        G = risch_integrate(sub(f), x; build = build, lift = lift, verify = verify)
+        return G isa IntegralWithRootSums ? nothing : G
+    end
     root = q == 2 ? mk(bd, :sqrt, ut) : mk(bd, :^, ut, bd.lift(1 // q))
-    H = mk(bd, :*, G, mk(bd, :/, root, Wt))
+    σ = mk(bd, :/, root, Wt)
+    # U^(p/q) = σᵖ (√d W)^p, σ = ±1: σ multiplies the integral of the summands with an odd power of the radical only
+    # (x + √(1 - cos²x): ∫ x is not σ ∫ x, SymPy #7154); a summand of neither kind ((1 + √U)²): the branches,
+    # ∫ f = (F₊ + F₋)/2 + σ (F₊ - F₋)/2, F± = ∫ f|_{σ = ±1}
+    radkeys = Set(keys(pmap))
+    hasrad(t) = string(t) in radkeys || (isnode(t) && any(hasrad, arguments(t)))
+    function summands!(out, t, s)
+        n = isnode(t) ? opname(operation(t)) : nothing
+        if n === :+
+            foreach(a -> summands!(out, a, s), arguments(t))
+        elseif n === :- && length(arguments(t)) == 2
+            summands!(out, arguments(t)[1], s); summands!(out, arguments(t)[2], -s)
+        elseif n === :- && length(arguments(t)) == 1
+            summands!(out, arguments(t)[1], -s)
+        else
+            push!(out, s == 1 ? t : mk(bd, :*, bd.lift(-1), t))
+        end
+        out
+    end
+    pof = Dict(string(t) => p for ((t, _, _), p) in zip(rads, ps))
+    function parity(t)                                  # :odd, :even (no radical, or even total power), or nothing
+        hasrad(t) || return :even
+        k = 0
+        for (b, e) in product_factors!(Any[], t, 1)
+            if haskey(pof, string(b))
+                isinteger(e) || return nothing
+                k += pof[string(b)] * Int(e)
+            elseif hasrad(b)
+                return nothing
+            end
+        end
+        isodd(k) ? :odd : :even
+    end
+    ss = summands!(Any[], f, 1)
+    par = map(parity, ss)
+    integ(g) = risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    sumt(ts) = isempty(ts) ? nothing : length(ts) == 1 ? ts[1] : mk(bd, :+, ts...)
+    if all(==(:odd), par)
+        G = integ(sub(f))
+        G isa IntegralWithRootSums && return nothing
+        F0 = nothing
+    elseif all(!isnothing, par)
+        f1, f0 = sumt(Any[s for (s, p) in zip(ss, par) if p === :odd]), sumt(Any[s for (s, p) in zip(ss, par) if p === :even])
+        G = f1 === nothing ? nothing : integ(sub(f1))
+        F0 = integ(sub(f0))
+        (G isa IntegralWithRootSums || F0 isa IntegralWithRootSums) && return nothing
+        G === nothing && return F0
+    else
+        subm(t) = haskey(pmap, string(t)) ? mk(bd, :*, bd.lift(-1), pmap[string(t)]) :
+                  isnode(t) ? term_rebuild(bd, t, Any[subm(s) for s in arguments(t)]) : t
+        Fp, Fm = integ(sub(f)), integ(subm(f))
+        (Fp isa IntegralWithRootSums || Fm isa IntegralWithRootSums) && return nothing
+        half = bd.lift(Q(1, 2))
+        G = mk(bd, :*, half, mk(bd, :+, Fp, mk(bd, :*, bd.lift(-1), Fm)))
+        F0 = mk(bd, :*, half, mk(bd, :+, Fp, Fm))
+    end
+    H = mk(bd, :*, G, σ)
+    F0 === nothing || (H = mk(bd, :+, F0, H))
     (C === QI && q == 2) || return H
     corr = sign_jump_correction(bd, G, Wt, kq, xk)
     corr === nothing ? H : mk(bd, :+, H, corr)

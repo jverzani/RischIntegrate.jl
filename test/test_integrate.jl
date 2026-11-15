@@ -3963,3 +3963,96 @@ end
         end
     end
 end
+
+# SymPy round 17: principal powers of odd powers (#6251: (x³)^(1/3) = ζ x, ζ locally constant, step RP on every
+# interval); a parameter radicand of either discriminant sign (#7147: step PR's answer written with the integrand's own
+# radical); step PW's sign factor on the radical summands only (#7154: acos(1 - x/5) + √(10x - x²)); the radical of a
+# reciprocal (#7109); log of a root (#6382, a hang); Ei by parts (#7000); x² sech²x (#6875, step XP)
+@testset "SymPy round 17: branches of odd powers, radicand signs, sign factors, Ei and sech² by parts" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    # (exact rationals for p//q, integer powers by multiplication: a complex exponent 3 gave (x³) an imaginary part of
+    # either sign, and the cube root the other branch)
+    function evb(ex, vals)
+        if ex isa Expr && ex.head === :call && ex.args[1] === :// && all(a -> a isa Integer, ex.args[2:end])
+            return Complex{BigFloat}(ex.args[2] // ex.args[3])
+        end
+        if ex isa Expr && ex.head === :call && ex.args[1] === :^
+            e = ex.args[3]
+            r = e isa Integer ? e : (e isa Expr && e.head === :call && e.args[1] === :- && length(e.args) == 2 && e.args[2] isa Integer) ? -e.args[2] : nothing
+            r === nothing || return (b = evb(ex.args[2], vals); w = r >= 0 ? b^r : inv(b^(-r)); iszero(imag(w)) ? Complex(real(w), big(0.0)) : w)
+        end
+        z = ex isa Symbol ? (haskey(vals, ex) ? vals[ex] : Core.eval(Main, ex)) : ex isa Number ? ex :
+            (ex isa Expr && ex.head === :call) ?
+                (ex.args[1] isa Symbol ? Core.eval(Main, ex.args[1]) : ex.args[1])(map(a -> evb(a, vals), ex.args[2:end])...) :
+            Core.eval(Main, ex)
+        w = Complex{BigFloat}(z)
+        iszero(imag(w)) ? Complex(real(w), big(0.0)) : w
+    end
+    setprecision(BigFloat, 256) do
+        h = big"1e-30"
+        dok(f, F, at, x0) = (fv = evb(f, at(x0)); abs((evb(F, at(x0 + h)) - evb(F, at(x0 - h))) / 2h - fv) <= big"1e-20" * max(1, abs(fv)))
+        # (x³)^(±1/3) etc. at every x (complex values for x < 0)
+        for f in (:((x ^ 3) ^ (-1 // 3)), :((x ^ 3) ^ (1 // 3)), :((x ^ 3) ^ (2 // 3)), :(x + (x ^ 3) ^ (1 // 3)),
+                  :(((x + 1) ^ 3) ^ (1 // 3)), :((x ^ 3 / (x - 2) ^ 3) ^ (1 // 3)))
+            F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+            for x0 in big.((-2.3, -0.7, 0.4, 1.3, 3.1))
+                @test dok(f, F, t -> Dict{Symbol,Any}(:x => Complex{BigFloat}(t)), x0)
+            end
+        end
+        @test string(Risch.risch_integrate(:((x ^ 6) ^ (1 // 3)), :x; build = build, lift = identity)) == "1//3 * x ^ 3"
+        # x/√(a x² + b x + c)³ for b² > 4ac too
+        f = :(x / sqrt(a * x ^ 2 + b * x + c) ^ 3)
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for (a, b, c) in ((2, 5, 1), (1, 0, -1), (1, 1, 1), (-1, 1, 3))
+            at(t) = Dict{Symbol,Any}(:x => Complex{BigFloat}(t), :a => Complex{BigFloat}(a), :b => Complex{BigFloat}(b), :c => Complex{BigFloat}(c))
+            for x0 in big.((-3.1, -1.3, -0.2, 0.4, 1.7, 2.9))
+                a * x0 ^ 2 + b * x0 + c > 0 || continue
+                @test dok(f, F, at, x0)
+            end
+        end
+        # sums with an acos and a radical; √(1 - cos²x) beside x
+        for (f, xs) in ((:(acos(1 - x / 5) + sqrt(10x - x ^ 2)), (0.6, 3.0, 7.0, 9.4)), (:(acos(x / 5) + sqrt(25 - x ^ 2)), (-4.0, 0.6, 3.0)),
+                        (:(x + sqrt(1 - cos(x) ^ 2)), (0.6, 2.0, 4.0, 5.5)), (:(x * sin(x) + sqrt(1 - cos(x) ^ 2) * sin(x)), (0.6, 4.0)))
+            F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+            for x0 in big.(xs)
+                @test dok(f, F, t -> Dict{Symbol,Any}(:x => Complex{BigFloat}(t)), x0)
+            end
+        end
+        F = Risch.risch_integrate(:(acos(1 - x / 5) + sqrt(10x - x ^ 2)), :x; build = build, lift = identity)
+        at1(t) = Dict{Symbol,Any}(:x => Complex{BigFloat}(t))
+        # ∫₀¹⁰ = 35π/2 (the answer's limits at the ends, where the radical vanishes)
+        @test abs(real(evb(F, at1(10 - big"1e-60")) - evb(F, at1(big"1e-60"))) - 35 * big(pi) / 2) < 1e-12
+        # √(a²/(a² - x²)) and other radicals of κ/V
+        for (f, vals, xs) in ((:(sqrt(a ^ 2 / (a ^ 2 - x ^ 2))), (2, 0.7, -2), (-0.5, 0.1, 0.6)),
+                              (:(x / sqrt(a / (a + x ^ 2))), (2,), (-1.5, 0.4)))
+            F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+            for a in vals, x0 in big.(xs)
+                at2(t) = Dict{Symbol,Any}(:x => Complex{BigFloat}(t), :a => Complex{BigFloat}(a))
+                @test dok(f, F, at2, x0)
+            end
+        end
+    end
+    # log of a root: ½ log u first (the Clausen integrand refused in seconds, not minutes)
+    t0 = time()
+    @test_throws Risch.NotElementary Risch.risch_integrate(:(log(sqrt((cos(1) - cos(x)) ^ 2 + (sin(1) - sin(x)) ^ 2))), :x;
+                                                     build = build, lift = identity)
+    @test time() - t0 < 60
+    @test occursin("clausen2", string(Risch.risch_integrate(:(log(sqrt(1 - cos(x)))), :x; build = build, lift = identity)))
+    # Ei by parts
+    evr(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(expinti = $(Risch.expinti))), e))
+    @test string(Risch.risch_integrate(:(expinti(log(x))), :x; build = build, lift = identity)) == "x * expinti(log(x)) + -1 * expinti(2 * log(x))"
+    for f in (:(expinti(log(x))), :(x * expinti(log(x))), :(expinti(x) / x ^ 2), :(log(x) * expinti(x)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (0.4, 1.7, 3.1)
+            @test isapprox((evr(F, x0 + 1e-6) - evr(F, x0 - 1e-6)) / 2e-6, evr(f, x0); rtol = 1e-5)
+        end
+    end
+    # x² sech²x, x tanh x: by parts twice (step XP with the hyperbolic functions as exponentials)
+    for f in (:(x ^ 2 / cosh(x) ^ 2), :(x * tanh(x)), :(x ^ 2 / (exp(x) + 1)), :(x * sinh(x) / cosh(x) ^ 3))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for x0 in (-1.3, 0.4, 1.7, 3.1)
+            @test isapprox(real((Risch.term_value(F, "x", x0 + 1e-6) - Risch.term_value(F, "x", x0 - 1e-6)) / 2e-6),
+                           real(Risch.term_value(f, "x", x0)); rtol = 1e-5)
+        end
+    end
+end

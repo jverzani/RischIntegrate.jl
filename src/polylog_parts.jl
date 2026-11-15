@@ -167,10 +167,35 @@ end
 # x/(eˣ - 1), SymPy #30167), by parts with Q = ∫ R elementary: P Q - ∫ P′ Q, the second integral by the usual
 # route (∫ log(1 - eˣ) = -Li₂(eˣ), step 8a). ∫ x/(eˣ - 1) = x (log(eˣ - 1) - x) + x²/2 - ∫ log(eˣ - 1).
 # Nothing when f is not of that kind or a part is refused.
+# The hyperbolic functions of x are written with exponentials first (x²/cosh²x, SymPy #6875). Nested calls (∫ P′ Q is
+# again of this kind: x² sech²x, then 2x tanh x) only for a P of lower degree.
+const XP_HYP = (:sinh, :cosh, :tanh, :coth, :sech, :csch)
 function try_poly_exp_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
-    XPARTS[] && return nothing
     xk = string(x)
+    hashyp(t) = isnode(t) && ((opname(operation(t)) in XP_HYP && length(arguments(t)) == 1 && depends_on(arguments(t)[1], xk)) ||
+                              any(hashyp, arguments(t)))
+    if hashyp(f)
+        bh = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+        function hrw(t)
+            isnode(t) || return t
+            args = Any[hrw(a) for a in arguments(t)]
+            n = opname(operation(t))
+            if n in XP_HYP && length(args) == 1 && depends_on(args[1], xk)
+                ep, em = mk(bh, :exp, args[1]), mk(bh, :exp, mk(bh, :*, bh.lift(-1), args[1]))
+                s, c = mk(bh, :+, ep, mk(bh, :*, bh.lift(-1), em)), mk(bh, :+, ep, em)   # 2 sinh, 2 cosh
+                two = bh.lift(2)
+                n === :sinh && return mk(bh, :/, s, two)
+                n === :cosh && return mk(bh, :/, c, two)
+                n === :tanh && return mk(bh, :/, s, c)
+                n === :coth && return mk(bh, :/, c, s)
+                n === :sech && return mk(bh, :/, two, c)
+                return mk(bh, :/, two, s)
+            end
+            term_rebuild(bh, t, args)
+        end
+        f = hrw(f)
+    end
     # x only inside exp
     bare(t) = safe_iscall(t) && !isempty(arguments(t)) ?
               (exp_arg(t) !== nothing ? false : any(bare, arguments(t))) : string(t) == xk
@@ -200,8 +225,17 @@ function try_poly_exp_parts(f, x; build = nothing, lift = nothing, verify::Bool 
     (isempty(Rs) || !any(t -> depends_on(t, xk), Ps)) && return nothing
     P = length(Ps) == 1 ? Ps[1] : mk(bd, :*, Ps...)
     R = length(Rs) == 1 ? Rs[1] : mk(bd, :*, Rs...)
+    degP = try
+        T, el = build_tower(P, xk)
+        degree(el.num)
+    catch err
+        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        return nothing
+    end
+    old = XPARTS[]
+    (old == 0 || degP + 1 < old) || return nothing
     # (step AP stays on: ∫ log(eˣ - 1) is its)
-    XPARTS[] = true
+    XPARTS[] = degP + 1
     try
         Qt = risch_integrate(R, x; build = build, lift = lift, verify = verify)
         Qt isa IntegralWithRootSums && return nothing
@@ -217,6 +251,6 @@ function try_poly_exp_parts(f, x; build = nothing, lift = nothing, verify::Bool 
         (err isa RischNotImplemented || err isa NotElementary) || rethrow()
         nothing
     finally
-        XPARTS[] = false
+        XPARTS[] = old
     end
 end
