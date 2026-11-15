@@ -134,7 +134,13 @@ function exdiv(a::CF{B}, b::CF{B}) where {B}
     (isone(fa.den) && isone(fb.den)) || throw(RischError("exdiv: not a polynomial"))
     cf_make(CF{B}, L, CFFrac{B}(exquo(fa.num, fb.num), one(UPoly{CF{B}})))
 end
+# polynomials whose coefficients are all numbers (level 0) as UPoly{B}: the nested types' innermost level, where Euclid
+# over B is the whole gcd (through the image test it ran twice: squarefree over three parameters took twice as long)
+cf_level0(p::UPoly{<:CF}) = all(c -> c.lev == 0, p.c)
+to_bpoly(p::UPoly{CF{B}}) where {B} = UPoly{B}(B[c.val for c in p.c], Val(:fresh))
+from_bpoly(::Type{CF{B}}, p::UPoly{B}) where {B} = UPoly{CF{B}}(CF{B}[CF{B}(c) for c in p.c], Val(:fresh))
 function Base.gcd(a::UPoly{CF{B}}, b::UPoly{CF{B}}) where {B}
+    (cf_level0(a) && cf_level0(b)) && return from_bpoly(CF{B}, euclid_gcd(to_bpoly(a), to_bpoly(b)))
     (degree(a) <= 0 || degree(b) <= 0) && return euclid_gcd(a, b)
     d = image_gcd_degree(a, b)
     d == 0 && return one(a)
