@@ -190,13 +190,16 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     back = sone ? xh : mk(b0, :/, xh, st)               # x ↦ (x - h)/s
     # the answer's radicals R(u)^e as the integrand's own u₀^e/κ^e (u₀ = κ R(u)): then G is an antiderivative by an
     # identity in ℚ(a, …, s, κ^e)(x, u₀^e), for every sign of κ. Written with R((x - h)/s)^e it held only where κ > 0
-    # (s, √κ imaginary otherwise: ∫ x/√(a x² + b x + c)³ had derivative -f for b² > 4ac, SymPy #7147)
+    # (s, √κ imaginary otherwise: ∫ x/√(a x² + b x + c)³ had derivative -f for b² > 4ac, SymPy #7147). Only when s or √κ
+    # is an opaque square root: with s and √κ in the parameter field the answer's R(u)^e is right where the radicand is
+    # positive, and later steps take the parameter-free radical (step AS's √(1 - u²) for √(1 - c²(x/c)²))
+    map_rads = s isa Tuple || σ === nothing
     function walk_back(t)
         safe_iscall(t) || return string(t) == xk ? back : t
         args = arguments(t)
         isempty(args) && return t
         rp = radical_parts(t)
-        if rp !== nothing && radicand_element(rp[2], xk) == Ru
+        if map_rads && rp !== nothing && radicand_element(rp[2], xk) == Ru
             e = rp[1]
             ue = isone(2 * e) ? mk(b0, :sqrt, ut0) : mk(b0, :^, ut0, b0.lift(e))
             return isone(κ) ? ue : mk(b0, :/, ue, κpow(e))
