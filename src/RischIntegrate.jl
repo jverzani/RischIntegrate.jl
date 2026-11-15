@@ -16,6 +16,7 @@ using PrecompileTools: @setup_workload, @compile_workload
 include("core.jl")
 include("polynomials.jl")
 include("fractions.jl")
+include("cf_type.jl")
 include("factoring.jl")
 include("number_fields.jl")
 include("hermite_reduction.jl")

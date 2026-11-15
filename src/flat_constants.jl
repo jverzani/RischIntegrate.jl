@@ -15,14 +15,7 @@
 # (Stage 1: the type and its arithmetic, tested against the nested types; not yet the constant field of a tower.)
 # ---------------------------------------------------------------------------
 
-struct CF{B}
-    lev::Int
-    val::B
-    f::Union{Nothing,Frac{UPoly{CF{B}}}}
-end
-
-const CFFrac{B} = Frac{UPoly{CF{B}}}
-CF{B}(v::B) where {B} = CF{B}(0, v, nothing)
+# (the type CF{B}, CFFrac and TField: cf_type.jl, included after fractions.jl)
 
 # shared zeros and ones (`val` of a value of level ≥ 1 is unused, and zero(Rational{BigInt}) allocates BigInts each time:
 # most of the time of a gcd over seven parameters went there)
@@ -215,3 +208,155 @@ function from_cf(::Type{C}, c::CF{B}) where {C,B}
 end
 cfromB(::Type{B}, v::B) where {B} = v
 cfromB(::Type{Frac{UPoly{S}}}, v) where {S} = kconst(cfromB(S, v))
+
+# --- CF as the constant field of a tower (stage 2: behind USE_CF) -----------------------------------------------
+# build_tower takes CF{base} for ℚ(t₁, …, tₖ), k ≥ 1, when USE_CF[] (else the nested cfield(k, base))
+const USE_CF = Ref(false)
+# (stage 2 measurements: RISCH_USE_CF=1 turns it on when the module is loaded, for the scan's worker processes)
+__init__() = (USE_CF[] = get(ENV, "RISCH_USE_CF", "0") == "1"; nothing)
+const_field_type(k::Int, base::Type) = (k >= 1 && USE_CF[]) ? CF{base} : cfield(k, base)
+# a field with generators (parameters, e, log p): the nested types or CF
+is_tfield(::Type{C}) where {C} = C <: Frac || C <: CF
+# the number of generators of C that the RootSum and residue caps count: the depth of the nested type; for CF, the
+# highest generator that occurs in the coefficients at hand (the nested depth counts every constant of the tower)
+ngens(::Type{C}, cs) where {C} = C <: Frac ? cdepth(C) : C <: CF ? maximum((c.lev for c in cs); init = 0) : 0
+ngens(::Type{C}, p::UPoly) where {C} = ngens(C, p.c)
+
+cbase(::Type{CF{B}}) where {B} = B
+tgen(::Type{CF{B}}, j::Int) where {B} = cf_gen(CF{B}, j)
+cimag(::Type{CF{B}}) where {B} = CF{B}(cimag(B))
+crational(c::CF) = c.lev == 0 ? crational(c.val) : nothing
+csize(c::CF) = c.lev == 0 ? 1 : csize(c.f)
+# the value of c in the subfield of the first d generators, if it lies there
+const_below(c::CF, d::Int) = c.lev <= d ? c : nothing
+
+cconj(c::CF{B}) where {B} = c.lev == 0 ? CF{B}(cconj(c.val)) : cf_make(CF{B}, c.lev, cconj(c.f))
+function cconj_g(gens, c::CF{B}) where {B}
+    c.lev == 0 && return CF{B}(cconj(c.val))
+    n, d = cpconj_g(gens, c.f.num), cpconj_g(gens, c.f.den)
+    k = c.lev
+    (k <= length(gens) && gens[k].kind === :expi) || return cf_make(CF{B}, k, conj_frac(n, d))
+    rv(p) = typeof(p)(reverse(p.c))                 # τ ↦ 1/τ
+    cf_make(CF{B}, k, conj_frac_rev(rv(n), rv(d), degree(c.f.num), degree(c.f.den)))
+end
+
+# ℚ-coordinates of the cs, aligned across the list (as cflat_all of the nested types): all at the highest level L
+# of the list, times the lcm of the denominators in t_L, the numerators' coefficients one level down
+function cflat_all(::Type{CF{B}}, cs) where {B}
+    isempty(cs) && return Vector{Q}[]
+    L = maximum((c.lev for c in cs); init = 0)
+    L == 0 && return cflat_all(B, B[c.val for c in cs])
+    P = UPoly{CF{B}}
+    fs = [cf_at(c, L) for c in cs]
+    D = reduce(plcm, [f.den for f in fs]; init = one(P))
+    nums = [f.num * quo(D, f.den) for f in fs]
+    m = maximum(length(n.c) for n in nums)
+    parts = [cflat_all(CF{B}, CF{B}[k <= length(n.c) ? n.c[k] : zero(CF{B}) for n in nums]) for k in 1:m]
+    [reduce(vcat, (parts[k][j] for k in 1:m); init = Q[]) for j in eachindex(cs)]
+end
+
+function csqrt(c::CF{B}) where {B}
+    iszero(c) && return c
+    if c.lev == 0
+        s = csqrt(c.val)
+        return s === nothing ? nothing : CF{B}(s)
+    end
+    a = psqrt(c.f.num)
+    a === nothing && return nothing
+    b = psqrt(c.f.den)
+    b === nothing && return nothing
+    cf_make(CF{B}, c.lev, frac(a, b))
+end
+function constant_roots(p::UPoly{CF{B}}) where {B}
+    cf_level0(p) && return [CF{B}(r) for r in constant_roots(to_bpoly(p))]
+    constant_roots_generic(p)
+end
+function const_monomial(c::CF)
+    c.lev == 0 && return const_monomial(c.val)
+    (is_monomial(c.f.num) && is_monomial(c.f.den)) || return nothing
+    inner = const_monomial(lc(c.f.num) / lc(c.f.den))
+    inner === nothing && return nothing
+    k = degree(c.f.num) - degree(c.f.den)
+    iszero(k) ? inner : (inner[1], [inner[2]; (c.lev, k)])
+end
+
+# real and complex forms (ℚ(i)(t₁, …) ↔ ℚ(t₁, …))
+real_ctype(::Type{CF{QI}}) = CF{Q}
+cplx_type(::Type{CF{Q}}) = CF{QI}
+function to_real(c::CF{QI})
+    if c.lev == 0
+        r = to_real(c.val)
+        return r === nothing ? nothing : CF{Q}(r)
+    end
+    n, d = [to_real(a) for a in c.f.num.c], [to_real(a) for a in c.f.den.c]
+    (any(isnothing, n) || any(isnothing, d)) && return nothing
+    CF{Q}(c.lev, ZERO_Q, CFFrac{Q}(UPoly{CF{Q}}(CF{Q}[n...]), UPoly{CF{Q}}(CF{Q}[d...])))
+end
+to_complex(::Type{CF{QI}}, r::CF{Q}) = r.lev == 0 ? CF{QI}(to_complex(QI, r.val)) :
+    CF{QI}(r.lev, ZERO_QI, CFFrac{QI}(UPoly{CF{QI}}(CF{QI}[to_complex(CF{QI}, a) for a in r.f.num.c]),
+                                     UPoly{CF{QI}}(CF{QI}[to_complex(CF{QI}, a) for a in r.f.den.c])))
+function cbig(c::CF, gens)
+    c.lev == 0 && return cbig(c.val, gens)
+    g = gens[c.lev]
+    t = g.kind === :exp ? exp(BigFloat(g.arg)) : log(BigFloat(g.arg))
+    pe(p) = foldr((a, acc) -> acc * t + cbig(a, gens), p.c; init = BigFloat(0))
+    pe(c.f.num) / pe(c.f.den)
+end
+
+# Step SD over CF: the factor of D free of the highest generator t_L that occurs
+function tfree_factor(D::UPoly{CF{B}}) where {B}
+    L = maximum((c.lev for c in D.c); init = 0)
+    L == 0 && return nothing
+    PB = UPoly{CF{B}}
+    fs = [cf_at(c, L) for c in D.c]
+    Lc = reduce((a, b) -> quo(a * b, gcd(a, b)), (f.den for f in fs if !iszero(f)); init = one(PB))
+    Dh = PB[iszero(f) ? zero(PB) : f.num * quo(Lc, f.den) for f in fs]   # coefficients in (lower)[t_L]
+    kmax = maximum(degree(p) for p in Dh)
+    G = zero(PB)
+    for k in 0:kmax
+        Ek = PB(CF{B}[k < length(p.c) ? p.c[k + 1] : zero(CF{B}) for p in Dh])
+        iszero(Ek) || (G = iszero(G) ? monic(Ek) : gcd(G, Ek))
+    end
+    (0 < degree(G) < degree(D)) || return nothing
+    G                                                   # (its coefficients are constants of level < L)
+end
+
+# c ∈ ℚ(t₁, …, tₖ) as a term: a rational function of t_lev with coefficients of lower levels
+function cterm(b::Builder, c::CF)
+    c.lev == 0 && return cterm(b, c.val)
+    k = c.lev
+    k <= length(b.consts) || throw(RischError(
+        "constant field with $k generators but only $(length(b.consts)) are described"))
+    b.consts[k].kind === :expi && return cterm_expi(b, c.f, b.consts[k].arg)
+    t = constgen_term(b, b.consts[k])
+    n = cpoly_term(b, c.f.num, t)
+    isone(c.f.den) ? n : mk(b, :/, n, cpoly_term(b, c.f.den, t))
+end
+
+# √c as a term with a square numerator or denominator (in t_lev) taken out (csqrt_term of the nested types)
+function csqrt_term(b::Builder, c::CF{B}) where {B}
+    c.lev == 0 && return mk(b, :sqrt, cterm(b, c))
+    L = c.lev
+    n, d = cf_make(CF{B}, L, frac(c.f.num)), cf_make(CF{B}, L, frac(c.f.den))
+    sn, sd = csqrt(n), csqrt(d)
+    if sn === nothing && sd === nothing && (csqrt(-n) !== nothing || csqrt(-d) !== nothing)
+        n, d = -n, -d                                    # c = (-n)/(-d)
+        sn, sd = csqrt(n), csqrt(d)
+    end
+    nt = sn === nothing ? mk(b, :sqrt, cterm(b, n)) : cterm(b, sn)
+    sd === nothing && sn !== nothing && return mk(b, :/, nt, mk(b, :sqrt, cterm(b, d)))
+    sd === nothing && return mk(b, :sqrt, cterm(b, c))
+    isone(sd) ? nt : mk(b, :/, nt, cterm(b, sd))
+end
+
+function cnthroot(c::CF{B}, n::Int) where {B}
+    if c.lev == 0
+        r = cnthroot(c.val, n)
+        return r === nothing ? nothing : CF{B}(r)
+    end
+    a = pnthroot(c.f.num, n)
+    a === nothing && return nothing
+    b = pnthroot(c.f.den, n)
+    b === nothing ? nothing : cf_make(CF{B}, c.lev, frac(a, b))
+end
+rational_const(v::CF) = v.lev == 0 ? rational_const(v.val) : nothing

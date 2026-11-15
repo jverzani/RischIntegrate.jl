@@ -88,7 +88,7 @@ function bioche(f, x; build = nothing, lift = nothing)
     end
     C = ctype(T)
     # C = ℚ(i), or ℚ(i)(t₁, …) with real generators e^a, log p (step TE)
-    (C === QI || (C <: Frac && cbase(C) === QI && all(g -> g.kind in (:exp, :log, :sym, :symlog), T.consts))) || return nothing
+    (C === QI || (is_tfield(C) && cbase(C) === QI && all(g -> g.kind in (:exp, :log, :sym, :symlog), T.consts))) || return nothing
     (length(T.levels) == 1 && T.levels[1].kind === :exp) || return nothing
     RC = real_ctype(C)
     I = cimag(C)

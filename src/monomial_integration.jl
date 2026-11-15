@@ -169,7 +169,7 @@ end
 # Over K = B(t₁, …, tₖ), K a rational function field, a constant multiple of R (callers need only its roots):
 # D, A, dD scaled into the ring B[t₁, …, tₖ] once, fraction-free resultants there (step FR) and no
 # division by the scale factors, whose gcds over K would cost more than the resultants.
-function residue_resultant(D::UPoly{K}, A::UPoly{K}, dD::UPoly{K}) where {K<:Frac}
+function residue_resultant(D::UPoly{K}, A::UPoly{K}, dD::UPoly{K}) where {K<:TField}
     m, n = integral_multiplier(K, D.c), integral_multiplier(K, [A.c; dD.c])
     sc(p, c) = UPoly{K}(K[a * c for a in p.c])
     residue_resultant(sc(D, m), sc(A, n), sc(dD, n), ff_resultant)
@@ -254,12 +254,12 @@ function residue_logs(T::Tower, i::Int, A::UPoly, D::UPoly)
     K = T.Ts[i]
     dD = Dp(T, i, D)
     CT0 = ctype(T)
-    CT0 <: Frac && cdepth(CT0) > MAX_ROOTSUM_GENS && degree(D) > 2 && throw(RischNotImplemented(
+    is_tfield(CT0) && ngens(CT0, D) > MAX_ROOTSUM_GENS && degree(D) > 2 && throw(RischNotImplemented(
         "residues of a denominator of degree $(degree(D)) over more than $MAX_ROOTSUM_GENS symbolic constants"))
     # (over exactly MAX_ROOTSUM_GENS parameters, a high degree: the resultant takes minutes, step RB;
     # sample 1018: x⁶/((a + b x² + c x⁴) √(d + e x²)))
-    CT0 <: Frac && cdepth(CT0) >= MAX_ROOTSUM_GENS && degree(D) > MAX_RESIDUE_DEGREE4 && throw(RischNotImplemented(
-        "residues of a denominator of degree $(degree(D)) over $(cdepth(CT0)) symbolic constants"))
+    is_tfield(CT0) && ngens(CT0, D) >= MAX_ROOTSUM_GENS && degree(D) > MAX_RESIDUE_DEGREE4 && throw(RischNotImplemented(
+        "residues of a denominator of degree $(degree(D)) over $(ngens(CT0, D)) symbolic constants"))
     Rz = residue_resultant(D, A, dD)
     iszero(Rz) && throw(RischError("zero resultant in the residue computation"))
     CT = ctype(T)

@@ -271,7 +271,7 @@ function build_tower(f, xk::String; constants::Union{Nothing,Type} = nothing, su
     consts = ConstGen[]
     base = Q                                   # becomes ℚ(i) when trigonometric functions appear
     for _ in 1:50
-        C = constants === nothing ? cfield(length(consts), base) : constants
+        C = constants === nothing ? const_field_type(length(consts), base) : constants
         T = Tower(C, xk, scales, copy(consts))
         T.subst = subst
         try

@@ -213,12 +213,12 @@ function lrt_logs(m::UPoly{K}, D::UPoly{K}, A::UPoly{K}, dD::UPoly{K}) where {K}
 end
 
 function root_sums(rest::UPoly{C}, R::UPoly{C}, D::UPoly{C}, var::String; arg = nothing) where {C}
-    cdepth(C) > MAX_ROOTSUM_GENS && degree(rest) > 2 && throw(RischNotImplemented(
+    ngens(C, rest) > MAX_ROOTSUM_GENS && degree(rest) > 2 && throw(RischNotImplemented(
         "a RootSum over more than $MAX_ROOTSUM_GENS symbolic constants (parameters)"))
     # (a quartic or higher over MAX_ROOTSUM_GENS parameters with large coefficients: the subresultant chain does
     # not finish, step RB; sample 929: 1/((a + c x²)^(3/2) (d + e x + f x²)))
-    cdepth(C) >= MAX_ROOTSUM_GENS && degree(rest) > 3 && csize(rest) > MAX_ROOTSUM_SIZE4 && throw(RischNotImplemented(
-        "a RootSum of degree $(degree(rest)) over $(cdepth(C)) symbolic constants (parameters)"))
+    ngens(C, rest) >= MAX_ROOTSUM_GENS && degree(rest) > 3 && csize(rest) > MAX_ROOTSUM_SIZE4 && throw(RischNotImplemented(
+        "a RootSum of degree $(degree(rest)) over $(ngens(C, rest)) symbolic constants (parameters)"))
     P = UPoly{C}
     dD = deriv(D)
     n = max(length(R.c), length(dD.c))
@@ -254,7 +254,7 @@ ztrace(ps, g::UPoly{C}) where {C} = isempty(g.c) ? zero(C) : sum(g.c[k] * ps[k] 
 # the derivative of a rational integral plus RootSums is f: at two points over a parameter field (exact when an
 # image is undefined), as `check_result`
 function check_with_rootsums(res::RationalIntegral{C}, rss, f::Frac) where {C}
-    if C <: Frac && isempty(res.quads)
+    if is_tfield(C) && isempty(res.quads)
         r = check_at_points(res, f, rss)
         r === nothing || return r
     end

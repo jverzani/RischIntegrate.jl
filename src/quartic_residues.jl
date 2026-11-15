@@ -186,7 +186,7 @@ end
 pos_even(c::Q) = c > 0
 pos_even(c::Frac) = pos_even(c.num) && pos_even(c.den)
 pos_even(c) = false
-is_biquad(g::UPoly{C}) where {C<:Frac} = degree(g) == 4 && iszero(g.c[2]) && iszero(g.c[4]) && isone(g.c[5]) &&
+is_biquad(g::UPoly{C}) where {C<:TField} = degree(g) == 4 && iszero(g.c[2]) && iszero(g.c[4]) && isone(g.c[5]) &&
                                          (e = 4 * g.c[1] - g.c[3]^2; pos_even(e) || csqrt(e) !== nothing)
 
 # A/D (D squarefree, monic) with the even quartic factors of D split off as `BiquadTerm`s, the rest by `log_part`;
@@ -197,7 +197,7 @@ function biquad_log_part(A::QX, D::QX)
     biquad_split(A, D, gs)
 end
 # over ℚ(a, …): D an even quartic, or x times one (x √(a + b t) in the integrand, step PR's u = √(a + b t))
-function biquad_log_part(A::UPoly{C}, D::UPoly{C}) where {C<:Frac}
+function biquad_log_part(A::UPoly{C}, D::UPoly{C}) where {C<:TField}
     G = D
     if degree(D) == 5 && iszero(D.c[1])
         G = UPoly{C}(D.c[2:end])

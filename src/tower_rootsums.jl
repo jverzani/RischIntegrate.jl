@@ -19,7 +19,7 @@ end
 rootsum_corr(q::TowerRootSum) = (length(q.W) - 1) * (-q.mq.c[end - 1])
 
 function tower_root_sums(T::Tower{C}, i::Int, A::UPoly{K}, D::UPoly{K}, dD::UPoly{K}, rest::UPoly{C}) where {C,K}
-    cdepth(C) > MAX_ROOTSUM_GENS && degree(rest) > 2 && throw(RischNotImplemented(
+    ngens(C, rest) > MAX_ROOTSUM_GENS && degree(rest) > 2 && throw(RischNotImplemented(
         "a RootSum over more than $MAX_ROOTSUM_GENS symbolic constants (parameters)"))
     P = UPoly{K}
     mK = P(K[lconst(T, c, i - 1) for c in monic(rest).c])
@@ -202,7 +202,7 @@ function param_quad_term(b::Builder, mq::UPoly{C}, U, V, sc, tt) where {C}
     end
     length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
 end
-real_param_field(::Type{C}) where {C} = C <: Frac && rational_tfield(C) && cbase(C) === Q
+real_param_field(::Type{C}) where {C} = is_tfield(C) && rational_tfield(C) && cbase(C) === Q
 
 # √c for c ∈ C = B(t) as a term, with a square numerator or denominator (in t) taken out
 function csqrt_term(b::Builder, c::Frac{<:UPoly})
