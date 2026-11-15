@@ -213,14 +213,21 @@ end
 # candidate), take G = gcd of the two images of D, lift it back (its constants lie in B) and accept
 # it only if it divides D exactly. Returns G (monic) or nothing.
 inner_field(::Type{Frac{UPoly{B}}}) where {B} = B
+inner_field(::Type{CF{B}}) where {B} = CF{B}             # (the same type one level down: t_k specialized in place)
+# c with the outermost generator t_k at the value v (the nested types: k is the type's depth)
+spec_top(c::Frac, k::Int, v) = (d = peval(c.den, v); iszero(d) ? throw(DomainError(v)) : peval(c.num, v) / d)
+spec_top(c::CF, k::Int, v) = c.lev < k ? c : (d = peval(c.f.den, v); iszero(d) ? throw(DomainError(v)) : peval(c.f.num, v) / d)
+lift_top(::Type{CF{B}}) where {B} = identity
+lift_top(::Type) = kconst
 function tower_tfree_factor(T::Tower{C}, i::Int, D::UPoly) where {C}
     rational_tfield(C) || return nothing
     B = inner_field(C)
+    k = length(T.consts)
     cands = Any[]
     for t in (2, 3, 5, 7, 11, 13)
         length(cands) == 2 && break
         bt = cfromQ(B, Q(t))
-        φ(c) = (d = peval(c.den, bt); iszero(d) ? throw(DomainError(t)) : peval(c.num, bt) / d)
+        φ(c) = spec_top(c, k, bt)
         try
             Tt = change_constants(T, B, φ)
             Kt = Tt.Ts[i]
@@ -234,7 +241,7 @@ function tower_tfree_factor(T::Tower{C}, i::Int, D::UPoly) where {C}
     G = gcd(cands[1][2], cands[2][2])
     (0 < degree(G) < degree(D)) || return nothing
     K = T.Ts[i]
-    GL = UPoly{K}(K[map_constants(cands[1][1], T, c, kconst, i - 1) for c in G.c])
+    GL = UPoly{K}(K[map_constants(cands[1][1], T, c, lift_top(C), i - 1) for c in G.c])
     iszero(rem(D, GL)) ? monic(GL) : nothing
 end
 
@@ -576,7 +583,7 @@ end
 # (with ≥ CHECK_IMAGE_DEPTH parameters in the constants: checked at two images of them first, step CK)
 const CHECK_IMAGE_DEPTH = 3
 function check_tower(T::Tower, L::Int, res::ElemIntegral, f)
-    if fdepth(ctype(T)) >= CHECK_IMAGE_DEPTH
+    if nparams(T) >= CHECK_IMAGE_DEPTH
         r = check_tower_images(T, L, res, f)
         r === nothing || return r
     end

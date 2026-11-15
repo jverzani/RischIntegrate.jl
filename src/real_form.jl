@@ -437,7 +437,7 @@ function to_term_real(b::Builder, T::Tower, L::Int, res::ElemIntegral, f; pos = 
     v = liftto(T, res.v, L)
     vr = (v + tconj(T, kinds, v, L)) * lconst(T, inv(cfromQ(C, Q(2))), L)
     # (with ≥ CHECK_IMAGE_DEPTH parameters, D vr is checked at images of them at the end, step CK)
-    img = fdepth(C) >= CHECK_IMAGE_DEPTH
+    img = nparams(T) >= CHECK_IMAGE_DEPTH
     tot = img ? zero(v) : D(T, L, vr)
     ts = Any[]
     iszero(vr) || push!(ts, real_term(b, T, kinds, vr, L))

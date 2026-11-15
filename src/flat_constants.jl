@@ -106,6 +106,12 @@ function cimage(c::CF{B}, k::Int = 0) where {B}
     (n === nothing || d === nothing || iszero(d)) ? nothing : n / d
 end
 fbase(::Type{CF{B}}) where {B} = B
+# (the image index of a tower variable over CF: pimage gives the variable of Frac{UPoly{S}} the point of index
+# fdepth(S) + 1, above the generators for the nested types; over CF it was 1, t₁'s, and the image test was weak.
+# Not a count of generators: those are `nparams`)
+fdepth(::Type{CF{B}}) where {B} = 64
+# the number of constant generators of the tower (step CK's threshold): the nested depth, or T.consts for CF
+nparams(T::Tower) = ctype(T) <: CF ? length(T.consts) : fdepth(ctype(T))
 # m with every c·m a polynomial in t₁, …, tₖ: at the highest level L of the cs, the lcm of the denominators in t_L, then
 # the same for the coefficients one level down (all coefficients of level < L, constants at L included)
 function integral_multiplier(::Type{CF{B}}, cs) where {B}
@@ -219,7 +225,18 @@ const_field_type(k::Int, base::Type) = (k >= 1 && USE_CF[]) ? CF{base} : cfield(
 is_tfield(::Type{C}) where {C} = C <: Frac || C <: CF
 # the number of generators of C that the RootSum and residue caps count: the depth of the nested type; for CF, the
 # highest generator that occurs in the coefficients at hand (the nested depth counts every constant of the tower)
-ngens(::Type{C}, cs) where {C} = C <: Frac ? cdepth(C) : C <: CF ? maximum((c.lev for c in cs); init = 0) : 0
+ngens(::Type{C}, cs) where {C} = C <: Frac ? cdepth(C) : C <: CF ? maximum((cf_maxlev(c) for c in cs); init = 0) : 0
+# the highest generator in the CF constants of c, through tower elements (Frac, UPoly) to the constants inside
+cf_maxlev(c::CF) = c.lev
+cf_maxlev(f::Frac) = max(cf_maxlev(f.num), cf_maxlev(f.den))
+cf_maxlev(p::UPoly) = maximum((cf_maxlev(c) for c in p.c); init = 0)
+cf_maxlev(c) = 0
+cf_maxlev(a, b) = max(cf_maxlev(a), cf_maxlev(b))
+# nleaves with the CF constants counted at depth K, as in the nested types (K = 0: nleaves)
+nleaves_k(c, K::Int) = K == 0 ? nleaves(c) : 1
+nleaves_k(c::CF, K::Int) = nleaves_at(c, K)
+nleaves_k(f::Frac, K::Int) = nleaves_k(f.num, K) + nleaves_k(f.den, K)
+nleaves_k(p::UPoly, K::Int) = isempty(p.c) ? 0 : sum(c -> nleaves_k(c, K), p.c)
 ngens(::Type{C}, p::UPoly) where {C} = ngens(C, p.c)
 
 cbase(::Type{CF{B}}) where {B} = B
