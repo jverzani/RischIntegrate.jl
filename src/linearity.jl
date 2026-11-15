@@ -28,7 +28,11 @@ function additive_terms(bd::Builder, f)
         fs = product_factors!(Any[], f, 1)
         issum(t) = safe_iscall(t) && (opname(operation(t)) === :+ || (opname(operation(t)) === :- && length(arguments(t)) == 2))
         js = findall(((t, e),) -> e == 1 && issum(t), fs)
-        (length(js) == 1 && any(((_, e),) -> e < 0, fs)) || return Any[]
+        # (a denominator that is not a radical: split over (a + b acos(c x))/√(d - c²d x²), the two integrals took six
+        # times as long as the whole, sample 2344)
+        # (and a denominator depending on x: c⁻¹ beside a sum after step AL's y = c x just comes out of the integral)
+        xk = string(bd.x)
+        (length(js) == 1 && any(((t, e),) -> e < 0 && radical_parts(t) === nothing && depends_on(t, xk), fs)) || return Any[]
         j = js[1]
         rest = Any[e == 1 ? t : mk(bd, :^, t, bd.lift(e)) for (i, (t, e)) in enumerate(fs) if i != j]
         return Any[mk(bd, :*, t, rest...) for t in parts(fs[j][1])]
