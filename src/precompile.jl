@@ -13,7 +13,15 @@
                 :(1 / (5 + 2 * sin(x) - cos(x))), :(sqrt(3 - x^2)), :(sqrt(x^2 + 1)), :(x / sqrt(1 - x^4)),
                 :(1 / (x^4 + 1)), :(sqrt(7 - 2 * x^2)), :(x * (x^3 + 1)^(1 // 3)), :(1 / sqrt(x^3 + 1)),
                 :(sqrt(x) / (x - 1)), :(1 / (sin(x) + cos(x))), :(sqrt(1 + sin(x))), :(exp(x) * sqrt(1 - exp(2x))),
-                :(log(x) / (1 + x)), :(1 / (x^2 * sqrt(x^2 - 1)))]
+                :(log(x) / (1 + x)), :(1 / (x^2 * sqrt(x^2 - 1))),
+                # three and four parameters (each count, ℚ or ℚ(i), and tower level is a type of its own: a first call
+                # with a, b, c, d otherwise compiled for 4–20 s)
+                :((a + b * x)^2 / (c + x)), :(1 / ((a + x) * (b + c * x))), :((a + b * x + c * x^2) / (d + x^2)),
+                :(x * log(a + b * x) * c), :(log(a + b * x) / (c + x)^2), :((a + b * log(x)) / (c * x)),
+                :(exp(a * x) * (b + c * x)), :(exp(a * x) / (b + c * exp(a * x))),
+                :(sin(a * x + b) * c), :(sin(a * x) * cos(b * x) * c), :(exp(a * x) * sin(b * x + c)),
+                :(sqrt(a + b * x) * (c + x)), :(atan(a * x + b) * c), :(x / (a + b * x)^2 + c),
+                :(log(a + b * x) / (c + d * x)), :(atan(a + b * x) / (c + d * x)), :(sin(a + b * x) * sin(c + d * x))]
     @compile_workload begin
         for f in workload
             try
