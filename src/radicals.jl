@@ -314,6 +314,85 @@ to_K0(T::Tower, φ::Frac{UPoly{Q}}) = (C = ctype(T); P = UPoly{C};
     frac(P(C[cfromQ(C, c) for c in φ.num.c]), P(C[cfromQ(C, c) for c in φ.den.c])))
 to_K0(T::Tower{C}, φ::Frac{UPoly{C}}) where {C} = φ
 
+# w ∈ ℚ(x) with w ≥ 0 wherever it is defined: N D ≥ 0
+function never_negative(w::Frac{UPoly{Q}})
+    M = w.num * w.den
+    lc(M) > 0 || return false
+    W = prod((p for (p, m) in squarefree(M) if isodd(m)); init = one(UPoly{Q}))
+    real_root_count(W, nothing, nothing) == 0
+end
+
+# step RP on every interval: u = w^m (m odd, w = r W, `radicand_power`) has u^e = ζ w^(e m) for the principal powers, ζ =
+# exp(iπ e (1 - m)) where w < 0 and 1 where w > 0, locally constant. Steps RP's w^(e m) alone held only where w > 0
+# (∫ (x³)^(-1/3) = log x, ∫ (x³)^(1/3) = x²/2; SymPy #6251). The summands of f are grouped by the power E of each such u
+# (u^e a factor of a summand), each group integrated with u^E ↦ w^(E m) and multiplied by ζ_E = u^E/w^(E m) as a term.
+# nothing when every w ≥ 0 (ζ = 1), or a radical of u is not a plain factor of a summand.
+function odd_power_branches(f, x, xk::String, pmap, b0::Builder, verify::Bool)
+    @nospecialize f x
+    any(((w, _),) -> !never_negative(w), values(pmap)) || return nothing
+    function summands!(out, t, sg)
+        n = isnode(t) ? opname(operation(t)) : nothing
+        if n === :+
+            foreach(a -> summands!(out, a, sg), arguments(t))
+        elseif n === :- && length(arguments(t)) == 2
+            summands!(out, arguments(t)[1], sg); summands!(out, arguments(t)[2], -sg)
+        elseif n === :- && length(arguments(t)) == 1
+            summands!(out, arguments(t)[1], -sg)
+        else
+            push!(out, sg == 1 ? t : mk(b0, :*, b0.lift(-1), t))
+        end
+        out
+    end
+    isrp(t) = (rp = radical_parts(t); rp !== nothing && (ue = radicand_element(rp[2], xk); ue !== nothing && haskey(pmap, ue)))
+    hasrp(t) = isrp(t) || (isnode(t) && any(hasrp, arguments(t)))
+    groups = Dict{String,Tuple{Any,Vector{Any}}}()      # ζ printed ↦ (ζ term or nothing, rewritten summands)
+    order = String[]
+    for s in summands!(Any[], f, 1)
+        E = Dict{Frac{UPoly{Q}},Tuple{Any,Q}}()        # u ↦ (u term, total exponent)
+        rest = Any[]
+        for (b, k) in product_factors!(Any[], s, 1)
+            if isrp(b)
+                isinteger(k) || return nothing
+                rp = radical_parts(b)
+                ue = radicand_element(rp[2], xk)
+                E[ue] = (rp[2], get(E, ue, (rp[2], Q(0)))[2] + rp[1] * Int(k))
+            elseif hasrp(b)
+                return nothing
+            else
+                push!(rest, k == 1 ? b : mk(b0, :^, b, b0.lift(k)))
+            end
+        end
+        ζs, ws = Any[], Any[]
+        for (ue, (ut, e)) in sort(collect(E); by = p -> string(p[2][1]))
+            iszero(e) && continue
+            w, m = pmap[ue]
+            wt = frac_term(b0, w)
+            em = e * m
+            wp = isone(em) ? wt : isone(denominator(em)) ? mk(b0, :^, wt, b0.lift(Int(em))) : mk(b0, :^, wt, b0.lift(em))
+            push!(ws, wp)
+            # ζ = 1 when w ≥ 0 or e (1 - m) is an even integer
+            (never_negative(w) || (isinteger(e * (1 - m)) && iseven(Int(e * (1 - m))))) && continue
+            up = isone(2e) ? mk(b0, :sqrt, ut) : mk(b0, :^, ut, b0.lift(e))
+            push!(ζs, mk(b0, :/, up, wp))
+        end
+        ζ = isempty(ζs) ? nothing : length(ζs) == 1 ? ζs[1] : mk(b0, :*, ζs...)
+        key = ζ === nothing ? "" : string(ζ)
+        haskey(groups, key) || (groups[key] = (ζ, Any[]); push!(order, key))
+        fs = vcat(rest, ws)
+        push!(groups[key][2], isempty(fs) ? b0.lift(1) : length(fs) == 1 ? fs[1] : mk(b0, :*, fs...))
+    end
+    all(k -> k == "", order) && return nothing
+    terms = Any[]
+    for k in order
+        ζ, ss = groups[k]
+        g = length(ss) == 1 ? ss[1] : mk(b0, :+, ss...)
+        G = risch_integrate(g, x; build = b0.build, lift = b0.lift, verify = verify)
+        G isa IntegralWithRootSums && return nothing
+        push!(terms, ζ === nothing ? G : mk(b0, :*, ζ, G))
+    end
+    length(terms) == 1 ? terms[1] : mk(b0, :+, terms...)
+end
+
 # u ∈ ℚ(x) with u ≤ 0 wherever it is defined: N D ≤ 0, i.e. no real root of odd multiplicity and lc(N D) < 0
 function never_positive(u::Frac{UPoly{Q}})
     M = u.num * u.den
@@ -374,6 +453,10 @@ function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::
         i = findfirst(g -> g[1] == w, groups)
         i === nothing && (push!(groups, Any[w, m > 1 ? frac_term(b0, w) : ut, 1]); i = length(groups))
         groups[i][3] = lcm(groups[i][3], Int(denominator(e * m)))
+    end
+    if !isempty(pmap)
+        r = odd_power_branches(f, x, xk, pmap, b0, verify)
+        r === nothing || return r
     end
     cfix = const_radical_field(cvs)
     if isempty(groups)                                  # only constant radicals: x = t

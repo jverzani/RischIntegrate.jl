@@ -46,6 +46,26 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     N, Dn = el.num, el.den
     kc(c) = frac(P([c]))
     co(p, i) = i <= length(p.c) ? p.c[i] : zero(C)
+    # a radicand κ/V, κ free of x ((a²/(a² - x²))^(1/2), SymPy #7109): (V/κ)^(-e), the same value where κ/V > 0 (where
+    # the radical is real), then the shapes below
+    if degree(N) <= 0 && degree(Dn) >= 1 && !iszero(N)
+        b1 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
+        vt = frac_term(b1, frac(Dn) * kc(inv(N.c[1])))
+        function recip(t)
+            safe_iscall(t) || return t
+            args = arguments(t)
+            isempty(args) && return t
+            rp = radical_parts(t)
+            (rp !== nothing && string(rp[2]) == string(ut0)) && return mk(b1, :^, vt, b1.lift(-rp[1]))
+            b1.build(op_function(t), (recip(a) for a in args)...)
+        end
+        return try
+            risch_integrate(recip(f), x; build = b1.build, lift = b1.lift, verify = verify)
+        catch err
+            (err isa RischNotImplemented || err isa NotElementary) || rethrow()
+            nothing
+        end
+    end
     sh = nothing                                        # (s, h, κ, R ∈ ℚ(u))
     # the sign of a parameter constant: the oracle's, else at the parameter values of `param_value` (step SO)
     pos(c) = param_sign(c, T.consts) == 1
@@ -107,7 +127,7 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     st, ht = s isa Tuple ? mk(b0, :sqrt, cterm(b0, s[2])) : cterm(b0, s), cterm(b0, h)
     σ = csqrt(κ)                                        # (else √κ is an opaque constant of the parameters)
     Rt = frac_term(b0, Ru)
-    function radval(e)                                  # κ^e R(x)^e as a term
+    function κpow(e)                                    # κ^e as a term
         k = 2 * e
         # κ^(k/2) = |σ|^k: for odd k, |σ| = √(σ²) (the sign of σ depends on the order of the parameters)
         κe = if σ !== nothing && isone(denominator(k))
@@ -124,8 +144,10 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
         else
             mk(b0, :^, cterm(b0, κ), b0.lift(e))
         end
+    end
+    function radval(e)                                  # κ^e R(x)^e as a term
         Re = isone(e * 2) ? mk(b0, :sqrt, Rt) : mk(b0, :^, Rt, b0.lift(e))
-        isone(κ) ? Re : mk(b0, :*, κe, Re)              # (κ = 1: no factor 1^e)
+        isone(κ) ? Re : mk(b0, :*, κpow(e), Re)         # (κ = 1: no factor 1^e)
     end
     sone = !(s isa Tuple) && isone(s)
     sx = sone ? b0.x : mk(b0, :*, st, b0.x)
@@ -166,10 +188,19 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
         mk(b0, :*, cg, G))
     xh = iszero(h) ? b0.x : mk(b0, :+, b0.x, mk(b0, :*, b0.lift(-1), ht))
     back = sone ? xh : mk(b0, :/, xh, st)               # x ↦ (x - h)/s
+    # the answer's radicals R(u)^e as the integrand's own u₀^e/κ^e (u₀ = κ R(u)): then G is an antiderivative by an
+    # identity in ℚ(a, …, s, κ^e)(x, u₀^e), for every sign of κ. Written with R((x - h)/s)^e it held only where κ > 0
+    # (s, √κ imaginary otherwise: ∫ x/√(a x² + b x + c)³ had derivative -f for b² > 4ac, SymPy #7147)
     function walk_back(t)
         safe_iscall(t) || return string(t) == xk ? back : t
         args = arguments(t)
         isempty(args) && return t
+        rp = radical_parts(t)
+        if rp !== nothing && radicand_element(rp[2], xk) == Ru
+            e = rp[1]
+            ue = isone(2 * e) ? mk(b0, :sqrt, ut0) : mk(b0, :^, ut0, b0.lift(e))
+            return isone(κ) ? ue : mk(b0, :/, ue, κpow(e))
+        end
         b0.build(op_function(t), (walk_back(a) for a in args)...)
     end
     G isa IntegralWithRootSums ? subst_answer(G, walk_back, b0) : walk_back(G)

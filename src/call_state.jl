@@ -15,7 +15,7 @@ mutable struct CallState
     const_scaling::Bool
     reciprocal::Bool
     pxparts::Bool
-    xparts::Bool
+    xparts::Int                  # step XP: deg P + 1 of the P being integrated by parts (0: none)
     tower_radical::Bool
     ec_active::Bool
     half_angle_forms::Int
@@ -41,7 +41,7 @@ mutable struct CallState
     erf_depth::Int
     sum_split::Int
 end
-CallState() = CallState(false, false, false, false, false, false, false, 0, 0, false, 0, false, false, false, false, false,
+CallState() = CallState(false, false, false, false, 0, false, false, 0, 0, false, 0, false, false, false, false, false,
                         false, 0, false, false, false, 0, false, false, false, false, false, 0, 0)
 
 const CALL_STATE = Base.ScopedValues.ScopedValue{Union{Nothing,CallState}}(nothing)

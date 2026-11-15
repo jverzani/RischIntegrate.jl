@@ -272,6 +272,30 @@ function try_gamma_log(f, x; build = nothing, lift = nothing, verify::Bool = tru
     back(G)
 end
 
+# step LR: log(u^e) ↦ e·log(u), 0 < e ≤ 1 and u depending on x; nothing when f has no such log
+function log_of_roots(f, x, build, lift)
+    @nospecialize f x
+    xk = string(x)
+    has(t) = isnode(t) && ((opname(operation(t)) === :log && length(arguments(t)) == 1 &&
+                            (rp = radical_parts(arguments(t)[1]); rp !== nothing && 0 < rp[1] <= 1 && has_x(rp[2], xk))) ||
+                           any(has, arguments(t)))
+    has(f) || return nothing
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    function rw(t)
+        isnode(t) || return t
+        args = arguments(t)
+        if opname(operation(t)) === :log && length(args) == 1
+            rp = radical_parts(args[1])
+            if rp !== nothing && 0 < rp[1] <= 1 && has_x(rp[2], xk)
+                l = mk(bd, :log, rw(rp[2]))
+                return isone(rp[1]) ? l : mk(bd, :*, bd.lift(rp[1]), l)
+            end
+        end
+        term_rebuild(bd, t, Any[rw(a) for a in args])
+    end
+    rw(f)
+end
+
 # step LU: radicals of log x (√(log x)/x², SymPy #15640), which the radical steps refuse (log x is no rational
 # function of x): x = eᵘ, ∫ f(eᵘ) eᵘ du with log x ↦ u (√u e⁻ᵘ: an erf answer), then u = log x; for x > 0. The
 # answer, or nothing
@@ -498,6 +522,62 @@ function try_erf(f, x; build = nothing, lift = nothing, verify::Bool = true)
     ERF_DEPTH[] += 1
     try
         try_erf_parts(f, x, haserf; build = build, lift = lift, verify = verify)
+    finally
+        ERF_DEPTH[] -= 1
+    end
+end
+
+# step EB: ∫ A·Ei(g) by parts, Q = ∫ A (Q = x for A = 1): Q Ei(g) - ∫ Q g′ eᵍ/g, since Ei(g)′ = g′ eᵍ/g (∫ Ei(log x) =
+# x Ei(log x) - Ei(2 log x), the logarithmic integral; SymPy #7000). A sum of such terms (one Ei factor each) and terms free
+# of Ei; nothing when Ei occurs otherwise or a part is refused. Shares step ER's depth (by parts twice at most).
+function try_ei(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    hasei(t) = isnode(t) && (opname(operation(t)) in (:expinti, :Ei) || any(hasei, arguments(t)))
+    hasei(f) || return nothing
+    ERF_DEPTH[] >= 2 && return nothing
+    xk = string(x)
+    b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    ERF_DEPTH[] += 1
+    try
+        terms, rest = Any[], Any[]
+        for (t, sg) in gamma_summands(f)
+            if !hasei(t)
+                push!(rest, sg == 1 ? t : mk(b0, :*, b0.lift(-1), t))
+                continue
+            end
+            pfs = product_factors!(Any[], t, 1)
+            ei = findall(((u, _),) -> hasei(u), pfs)
+            (length(ei) == 1 && pfs[ei[1]][2] == 1) || return nothing
+            e = pfs[ei[1]][1]
+            (opname(operation(e)) in (:expinti, :Ei) && length(arguments(e)) == 1) || return nothing
+            facs = Any[k == 1 ? u : mk(b0, :^, u, b0.lift(k)) for (u, k) in pfs]
+            g = arguments(e)[1]
+            depends_on(g, xk) || return nothing
+            others = [u for u in facs if u !== e]
+            cs = [u for u in others if !depends_on(u, xk)]
+            xs = [u for u in others if depends_on(u, xk)]
+            Qt = isempty(xs) ? b0.x : risch_integrate(length(xs) == 1 ? xs[1] : mk(b0, :*, xs...), x;
+                                                       build = build, lift = lift, verify = verify)
+            Qt isa IntegralWithRootSums && return nothing
+            dg = term_deriv(b0, g, xk)
+            dg === nothing && return nothing
+            H = risch_integrate(mk(b0, :/, mk(b0, :*, Qt, dg, mk(b0, :exp, g)), g), x; build = build, lift = lift, verify = verify)
+            H isa IntegralWithRootSums && return nothing
+            tt = mk(b0, :+, mk(b0, :*, Qt, e), mk(b0, :*, b0.lift(-1), H))
+            c = isempty(cs) ? (sg == 1 ? nothing : b0.lift(-1)) : mk(b0, :*, b0.lift(sg), cs...)
+            push!(terms, c === nothing ? tt : mk(b0, :*, c, tt))
+        end
+        if !isempty(rest)
+            F = risch_integrate(length(rest) == 1 ? rest[1] : mk(b0, :+, rest...), x; build = build, lift = lift, verify = verify)
+            F isa IntegralWithRootSums && return nothing
+            push!(terms, F)
+        end
+        G = length(terms) == 1 ? terms[1] : mk(b0, :+, terms...)
+        (verify && !numeric_antiderivative(f, G, xk)) && throw(RischError("internal check failed: Ei by parts"))
+        G
+    catch err
+        (err isa RischNotImplemented || err isa NotElementary) || rethrow()
+        nothing
     finally
         ERF_DEPTH[] -= 1
     end

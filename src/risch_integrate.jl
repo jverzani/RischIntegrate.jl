@@ -92,6 +92,11 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         return F
     end
     check_leaves(f, string(x))                                         # step WR
+    # step LR: log(u^e) = e log u for 0 < e ≤ 1 (principal branches: Im(e log u) ∈ (-π, π]): log(√((cos t - cos x)² +
+    # (sin t - sin x)²)) went through the radical fallbacks for minutes (SymPy #6382)
+    let g = log_of_roots(f, x, build, lift)
+        g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    end
     # step CI: an answer to an integrand with i in it, checked numerically (complex values) in the outermost call:
     # a step that writes the real part of its answer, for a real integrand only, would drop the imaginary part
     if verify && RISCH_DEPTH[] == 0 && !CI_CHECK[] && has_imag_unit(f)
@@ -419,6 +424,8 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         return mk(bd, :*, f, bd.x)
     end
     g = try_erf(f, x; build = build, lift = lift, verify = verify)   # ∫ erf(ax + b) by parts
+    g === nothing || return g
+    g = try_ei(f, x; build = build, lift = lift, verify = verify)    # ∫ A Ei(g) by parts (step EB)
     g === nothing || return g
     # step IT: a factor free of x containing other symbols comes out, ∫ c g dx = c ∫ g dx (keeps the
     # parameter out of the constant field, and lets an iterated integral see c(y)·RootSum(x))
