@@ -3978,7 +3978,7 @@ end
     end
     # log of a root: ½ log u first (the Clausen integrand refused in seconds, not minutes)
     t0 = time()
-    @test_throws NotElementary Risch.risch_integrate(:(log(sqrt((cos(1) - cos(x)) ^ 2 + (sin(1) - sin(x)) ^ 2))), :x;
+    @test_throws Risch.NotElementary Risch.risch_integrate(:(log(sqrt((cos(1) - cos(x)) ^ 2 + (sin(1) - sin(x)) ^ 2))), :x;
                                                      build = build, lift = identity)
     @test time() - t0 < 60
     @test occursin("clausen2", string(Risch.risch_integrate(:(log(sqrt(1 - cos(x)))), :x; build = build, lift = identity)))
