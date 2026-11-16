@@ -44,3 +44,23 @@ import RischIntegrate as Risch
         end
     end
 end
+
+# CF methods for helpers written on a bare ::Frac (lead_rational: a MethodError on ∫ (1 - cos(π y z))/(y z) dy, SymJ's
+# second integration of ∫∫∫ sin(xyz), SymPy #5741, with CF the default)
+@testset "CF: lead_rational, pos_even" begin
+    C = Risch.CF{Risch.QI}
+    t1 = Risch.cf_gen(C, 1)
+    @test Risch.lead_rational(Risch.cfromQ(C, Risch.Q(-3, 2))) == -3 // 2
+    @test Risch.lead_rational(-2 * t1 + Risch.cfromQ(C, Risch.Q(5))) == -2
+    @test Risch.pos_even(Risch.cfromQ(Risch.CF{Risch.Q}, Risch.Q(3)))
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    import SpecialFunctions
+    ev(e, y0) = Core.eval(Main, Expr(:let, Expr(:block, :(y = $y0), :(z = 0.7), :(cosint = $(SpecialFunctions.cosint))), e))
+    for f in (:((1 - cos(pi * y * z)) / (y * z)), :((1 - cos(y * z)) / (y * z)))
+        F = Risch.risch_integrate(f, :y; build = build, lift = identity)
+        @test occursin("cosint", string(F))
+        for y0 in (0.4, 1.7, 3.1)
+            @test isapprox((ev(F, y0 + 1e-6) - ev(F, y0 - 1e-6)) / 2e-6, ev(f, y0); rtol = 1e-6)
+        end
+    end
+end
