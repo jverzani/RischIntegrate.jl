@@ -25,7 +25,9 @@ while start <= N
         current = (last_s !== nothing && (last_r === nothing || last_r < last_s)) ?
             split(lines[last_s], '\t') : nothing
         if current !== nothing && time() - parse(Float64, current[3]) > LIMIT
-            kill(proc); wait(proc)
+            # (SIGKILL: a worker busy in native code, compiling in LLVM, ignores the default SIGTERM, and wait(proc)
+            # then waited for it for 11 hours)
+            kill(proc, Base.SIGKILL); wait(proc)
             i = parse(Int, current[2])
             open(io -> println(io, "R\t$i\ttimeout\tnone\t$LIMIT\t"), outfile, "a")
             start = i + 1
