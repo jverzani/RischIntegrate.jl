@@ -378,3 +378,8 @@ function cnthroot(c::CF{B}, n::Int) where {B}
     b === nothing ? nothing : cf_make(CF{B}, c.lev, frac(a, b))
 end
 rational_const(v::CF) = v.lev == 0 ? rational_const(v.val) : nothing
+
+# (missed in #151: methods on a bare ::Frac for constants. lead_rational crashed on ∫ (1 - cos(π y z))/(y z) dy, SymJ's
+# second integration of ∫∫∫ sin(xyz), SymPy #5741; pos_even's catch-all `false` silently skipped step BQ4's test)
+lead_rational(c::CF) = c.lev == 0 ? lead_rational(c.val) : lead_rational(lc(c.f.num))
+pos_even(c::CF) = c.lev == 0 ? pos_even(c.val) : (pos_even(c.f.num) && pos_even(c.f.den))
