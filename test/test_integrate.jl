@@ -2836,7 +2836,8 @@ end
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
         end
     end
-    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(erf(x) / x), :x; build = build, lift = identity)
+    # (∫ 1/x = log x is not rational: not elementary, step SN)
+    @test_throws Risch.NotElementary Risch.risch_integrate(:(erf(x) / x), :x; build = build, lift = identity)
     # Q = ∫ A a multiple of erf(u) itself: ∫ erf(x) e^(-x²) = √π erf(x)²/4 (SymPy #27586; a stack overflow, then)
     F = Risch.risch_integrate(:(erf(x) * exp(-x ^ 2)), :x; build = build, lift = identity)
     for x0 in (-0.7, 0.4, 1.3)
