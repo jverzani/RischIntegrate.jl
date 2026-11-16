@@ -107,8 +107,11 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             # a step over ℚ(i) whose output is written in real form (radicals of a + i a tan(c + d x), steps PM, PB:
             # 34 problems of the stratified scan) refuses the integrand; its other routes were slower still (> 15 min)
             (e isa RischError && startswith(e.msg, "a non-real constant")) || rethrow()
-            throw(RischNotImplemented("a step for real integrands reached a non-real constant of the integrand " *
-                                      "with the imaginary unit (no complex form of that step)"))
+            # (e^(i a z²): a Gaussian with a symbolic coefficient, step GS, SymPy #5547)
+            g = integrate_gaussian_scaled(f, x; build = build, lift = lift, verify = verify)
+            g === nothing && throw(RischNotImplemented("a step for real integrands reached a non-real constant of the integrand " *
+                                                       "with the imaginary unit (no complex form of that step)"))
+            g
         finally
             CI_CHECK[] = false
         end
@@ -189,6 +192,8 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             # xⁿ e^(α x² + β x + δ) with sin, cos of linear arguments: erf of a complex shift (step GT)
             g = integrate_gaussian_trig(f, x; build = build, lift = lift, verify = verify)
             g === nothing || return g
+            g = integrate_gaussian_scaled(f, x; build = build, lift = lift, verify = verify)   # c z², c symbolic (GS)
+            g === nothing || return g
         end
         g = try
             # x·R(sin, cos): Clausen's function (step CL); logʲ(x) L(w x)/x, L = atan, log or li2: polylogarithms
@@ -198,6 +203,10 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             g1 === nothing && (g1 = try_log_polylog(f, x; build = build, lift = lift, verify = verify))
             # P(x) R(e^(kx)) by parts, Q = ∫ R (step XP: x/(eˣ - 1) with Li₂)
             (g1 === nothing && e isa NotElementary) && (g1 = try_poly_exp_parts(f, x; build = build, lift = lift, verify = verify))
+            # an exp of log x: x = eᵘ (step LU, exp(-log²x) a Gaussian in u)
+            (g1 === nothing && e isa NotElementary) && (g1 = integrate_log_radicals(f, x; build = build, lift = lift, verify = verify, inexp = true))
+            # exponentials of polynomials in 1/x: u = 1/x (step UR, e^(1/x²) with erfi)
+            (g1 === nothing && e isa NotElementary) && (g1 = integrate_reciprocal_exp(f, x; build = build, lift = lift, verify = verify))
             g1 === nothing && (g1 = try_atan_subst(f, x; build = build, lift = lift, verify = verify))
             # Lambert's W(x): x = w eʷ (step LW)
             g1 === nothing && e isa RischNotImplemented && (g1 = try_lambertw(f, x; build = build, lift = lift, verify = verify))
@@ -427,6 +436,7 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     g === nothing || return g
     g = try_ei(f, x; build = build, lift = lift, verify = verify)    # ∫ A Ei(g) by parts (step EB)
     g === nothing || return g
+    special_rational_nonelementary(f, x; build = build, lift = lift, verify = verify)   # A·F(u), ∫ A not rational (SN)
     # step IT: a factor free of x containing other symbols comes out, ∫ c g dx = c ∫ g dx (keeps the
     # parameter out of the constant field, and lets an iterated integral see c(y)·RootSum(x))
     cg = split_free_factor(f, x, xk, build, lift)

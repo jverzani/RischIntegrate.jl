@@ -245,3 +245,86 @@ function integrate_free_factors_out(f, x; build = nothing, lift = nothing, verif
                                                              Any[ScaledRootSum(c, rs) for rs in G.rootsums], G.var)
     mk(bd, :*, c, G)
 end
+
+# step GS: Gaussians with a symbolic or transcendental coefficient, cos(a z²), sin(a z²), e^(i a z²), cos(π z²),
+# cos(2πz²/L)² (SymPy #5547): every trigonometric, hyperbolic or exp argument k c z², k ∈ ℚ(i), c one common constant
+# (a parameter expression, π, …). z = u/√c makes the coefficients numeric (step GT), and u = √c z is put back; the
+# answer is an identity for either sign of c (real where c > 0). Bare z elsewhere (polynomial factors) becomes u/√c.
+# Nothing when f is not of this kind.
+const GS_FUNS = (:sin, :cos, :exp, :sinh, :cosh)
+function integrate_gaussian_scaled(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    args = Any[]
+    function walk(t)
+        isnode(t) || return
+        n = opname(operation(t))
+        if n in GS_FUNS && length(arguments(t)) == 1 && depends_on(arguments(t)[1], xk)
+            push!(args, arguments(t)[1])
+        elseif (w = exp_arg(t); w !== nothing && depends_on(w, xk))     # (ℯ^w, as SymJ writes exp)
+            push!(args, w)
+            return
+        end
+        foreach(walk, arguments(t))
+    end
+    walk(f)
+    isempty(args) && return nothing
+    # the z² coefficient of each argument (a pure k c z²)
+    els = try
+        Any[build_tower(a, xk) for a in args]
+    catch err
+        (err isa RischNotImplemented || err isa RischError || err isa NeedComplex) || rethrow()
+        return nothing
+    end
+    qs = Any[]
+    for (Ta, ea) in els
+        (isempty(Ta.levels) && isone(ea.den) && degree(ea.num) == 2 && iszero(ea.num.c[1]) && iszero(ea.num.c[2])) || return nothing
+        push!(qs, (Ta, ea.num.c[3]))
+    end
+    # c: the first coefficient without a factor i; it must have a parameter or a transcendental constant
+    Ta, q0 = qs[1]
+    cx = is_complex_field(ctype(Ta))
+    c0 = (cx && cconj_g(Ta.consts, q0) != q0) ? q0 / cimag(ctype(Ta)) : q0
+    (cx && cconj_g(Ta.consts, c0) != c0) && return nothing
+    crational(c0) === nothing || return nothing                 # (numeric: step GT itself)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, Ta.consts)
+    cterm0 = cterm(bd, c0)
+    # each argument's k = q/c as a number of ℚ(i): its term from a tower over the same constants (the ratio's term
+    # has no symbol)
+    ks = Any[]
+    for (Tq, q) in qs
+        Tq.consts == Ta.consts || return nothing
+        k = q / c0
+        kt = cterm_complex(Builder(bd.build, bd.lift, bd.x, Tq.consts), k, Tq.consts)
+        gs_numeric(kt) || return nothing
+        push!(ks, kt)
+    end
+    u2 = mk(bd, :^, bd.x, bd.lift(2))
+    sc = mk(bd, :sqrt, cterm0)
+    kmap = Dict(string(a) => (iszero_term(k) ? nothing : mk(bd, :*, k, u2)) for (a, k) in zip(args, ks))
+    function sub(t)
+        if isnode(t)
+            n = opname(operation(t))
+            if n in GS_FUNS && length(arguments(t)) == 1 && haskey(kmap, string(arguments(t)[1]))
+                return term_rebuild(bd, t, Any[kmap[string(arguments(t)[1])]])
+            end
+            w = exp_arg(t)
+            (w !== nothing && haskey(kmap, string(w))) && return mk(bd, :exp, kmap[string(w)])
+            return term_rebuild(bd, t, Any[sub(a) for a in arguments(t)])
+        end
+        string(t) == xk ? mk(bd, :/, bd.x, sc) : t
+    end
+    g = mk(bd, :/, sub(f), sc)
+    G = try
+        risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        return nothing
+    end
+    G isa IntegralWithRootSums && return nothing
+    back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(a) for a in arguments(t)]) : (string(t) == xk ? mk(bd, :*, sc, bd.x) : t)
+    back(G)
+end
+iszero_term(t) = (r = leaf_rational(t); r !== nothing && iszero(r))
+# a term of numbers and the imaginary unit only
+gs_numeric(t) = safe_iscall(t) && !isempty(arguments(t)) ? all(gs_numeric, arguments(t)) : (leaf_rational(t) !== nothing || is_imag_unit(t))

@@ -298,8 +298,9 @@ end
 
 # step LU: radicals of log x (√(log x)/x², SymPy #15640), which the radical steps refuse (log x is no rational
 # function of x): x = eᵘ, ∫ f(eᵘ) eᵘ du with log x ↦ u (√u e⁻ᵘ: an erf answer), then u = log x; for x > 0. The
-# answer, or nothing
-function integrate_log_radicals(f, x; build = nothing, lift = nothing, verify::Bool = true)
+# answer, or nothing. With `inexp = true` (after a NotElementary): an exp whose argument has log x instead of a
+# radical, exp(-log²x) ↦ e^(u - u²), a Gaussian (SymPy #4890: √π e^(1/4) erf(log x - 1/2)/2)
+function integrate_log_radicals(f, x; build = nothing, lift = nothing, verify::Bool = true, inexp::Bool = false)
     @nospecialize f x
     xk = string(x)
     # log(xᵏ) = k log x for x > 0, k rational: log(1/x), log(x⁻¹), log(√x) (SymPy #11876, √log(1/x))
@@ -319,14 +320,41 @@ function integrate_log_radicals(f, x; build = nothing, lift = nothing, verify::B
     logk(t) = (isnode(t) && opname(operation(t)) === :log && length(arguments(t)) == 1) ? xpow(arguments(t)[1]) : nothing
     islogx(t) = logk(t) !== nothing
     haslog(t) = islogx(t) || (isnode(t) && any(haslog, arguments(t)))
-    any(((_, u),) -> haslog(u), collect_radicals(f, xk)) || return nothing
+    if inexp
+        expwlog(t) = isnode(t) && ((exp_arg(t) !== nothing && haslog(exp_arg(t))) || any(expwlog, arguments(t)))
+        expwlog(f) || return nothing
+    else
+        any(((_, u),) -> haslog(u), collect_radicals(f, xk)) || return nothing
+    end
     b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     ex = mk(b0, :exp, b0.x)
     sub(t) = islogx(t) ? (k = logk(t); isone(k) ? b0.x : mk(b0, :*, b0.lift(k), b0.x)) : isnode(t) ? term_rebuild(b0, t, Any[sub(a) for a in arguments(t)]) : (string(t) == xk ? ex : t)
     g = sub(f)
     haslog(g) && return nothing
+    g = mk(b0, :*, g, ex)
+    # (an exp of log x: the exponentials of the product as one, e^(w₁ k₁ + …), with x^a = exp(u)^a ↦ e^(a u): the
+    # Gaussian step takes one exp, not x^a exp(-log²x) as eᵃᵘ e^(-u²) eᵘ)
+    if inexp
+        args, rest = Any[], Any[]
+        for (t, k) in product_factors!(Any[], g, 1)
+            w = exp_arg(t)
+            if w !== nothing
+                push!(args, k == 1 ? w : mk(b0, :*, b0.lift(k), w))
+            elseif isnode(t) && opname(operation(t)) === :^ && length(arguments(t)) == 2 && exp_arg(arguments(t)[1]) !== nothing &&
+                   !depends_on(arguments(t)[2], xk)
+                w = mk(b0, :*, arguments(t)[2], exp_arg(arguments(t)[1]))
+                push!(args, k == 1 ? w : mk(b0, :*, b0.lift(k), w))
+            else
+                push!(rest, k == 1 ? t : mk(b0, :^, t, b0.lift(k)))
+            end
+        end
+        if length(args) >= 2
+            e1 = mk(b0, :exp, mk(b0, :+, args...))
+            g = isempty(rest) ? e1 : mk(b0, :*, rest..., e1)
+        end
+    end
     G = try
-        risch_integrate(mk(b0, :*, g, ex), x; build = build, lift = lift, verify = verify)
+        risch_integrate(g, x; build = build, lift = lift, verify = verify)
     catch e
         # (a term type without erfi, SymEngine's: SpecialFunctions' generic erfi calls float on the term; the
         # special terms kept as Expr instead, as for its other special-function answers)
@@ -530,9 +558,12 @@ end
 # step EB: ∫ A·Ei(g) by parts, Q = ∫ A (Q = x for A = 1): Q Ei(g) - ∫ Q g′ eᵍ/g, since Ei(g)′ = g′ eᵍ/g (∫ Ei(log x) =
 # x Ei(log x) - Ei(2 log x), the logarithmic integral; SymPy #7000). A sum of such terms (one Ei factor each) and terms free
 # of Ei; nothing when Ei occurs otherwise or a part is refused. Shares step ER's depth (by parts twice at most).
+# (also Si, Ci, Shi, Chi: F(g)′ = g′ h(g)/g, h = exp, sin, cos, sinh, cosh; ∫ Ci(x) = x Ci(x) - sin x, SymPy #5741)
+const EB_FUNS = Dict(:expinti => :exp, :Ei => :exp, :sinint => :sin, :Si => :sin, :cosint => :cos, :Ci => :cos,
+                     :sinhint => :sinh, :Shi => :sinh, :coshint => :cosh, :Chi => :cosh)
 function try_ei(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
-    hasei(t) = isnode(t) && (opname(operation(t)) in (:expinti, :Ei) || any(hasei, arguments(t)))
+    hasei(t) = isnode(t) && (haskey(EB_FUNS, opname(operation(t))) || any(hasei, arguments(t)))
     hasei(f) || return nothing
     ERF_DEPTH[] >= 2 && return nothing
     xk = string(x)
@@ -549,7 +580,7 @@ function try_ei(f, x; build = nothing, lift = nothing, verify::Bool = true)
             ei = findall(((u, _),) -> hasei(u), pfs)
             (length(ei) == 1 && pfs[ei[1]][2] == 1) || return nothing
             e = pfs[ei[1]][1]
-            (opname(operation(e)) in (:expinti, :Ei) && length(arguments(e)) == 1) || return nothing
+            (haskey(EB_FUNS, opname(operation(e))) && length(arguments(e)) == 1) || return nothing
             facs = Any[k == 1 ? u : mk(b0, :^, u, b0.lift(k)) for (u, k) in pfs]
             g = arguments(e)[1]
             depends_on(g, xk) || return nothing
@@ -561,7 +592,8 @@ function try_ei(f, x; build = nothing, lift = nothing, verify::Bool = true)
             Qt isa IntegralWithRootSums && return nothing
             dg = term_deriv(b0, g, xk)
             dg === nothing && return nothing
-            H = risch_integrate(mk(b0, :/, mk(b0, :*, Qt, dg, mk(b0, :exp, g)), g), x; build = build, lift = lift, verify = verify)
+            h = EB_FUNS[opname(operation(e))]
+            H = risch_integrate(mk(b0, :/, mk(b0, :*, Qt, dg, mk(b0, h, g)), g), x; build = build, lift = lift, verify = verify)
             H isa IntegralWithRootSums && return nothing
             tt = mk(b0, :+, mk(b0, :*, Qt, e), mk(b0, :*, b0.lift(-1), H))
             c = isempty(cs) ? (sg == 1 ? nothing : b0.lift(-1)) : mk(b0, :*, b0.lift(sg), cs...)
@@ -689,4 +721,115 @@ function try_erf_parts(f, x, haserf; build = nothing, lift = nothing, verify::Bo
     # built wrongly for the second integral (exp(x + ℯ) for SymJ's ℯ^x, SymPy #27586) passed. Checked numerically
     (verify && !numeric_antiderivative(f, G, xk)) && throw(RischError("internal check failed: erf by parts"))
     G
+end
+
+# step UR: exponentials of polynomials in 1/x (SymPy #5376: ∫ e^(1/x²) = x e^(1/x²) - √π erfi(1/x)), not elementary in x,
+# where u = 1/x gives -∫ f(1/u)/u² du with exp of a polynomial in u (the Gaussian step: e^(u²)/u² by parts to erfi). Every
+# exp argument must be a polynomial in 1/x without a constant-free positive power of x; for x ≠ 0. The answer or nothing.
+function integrate_reciprocal_exp(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    args = Any[]
+    walk(t) = isnode(t) ? ((w = exp_arg(t); w !== nothing && depends_on(w, xk) && push!(args, w)); foreach(walk, arguments(t))) : nothing
+    walk(f)
+    isempty(args) && return nothing
+    for w in args
+        T, el = try
+            build_tower(w, xk)
+        catch err
+            (err isa RischNotImplemented || err isa RischError || err isa NeedComplex) || rethrow()
+            return nothing
+        end
+        isempty(T.levels) || return nothing
+        k = degree(el.den)
+        # a polynomial in 1/x: denominator c xᵏ, k ≥ 1, numerator of degree ≤ k
+        (k >= 1 && is_monomial(el.den) && degree(el.num) <= k) || return nothing
+    end
+    b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    inv_u = mk(b0, :/, b0.lift(1), b0.x)
+    sub(t) = isnode(t) ? term_rebuild(b0, t, Any[sub(a) for a in arguments(t)]) : (string(t) == xk ? inv_u : t)
+    g = mk(b0, :*, b0.lift(-1), sub(f), mk(b0, :^, b0.x, b0.lift(-2)))
+    G = try
+        risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        return nothing
+    end
+    G isa IntegralWithRootSums && return nothing
+    tidy_terms(b0, subst_answer(G, sub, b0), xk)            # (1/(1/x) as x)
+end
+
+# step SN: ∫ A·F(u) not elementary, F ∈ {erf, erfi, Ei, Si, Ci, Shi, Chi}, A ∈ C(x), u ∈ C(x) not constant, when ∫ A is not
+# rational (∫ erf(y)/y, ∫ Ci(x)/x; SymPy #5326, #5741). F(u)′ lies in K = C(x)(e^(±u), e^(-u²), …) with no part free of
+# those exponentials, F(u) is a primitive over K, and an elementary ∫ A F(u) would be c F² + A₁ F + B with A₁ ∈ K,
+# A₁′ = A - 2c F(u)′ (Liouville; logs of K only add to B): the part of A₁ free of the exponentials has derivative A, so
+# ∫ A ∈ C(x). Throws NotElementary when f is A·F(u) and ∫ A has logs, atans or a RootSum; else nothing (the by-parts
+# steps take the rational case).
+const SN_FUNS = (:erf, :erfi, :expinti, :Ei, :sinint, :cosint, :Si, :Ci, :sinhint, :coshint, :Shi, :Chi)
+function special_rational_nonelementary(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    isF(t) = isnode(t) && opname(operation(t)) in SN_FUNS && length(arguments(t)) == 1
+    hasF(t) = isF(t) || (isnode(t) && any(hasF, arguments(t)))
+    hasF(f) || return nothing
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    # a sum (also N/D with N a sum, SymJ's (-Ci(π² z) + log π)/z + …, SymPy #5741): the summands with the one F(u)
+    # as Σ Aᵢ F(u), the rest integrated alone; if ∫ rest is elementary, ∫ f is iff ∫ (Σ Aᵢ) F(u) is
+    flat(t) = (ts = additive_terms(bd, t); isempty(ts) ? Any[t] : reduce(vcat, (flat(a) for a in ts)))
+    summands = flat(f)
+    Fterm, As, rest = nothing, Any[], Any[]
+    for t in summands
+        if !hasF(t)
+            push!(rest, t)
+            continue
+        end
+        # (a unary minus off the factors: -Ci(π² z)/z)
+        pfs = Any[]
+        for (b, k) in product_factors!(Any[], t, 1)
+            while isnode(b) && opname(operation(b)) === :- && length(arguments(b)) == 1
+                b = arguments(b)[1]
+                isodd(k) && push!(pfs, (bd.lift(-1), 1))
+            end
+            push!(pfs, (b, k))
+        end
+        js = findall(((b, _),) -> hasF(b), pfs)
+        (length(js) == 1 && isF(pfs[js[1]][1]) && pfs[js[1]][2] == 1) || return nothing
+        Fj = pfs[js[1]][1]
+        Fterm === nothing && (Fterm = Fj)
+        string(Fj) == string(Fterm) || return nothing
+        as = Any[k == 1 ? b : mk(bd, :^, b, bd.lift(k)) for (i, (b, k)) in enumerate(pfs) if i != js[1]]
+        push!(As, isempty(as) ? bd.lift(1) : length(as) == 1 ? as[1] : mk(bd, :*, as...))
+    end
+    F = Fterm
+    u = arguments(F)[1]
+    rat(t) = try
+        T, el = build_tower(t, xk)
+        isempty(T.levels) ? el : nothing
+    catch err
+        (err isa RischNotImplemented || err isa RischError || err isa NeedComplex) || rethrow()
+        nothing
+    end
+    ue = rat(u)
+    (ue === nothing || (degree(ue.num) <= 0 && degree(ue.den) <= 0)) && return nothing      # (u not constant)
+    A = length(As) == 1 ? As[1] : mk(bd, :+, As...)
+    depends_on(A, xk) || return nothing                 # (∫ c F(u): by parts)
+    rat(A) === nothing && return nothing
+    Qt = try
+        risch_integrate(A, x; build = build, lift = lift, verify = verify)
+    catch err
+        (err isa RischNotImplemented || err isa NotElementary) || rethrow()
+        return nothing
+    end
+    rational = !(Qt isa IntegralWithRootSums) && rat(Qt) !== nothing
+    rational && return nothing
+    if !isempty(rest)                                   # (∫ rest must be elementary for the conclusion)
+        R = try
+            risch_integrate(length(rest) == 1 ? rest[1] : mk(bd, :+, rest...), x; build = build, lift = lift, verify = verify)
+        catch err
+            (err isa RischNotImplemented || err isa NotElementary) || rethrow()
+            return nothing
+        end
+        R isa IntegralWithRootSums && return nothing
+    end
+    throw(NotElementary("∫ A·$(opname(operation(F)))(u) with A, u rational and ∫ A not rational: no elementary antiderivative (Liouville)"))
 end
