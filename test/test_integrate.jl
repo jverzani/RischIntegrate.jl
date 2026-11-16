@@ -2836,7 +2836,8 @@ end
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
         end
     end
-    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(erf(x) / x), :x; build = build, lift = identity)
+    # (∫ 1/x = log x is not rational: not elementary, step SN)
+    @test_throws Risch.NotElementary Risch.risch_integrate(:(erf(x) / x), :x; build = build, lift = identity)
     # Q = ∫ A a multiple of erf(u) itself: ∫ erf(x) e^(-x²) = √π erf(x)²/4 (SymPy #27586; a stack overflow, then)
     F = Risch.risch_integrate(:(erf(x) * exp(-x ^ 2)), :x; build = build, lift = identity)
     for x0 in (-0.7, 0.4, 1.3)
@@ -4055,4 +4056,41 @@ end
                            real(Risch.term_value(f, "x", x0)); rtol = 1e-5)
         end
     end
+end
+
+# SymPy round 18: exp of log x (#4890: x = eᵘ, a Gaussian in u, step LU), exp of polynomials in 1/x (#5376: u = 1/x,
+# step UR), Gaussians with a symbolic coefficient (#5547: z = u/√c, step GS), ∫ A·F(u) for the exponential, error and
+# trigonometric integrals: by parts (Si, Ci, Shi, Chi as Ei, step EB) or not elementary when ∫ A is not rational
+# (#5326, #5741: Liouville, step SN), constants of unknown functions as opaque constants (digamma(1))
+@testset "SymPy round 18: erf of log and 1/x, symbolic Gaussians, special-function integrands" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    SF = SpecialFunctions
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), :(z = $x0), :(y = $x0), :(a = 0.7 + 0im), :(L = 1.9 + 0im),
+                                                 :(erf = $(SF.erf)), :(erfi = $(SF.erfi)), :(expinti = $(SF.expinti)),
+                                                 :(sinint = $(SF.sinint)), :(cosint = $(SF.cosint))), e))
+    dok(F, f, v, x0) = (fv = ev(f, x0); abs((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6 - fv) < 1e-6 * max(1, abs(fv)))
+    for (f, v, xs) in ((:(exp(-log(x) ^ 2)), :x, (0.3, 1.7, 4.1)), (:(x ^ a * exp(-log(x) ^ 2)), :x, (0.3, 1.7)),
+                       (:(x ^ 2 * exp(log(x) ^ 2)), :x, (0.3, 1.7)),
+                       (:(exp(1 / x ^ 2)), :x, (-1.3, 0.6, 1.7)), (:(exp(-1 / x ^ 2)), :x, (-1.3, 0.6)), (:(x ^ 2 * exp(-1 / x ^ 2)), :x, (0.6, 1.7)),
+                       (:(cos(a * z ^ 2)), :z, (0.3, 1.1, -0.8)), (:(sin(a * z ^ 2)), :z, (0.3, -0.8)), (:(exp(im * a * z ^ 2)), :z, (0.3, 1.1)),
+                       (:(cos(pi * z ^ 2)), :z, (0.3, 1.1)), (:(cos(2 * pi * z ^ 2 / L) ^ 2), :z, (0.3, 1.1)), (:(z ^ 2 * cos(a * z ^ 2)), :z, (0.3, 1.1)))
+        F = Risch.risch_integrate(f, v; build = build, lift = identity)
+        @test F isa Expr
+        for x0 in xs
+            @test dok(F, f, v, complex(x0))
+        end
+    end
+    @test occursin("erf", string(Risch.risch_integrate(:(exp(-log(x) ^ 2)), :x; build = build, lift = identity)))
+    # by parts: Si, Ci as Ei; Ci(π² z)/z and erf(y)/y not elementary (∫ 1/z = log z is not rational)
+    for f in (:(cosint(y)), :(sinint(y)), :(y * cosint(y)), :(sinint(2y)))
+        F = Risch.risch_integrate(f, :y; build = build, lift = identity)
+        for y0 in (0.4, 1.7, 3.1)
+            @test isapprox(real((ev(F, y0 + 1e-6) - ev(F, y0 - 1e-6)) / 2e-6), real(ev(f, y0)); rtol = 1e-6)
+        end
+    end
+    for f in (:(erf(y) / y), :(cosint(y) / y), :(sinint(y) / y), :(expinti(y) / y), :(erfi(2y) / y), :(erf(y) / (1 + y ^ 2)),
+              :((-cosint(y * pi ^ 2) + log(pi)) / y - digamma(1) / y + log(y) / y + log(pi) / y))
+        @test_throws Risch.NotElementary Risch.risch_integrate(f, :y; build = build, lift = identity)
+    end
+    @test string(Risch.risch_integrate(:(digamma(1) / z), :z; build = build, lift = identity)) == "digamma(1) * log(z)"
 end

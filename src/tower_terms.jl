@@ -200,6 +200,9 @@ function parse_tower(t, T::Tower)
                     (T.prints[L0 + 1] = t)
                 return r
             else
+                # a function the tower does not know, of a constant (digamma(1) = -γ in SymJ's ∫∫ sin(xyz), SymPy #5741):
+                # an opaque constant, as a parameter (step SY: the answer holds for its generic values)
+                has_x(t, T.xk) || return sym_const(T, t)
                 throw(RischNotImplemented("unsupported operation `$n`", t))
             end
         end
