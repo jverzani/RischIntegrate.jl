@@ -217,9 +217,10 @@ cfromB(::Type{Frac{UPoly{S}}}, v) where {S} = kconst(cfromB(S, v))
 
 # --- CF as the constant field of a tower (stage 2: behind USE_CF) -----------------------------------------------
 # build_tower takes CF{base} for ℚ(t₁, …, tₖ), k ≥ 1, when USE_CF[] (else the nested cfield(k, base))
-const USE_CF = Ref(false)
-# (stage 2 measurements: RISCH_USE_CF=1 turns it on when the module is loaded, for the scan's worker processes)
-__init__() = (USE_CF[] = get(ENV, "RISCH_USE_CF", "0") == "1"; nothing)
+# on by default (stage 3): the precompile workload compiles CF's paths. RISCH_USE_CF=0 when the module is loaded takes
+# the nested types, for comparisons
+const USE_CF = Ref(true)
+__init__() = (haskey(ENV, "RISCH_USE_CF") && (USE_CF[] = ENV["RISCH_USE_CF"] == "1"); nothing)
 const_field_type(k::Int, base::Type) = (k >= 1 && USE_CF[]) ? CF{base} : cfield(k, base)
 # a field with generators (parameters, e, log p): the nested types or CF
 is_tfield(::Type{C}) where {C} = C <: Frac || C <: CF
