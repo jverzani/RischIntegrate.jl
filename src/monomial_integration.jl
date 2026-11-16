@@ -169,7 +169,7 @@ end
 # Over K = B(t₁, …, tₖ), K a rational function field, a constant multiple of R (callers need only its roots):
 # D, A, dD scaled into the ring B[t₁, …, tₖ] once, fraction-free resultants there (step FR) and no
 # division by the scale factors, whose gcds over K would cost more than the resultants.
-function residue_resultant(D::UPoly{K}, A::UPoly{K}, dD::UPoly{K}) where {K<:Frac}
+function residue_resultant(D::UPoly{K}, A::UPoly{K}, dD::UPoly{K}) where {K<:TField}
     m, n = integral_multiplier(K, D.c), integral_multiplier(K, [A.c; dD.c])
     sc(p, c) = UPoly{K}(K[a * c for a in p.c])
     residue_resultant(sc(D, m), sc(A, n), sc(dD, n), ff_resultant)
@@ -213,14 +213,21 @@ end
 # candidate), take G = gcd of the two images of D, lift it back (its constants lie in B) and accept
 # it only if it divides D exactly. Returns G (monic) or nothing.
 inner_field(::Type{Frac{UPoly{B}}}) where {B} = B
+inner_field(::Type{CF{B}}) where {B} = CF{B}             # (the same type one level down: t_k specialized in place)
+# c with the outermost generator t_k at the value v (the nested types: k is the type's depth)
+spec_top(c::Frac, k::Int, v) = (d = peval(c.den, v); iszero(d) ? throw(DomainError(v)) : peval(c.num, v) / d)
+spec_top(c::CF, k::Int, v) = c.lev < k ? c : (d = peval(c.f.den, v); iszero(d) ? throw(DomainError(v)) : peval(c.f.num, v) / d)
+lift_top(::Type{CF{B}}) where {B} = identity
+lift_top(::Type) = kconst
 function tower_tfree_factor(T::Tower{C}, i::Int, D::UPoly) where {C}
     rational_tfield(C) || return nothing
     B = inner_field(C)
+    k = length(T.consts)
     cands = Any[]
     for t in (2, 3, 5, 7, 11, 13)
         length(cands) == 2 && break
         bt = cfromQ(B, Q(t))
-        φ(c) = (d = peval(c.den, bt); iszero(d) ? throw(DomainError(t)) : peval(c.num, bt) / d)
+        φ(c) = spec_top(c, k, bt)
         try
             Tt = change_constants(T, B, φ)
             Kt = Tt.Ts[i]
@@ -234,7 +241,7 @@ function tower_tfree_factor(T::Tower{C}, i::Int, D::UPoly) where {C}
     G = gcd(cands[1][2], cands[2][2])
     (0 < degree(G) < degree(D)) || return nothing
     K = T.Ts[i]
-    GL = UPoly{K}(K[map_constants(cands[1][1], T, c, kconst, i - 1) for c in G.c])
+    GL = UPoly{K}(K[map_constants(cands[1][1], T, c, lift_top(C), i - 1) for c in G.c])
     iszero(rem(D, GL)) ? monic(GL) : nothing
 end
 
@@ -254,12 +261,12 @@ function residue_logs(T::Tower, i::Int, A::UPoly, D::UPoly)
     K = T.Ts[i]
     dD = Dp(T, i, D)
     CT0 = ctype(T)
-    CT0 <: Frac && cdepth(CT0) > MAX_ROOTSUM_GENS && degree(D) > 2 && throw(RischNotImplemented(
+    is_tfield(CT0) && ngens(CT0, D) > MAX_ROOTSUM_GENS && degree(D) > 2 && throw(RischNotImplemented(
         "residues of a denominator of degree $(degree(D)) over more than $MAX_ROOTSUM_GENS symbolic constants"))
     # (over exactly MAX_ROOTSUM_GENS parameters, a high degree: the resultant takes minutes, step RB;
     # sample 1018: x⁶/((a + b x² + c x⁴) √(d + e x²)))
-    CT0 <: Frac && cdepth(CT0) >= MAX_ROOTSUM_GENS && degree(D) > MAX_RESIDUE_DEGREE4 && throw(RischNotImplemented(
-        "residues of a denominator of degree $(degree(D)) over $(cdepth(CT0)) symbolic constants"))
+    is_tfield(CT0) && ngens(CT0, D) >= MAX_ROOTSUM_GENS && degree(D) > MAX_RESIDUE_DEGREE4 && throw(RischNotImplemented(
+        "residues of a denominator of degree $(degree(D)) over $(ngens(CT0, D)) symbolic constants"))
     Rz = residue_resultant(D, A, dD)
     iszero(Rz) && throw(RischError("zero resultant in the residue computation"))
     CT = ctype(T)
@@ -576,7 +583,7 @@ end
 # (with ≥ CHECK_IMAGE_DEPTH parameters in the constants: checked at two images of them first, step CK)
 const CHECK_IMAGE_DEPTH = 3
 function check_tower(T::Tower, L::Int, res::ElemIntegral, f)
-    if fdepth(ctype(T)) >= CHECK_IMAGE_DEPTH
+    if nparams(T) >= CHECK_IMAGE_DEPTH
         r = check_tower_images(T, L, res, f)
         r === nothing || return r
     end

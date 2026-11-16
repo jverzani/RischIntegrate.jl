@@ -775,7 +775,7 @@ end
 # tower without trigonometric levels (over ℚ(i) its logarithmic part can stay a RootSum: 1/(t⁴ + 1)); nothing otherwise
 function integrate_real_over_q(T::Tower, kinds, w, bd::Builder, verify::Bool, pos)
     C = ctype(T)
-    (C === QI || (C <: Frac && cbase(C) === QI && all(g -> g.kind in (:exp, :log, :sym, :symlog), T.consts))) || return nothing
+    (C === QI || (is_tfield(C) && cbase(C) === QI && all(g -> g.kind in (:exp, :log, :sym, :symlog), T.consts))) || return nothing
     all(==(:real), kinds) || return nothing
     RC = real_ctype(C)
     ok = Ref(true)

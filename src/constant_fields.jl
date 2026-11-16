@@ -178,7 +178,7 @@ cbase(::Type{Q}) = Q
 cbase(::Type{QI}) = QI
 cbase(::Type{Frac{UPoly{B}}}) where {B} = cbase(B)
 # ℚ(t₁, …, tₖ) with k ≥ 1 (RootSums over it: step RE)
-rational_tfield(::Type{C}) where {C} = C <: Frac && cbase(C) === Q
+rational_tfield(::Type{C}) where {C} = (C <: Frac || C <: CF) && cbase(C) === Q
 # the generator tⱼ as an element of C = ℚ(t₁, …, tₖ), 1 ≤ j ≤ k
 function tgen(::Type{Frac{UPoly{B}}}, j::Int) where {B}
     k = 1 + cdepth(B)
@@ -258,7 +258,7 @@ cimag(::Type{QI}) = QI(Q(0), Q(1))
 cimag(::Type{QSB{d,B}}) where {d,B} = QSB{d,B}(cimag(B), zero(B))
 cimag(::Type{Frac{UPoly{B}}}) where {B} = kconst(cimag(B))
 cimag(::Type{T}) where {T} = throw(RischNotImplemented("the constant field $T does not contain i"))
-is_complex_field(::Type{C}) where {C} = C === QI || C <: QSB{<:Any,QI} || (C <: Frac && cbase(C) === QI)
+is_complex_field(::Type{C}) where {C} = C === QI || C <: QSB{<:Any,QI} || ((C <: Frac || C <: CF) && cbase(C) === QI)
 const MAX_CONSTS = 8
 const MAX_PARAMS = 12         # symbolic parameters (steps SY, PF): see the cap in `parse_tower`
 # RootSums over more constant generators than this are refused: their log part (Lazard-Rioboo-Trager over
@@ -291,7 +291,7 @@ end
 function const_exp(T::Tower, c)
     C = ctype(T)
     gens = T.consts
-    (C === Q || C === QI || C <: Frac) || throw(RischNotImplemented(
+    (C === Q || C === QI || C <: Frac || C <: CF) || throw(RischNotImplemented(
         "exp of the constant $c over the constant field $C is not implemented"))
     cx = is_complex_field(C)
     logs = [j for j in eachindex(gens) if gens[j].kind === :log]
@@ -358,7 +358,7 @@ end
 function const_log(T::Tower, c)
     C = ctype(T)
     gens = T.consts
-    (C === Q || C === QI || C <: Frac) || throw(RischNotImplemented(
+    (C === Q || C === QI || C <: Frac || C <: CF) || throw(RischNotImplemented(
         "log of the constant $c over the constant field $C is not implemented"))
     # c = r · Π tⱼ^kⱼ: log(tₑ^k) = k/s; log of a parameter a is a generator log(a) of its own (a > 0 is
     # assumed, as for the parameters in radicands)

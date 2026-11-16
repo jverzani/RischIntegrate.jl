@@ -707,7 +707,7 @@ function integrate_param_binomial(f, x, rads; build = nothing, lift = nothing, v
     end
     (isempty(T.levels) && isone(el.den)) || return nothing
     C = ctype(T)
-    C <: Frac || return nothing
+    is_tfield(C) || return nothing
     N = el.num
     n = degree(N)
     (n >= 3 && count(!iszero, N.c) == 2 && !iszero(N.c[1])) || return nothing

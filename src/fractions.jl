@@ -65,9 +65,10 @@ function Base.gcd(a::UPoly{T}, b::UPoly{T}) where {T<:Frac}
     d === nothing || d == min(degree(a), degree(b)) ? euclid_gcd(a, b) : guarded_gcd(a, b)
 end
 function guarded_gcd(a::UPoly{T}, b::UPoly{T}) where {T<:Frac}
+    K = cf_maxlev(a, b)                                 # (over CF: the constants counted as the nested types would)
     while !iszero(b)
         r = monic(rem(a, b))
-        nleaves(r) > 2 * max(nleaves(a), nleaves(b)) && return ff_gcd(a, b)
+        nleaves_k(r, K) > 2 * max(nleaves_k(a, K), nleaves_k(b, K)) && return ff_gcd(a, b)
         a, b = b, r
     end
     monic(a)

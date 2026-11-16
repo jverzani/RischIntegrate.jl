@@ -168,7 +168,7 @@ function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
     # D ∈ ℚ[x] over a parameter field: split by its factors over ℚ, so that each residue polynomial has
     # degree of a factor (a rational root gives its residue at once; a resultant over ℚ(a, b, …) of the
     # whole D would have roots it cannot find)
-    if C <: Frac && !iszero(A) && degree(D) >= 2
+    if is_tfield(C) && !iszero(A) && degree(D) >= 2
         qs = [crational(c) for c in D.c]
         if all(!isnothing, qs)
             fs = factor_Q(UPoly{Q}(Q[q for q in qs]))
@@ -193,12 +193,12 @@ function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
     iszero(A) && return logs, atans, unresolved, quads
     dD = deriv(D)
     # (the resultant over more than MAX_ROOTSUM_GENS parameters does not finish for a quartic)
-    C <: Frac && cdepth(C) > MAX_ROOTSUM_GENS && degree(D) > 2 && throw(RischNotImplemented(
+    is_tfield(C) && ngens(C, D) > MAX_ROOTSUM_GENS && degree(D) > 2 && throw(RischNotImplemented(
         "residues of a denominator of degree $(degree(D)) over more than $MAX_ROOTSUM_GENS symbolic constants"))
     # (over exactly MAX_ROOTSUM_GENS parameters, a high degree: the resultant takes minutes, step RB;
     # sample 1018: x⁶/((a + b x² + c x⁴) √(d + e x²)))
-    C <: Frac && cdepth(C) >= MAX_ROOTSUM_GENS && degree(D) > MAX_RESIDUE_DEGREE4 && throw(RischNotImplemented(
-        "residues of a denominator of degree $(degree(D)) over $(cdepth(C)) symbolic constants"))
+    is_tfield(C) && ngens(C, D) >= MAX_ROOTSUM_GENS && degree(D) > MAX_RESIDUE_DEGREE4 && throw(RischNotImplemented(
+        "residues of a denominator of degree $(degree(D)) over $(ngens(C, D)) symbolic constants"))
     Rz = residue_resultant(D, A, dD)                 # R(z) = res_x(D, A - z D')
     iszero(Rz) && throw(RischError("zero resultant in the residue computation"))
     degree(Rz) <= 0 && return logs, atans, unresolved, quads
@@ -274,7 +274,7 @@ function derivative_of(res::RationalIntegral{C}) where {C}
 end
 function check_result(res::RationalIntegral{C}, f::Frac) where {C}
     isempty(res.unresolved) || return false
-    if C <: Frac && isempty(res.quads)
+    if is_tfield(C) && isempty(res.quads)
         r = check_at_points(res, f)
         r === nothing || return r
     end
