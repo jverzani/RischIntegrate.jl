@@ -2722,6 +2722,19 @@ end
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
         end
     end
+    # a denominator x + y rationalized and a logarithmic part log((x + y)/(x - y)), y = √(x + log x) (SymPy #4231,
+    # Wikipedia's Risch example; answer 2(y + log(x + y))), also with the quotient as SymJ writes it, (x + y)⁻¹. The
+    # rest of the answer, log(x - x² + log x), is a logarithm of a negative number: complex values
+    evc(e, x0) = Core.eval(Main, Expr(:let, :(x = $(complex(x0))), e))
+    y = :(sqrt(x + log(x)))
+    for f in (:((1 + 2x + $y * (1 + 3x) + x ^ 2) / (x * (x + $y) * $y)),
+              :((1 + 2x + $y * (1 + 3x) + x ^ 2) * x ^ -1 * (x + $y) ^ -1 * $y ^ -1))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin("log((x + sqrt(x + log(x)))", string(F))
+        for x0 in (0.7, 1.9, 4.5)
+            @test isapprox((evc(F, x0 + 1e-6) - evc(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
 end
 
 # a square root of a negative constant (I written as √-1) is an opaque constant, as √(2h) is: the answer is an
