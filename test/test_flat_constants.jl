@@ -54,9 +54,12 @@ end
 # #148 (step LS no longer split d⁻¹ (e cos y)^(5/2) (a + a sin y) after step AL's y = c + d x)
 @testset "CF: csize; step LS over a constant denominator" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    hyp = Risch.HYP_ANSWERS[]
+    Risch.HYP_ANSWERS[] = true   # (the default; test_integrate.jl turns it off)
     for f in (:((c + d * x ^ 2) ^ 3 / (x ^ (9 / 2) * (a + b * x ^ 2))), :((e * cos(c + d * x)) ^ (5 / 2) * (a + a * sin(c + d * x))))
         @test Risch.risch_integrate(f, :x; build = build, lift = identity) isa Expr
     end
+    Risch.HYP_ANSWERS[] = hyp
 end
 
 # CF methods for helpers written on a bare ::Frac (lead_rational: a MethodError on ∫ (1 - cos(π y z))/(y z) dy, SymJ's
