@@ -4113,3 +4113,20 @@ end
         @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
     end
 end
+
+# Chebyshev's binomials x^m (a + b xⁿ)^p, m and p fractional, by u = xⁿ: one radical of a linear or Möbius radicand
+# in u (step CB; Rubi 1.1.3, (c x)^(1/2)/(a - b x²)^(3/4), x⁸/(a - b x⁴)^(1/4))
+@testset "Step CB: x^m (a + b xⁿ)^p by u = xⁿ" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(b = 0.37 + 0im), :(c = 1.6 + 0im), :(x = $t + 0im)), e))
+    for f in (:(x ^ (1 / 2) / (1 - x ^ 2) ^ (3 / 4)), :((c * x) ^ (1 / 2) / (a - b * x ^ 2) ^ (3 / 4)),
+              :(x ^ 8 / (a - b * x ^ 4) ^ (1 / 4)), :(1 / ((c * x) ^ (5 / 2) * (a + b * x ^ 2) ^ (5 / 4))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test F isa Expr
+        for x0 in (0.31, 0.77, 1.4)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    # (a bare x beside x²: no u = xⁿ)
+    @test Risch.integrate_monomial_power_subst(:(sqrt(x) / (1 + x + x ^ 2) ^ (3 / 4)), :x; build = build, lift = identity) === nothing
+end
