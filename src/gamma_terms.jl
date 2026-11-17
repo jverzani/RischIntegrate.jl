@@ -366,7 +366,21 @@ function integrate_log_radicals(f, x; build = nothing, lift = nothing, verify::B
     end
     G isa IntegralWithRootSums && return nothing
     lx = mk(b0, :log, b0.x)
-    back(t) = isnode(t) ? term_rebuild(b0, t, Any[back(a) for a in arguments(t)]) : (string(t) == xk ? lx : t)
+    # (e^(k u) ↦ xᵏ, not exp(k log x))
+    function expk(t)
+        w = exp_arg(t)
+        w === nothing && return nothing
+        string(w) == xk && return Q(1)
+        (isnode(w) && opname(operation(w)) === :* && length(arguments(w)) == 2) || return nothing
+        a, b = arguments(w)
+        k = string(b) == xk ? leaf_rational(a) : string(a) == xk ? leaf_rational(b) : nothing
+        k === nothing ? nothing : Q(k)
+    end
+    function back(t)
+        k = isnode(t) ? expk(t) : nothing
+        k === nothing || return isone(k) ? b0.x : mk(b0, :^, b0.x, b0.lift(k))
+        isnode(t) ? term_rebuild(b0, t, Any[back(a) for a in arguments(t)]) : (string(t) == xk ? lx : t)
+    end
     back(G)
 end
 
