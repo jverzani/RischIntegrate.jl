@@ -244,7 +244,14 @@ cbase(::Type{CF{B}}) where {B} = B
 tgen(::Type{CF{B}}, j::Int) where {B} = cf_gen(CF{B}, j)
 cimag(::Type{CF{B}}) where {B} = CF{B}(cimag(B))
 crational(c::CF) = c.lev == 0 ? crational(c.val) : nothing
-csize(c::CF) = c.lev == 0 ? 1 : csize(c.f)
+# csize as the nested types count it: a zero at depth L ≥ 1 is an empty polynomial there (0, not 1), a value of
+# level j < L the same as at depth L - 1. Counted with the CF's level-0 zeros, step RB's size test refused
+# quartic RootSums the nested types computed (sample 393: (c + d x²)³/(x^(9/2) (a + b x²)))
+csize_at(c::CF, L::Int) = iszero(c) ? (L == 0 ? 1 : 0) : (L == 0 || c.lev == 0) ? 1 : c.lev < L ? csize_at(c, L - 1) :
+    csize_at(c.f.num, L - 1) + (isone(c.f.den) ? 0 : csize_at(c.f.den, L - 1))
+csize_at(p::UPoly{<:CF}, L::Int) = isempty(p.c) ? 0 : sum(c -> csize_at(c, L), p.c)
+csize(c::CF) = csize_at(c, c.lev)
+csize(p::UPoly{<:CF}) = csize_at(p, maximum((c.lev for c in p.c); init = 0))
 # the value of c in the subfield of the first d generators, if it lies there
 const_below(c::CF, d::Int) = c.lev <= d ? c : nothing
 
