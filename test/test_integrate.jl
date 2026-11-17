@@ -4113,3 +4113,21 @@ end
         @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
     end
 end
+
+# an inverse function of its own function, atanh(tanh(a + b x)) (Rubi 7.3.7): w ↦ ±(a + b x), then a ↦ ±w - b x in the
+# answer (step IC; acoth(tanh u) = u + iπ/2 is complex: values checked as complex numbers)
+@testset "Step IC: atanh(tanh(a + b x)) and its kin" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 0.37 + 0im), :(b = 1.3 + 0im), :(x = $t)), e))
+    w, v = :(atanh(tanh(a + b * x))), :(acoth(tanh(a + b * x)))
+    for f in (:(x ^ 3 * $w ^ 3), :(x ^ 2 / sqrt($w)), :(x ^ (7 / 2) / $w ^ 3), :(x ^ 3 / $v ^ 2),
+              :(x * atan(tan(a + b * x))), :(x ^ 2 * acot(tan(a + b * x))))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test F isa Expr
+        for x0 in (0.31, 0.77, 1.4)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+        end
+    end
+    # (a symbol of L elsewhere in f: not this step)
+    @test Risch.integrate_inverse_compositions(:(a * atanh(tanh(a + b * x))), :x; build = build, lift = identity) === nothing
+end
