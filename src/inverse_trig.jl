@@ -594,6 +594,42 @@ end
 # ---------------------------------------------------------------------------
 const PARTS_FNS = (:atan, :acot, :asin, :acos, :asec, :acsc, :asinh, :acosh, :atanh, :acoth, :acsch, :asech, :log)
 
+# L′'s square roots √v written with Q's √u where u = κ v, κ free of x: v ≥ 0 wherever L is real (1 - g² for asin g,
+# g² - 1 for acosh g, …), and there √v = √u/√κ for the principal roots. Q from step PR has the integrand's own
+# radical (√(d f - d f x²), #147) beside asin's 1/√(1 - x²): two radicals of one radicand for the tower, and
+# ∫ Q L′ was refused (sample 2306, (a + b asin(c x))/((d + c d x)^(5/2) √(f - c f x)))
+function align_radicals(dL, Qt, xk::String, bd::Builder)
+    @nospecialize dL Qt
+    qr = Any[u for (e, u) in collect_radicals(Qt, xk) if denominator(e) == 2]
+    isempty(qr) && return dL
+    function κof(u, v)
+        T, el = try
+            build_tower(mk(bd, :/, u, v), xk)
+        catch e
+            (e isa RischNotImplemented || e isa RischError) || rethrow()
+            return nothing
+        end
+        (isempty(T.levels) && !iszero(el) && degree(el.num) <= 0 && degree(el.den) <= 0) || return nothing
+        frac_term(Builder(bd.build, bd.lift, bd.x, T.consts), el)
+    end
+    pw(t, e) = e == Q(1) // 2 ? mk(bd, :sqrt, t) : mk(bd, :^, t, bd.lift(e))
+    function walk(t)
+        rp = radical_parts(t)
+        if rp !== nothing && denominator(rp[1]) == 2 && has_x(rp[2], xk)
+            any(u -> string(u) == string(rp[2]), qr) && return t
+            for u in qr
+                κ = κof(u, rp[2])
+                κ === nothing && continue
+                return mk(bd, :/, pw(u, rp[1]), pw(κ, rp[1]))
+            end
+            return t
+        end
+        (safe_iscall(t) && !isempty(arguments(t))) || return t
+        bd.build(op_function(t), (walk(a) for a in arguments(t))...)
+    end
+    walk(dL)
+end
+
 function try_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     PARTS[] && return nothing
@@ -616,7 +652,7 @@ function try_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
         G = with_parts() do
             Qt = isempty(rest) ? bd.x : risch_integrate(A, x; build = build, lift = lift, verify = verify)
             Qt isa IntegralWithRootSums && return nothing
-            dL = term_deriv(bd, L, xk)
+            dL = align_radicals(term_deriv(bd, L, xk), Qt, xk, bd)
             Lk = k == 1 ? L : mk(bd, :^, L, bd.lift(k))
             dLk = k == 1 ? dL : mk(bd, :*, bd.lift(k), k == 2 ? L : mk(bd, :^, L, bd.lift(k - 1)), dL)
             # (one flat product, so that step IT sees a constant factor of Q: b·(…)√(1 + x²)·(1/√(1 + x²)))

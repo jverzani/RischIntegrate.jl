@@ -3440,9 +3440,9 @@ end
 end
 
 # SymPy round 9: integrate without a variable is an error, not the integrand back (#18036 batch); a Julia number
-# integrand in a definite integral (#18631); step PR's answer with a RootSum kept when step PS cannot scale it away
-# (atan(r/√(d² + s²))/(d² + s²)^(3/2), #19188, whose d = 1 has a RootSum too)
-@testset "SymPy round 9: no variable, number integrands, a parameter radical with a RootSum" begin
+# integrand in a definite integral (#18631); atan(r/√(d² + s²))/(d² + s²)^(3/2) (#19188), once step PR's answer with a
+# RootSum, is elementary since by parts writes atan's √(d² + s²) with Q's √(1 + (s/d)²) (`align_radicals`, sample 2306)
+@testset "SymPy round 9: no variable, number integrands, a parameter radical" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     @test_throws ArgumentError integrate(:(sin(x)))
     @test_throws ArgumentError integrate(:(x ^ 2 + 1))
@@ -3452,22 +3452,14 @@ end
     @test_throws ArgumentError integrate(sin(x))
     @test integrate(0, (x, 0, 1)) == 0
     @test SymEngine.N(integrate(1, (x, 0, 1))) == 1
-    vals = Dict(:d => 13 // 10, :r => 7 // 10)
-    sub(e) = e isa Symbol ? get(vals, e, e) : e isa Expr ? Expr(e.head, map(sub, e.args)...) : e
-    bk(t) = Risch.isnode(t) ? sub(t) : get(vals, t, t)
-    fixrs(r) = r isa Risch.ScaledRootSum ? Risch.ScaledRootSum(bk(r.factor), fixrs(r.rs)) :
-               Risch.TermRootSum(r.poly, r.coeffs, r.var, r.pterms === nothing ? nothing :
-                                 Any[t === nothing ? nothing : bk(t) for t in r.pterms])
     for f in (:(-r * atan(r / sqrt(d ^ 2 + s ^ 2)) / (2 * (d ^ 2 + s ^ 2) ^ (3 // 2))),
               :(atan(1 / sqrt(d ^ 2 + s ^ 2)) / (d ^ 2 + s ^ 2) ^ (3 // 2)))
         F = Risch.risch_integrate(f, :s; build = build, lift = identity)
-        @test F isa Risch.IntegralWithRootSums
-        # (the parameters' values in the answer, the RootSum's polynomial too)
-        Fn = Risch.subst_answer(F, bk, Risch.Builder(build, identity, :s))
-        Fn = Risch.IntegralWithRootSums(Fn.elementary, Any[fixrs(r) for r in Fn.rootsums], Fn.var)
-        fn = sub(f)
-        for s0 in (0.3, 1.1, -0.7, 2.5)
-            @test isapprox((Fn(s0 + 1e-5) - Fn(s0 - 1e-5)) / 2e-5, Core.eval(Main, Expr(:let, :(s = $s0), fn)); rtol = 1e-6)
+        @test F isa Expr
+        # (d of either sign: √(d²) in the answer)
+        for (d, r) in ((13 // 10, 7 // 10), (-13 // 10, 7 // 10)), s0 in (0.3, 1.1, -0.7, 2.5)
+            ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(d = $d), :(r = $r), :(s = $t)), e))
+            @test isapprox((ev(F, s0 + 1e-5) - ev(F, s0 - 1e-5)) / 2e-5, ev(f, s0); rtol = 1e-6)
         end
     end
 end
@@ -4093,4 +4085,18 @@ end
         @test_throws Risch.NotElementary Risch.risch_integrate(f, :y; build = build, lift = identity)
     end
     @test string(Risch.risch_integrate(:(digamma(1) / z), :z; build = build, lift = identity)) == "digamma(1) * log(z)"
+end
+
+# Rubi sample 2306: by parts with asin's 1/√(1 - c²x²) beside Q's √(d f - c² d f x²), two radicals of one radicand
+# for the tower until `align_radicals` writes the first with the second (solved by v1.3.0 by another route)
+@testset "Step AP: L′'s radical aligned with Q's (sample 2306)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    f = :((a + b * asin(c * x)) / ((d + c * d * x) ^ (5 / 2) * sqrt(f - c * f * x)))
+    F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+    @test F isa Expr
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 0.3), :(b = 1.7), :(c = 0.8), :(d = 1.2), :(f = 0.9),
+                                                :(x = $t)), e))
+    for x0 in (-0.9, -0.2, 0.4, 1.1)
+        @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
+    end
 end
