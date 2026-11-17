@@ -30,9 +30,9 @@ function additive_terms(bd::Builder, f)
         js = findall(((t, e),) -> e == 1 && issum(t), fs)
         # (a denominator that is not a radical: split over (a + b acos(c x))/√(d - c²d x²), the two integrals took six
         # times as long as the whole, sample 2344)
-        # (and a denominator depending on x: c⁻¹ beside a sum after step AL's y = c x just comes out of the integral)
-        xk = string(bd.x)
-        (length(js) == 1 && any(((t, e),) -> e < 0 && radical_parts(t) === nothing && depends_on(t, xk), fs)) || return Any[]
+        # (a constant denominator is split: d⁻¹ (e cos y)^(7/2) (a + a sin y) after step AL's y = c + d x is refused
+        # whole and integrated term by term, sample 1326; 2344 stays at 30 s with only the radical excluded)
+        (length(js) == 1 && any(((t, e),) -> e < 0 && radical_parts(t) === nothing, fs)) || return Any[]
         j = js[1]
         rest = Any[e == 1 ? t : mk(bd, :^, t, bd.lift(e)) for (i, (t, e)) in enumerate(fs) if i != j]
         return Any[mk(bd, :*, t, rest...) for t in parts(fs[j][1])]

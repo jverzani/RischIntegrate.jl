@@ -41,8 +41,25 @@ import RischIntegrate as Risch
             @test Risch.to_cf(F, Risch.resultant(a, b)) == Risch.resultant(a′, b′)
             sq, sq′ = Risch.squarefree(A * g), Risch.squarefree(A′ * g′)
             @test [conv(p) => m for (p, m) in sq] == sq′
+            @test Risch.csize(A) == Risch.csize(A′)   # (step RB's size test)
         end
+        # zero coefficients count 0 above depth 0, as in the nested types: x⁴ + t₁ has 3 rational coefficients (t₁ = 0 + 1·t₁),
+        # not 6
+        @test Risch.csize(P′([gens[1][2], zero(F), zero(F), zero(F), one(F)])) ==
+              Risch.csize(P([gens[1][1], zero(C), zero(C), zero(C), one(C)])) == 3
     end
+end
+
+# sample 393, refused under CF by step RB's size test (csize counted the CF's zeros), and sample 1327, refused after
+# #148 (step LS no longer split d⁻¹ (e cos y)^(5/2) (a + a sin y) after step AL's y = c + d x)
+@testset "CF: csize; step LS over a constant denominator" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    hyp = Risch.HYP_ANSWERS[]
+    Risch.HYP_ANSWERS[] = true   # (the default; test_integrate.jl turns it off)
+    for f in (:((c + d * x ^ 2) ^ 3 / (x ^ (9 / 2) * (a + b * x ^ 2))), :((e * cos(c + d * x)) ^ (5 / 2) * (a + a * sin(c + d * x))))
+        @test Risch.risch_integrate(f, :x; build = build, lift = identity) isa Expr
+    end
+    Risch.HYP_ANSWERS[] = hyp
 end
 
 # CF methods for helpers written on a bare ::Frac (lead_rational: a MethodError on ∫ (1 - cos(π y z))/(y z) dy, SymJ's
