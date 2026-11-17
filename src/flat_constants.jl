@@ -215,13 +215,10 @@ end
 cfromB(::Type{B}, v::B) where {B} = v
 cfromB(::Type{Frac{UPoly{S}}}, v) where {S} = kconst(cfromB(S, v))
 
-# --- CF as the constant field of a tower (stage 2: behind USE_CF) -----------------------------------------------
-# build_tower takes CF{base} for ℚ(t₁, …, tₖ), k ≥ 1, when USE_CF[] (else the nested cfield(k, base))
-# on by default (stage 3): the precompile workload compiles CF's paths. RISCH_USE_CF=0 when the module is loaded takes
-# the nested types, for comparisons
-const USE_CF = Ref(true)
-__init__() = (haskey(ENV, "RISCH_USE_CF") && (USE_CF[] = ENV["RISCH_USE_CF"] == "1"); nothing)
-const_field_type(k::Int, base::Type) = (k >= 1 && USE_CF[]) ? CF{base} : cfield(k, base)
+# --- CF as the constant field of a tower --------------------------------------------------------------------------
+# build_tower takes CF{base} for ℚ(t₁, …, tₖ), k ≥ 1. (The nested cfield(k, base) stays for the tests that compare
+# the two; v1.4.0's RISCH_USE_CF=0, which selected it, is gone.)
+const_field_type(k::Int, base::Type) = k >= 1 ? CF{base} : base
 # a field with generators (parameters, e, log p): the nested types or CF
 is_tfield(::Type{C}) where {C} = C <: Frac || C <: CF
 # the number of generators of C that the RootSum and residue caps count: the depth of the nested type; for CF, the
