@@ -1319,3 +1319,52 @@ function integrate_even_binomials(g, xk::String, b0::Builder)
     isempty(parts) && return nothing
     length(parts) == 1 ? parts[1] : mk(b, :+, parts...)
 end
+
+# step SF: a RootSum left for a rational f whose denominator has two or more squarefree factors F_i^(k_i): the
+# partial fractions A_i/F_i^(k_i), each integrated alone, where step BN's scaling gives the closed form that the
+# residue polynomial of the whole leaves a RootSum (3/((x³ - 1)² (2 - x³)): cube roots of 2; sample 1808,
+# cot(c + d x)² (a + i a tan(c + d x))^(1/3) after u³ = 1 + i tan). Kept only when every piece is in closed form.
+function integrate_squarefree_split(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    T, el = try
+        build_tower(f, xk)
+    catch err
+        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        return nothing
+    end
+    C = ctype(T)
+    (isempty(T.levels) && (C === Q || real_param_field(C))) || return nothing
+    N, D = el.num, el.den
+    P = typeof(N)
+    sf = squarefree(D)
+    length(sf) >= 2 || return nothing
+    q, r = divrem(N, D)
+    l = lc(D)
+    r = scale_div(r, l)
+    Dm = monic(D)
+    b = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
+    pieces = Any[]
+    iszero(q) || push!(pieces, frac_term(b, frac(q)))
+    for (F, k) in sf
+        Pi = F^k
+        Ei = divrem(Dm, Pi)[1]
+        s, _, g = gcdex(Ei, Pi)
+        isone(g) || return nothing
+        Ai = rem(r * s, Pi)
+        iszero(Ai) || push!(pieces, frac_term(b, frac(Ai, Pi)))
+    end
+    Fs = Any[]
+    for g in pieces
+        G = try
+            risch_integrate(g, x; build = build, lift = lift, verify = verify)
+        catch e
+            (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+            return nothing
+        end
+        G isa IntegralWithRootSums && return nothing
+        push!(Fs, G)
+    end
+    isempty(Fs) && return nothing
+    length(Fs) == 1 ? Fs[1] : mk(b, :+, Fs...)
+end
