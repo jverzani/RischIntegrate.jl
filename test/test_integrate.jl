@@ -3158,10 +3158,10 @@ end
 end
 
 # stratified scan of 2026-11-05: radicals of a + i a tan(c + d x) reached a step's real-form output (RischError); now
-# a refusal (samples 1810, 2715), or, for sample 1862, an answer through step PQ
+# a refusal (sample 1810), or an answer: sample 1862 through step PQ, sample 2715 (asinh(d x² - i)) in the testset
+# "i beside asinh(d x² - i) and csch"
 @testset "radicals with i in a step for real integrands: a refusal (scan 2026-11-05)" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
-    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(a + b * asinh(-I + d * x ^ 2)), :x; build = build, lift = identity)
     imsub(e) = e in (:(sqrt(-1)), :I) ? im : e isa Expr ? Expr(e.head, map(imsub, e.args)...) : e
     ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(A = 0.6 + 0im), :(B = 1.7 + 0im), :(c = 0.4 + 0im),
                                                 :(d = 0.9 + 0im), :(x = $t + 0im)), imsub(e)))
@@ -4174,18 +4174,16 @@ end
     end
 end
 
-# √(a + i a t) (c + d t)^k after t = tan, steps PQ and LC: the rational integral in u = √((c + d t)/(1 + i t)) is even in
-# u, and its denominator splits over ℚ(i)(c, d) in w = u²: partial fractions, logs with √((c - i d)/2), √(-i d) (step EB;
-# sample 1842, where the real route's RootSum over c, d did not finish)
-@testset "Step EB: binomial partial fractions over ℚ(i)(c, d)" begin
+# the imaginary unit beside a radical or a hyperbolic function: step PR's repeated factor x² (d²x² - 2i d) written over
+# ℚ(i), and step IP inside step AP's parts for a quadratic radicand (sample 2715, asinh(d x² - i)); sinh, csch, … of L
+# as sin, csc, … of i L (step HI: √(a + i a csch(c + d x)) = √(a - a csc(i (c + d x))), sample 2630)
+@testset "i beside asinh(d x² - i) and csch (steps PR, IP, HI)" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     imsub(e) = e in (:(sqrt(-1)), :I) ? im : e isa Expr ? Expr(e.head, map(imsub, e.args)...) : e
-    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(c = 0.4 + 0im), :(d = 0.9 + 0im), :(e = 0.3 + 0im),
-                                                :(f = 1.2 + 0im), :(x = $t + 0im)), imsub(e)))
-    for g in (:(sqrt(a + I * a * tan(e + f * x)) * (c + d * tan(e + f * x)) ^ (3 / 2)),
-              :(sqrt(a + I * a * tan(e + f * x)) * sqrt(c + d * tan(e + f * x))),
-              :(sqrt(c + d * tan(e + f * x)) / sqrt(a + I * a * tan(e + f * x))),
-              :((a + I * a * tan(e + f * x)) ^ (3 / 2) / sqrt(c + d * tan(e + f * x))))
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(b = 0.7 + 0im), :(c = 0.4 + 0im), :(d = 0.9 + 0im),
+                                                :(x = $t + 0im)), imsub(e)))
+    for g in (:(a + b * asinh(-I + d * x ^ 2)), :(asinh(I + d * x ^ 2)), :(sqrt(a + I * a * csch(c + d * x))),
+              :(sqrt(a + I * a * sinh(c + d * x))), :((a + sqrt(-1) * a * csch(c + d * x)) ^ (1 / 2)))
         F = Risch.risch_integrate(g, :x; build = build, lift = identity)
         @test F isa Expr
         for x0 in (0.21, 0.77, 1.1, -0.5)
@@ -4211,6 +4209,26 @@ end
     end
 end
 
+# √(a + i a t) (c + d t)^k after t = tan, steps PQ and LC: the rational integral in u = √((c + d t)/(1 + i t)) is even in
+# u, and its denominator splits over ℚ(i)(c, d) in w = u²: partial fractions, logs with √((c - i d)/2), √(-i d) (step EB;
+# sample 1842, where the real route's RootSum over c, d did not finish)
+@testset "Step EB: binomial partial fractions over ℚ(i)(c, d)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    imsub(e) = e in (:(sqrt(-1)), :I) ? im : e isa Expr ? Expr(e.head, map(imsub, e.args)...) : e
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(c = 0.4 + 0im), :(d = 0.9 + 0im), :(e = 0.3 + 0im),
+                                                :(f = 1.2 + 0im), :(x = $t + 0im)), imsub(e)))
+    for g in (:(sqrt(a + I * a * tan(e + f * x)) * (c + d * tan(e + f * x)) ^ (3 / 2)),
+              :(sqrt(a + I * a * tan(e + f * x)) * sqrt(c + d * tan(e + f * x))),
+              :(sqrt(c + d * tan(e + f * x)) / sqrt(a + I * a * tan(e + f * x))),
+              :((a + I * a * tan(e + f * x)) ^ (3 / 2) / sqrt(c + d * tan(e + f * x))))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test F isa Expr
+        for x0 in (0.21, 0.77, 1.1, -0.5)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(g, x0); rtol = 1e-6)
+        end
+    end
+end
+
 # a RootSum for a denominator of several squarefree factors: each partial fraction alone, where step BN scales
 # 2 - x³ to closed form (step SF; sample 1808, cot² (a + i a tan)^(1/3) after u³ = 1 + i tan)
 @testset "Step SF: partial fractions by squarefree factors" begin
@@ -4224,6 +4242,20 @@ end
             @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(g, x0); rtol = 1e-6)
         end
     end
+end
+
+# a radicand κ/V, κ > 0 rational: (κ/V)^e = κ^e V^(-e) (step KV). ∫ √(16/(1 - x²)) was 8 atan(…/x), right as a derivative
+# but with a jump of 8π at x = 0 (SymPy audit, risch-antiderivative-atan-jump-real-line); now 4 asin x
+@testset "Step KV: κ/V radicands, no jump on the real line" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $t)), e))
+    for (g, a, b, v) in ((:(sqrt(16 / (1 - x ^ 2))), -0.5, 0.5, 4π / 3), (:(sqrt(2 / (1 - x ^ 2))), -0.5, 0.5, sqrt(2) * π / 3),
+                         (:(sqrt(4 / (1 + x ^ 2))), -1.0, 1.0, 4 * asinh(1.0)))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test isapprox(ev(F, b) - ev(F, a), v; rtol = 1e-10)
+        @test isapprox((ev(F, 0.3 + 1e-6) - ev(F, 0.3 - 1e-6)) / 2e-6, ev(g, 0.3); rtol = 1e-6)
+    end
+    @test Risch.risch_integrate(:(sqrt(16 / (1 - x ^ 2))), :x; build = build, lift = identity) == :(4 * asin(x))
 end
 
 # a large root index beside radical-free summands: those integrated apart. x^2.5556 = x^(6389/2500) made the whole sum

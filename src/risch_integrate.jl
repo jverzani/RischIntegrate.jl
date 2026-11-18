@@ -109,6 +109,9 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             (e isa RischError && startswith(e.msg, "a non-real constant")) || rethrow()
             # (e^(i a z²): a Gaussian with a symbolic coefficient, step GS, SymPy #5547)
             g = integrate_gaussian_scaled(f, x; build = build, lift = lift, verify = verify)
+            # (a radical of a hyperbolic function beside i, √(a + √-1 a csch(c + d x)): step PR refused it over ℚ(i)
+            # before the radical fallbacks' step HI; sample 2630 as the scan writes i)
+            g === nothing && (g = integrate_imag_hyperbolic(f, x; build = build, lift = lift, verify = verify))
             g === nothing && throw(RischNotImplemented("a step for real integrands reached a non-real constant of the integrand " *
                                                        "with the imaginary unit (no complex form of that step)"))
             g
@@ -273,6 +276,9 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         # a radicand with the imaginary unit: i as a parameter (step IP)
         if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg) && RISCH_DEPTH[] == 1 &&
            has_imag_unit(f)
+            # hyperbolic functions beside i: trigonometric ones of i L (step HI)
+            r = integrate_imag_hyperbolic(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
             r = integrate_imag_param(f, x; build = build, lift = lift, verify = verify)
             r === nothing || return r
         end
@@ -551,6 +557,13 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         end
     end
     rads = collect_radicals(f, xk)
+    # step KV: one radicand κ/V, κ > 0 rational, V of degree ≥ 2 over ℚ: (κ/V)^e = κ^e V^(-e) where V > 0 (where the radical
+    # is real). The route through √(κ/V) wrote ∫ √(16/(1 - x²)) as 8 atan(…/x), whose derivative is right but which jumps
+    # by 8π at x = 0; through 4/√(1 - x²) it is 4 asin x (SymPy audit, risch-antiderivative-atan-jump-real-line)
+    # (outermost call only: a κ/V rewrite deeper made sample 1880 run for hours, round 17)
+    let g = RISCH_DEPTH[] == 1 ? constant_over_poly_radicand(f, x, xk, rads, build, lift) : nothing
+        g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    end
     if isempty(rads) && has_param(f, xk)               # a power of one parameter quadratic: linearity (step PL)
         r = integrate_param_linear(f, x; build = build, lift = lift, verify = verify)
         r === nothing || return r
@@ -1412,4 +1425,31 @@ function poly_times_radicals(f, xk::String, ut)
         return false
     end
     isempty(T.levels) && degree(el.den) == 0
+end
+
+function constant_over_poly_radicand(f, x, xk::String, rads, build, lift)
+    @nospecialize f x
+    isempty(rads) && return nothing
+    us = string(rads[1][2])
+    all(((_, u),) -> string(u) == us, rads) || return nothing
+    q = radicand_element(rads[1][2], xk)
+    (q === nothing || degree(q.num) != 0 || degree(q.den) < 2) && return nothing
+    n0 = q.num.c[1]                                  # κ/V with κ = |n0| > 0, V = sign(n0)·den (16/(1 - x²) from -16/(x² - 1))
+    κ = abs(n0)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    V = frac_term(bd, frac(n0 > 0 ? q.den : -q.den))
+    function walk(t)
+        safe_iscall(t) || return t
+        args = arguments(t)
+        isempty(args) && return t
+        rp = radical_parts(t)
+        if rp !== nothing && string(rp[2]) == us
+            e = rp[1]
+            ke = rat_sqrt(κ)                             # κ^e: rational when κ is a square and e has denominator 2
+            k = (denominator(e) == 2 && ke !== nothing) ? bd.lift(ke^Int(numerator(e))) : mk(bd, :^, bd.lift(κ), bd.lift(e))
+            return mk(bd, :*, k, mk(bd, :^, V, bd.lift(-e)))
+        end
+        bd.build(op_function(t), (walk(a) for a in args)...)
+    end
+    walk(f)
 end
