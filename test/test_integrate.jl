@@ -4173,3 +4173,21 @@ end
         end
     end
 end
+
+# the imaginary unit beside a radical or a hyperbolic function: step PR's repeated factor x² (d²x² - 2i d) written over
+# ℚ(i), and step IP inside step AP's parts for a quadratic radicand (sample 2715, asinh(d x² - i)); sinh, csch, … of L
+# as sin, csc, … of i L (step HI: √(a + i a csch(c + d x)) = √(a - a csc(i (c + d x))), sample 2630)
+@testset "i beside asinh(d x² - i) and csch (steps PR, IP, HI)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    imsub(e) = e in (:(sqrt(-1)), :I) ? im : e isa Expr ? Expr(e.head, map(imsub, e.args)...) : e
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(b = 0.7 + 0im), :(c = 0.4 + 0im), :(d = 0.9 + 0im),
+                                                :(x = $t + 0im)), imsub(e)))
+    for g in (:(a + b * asinh(-I + d * x ^ 2)), :(asinh(I + d * x ^ 2)), :(sqrt(a + I * a * csch(c + d * x))),
+              :(sqrt(a + I * a * sinh(c + d * x))))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test F isa Expr
+        for x0 in (0.21, 0.77, 1.1, -0.5)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(g, x0); rtol = 1e-6)
+        end
+    end
+end

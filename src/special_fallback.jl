@@ -128,3 +128,62 @@ function integrate_imag_param(f, x; build = nothing, lift = nothing, verify::Boo
     (verify && !numeric_antiderivative(f, G, xk)) && return nothing
     G
 end
+
+# Step HI: hyperbolic functions of one linear L = c + d x beside the imaginary unit, as trigonometric functions of
+# y = i L: sinh L = -i sin y, cosh L = cos y, tanh L = -i tan y, coth L = i cot y, sech L = sec y, csch L = i csc y.
+# ∫ f dx = G(i L) with G = ∫ f̃(y) dy/(i d). √(a + i a csch(c + d x)) = √(a - a csc y) is elementary where
+# √(a + a csch) is not (sample 2630, Rubi 6.6.3). Outermost call only; the answer is checked numerically (step CI).
+const HYP_TO_TRIG = Dict(:sinh => (:sin, -1), :cosh => (:cos, 0), :tanh => (:tan, -1), :coth => (:cot, 1),
+                         :sech => (:sec, 0), :csch => (:csc, 1))        # (trig, k): h(L) = iᵏ·trig(y), k ∈ {-1, 0, 1}
+function integrate_imag_hyperbolic(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    Ls = Ref{Any}(nothing)
+    ok = Ref(true)
+    function scan(t)
+        safe_iscall(t) || (string(t) == xk && (ok[] = false); return)
+        args = arguments(t)
+        isempty(args) && return
+        n = opname(operation(t))
+        if haskey(HYP_TO_TRIG, n) && length(args) == 1 && depends_on(args[1], xk)
+            Ls[] === nothing && (Ls[] = args[1])
+            string(Ls[]) == string(args[1]) || (ok[] = false)
+            return
+        end
+        foreach(scan, args)
+    end
+    scan(f)
+    (ok[] && Ls[] !== nothing) || return nothing
+    L = Ls[]
+    pp = poly_parts(bd, L, xk)
+    (pp === nothing || !haskey(pp, 1) || maximum(keys(pp)) != 1) && return nothing
+    d = pp[1]
+    I1 = bd.lift(im)
+    function tr(t)
+        safe_iscall(t) || return t
+        args = arguments(t)
+        isempty(args) && return t
+        n = opname(operation(t))
+        if haskey(HYP_TO_TRIG, n) && length(args) == 1 && string(args[1]) == string(L)
+            g, k = HYP_TO_TRIG[n]
+            y = mk(bd, g, bd.x)
+            return k == 0 ? y : k == 1 ? mk(bd, :*, I1, y) : mk(bd, :*, bd.lift(-1), I1, y)
+        end
+        term_rebuild(bd, t, Any[tr(a) for a in args])
+    end
+    g = mk(bd, :/, tr(f), mk(bd, :*, I1, d))
+    G = try                                             # (a change of variable: the outermost call's radical steps)
+        as_outer(() -> risch_integrate(g, x; build = build, lift = lift, verify = verify))
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary || e isa RischError) || rethrow()
+        return nothing
+    end
+    (G isa IntegralWithRootSums || has_special(G)) && return nothing
+    iL = mk(bd, :*, I1, L)
+    back(t) = safe_iscall(t) && !isempty(arguments(t)) ? term_rebuild(bd, t, Any[back(a) for a in arguments(t)]) :
+              string(t) == xk ? iL : t
+    H = back(G)
+    (verify && !numeric_antiderivative(f, H, xk)) && return nothing
+    H
+end
