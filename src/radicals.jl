@@ -837,8 +837,8 @@ function integrate_symbolic_power_radical(f, x; build = nothing, lift = nothing,
     # a power x^p with p free of x and not rational
     function xpow(t)
         (isnode(t) && opname(operation(t)) === :^ && length(arguments(t)) == 2) || return nothing
-        bse, p = arguments(t)
-        (string(bse) == xk && !depends_on(p, xk) && leaf_rational(p) === nothing) ? p : nothing
+        xb, p = arguments(t)
+        (string(xb) == xk && !depends_on(p, xk) && leaf_rational(p) === nothing) ? p : nothing
     end
     # the radicand c·x^p: (c, p)
     function monomial(u)
