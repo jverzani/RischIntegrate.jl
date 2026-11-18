@@ -4173,3 +4173,17 @@ end
         end
     end
 end
+
+# a radicand κ/V, κ > 0 rational: (κ/V)^e = κ^e V^(-e) (step KV). ∫ √(16/(1 - x²)) was 8 atan(…/x), right as a derivative
+# but with a jump of 8π at x = 0 (SymPy audit, risch-antiderivative-atan-jump-real-line); now 4 asin x
+@testset "Step KV: κ/V radicands, no jump on the real line" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $t)), e))
+    for (g, a, b, v) in ((:(sqrt(16 / (1 - x ^ 2))), -0.5, 0.5, 4π / 3), (:(sqrt(2 / (1 - x ^ 2))), -0.5, 0.5, sqrt(2) * π / 3),
+                         (:(sqrt(4 / (1 + x ^ 2))), -1.0, 1.0, 4 * asinh(1.0)))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test isapprox(ev(F, b) - ev(F, a), v; rtol = 1e-10)
+        @test isapprox((ev(F, 0.3 + 1e-6) - ev(F, 0.3 - 1e-6)) / 2e-6, ev(g, 0.3); rtol = 1e-6)
+    end
+    @test Risch.risch_integrate(:(sqrt(16 / (1 - x ^ 2))), :x; build = build, lift = identity) == :(4 * asin(x))
+end
