@@ -4183,7 +4183,7 @@ end
     ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(b = 0.7 + 0im), :(c = 0.4 + 0im), :(d = 0.9 + 0im),
                                                 :(x = $t + 0im)), imsub(e)))
     for g in (:(a + b * asinh(-I + d * x ^ 2)), :(asinh(I + d * x ^ 2)), :(sqrt(a + I * a * csch(c + d * x))),
-              :(sqrt(a + I * a * sinh(c + d * x))))
+              :(sqrt(a + I * a * sinh(c + d * x))), :((a + sqrt(-1) * a * csch(c + d * x)) ^ (1 / 2)))
         F = Risch.risch_integrate(g, :x; build = build, lift = identity)
         @test F isa Expr
         for x0 in (0.21, 0.77, 1.1, -0.5)

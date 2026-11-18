@@ -138,6 +138,9 @@ const HYP_TO_TRIG = Dict(:sinh => (:sin, -1), :cosh => (:cos, 0), :tanh => (:tan
 function integrate_imag_hyperbolic(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     xk = string(x)
+    # (a radical of a hyperbolic function: without one, the trigonometric form finds nothing new, and its routes took
+    # the whole time limit, samples 2419 and 2452)
+    any(((_, u),) -> any(n -> has_op(u, n), keys(HYP_TO_TRIG)), collect_radicals(f, xk)) || return nothing
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     Ls = Ref{Any}(nothing)
     ok = Ref(true)
@@ -174,7 +177,8 @@ function integrate_imag_hyperbolic(f, x; build = nothing, lift = nothing, verify
     end
     g = mk(bd, :/, tr(f), mk(bd, :*, I1, d))
     G = try                                             # (a change of variable: the outermost call's radical steps)
-        as_outer(() -> risch_integrate(g, x; build = build, lift = lift, verify = verify))
+        RISCH_DEPTH[] == 0 ? risch_integrate(g, x; build = build, lift = lift, verify = verify) :
+                             as_outer(() -> risch_integrate(g, x; build = build, lift = lift, verify = verify))
     catch e
         (e isa RischNotImplemented || e isa NotElementary || e isa RischError) || rethrow()
         return nothing
