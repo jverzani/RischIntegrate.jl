@@ -4271,3 +4271,26 @@ end
         @test isapprox((ev(F, x0 + h) - ev(F, x0 - h)) / (2h), ev(g, x0); rtol = 1e-6)
     end
 end
+
+# exp(c + a x² + b/x²), a b > 0: completing the squares (√|a| x ∓ √|b|/x)², two erf (erfi) terms (step XR; SymPy audit,
+# risch-erf-rational-argument-missing: ∫ e^(-x² - 1/x²) = √π/4 (e⁻² erf(x - 1/x) + e² erf(x + 1/x)))
+@testset "Step XR: exp(a x² + b/x²)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $t), :(π = big(pi)), :(erf = $(SpecialFunctions.erf))), e))
+    setprecision(256) do
+        for g in (:(exp(-x ^ 2 - 1 / x ^ 2)), :(exp(-2 * x ^ 2 - 3 / x ^ 2)), :(exp(-(x ^ 4 + 1) / x ^ 2)))
+            F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+            @test occursin("erf", string(F))
+            h = big"1e-30"
+            for x0 in big.((0.4, 0.9, 1.3, -0.7))
+                @test isapprox((ev(F, x0 + h) - ev(F, x0 - h)) / (2h), ev(g, x0); rtol = 1e-12)
+            end
+        end
+    end
+    F = Risch.risch_integrate(:(5 * exp(1 + x ^ 2 + 1 / x ^ 2)), :x; build = build, lift = identity)
+    @test occursin("erfi", string(F))
+    for x0 in (0.6, 1.3)
+        @test isapprox((Risch.term_value(F, "x", x0 + 1e-6) - Risch.term_value(F, "x", x0 - 1e-6)) / 2e-6,
+                       5 * exp(1 + x0 ^ 2 + 1 / x0 ^ 2); rtol = 1e-6)
+    end
+end
