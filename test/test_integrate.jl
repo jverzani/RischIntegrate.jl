@@ -4272,6 +4272,24 @@ end
     end
 end
 
+# a parameter expression that vanishes at the default parameter values (b - 1, b² - 1 at b = 1): its sign at the values
+# k + 1/2 instead of a zero sign (SymPy audit, risch-radical-with-parameter-unsupported-r12: ∫₀^π of
+# b sin t/(2 (1 + (b² - 1) cos²t)^(3/2)) = 1)
+@testset "parameter expressions vanishing at the default values (step SO)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, t, b) = Core.eval(Main, Expr(:let, Expr(:block, :(t = $t + 0im), :(b = $b + 0im)), e))
+    for g in (:(b * sin(t) / (2 * (1 + (b ^ 2 - 1) * cos(t) ^ 2) ^ (3 / 2))), :(sin(t) / (1 + (b - 1) * cos(t) ^ 2) ^ (3 / 2)))
+        F = Risch.risch_integrate(g, :t; build = build, lift = identity)
+        @test F isa Expr
+        for b in (2.0, 3.0), t0 in (0.3, 1.0, 2.0, 2.9)
+            @test isapprox((ev(F, t0 + 1e-6, b) - ev(F, t0 - 1e-6, b)) / 2e-6, ev(g, t0, b); rtol = 1e-6)
+        end
+    end
+    g = :(b * sin(t) / (2 * (1 + (b ^ 2 - 1) * cos(t) ^ 2) ^ (3 / 2)))
+    F = Risch.risch_integrate(g, :t; build = build, lift = identity)
+    @test isapprox(real(ev(F, π - 1e-7, 2.0) - ev(F, 1e-7, 2.0)), 1.0; rtol = 1e-6)
+end
+
 # exp(c + a x² + b/x²), a b > 0: completing the squares (√|a| x ∓ √|b|/x)², two erf (erfi) terms (step XR; SymPy audit,
 # risch-erf-rational-argument-missing: ∫ e^(-x² - 1/x²) = √π/4 (e⁻² erf(x - 1/x) + e² erf(x + 1/x)))
 @testset "Step XR: exp(a x² + b/x²)" begin
