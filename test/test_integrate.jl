@@ -4257,3 +4257,17 @@ end
     end
     @test Risch.risch_integrate(:(sqrt(16 / (1 - x ^ 2))), :x; build = build, lift = identity) == :(4 * asin(x))
 end
+
+# a large root index beside radical-free summands: those integrated apart. x^2.5556 = x^(6389/2500) made the whole sum
+# an integral in u = x^(1/2500), x/(x - 3.6⁷⁰) one of degree 2500 that did not finish (SymPy audit,
+# risch-float-exponent-ratio-huge-power-r12; x/(x - 5) took 27 s)
+@testset "large root index beside radical-free summands" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $t)), e))
+    for g in (:(x ^ 9 - x ^ 2.5556 - x / (x - 3.6 ^ 70)), :(x ^ 2.5556 + x / (x - 5)))
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 30
+        x0, h = complex(big"1.5"), big"1e-30"
+        @test isapprox((ev(F, x0 + h) - ev(F, x0 - h)) / (2h), ev(g, x0); rtol = 1e-6)
+    end
+end

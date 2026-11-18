@@ -428,12 +428,27 @@ function negative_radicands(f, rads, xk::String, b0::Builder)
     rw(f)
 end
 
+const RADICAL_SPLIT_INDEX = 12
 function integrate_radical(f, x, rads; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
     xk = string(x)
     let b = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
         f2 = negative_radicands(f, rads, xk, b)
         f2 === nothing || return risch_integrate(f2, x; build = build, lift = lift, verify = verify)
+    end
+    # a large root index (x^2.5556 = x^(6389/2500)) beside radical-free summands: those apart. The substitution
+    # x = u^2500 made x/(x - 3.6⁷⁰) a rational integral of degree 2500 in u that did not finish, and x/(x - 5)
+    # took 27 s (SymPy audit, risch-float-exponent-ratio-huge-power-r12)
+    if maximum(Int(denominator(e)) for (e, _) in rads) > RADICAL_SPLIT_INDEX
+        bs = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+        ts = additive_terms(bs, f)
+        free = [t for t in ts if isempty(collect_radicals(t, xk))]
+        if !isempty(free) && length(free) < length(ts)
+            rest = [t for t in ts if !isempty(collect_radicals(t, xk))]
+            sm(v) = length(v) == 1 ? v[1] : mk(bs, :+, v...)
+            Fs = Any[risch_integrate(sm(v), x; build = build, lift = lift, verify = verify) for v in (rest, free)]
+            any(F -> F isa IntegralWithRootSums, Fs) || return mk(bs, :+, Fs...)
+        end
     end
     groups = Any[]                                      # [radicand element, term, lcm of indices]
     cvs = Q[]                                           # radicands of constant radicals (10e)
