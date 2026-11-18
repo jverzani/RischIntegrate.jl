@@ -523,18 +523,22 @@ function param_value(c, consts)
     names = [string(g.term) for g in syms]
     sgs = [oracle_sym_sign(g) for g in syms]           # (outside the try: the oracle's special case is thrown)
     eb = Builder(expr_build, identity, :x, consts)
-    function ev(e)
+    function ev(e, sh)
         if e isa Expr && e.head === :call
-            return op_function(e)(map(ev, e.args[2:end])...)
+            return op_function(e)(map(a -> ev(a, sh), e.args[2:end])...)
         end
         k = findfirst(==(string(e)), names)            # (before Number: SymEngine's symbols are Numbers)
-        k === nothing || return float(sgs[k] * k)
+        k === nothing || return float(sgs[k] * (k + sh))
         r = leaf_rational(e)
         r === nothing && throw(RischError("no value for $e"))
         float(r)
     end
     try
-        v = ev(cterm(eb, c))
+        ct = cterm(eb, c)
+        v = ev(ct, 0)
+        # a nonzero c that vanishes there (b - 1, b² - 1 at b = 1: (1 + (b² - 1) cos²t)^(3/2), SymPy audit
+        # risch-radical-with-parameter-unsupported-r12): the values k + 1/2 instead
+        (iszero(v) && !iszero(c)) && (v = ev(ct, 1 // 2))
         v isa Real && isfinite(v) ? v : nothing
     catch
         nothing
