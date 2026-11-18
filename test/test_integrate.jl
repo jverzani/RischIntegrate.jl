@@ -3158,10 +3158,10 @@ end
 end
 
 # stratified scan of 2026-11-05: radicals of a + i a tan(c + d x) reached a step's real-form output (RischError); now
-# a refusal (samples 1810, 2715), or, for sample 1862, an answer through step PQ
+# a refusal (sample 1810), or an answer: sample 1862 through step PQ, sample 2715 (asinh(d x² - i)) in the testset
+# "i beside asinh(d x² - i) and csch"
 @testset "radicals with i in a step for real integrands: a refusal (scan 2026-11-05)" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
-    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(a + b * asinh(-I + d * x ^ 2)), :x; build = build, lift = identity)
     imsub(e) = e in (:(sqrt(-1)), :I) ? im : e isa Expr ? Expr(e.head, map(imsub, e.args)...) : e
     ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(A = 0.6 + 0im), :(B = 1.7 + 0im), :(c = 0.4 + 0im),
                                                 :(d = 0.9 + 0im), :(x = $t + 0im)), imsub(e)))
