@@ -624,6 +624,8 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     if any(((_, u),) -> has_param(u, xk), rads)        # parameters in a radicand: x = s u + h (step PR)
         r = integrate_param_repeated(f, x, rads; build = build, lift = lift, verify = verify)   # u = sⁿ w (PM)
         r === nothing || return r
+        r = integrate_radical_index_halved(f, x, rads; build = build, lift = lift, verify = verify)   # (c W²)^e (RI)
+        r === nothing || return r
         g = rewrite_two_linear(f, x, rads; build = build, lift = lift)   # (a + bx)^E₁ (c + dx)^E₂, E₁ + E₂ ∈ ℤ (LL)
         if g !== nothing
             r = try
