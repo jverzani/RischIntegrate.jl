@@ -357,8 +357,10 @@ function integrate_complex_linear_radicals(f, x, rads, T, el; build = nothing, l
     g = mk(b0, :*, g, du)
     # a rational g = g_re + i g_im (real rational functions of u): each part on the real route, whose log parts
     # are in closed form where the route over ℚ(i) left RootSums (1/(u⁵(2 - u³)): cube roots of 2)
-    parts = complex_rational_parts(g, xk, b0)
-    G = try
+    # with parameters, the binomial partial fractions over ℚ(i) first (step EB)
+    G0 = n == 2 && has_param_not_i(g, xk) ? integrate_even_binomials(g, xk, b0) : nothing
+    parts = G0 === nothing ? complex_rational_parts(g, xk, b0) : nothing
+    G = G0 !== nothing ? G0 : try
         if parts === nothing
             risch_integrate(g, x; build = b0.build, lift = b0.lift, verify = verify)
         else
@@ -383,6 +385,10 @@ function integrate_complex_linear_radicals(f, x, rads, T, el; build = nothing, l
     end
     walk_back(G)
 end
+
+# a parameter in t other than i (has_param counts the imaginary unit)
+has_param_not_i(t, xk::String) = is_imag_unit(t) ? false :
+    safe_iscall(t) && !isempty(arguments(t)) ? any(a -> has_param_not_i(a, xk), arguments(t)) : has_param(t, xk)
 
 # a symbol other than the integration variable (a parameter) in t
 has_param(t, xk::String) = safe_iscall(t) && !isempty(arguments(t)) ? any(a -> has_param(a, xk), arguments(t)) :
@@ -1151,8 +1157,7 @@ function integrate_complex_split_quadratic(f, x, rads, ut0; build = nothing, lif
             b1 = Builder(bd.build, bd.lift, bd.x, T1.consts)
             βt = cterm_complex(b1, n1 / n0, T1.consts)
             κt = cterm_complex(b1, n0, T1.consts)
-            hasp(t) = is_imag_unit(t) ? false : isnode(t) ? any(hasp, arguments(t)) : has_param(t, xk)   # (i is no parameter)
-            if !hasp(βt) && hasp(κt)
+            if !has_param_not_i(βt, xk) && has_param_not_i(κt, xk)
                 κ, L1p = κt, mk(bd, :+, bd.lift(1), mk(bd, :*, βt, bd.x))
             end
         end
@@ -1181,6 +1186,119 @@ function integrate_complex_split_quadratic(f, x, rads, ut0; build = nothing, lif
     κ === nothing || (den = mk(bd, :*, mk(bd, :^, κ, bd.lift(-h)), den))
     σ = mk(bd, :/, mk(bd, :^, ut0, bd.lift(h)), den)
     mk(bd, :*, σ, G)
+end
+
+# step EB: ∫ g du for a rational g = N(u²)/E(u²) over ℚ(i)(parameters) whose E(w) splits into linear factors
+# w - α by its squarefree decomposition: partial fractions in w and ∫ du/(u² - α)ʲ by the reduction
+# I_{j+1} = -u/(2jα(u² - α)ʲ) - (2j - 1)/(2jα) I_j, I₁ = log((u - √α)/(u + √α))/(2√α). The answer has √α, a
+# square root of a parameter expression (√(c - i d), √(i d)), which the field does not hold; the real route
+# (complex_rational_parts) multiplies E by its conjugate and finds the same roots through a RootSum over the
+# parameters, which does not finish (sample 1842: √(a + i a tan(e + f x)) (c + d tan(e + f x))^(3/2))
+function integrate_even_binomials(g, xk::String, b0::Builder)
+    T, el = try
+        build_tower(g, xk)
+    catch err
+        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        return nothing
+    end
+    isempty(T.levels) || return nothing
+    C = ctype(T)
+    is_complex_field(C) || return nothing
+    N, D = el.num, el.den
+    P = typeof(N)
+    even(p) = all(i -> iszero(p.c[i]), 2:2:length(p.c))
+    (even(N) && even(D) && degree(D) >= 2) || return nothing
+    half(p) = P(C[p.c[i] for i in 1:2:length(p.c)])
+    Nw, Dw = half(N), half(D)
+    roots = Tuple{C,Int}[]
+    for (F, m) in squarefree(Dw)
+        if degree(F) == 1
+            push!(roots, (-F.c[1] / F.c[2], m))
+        else                                               # roots of equal multiplicity: in the field, or no route
+            rs = constant_roots(F)
+            length(rs) == degree(F) || return nothing
+            append!(roots, ((α, m) for α in rs))
+        end
+    end
+    q, r = divrem(Nw, Dw)
+    Dm = monic(Dw)
+    r = scale_div(r, lc(Dw))
+    cQ(k) = cfromQ(C, Q(k))
+    u1 = xpoly(C)
+    uu = u1 * u1
+    kp(c) = P(C[c])
+    R = zero(Frac{P})
+    for (k, c) in enumerate(q.c)                          # ∫ c u^(2k-2) du
+        R = R + frac(P([zeros(C, 2k - 1); c / cQ(2k - 1)]))
+    end
+    logs = Tuple{C,C}[]                                    # (λ, α): λ I₁(α)
+    lin(α) = P(C[α, one(C)])
+    function shift(p, α)                                   # p(α + h)
+        acc = zero(P)
+        for c in reverse(p.c)
+            acc = acc * lin(α) + kp(c)
+        end
+        acc
+    end
+    for (α, m) in roots
+        H = Dm
+        for _ in 1:m
+            H, z = divrem(H, lin(-α))
+            iszero(z) || return nothing
+        end
+        rs, Hs = shift(r, α), shift(H, α)
+        co(p, i) = i < length(p.c) ? p.c[i + 1] : zero(C)
+        s = C[]
+        for k in 0:(m - 1)                                 # r/H = Σ s_k h^k
+            v = co(rs, k)
+            for j in 1:k
+                v -= co(Hs, j) * s[k - j + 1]
+            end
+            push!(s, v / co(Hs, 0))
+        end
+        wa = uu - kp(α)                                    # u² - α
+        if iszero(α)
+            for j in 1:m                                   # ∫ u^(-2j) du = u^(1-2j)/(1-2j)
+                cj = s[m - j + 1]
+                iszero(cj) || (R = R + frac(kp(cj / cQ(1 - 2j)), P([zeros(C, 2j - 1); one(C)])))
+            end
+            continue
+        end
+        Rj, λj, λ = zero(Frac{P}), one(C), zero(C)          # I_j = R_j + λ_j I₁
+        for j in 1:m
+            cj = s[m - j + 1]
+            if !iszero(cj)
+                R = R + Frac{P}(kp(cj) * Rj.num, Rj.den)
+                λ += cj * λj
+            end
+            j == m && break
+            t = inv(cQ(2j) * α)
+            Rj = Frac{P}(kp(-t) * u1, wa^j) + Frac{P}(kp(-cQ(2j - 1) * t) * Rj.num, Rj.den)
+            λj = -cQ(2j - 1) * t * λj
+        end
+        iszero(λ) || push!(logs, (λ, α))
+    end
+    b = Builder(b0.build, b0.lift, b0.x, T.consts)
+    ct(c) = cterm_complex(b, c, T.consts)
+    u = b.x
+    parts = Any[]
+    function cpoly(p)                                      # (frac_term writes real coefficients only)
+        ts = Any[]
+        for (k, c) in enumerate(p.c)
+            iszero(c) && continue
+            mon = k == 1 ? nothing : k == 2 ? u : mk(b, :^, u, b.lift(k - 1))
+            push!(ts, mon === nothing ? ct(c) : isone(c) ? mon : mk(b, :*, ct(c), mon))
+        end
+        length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
+    end
+    iszero(R) || push!(parts, isone(R.den) ? cpoly(R.num) : mk(b, :/, cpoly(R.num), cpoly(R.den)))
+    for (λ, α) in logs
+        sα = mk(b, :sqrt, ct(α))
+        L = mk(b, :log, mk(b, :/, mk(b, :+, u, mk(b, :*, b.lift(-1), sα)), mk(b, :+, u, sα)))
+        push!(parts, mk(b, :*, mk(b, :/, ct(λ / cQ(2)), sα), L))
+    end
+    isempty(parts) && return nothing
+    length(parts) == 1 ? parts[1] : mk(b, :+, parts...)
 end
 
 # step SF: a RootSum left for a rational f whose denominator has two or more squarefree factors F_i^(k_i): the

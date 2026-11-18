@@ -4174,13 +4174,18 @@ end
     end
 end
 
-# a RootSum for a denominator of several squarefree factors: each partial fraction alone, where step BN scales
-# 2 - x³ to closed form (step SF; sample 1808, cot² (a + i a tan)^(1/3) after u³ = 1 + i tan)
-@testset "Step SF: partial fractions by squarefree factors" begin
+# √(a + i a t) (c + d t)^k after t = tan, steps PQ and LC: the rational integral in u = √((c + d t)/(1 + i t)) is even in
+# u, and its denominator splits over ℚ(i)(c, d) in w = u²: partial fractions, logs with √((c - i d)/2), √(-i d) (step EB;
+# sample 1842, where the real route's RootSum over c, d did not finish)
+@testset "Step EB: binomial partial fractions over ℚ(i)(c, d)" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     imsub(e) = e in (:(sqrt(-1)), :I) ? im : e isa Expr ? Expr(e.head, map(imsub, e.args)...) : e
-    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(c = 0.4 + 0im), :(d = 0.9 + 0im), :(x = $t + 0im)), imsub(e)))
-    for g in (:(3 / ((x ^ 3 - 1) ^ 2 * (2 - x ^ 3))), :(cot(c + d * x) ^ 2 * (a + I * a * tan(c + d * x)) ^ (1 / 3)))
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(c = 0.4 + 0im), :(d = 0.9 + 0im), :(e = 0.3 + 0im),
+                                                :(f = 1.2 + 0im), :(x = $t + 0im)), imsub(e)))
+    for g in (:(sqrt(a + I * a * tan(e + f * x)) * (c + d * tan(e + f * x)) ^ (3 / 2)),
+              :(sqrt(a + I * a * tan(e + f * x)) * sqrt(c + d * tan(e + f * x))),
+              :(sqrt(c + d * tan(e + f * x)) / sqrt(a + I * a * tan(e + f * x))),
+              :((a + I * a * tan(e + f * x)) ^ (3 / 2) / sqrt(c + d * tan(e + f * x))))
         F = Risch.risch_integrate(g, :x; build = build, lift = identity)
         @test F isa Expr
         for x0 in (0.21, 0.77, 1.1, -0.5)
@@ -4198,6 +4203,21 @@ end
                                                 :(f = 1.2 + 0im), :(x = $t + 0im)), imsub(e)))
     for g in (:((d + I * c * d * x) ^ (3 / 2) * (f - I * c * f * x) ^ (5 / 2) * (a + b * asinh(c * x)) ^ 2),
               :((d + I * c * d * x) ^ (1 / 2) * (f - I * c * f * x) ^ (1 / 2) * (a + b * asinh(c * x))))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test F isa Expr
+        for x0 in (0.21, 0.77, 1.1, -0.5)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(g, x0); rtol = 1e-6)
+        end
+    end
+end
+
+# a RootSum for a denominator of several squarefree factors: each partial fraction alone, where step BN scales
+# 2 - x³ to closed form (step SF; sample 1808, cot² (a + i a tan)^(1/3) after u³ = 1 + i tan)
+@testset "Step SF: partial fractions by squarefree factors" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    imsub(e) = e in (:(sqrt(-1)), :I) ? im : e isa Expr ? Expr(e.head, map(imsub, e.args)...) : e
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(c = 0.4 + 0im), :(d = 0.9 + 0im), :(x = $t + 0im)), imsub(e)))
+    for g in (:(3 / ((x ^ 3 - 1) ^ 2 * (2 - x ^ 3))), :(cot(c + d * x) ^ 2 * (a + I * a * tan(c + d * x)) ^ (1 / 3)))
         F = Risch.risch_integrate(g, :x; build = build, lift = identity)
         @test F isa Expr
         for x0 in (0.21, 0.77, 1.1, -0.5)
