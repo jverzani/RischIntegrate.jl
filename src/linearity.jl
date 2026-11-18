@@ -9,6 +9,8 @@
 # (√(1 - (x/√(1 - x²))²), from ∫ asin(x/√(1 - x²)) by parts; Rubi 265).
 # ---------------------------------------------------------------------------
 
+const INV_FNS = (:atan, :acot, :asin, :acos, :asec, :acsc, :asinh, :acosh, :atanh, :acoth, :acsch, :asech)
+
 function additive_terms(bd::Builder, f)
     safe_iscall(f) || return Any[]
     n, args = opname(operation(f)), arguments(f)
@@ -31,9 +33,14 @@ function additive_terms(bd::Builder, f)
         # (a denominator that is not a radical: split over (a + b acos(c x))/√(d - c²d x²), the two integrals took six
         # times as long as the whole, sample 2344)
         # (a constant denominator is split: d⁻¹ (e cos y)^(7/2) (a + a sin y) after step AL's y = c + d x is refused
-        # whole and integrated term by term, sample 1326; 2344 stays at 30 s with only the radical excluded)
-        (length(js) == 1 && any(((t, e),) -> e < 0 && radical_parts(t) === nothing, fs)) || return Any[]
+        # whole and integrated term by term, sample 1326; 2344 stays at 30 s with only the radical excluded. Not a sum
+        # with an inverse trigonometric or hyperbolic function, a + b acos x: by parts on b acos x alone ran for
+        # minutes where the whole was refused at once and the outer route took 5 s, sample 2343)
+        xk = string(bd.x)
+        length(js) == 1 || return Any[]
         j = js[1]
+        den(xdep) = any(((t, e),) -> e < 0 && radical_parts(t) === nothing && depends_on(t, xk) == xdep, fs)
+        (den(true) || (den(false) && !has_op_in(fs[j][1], INV_FNS))) || return Any[]
         rest = Any[e == 1 ? t : mk(bd, :^, t, bd.lift(e)) for (i, (t, e)) in enumerate(fs) if i != j]
         return Any[mk(bd, :*, t, rest...) for t in parts(fs[j][1])]
     end

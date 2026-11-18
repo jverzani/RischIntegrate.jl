@@ -60,6 +60,12 @@ end
         @test Risch.risch_integrate(f, :x; build = build, lift = identity) isa Expr
     end
     Risch.HYP_ANSWERS[] = hyp
+    # the constant denominator's split is not taken over a sum with an inverse trigonometric function (sample 2343:
+    # by parts on c⁻¹ (f + g x/c)³ (d - d x²)^(3/2) b acos(x) alone ran for minutes; the product is refused at once)
+    bd = Risch.Builder(build, identity, :x)
+    @test length(Risch.additive_terms(bd, :(c ^ -1 * (e * cos(x)) ^ (5 / 2) * (a + a * sin(x))))) == 2
+    @test isempty(Risch.additive_terms(bd, :(c ^ -1 * (d - d * x ^ 2) ^ (3 / 2) * (a + b * acos(x)))))
+    @test length(Risch.additive_terms(bd, :(x ^ -1 * (a + b * acos(x))))) == 2   # (a denominator with x: split)
 end
 
 # CF methods for helpers written on a bare ::Frac (lead_rational: a MethodError on ∫ (1 - cos(π y z))/(y z) dy, SymJ's
