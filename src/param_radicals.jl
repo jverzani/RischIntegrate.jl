@@ -36,6 +36,10 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
         # √(c - i c tan)/(a + i a tan)^(7/2)): the radicand in real form, integrated again
         r = real_radicand_retry(f, x, ut0, T, el; build = build, lift = lift, verify = verify)
         r === nothing || return r
+        # a product L₁ L₂ of two linear factors over ℚ(i)(…), as step RM merges √(a + i a t)·(c + d t)^(3/2): one
+        # Möbius radicand L₂/L₁ (step PQ)
+        r = integrate_complex_split_quadratic(f, x, rads, ut0; build = build, lift = lift, verify = verify)
+        r === nothing || return r
         if RISCH_DEPTH[] == 1
             r = integrate_imag_param(f, x; build = build, lift = lift, verify = verify)
             r === nothing || return r
@@ -1114,4 +1118,67 @@ function rewrite_two_linear(f, x, rads; build = nothing, lift = nothing)
         return nothing
     end
     length(unique(string(u) for (_, u) in collect_radicals(g, xk))) == 1 ? g : nothing
+end
+
+# Step PQ: u^e, e half an odd integer, u = L₁ L₂ (a product term of two factors linear in x over ℚ(i)(…), step RM's
+# merge of √(a + i a tan) (c + d tan)^(3/2) after t = tan): u^e = σ L₁^(2e) (L₂/L₁)^e with σ = u^e/(L₁^(2e) (L₂/L₁)^e)
+# locally constant (both sides have the logarithmic derivative e u'/u), so ∫ f = σ ∫ g, g with one Möbius radicand
+# L₂/L₁ (step LC). Rubi 4.3.2.1, 4.3.3.1: atanh(√2 √a √(c + d t)/(√(c - i d) √(a + i a t))).
+function integrate_complex_split_quadratic(f, x, rads, ut0; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x ut0
+    xk = string(x)
+    e = rads[1][1]
+    (denominator(e) == 2 && all(((ei, _),) -> denominator(ei) == 2, rads)) || return nothing
+    (isnode(ut0) && opname(operation(ut0)) === :* && length(arguments(ut0)) == 2) || return nothing
+    L1, L2 = arguments(ut0)
+    lin(L) = (el = radicand_element(L, xk); el === nothing ? (try
+                 T, l = build_tower(L, xk); isempty(T.levels) && isone(l.den) && degree(l.num) == 1
+             catch err
+                 (err isa RischNotImplemented || err isa RischError) || rethrow(); false
+             end) : (isone(el.den) && degree(el.num) == 1))
+    (lin(L1) && lin(L2)) || return nothing
+    # the factor with i first (L₂/L₁ = (c + d t)/(a + i a t), as Rubi's answers)
+    has_imag_unit(L2) && !has_imag_unit(L1) && ((L1, L2) = (L2, L1))
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    # L₁ = κ (1 + β x) with β free of the parameters (a + i a t = a (1 + i t)): κ^(-e) out in front, so that the
+    # rational integral in the Möbius radical's u has no parameter in its residues (√a, (-1)^(1/4) in Rubi's
+    # answers), as step LC's own content step does for a linear radicand
+    κ, L1p = nothing, L1
+    let (T1, l1) = build_tower(L1, xk)
+        C1 = ctype(T1)
+        n0, n1 = l1.num.c[1], l1.num.c[2]
+        if !iszero(n0) && isone(l1.den)
+            b1 = Builder(bd.build, bd.lift, bd.x, T1.consts)
+            βt = cterm_complex(b1, n1 / n0, T1.consts)
+            κt = cterm_complex(b1, n0, T1.consts)
+            hasp(t) = is_imag_unit(t) ? false : isnode(t) ? any(hasp, arguments(t)) : has_param(t, xk)   # (i is no parameter)
+            if !hasp(βt) && hasp(κt)
+                κ, L1p = κt, mk(bd, :+, bd.lift(1), mk(bd, :*, βt, bd.x))
+            end
+        end
+    end
+    ratio = mk(bd, :/, L2, L1p)
+    sut = string(ut0)
+    function rw(t)
+        rp = radical_parts(t)
+        if rp !== nothing && string(rp[2]) == sut
+            ek = rp[1]
+            p = mk(bd, :*, mk(bd, :^, L1, bd.lift(2ek)), mk(bd, :^, ratio, bd.lift(ek)))
+            return κ === nothing ? p : mk(bd, :*, mk(bd, :^, κ, bd.lift(-ek)), p)
+        end
+        isnode(t) ? term_rebuild(bd, t, Any[rw(a) for a in arguments(t)]) : t
+    end
+    g = rw(f)
+    G = try
+        risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    catch err
+        (err isa RischNotImplemented || err isa NotElementary || (err isa RischError && startswith(err.msg, "a non-real constant"))) || rethrow()
+        return nothing
+    end
+    G isa IntegralWithRootSums && return nothing
+    h = Q(1, 2)
+    den = mk(bd, :*, L1, mk(bd, :^, ratio, bd.lift(h)))
+    κ === nothing || (den = mk(bd, :*, mk(bd, :^, κ, bd.lift(-h)), den))
+    σ = mk(bd, :/, mk(bd, :^, ut0, bd.lift(h)), den)
+    mk(bd, :*, σ, G)
 end
