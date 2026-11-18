@@ -109,6 +109,9 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             (e isa RischError && startswith(e.msg, "a non-real constant")) || rethrow()
             # (e^(i a z²): a Gaussian with a symbolic coefficient, step GS, SymPy #5547)
             g = integrate_gaussian_scaled(f, x; build = build, lift = lift, verify = verify)
+            # (a radical of a hyperbolic function beside i, √(a + √-1 a csch(c + d x)): step PR refused it over ℚ(i)
+            # before the radical fallbacks' step HI; sample 2630 as the scan writes i)
+            g === nothing && (g = integrate_imag_hyperbolic(f, x; build = build, lift = lift, verify = verify))
             g === nothing && throw(RischNotImplemented("a step for real integrands reached a non-real constant of the integrand " *
                                                        "with the imaginary unit (no complex form of that step)"))
             g
@@ -273,6 +276,9 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         # a radicand with the imaginary unit: i as a parameter (step IP)
         if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg) && RISCH_DEPTH[] == 1 &&
            has_imag_unit(f)
+            # hyperbolic functions beside i: trigonometric ones of i L (step HI)
+            r = integrate_imag_hyperbolic(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
             r = integrate_imag_param(f, x; build = build, lift = lift, verify = verify)
             r === nothing || return r
         end

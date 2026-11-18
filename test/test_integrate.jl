@@ -3158,10 +3158,10 @@ end
 end
 
 # stratified scan of 2026-11-05: radicals of a + i a tan(c + d x) reached a step's real-form output (RischError); now
-# a refusal (samples 1810, 2715), or, for sample 1862, an answer through step PQ
+# a refusal (sample 1810), or an answer: sample 1862 through step PQ, sample 2715 (asinh(d x² - i)) in the testset
+# "i beside asinh(d x² - i) and csch"
 @testset "radicals with i in a step for real integrands: a refusal (scan 2026-11-05)" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
-    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(a + b * asinh(-I + d * x ^ 2)), :x; build = build, lift = identity)
     imsub(e) = e in (:(sqrt(-1)), :I) ? im : e isa Expr ? Expr(e.head, map(imsub, e.args)...) : e
     ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(A = 0.6 + 0im), :(B = 1.7 + 0im), :(c = 0.4 + 0im),
                                                 :(d = 0.9 + 0im), :(x = $t + 0im)), imsub(e)))
@@ -4174,18 +4174,16 @@ end
     end
 end
 
-# √(a + i a t) (c + d t)^k after t = tan, steps PQ and LC: the rational integral in u = √((c + d t)/(1 + i t)) is even in
-# u, and its denominator splits over ℚ(i)(c, d) in w = u²: partial fractions, logs with √((c - i d)/2), √(-i d) (step EB;
-# sample 1842, where the real route's RootSum over c, d did not finish)
-@testset "Step EB: binomial partial fractions over ℚ(i)(c, d)" begin
+# the imaginary unit beside a radical or a hyperbolic function: step PR's repeated factor x² (d²x² - 2i d) written over
+# ℚ(i), and step IP inside step AP's parts for a quadratic radicand (sample 2715, asinh(d x² - i)); sinh, csch, … of L
+# as sin, csc, … of i L (step HI: √(a + i a csch(c + d x)) = √(a - a csc(i (c + d x))), sample 2630)
+@testset "i beside asinh(d x² - i) and csch (steps PR, IP, HI)" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     imsub(e) = e in (:(sqrt(-1)), :I) ? im : e isa Expr ? Expr(e.head, map(imsub, e.args)...) : e
-    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(c = 0.4 + 0im), :(d = 0.9 + 0im), :(e = 0.3 + 0im),
-                                                :(f = 1.2 + 0im), :(x = $t + 0im)), imsub(e)))
-    for g in (:(sqrt(a + I * a * tan(e + f * x)) * (c + d * tan(e + f * x)) ^ (3 / 2)),
-              :(sqrt(a + I * a * tan(e + f * x)) * sqrt(c + d * tan(e + f * x))),
-              :(sqrt(c + d * tan(e + f * x)) / sqrt(a + I * a * tan(e + f * x))),
-              :((a + I * a * tan(e + f * x)) ^ (3 / 2) / sqrt(c + d * tan(e + f * x))))
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(b = 0.7 + 0im), :(c = 0.4 + 0im), :(d = 0.9 + 0im),
+                                                :(x = $t + 0im)), imsub(e)))
+    for g in (:(a + b * asinh(-I + d * x ^ 2)), :(asinh(I + d * x ^ 2)), :(sqrt(a + I * a * csch(c + d * x))),
+              :(sqrt(a + I * a * sinh(c + d * x))), :((a + sqrt(-1) * a * csch(c + d * x)) ^ (1 / 2)))
         F = Risch.risch_integrate(g, :x; build = build, lift = identity)
         @test F isa Expr
         for x0 in (0.21, 0.77, 1.1, -0.5)
@@ -4203,6 +4201,26 @@ end
                                                 :(f = 1.2 + 0im), :(x = $t + 0im)), imsub(e)))
     for g in (:((d + I * c * d * x) ^ (3 / 2) * (f - I * c * f * x) ^ (5 / 2) * (a + b * asinh(c * x)) ^ 2),
               :((d + I * c * d * x) ^ (1 / 2) * (f - I * c * f * x) ^ (1 / 2) * (a + b * asinh(c * x))))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test F isa Expr
+        for x0 in (0.21, 0.77, 1.1, -0.5)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(g, x0); rtol = 1e-6)
+        end
+    end
+end
+
+# √(a + i a t) (c + d t)^k after t = tan, steps PQ and LC: the rational integral in u = √((c + d t)/(1 + i t)) is even in
+# u, and its denominator splits over ℚ(i)(c, d) in w = u²: partial fractions, logs with √((c - i d)/2), √(-i d) (step EB;
+# sample 1842, where the real route's RootSum over c, d did not finish)
+@testset "Step EB: binomial partial fractions over ℚ(i)(c, d)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    imsub(e) = e in (:(sqrt(-1)), :I) ? im : e isa Expr ? Expr(e.head, map(imsub, e.args)...) : e
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(c = 0.4 + 0im), :(d = 0.9 + 0im), :(e = 0.3 + 0im),
+                                                :(f = 1.2 + 0im), :(x = $t + 0im)), imsub(e)))
+    for g in (:(sqrt(a + I * a * tan(e + f * x)) * (c + d * tan(e + f * x)) ^ (3 / 2)),
+              :(sqrt(a + I * a * tan(e + f * x)) * sqrt(c + d * tan(e + f * x))),
+              :(sqrt(c + d * tan(e + f * x)) / sqrt(a + I * a * tan(e + f * x))),
+              :((a + I * a * tan(e + f * x)) ^ (3 / 2) / sqrt(c + d * tan(e + f * x))))
         F = Risch.risch_integrate(g, :x; build = build, lift = identity)
         @test F isa Expr
         for x0 in (0.21, 0.77, 1.1, -0.5)

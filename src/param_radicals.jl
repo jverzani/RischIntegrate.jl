@@ -40,7 +40,9 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
         # Möbius radicand L₂/L₁ (step PQ)
         r = integrate_complex_split_quadratic(f, x, rads, ut0; build = build, lift = lift, verify = verify)
         r === nothing || return r
-        if RISCH_DEPTH[] == 1
+        # (deeper too for a quadratic polynomial radicand, √(d²x² - 2i d) inside step AP's parts for asinh(d x² - i),
+        # sample 2715: no tower beneath it to search)
+        if RISCH_DEPTH[] == 1 || (degree(el.num) == 2 && degree(el.den) == 0)
             r = integrate_imag_param(f, x; build = build, lift = lift, verify = verify)
             r === nothing || return r
         end
@@ -235,6 +237,23 @@ function cterm_complex(b::Builder, c, gens)
     iszero(s) && return cterm(b, r)
     it = isone(s) ? b.lift(im) : mk(b, :*, cterm(b, s), b.lift(im))
     iszero(r) ? it : mk(b, :+, cterm(b, r), it)
+end
+
+# a fraction over ℚ(i)(…) as a term, its coefficients through cterm_complex (frac_term writes real ones only)
+function frac_term_complex(b::Builder, f::Frac{UPoly{C}}, gens) where {C}
+    is_complex_field(C) || return frac_term(b, f)
+    u = b.x
+    function cpoly(p)
+        ts = Any[]
+        for (k, c) in enumerate(p.c)
+            iszero(c) && continue
+            mon = k == 1 ? nothing : k == 2 ? u : mk(b, :^, u, b.lift(k - 1))
+            ct = cterm_complex(b, c, gens)
+            push!(ts, mon === nothing ? ct : isone(c) ? mon : mk(b, :*, ct, mon))
+        end
+        isempty(ts) ? b.lift(0) : length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
+    end
+    isone(f.den) ? cpoly(f.num) : mk(b, :/, cpoly(f.num), cpoly(f.den))
 end
 
 function real_radicand_retry(f, x, ut0, T, el; build = nothing, lift = nothing, verify::Bool = true)
@@ -1025,10 +1044,10 @@ function integrate_param_repeated(f, x, rads; build = nothing, lift = nothing, v
             s = frac(scale(ρ, SN), SD)                  # ρ s (a + b x for (a + b x)²), and w^(1/n) = 1
             wroot = b0.lift(1)
         else
-            wt = frac_term(b0, frac(scale(c, WN), WD))
+            wt = frac_term_complex(b0, frac(scale(c, WN), WD), T.consts)
             wroot = n == 2 ? mk(b0, :sqrt, wt) : mk(b0, :^, wt, b0.lift(Q(1, n)))
         end
-        st = frac_term(b0, s)
+        st = frac_term_complex(b0, s, T.consts)
         ks = Int[]
         function rewrite(t, sg)
             safe_iscall(t) || return t
