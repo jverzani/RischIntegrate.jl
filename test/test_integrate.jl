@@ -4173,3 +4173,20 @@ end
         end
     end
 end
+
+# conjugate linear radicands with i beside an inverse hyperbolic function: step IH's coefficients over ℚ(i), and step
+# RM's merge (d + i c d x)^(3/2) (f - i c f x)^(5/2) = σ d f (1 + c²x²)^(3/2) (…) (sample 2700, Rubi 7.1.4)
+@testset "conjugate radicands with i beside asinh (steps IH, RM)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    imsub(e) = e in (:(sqrt(-1)), :I) ? im : e isa Expr ? Expr(e.head, map(imsub, e.args)...) : e
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(b = 0.7 + 0im), :(c = 0.4 + 0im), :(d = 0.9 + 0im),
+                                                :(f = 1.2 + 0im), :(x = $t + 0im)), imsub(e)))
+    for g in (:((d + I * c * d * x) ^ (3 / 2) * (f - I * c * f * x) ^ (5 / 2) * (a + b * asinh(c * x)) ^ 2),
+              :((d + I * c * d * x) ^ (1 / 2) * (f - I * c * f * x) ^ (1 / 2) * (a + b * asinh(c * x))))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test F isa Expr
+        for x0 in (0.21, 0.77, 1.1, -0.5)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(g, x0); rtol = 1e-6)
+        end
+    end
+end
