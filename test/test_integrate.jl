@@ -4289,3 +4289,17 @@ end
     F = Risch.risch_integrate(g, :t; build = build, lift = identity)
     @test isapprox(real(ev(F, π - 1e-7, 2.0) - ev(F, 1e-7, 2.0)), 1.0; rtol = 1e-6)
 end
+
+# a radical of c·x^p with p symbolic: (c x^p)^e / x^(p e) is constant for x > 0 (step RS; sample 438, Rubi 1.1.3.2:
+# ∫ x^(-1 - n/2) √(b xⁿ) = √(b xⁿ) x^(-n/2) log x)
+@testset "Step RS: radicals of c·x^p, p symbolic" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, t, n, b) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $t), :(n = $n), :(b = $b)), e))
+    for g in (:(x ^ (-1 - (1 / 2) * n) * (b * x ^ n) ^ (1 / 2)), :(x ^ (-1 - (1 / 3) * n) * (b * x ^ n) ^ (1 / 3)))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test occursin("log(x)", string(F))
+        for x0 in (0.4, 1.3, 2.7), (n, b) in ((3.0, 2.0), (-1.7, 0.6))
+            @test isapprox((ev(F, x0 + 1e-6, n, b) - ev(F, x0 - 1e-6, n, b)) / 2e-6, ev(g, x0, n, b); rtol = 1e-6)
+        end
+    end
+end

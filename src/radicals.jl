@@ -825,3 +825,54 @@ function integrate_root_repeated(f, xk::String, u, uterm, n::Int, b0::Builder, v
     e0 > 0 && (tterm = mk(b0, :/, tterm, mk(b0, :^, vterm, b0.lift(e0))))
     try_substitutions(f, xk, Any[(Q, φ, radval, tterm, Any[])], b0, verify)
 end
+
+# step RS: one radical factor (c x^p)^e of f, p symbolic (not rational) and c free of x (sample 438, Rubi 1.1.3.2:
+# x^(-1 - n/2) √(b xⁿ)): for x > 0, (c x^p)^e / x^(p e) is constant, so ∫ h·(c x^p)^e = ((c x^p)^e / x^(p e)) ∫ h·x^(p e).
+# The answer, or nothing.
+function integrate_symbolic_power_radical(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    fs = product_factors!(Any[], f, 1)
+    # a power x^p with p free of x and not rational
+    function xpow(t)
+        (isnode(t) && opname(operation(t)) === :^ && length(arguments(t)) == 2) || return nothing
+        bse, p = arguments(t)
+        (string(bse) == xk && !depends_on(p, xk) && leaf_rational(p) === nothing) ? p : nothing
+    end
+    # the radicand c·x^p: (c, p)
+    function monomial(u)
+        p = xpow(u)
+        p === nothing || return (nothing, p)
+        (isnode(u) && opname(operation(u)) === :*) || return nothing
+        us = product_factors!(Any[], u, 1)
+        ix = findall(((t, k),) -> k == 1 && xpow(t) !== nothing, us)
+        length(ix) == 1 || return nothing
+        rest = [k == 1 ? t : mk(bd, :^, t, bd.lift(k)) for (i, (t, k)) in enumerate(us) if i != ix[1]]
+        any(t -> depends_on(t, xk), rest) && return nothing
+        (length(rest) == 1 ? rest[1] : mk(bd, :*, rest...), xpow(us[ix[1]][1]))
+    end
+    ir = Int[]
+    for (i, (t, k)) in enumerate(fs)
+        rp = radical_parts(t)
+        rp !== nothing && depends_on(rp[2], xk) && push!(ir, i)
+    end
+    length(ir) == 1 || return nothing
+    t, k = fs[ir[1]]
+    e, u = radical_parts(t)
+    e *= k
+    cp = monomial(u)
+    cp === nothing && return nothing
+    p = cp[2]
+    pe = mk(bd, :*, bd.lift(e), p)
+    h = Any[kk == 1 ? tt : mk(bd, :^, tt, bd.lift(kk)) for (i, (tt, kk)) in enumerate(fs) if i != ir[1]]
+    g = mk(bd, :*, h..., mk(bd, :^, bd.x, pe))
+    G = try
+        risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    catch err
+        (err isa RischNotImplemented || err isa NotElementary) || rethrow()
+        return nothing
+    end
+    G isa IntegralWithRootSums && return nothing
+    mk(bd, :*, mk(bd, :/, mk(bd, :^, u, bd.lift(e)), mk(bd, :^, bd.x, pe)), G)
+end
