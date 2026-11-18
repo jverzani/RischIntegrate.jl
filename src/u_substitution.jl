@@ -483,3 +483,81 @@ function cancel_quotient(bd::Builder, f, g)
     pr(v) = isempty(v) ? bd.lift(1) : length(v) == 1 ? v[1] : mk(bd, :*, v...)
     isempty(den) ? pr(num) : mk(bd, :/, pr(num), pr(den))
 end
+
+# ---------------------------------------------------------------------------
+# Step CB: Chebyshev's binomials and their kin, f = C x^m h(xⁿ) (x^m from factors x^r and (c x)^r = c^r x^r, for c, x > 0;
+# every other x in f inside a power x^k with n | k, n ≥ 2): u = xⁿ, ∫ f dx = (1/n) ∫ C u^((m+1)/n - 1) h(u) du, then
+# u ↦ xⁿ. √x/(1 - x²)^(3/4) becomes u^(-1/4) (1 - u)^(-3/4)/2, one Möbius radicand ((1 - u)/u)^(1/4) (Rubi 1.1.3:
+# (c x)^(1/2)/(a - b x²)^(3/4), x⁸/(a - b x⁴)^(1/4)). After a radical refusal, in the outermost call.
+# ---------------------------------------------------------------------------
+function integrate_monomial_power_subst(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    isx(t) = !isnode(t) && string(t) == xk
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    # c x (c free of x): c, else nothing
+    function cx(t)
+        isx(t) && return bd.lift(1)
+        (isnode(t) && opname(operation(t)) === :* ) || return nothing
+        as = arguments(t)
+        js = findall(isx, as)
+        (length(js) == 1 && all(a -> isx(a) || !depends_on(a, xk), as)) || return nothing
+        rest = Any[a for (j, a) in enumerate(as) if j != js[1]]
+        length(rest) == 1 ? rest[1] : mk(bd, :*, rest...)
+    end
+    # the exponents k of the powers x^k in t (bare x: 1)
+    function xexps!(t, acc)
+        isx(t) && return push!(acc, 1)
+        isnode(t) || return acc
+        if opname(operation(t)) === :^ && length(arguments(t)) == 2 && isx(arguments(t)[1])
+            k = leaf_rational(arguments(t)[2])
+            return push!(acc, k === nothing || !isone(denominator(k)) ? 0 : Int(numerator(k)))
+        end
+        foreach(a -> xexps!(a, acc), arguments(t))
+        acc
+    end
+    m = Q(0)
+    consts, others = Any[], Any[]
+    for (t, e) in product_factors!(Any[], f, 1)
+        base, r = t, Q(e)
+        if isnode(t) && opname(operation(t)) === :^ && length(arguments(t)) == 2 && leaf_rational(arguments(t)[2]) !== nothing
+            base, r = arguments(t)[1], Q(leaf_rational(arguments(t)[2])) * e
+        elseif isnode(t) && opname(operation(t)) === :sqrt
+            base, r = arguments(t)[1], Q(e) / 2
+        end
+        if !depends_on(t, xk)
+            push!(consts, e == 1 ? t : mk(bd, :^, t, bd.lift(e)))
+        elseif (c = cx(base)) !== nothing
+            m += r
+            string(c) == "1" || push!(consts, mk(bd, :^, c, bd.lift(r)))
+        else
+            push!(others, e == 1 ? t : mk(bd, :^, t, bd.lift(e)))
+        end
+    end
+    isempty(others) && return nothing
+    ks = reduce(vcat, [collect(xexps!(t, Int[])) for t in others])
+    (isempty(ks) || any(iszero, ks)) && return nothing
+    n = reduce(gcd, ks)
+    n >= 2 || return nothing
+    # x^k ↦ x^(k/n) in the others (x now standing for u)
+    function down(t)
+        isnode(t) || return t
+        if opname(operation(t)) === :^ && length(arguments(t)) == 2 && isx(arguments(t)[1])
+            k = Int(leaf_rational(arguments(t)[2])) ÷ n
+            return k == 1 ? bd.x : mk(bd, :^, bd.x, bd.lift(k))
+        end
+        term_rebuild(bd, t, Any[down(a) for a in arguments(t)])
+    end
+    q = (m + 1) / n - 1
+    g = Any[bd.lift(Q(1, n)), consts..., (down(t) for t in others)...]
+    iszero(q) || push!(g, mk(bd, :^, bd.x, bd.lift(q)))
+    G = try
+        risch_integrate(mk(bd, :*, g...), x; build = build, lift = lift, verify = verify)
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        return nothing
+    end
+    xn = mk(bd, :^, bd.x, bd.lift(n))
+    back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(a) for a in arguments(t)]) : (isx(t) ? xn : t)
+    subst_answer(G, back, bd)
+end

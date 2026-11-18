@@ -255,6 +255,11 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             r = split_param_sum(f, x; build = build, lift = lift, verify = verify)   # a sum factor term by term (SP)
             r === nothing || return r
         end
+        # x^m h(xⁿ) with radicals: u = xⁿ (step CB, Chebyshev's binomials; outermost call)
+        if e isa RischNotImplemented && occursin("radical", e.msg) && RISCH_DEPTH[] == 1
+            r = integrate_monomial_power_subst(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
+        end
         # a radical refused for its radicand: a parameter factor of every summand taken out, (a + a sin x)^e =
         # a^e (1 + sin x)^e for a > 0 (step RK; last, and in the outermost call only, so that the routes that
         # already work are not changed: a substitution refused inside, step AL or US, leaves the next one its chance)
