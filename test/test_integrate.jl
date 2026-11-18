@@ -3158,12 +3158,17 @@ end
 end
 
 # stratified scan of 2026-11-05: radicals of a + i a tan(c + d x) reached a step's real-form output (RischError); now
-# a refusal (samples 1810, 1862, 2715)
+# a refusal (samples 1810, 2715), or, for sample 1862, an answer through step PQ
 @testset "radicals with i in a step for real integrands: a refusal (scan 2026-11-05)" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
-    for f in (:(sqrt(a + I * a * tan(c + d * x)) * tan(c + d * x) ^ (3 // 2) * (A + B * tan(c + d * x))),
-              :(a + b * asinh(-I + d * x ^ 2)))
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(f, :x; build = build, lift = identity)
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(a + b * asinh(-I + d * x ^ 2)), :x; build = build, lift = identity)
+    imsub(e) = e in (:(sqrt(-1)), :I) ? im : e isa Expr ? Expr(e.head, map(imsub, e.args)...) : e
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(A = 0.6 + 0im), :(B = 1.7 + 0im), :(c = 0.4 + 0im),
+                                                :(d = 0.9 + 0im), :(x = $t + 0im)), imsub(e)))
+    f = :(sqrt(a + I * a * tan(c + d * x)) * tan(c + d * x) ^ (3 // 2) * (A + B * tan(c + d * x)))
+    F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+    for x0 in (0.21, 0.77, 1.1)
+        @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
     end
 end
 
