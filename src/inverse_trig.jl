@@ -234,7 +234,7 @@ function integrate_arcs_scaled(f, x, arcs; build = nothing, lift = nothing, veri
                     end
                     (isempty(T.levels) && degree(el.num) <= 0 && degree(el.den) == 0) || return c
                     v = isempty(el.num.c) ? zero(ctype(T)) : el.num.c[1] / el.den.c[1]
-                    cterm(Builder(bd.build, bd.lift, bd.x, T.consts), v)
+                    cterm_complex(Builder(bd.build, bd.lift, bd.x, T.consts), v, T.consts)   # (i: d + i c d x)
                 end
                 ts = Any[]
                 for (k, c) in sort(collect(pr); by = first)
