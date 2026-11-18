@@ -3158,12 +3158,17 @@ end
 end
 
 # stratified scan of 2026-11-05: radicals of a + i a tan(c + d x) reached a step's real-form output (RischError); now
-# a refusal (samples 1810, 1862, 2715)
+# a refusal (samples 1810, 2715), or, for sample 1862, an answer through step PQ
 @testset "radicals with i in a step for real integrands: a refusal (scan 2026-11-05)" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
-    for f in (:(sqrt(a + I * a * tan(c + d * x)) * tan(c + d * x) ^ (3 // 2) * (A + B * tan(c + d * x))),
-              :(a + b * asinh(-I + d * x ^ 2)))
-        @test_throws Risch.RischNotImplemented Risch.risch_integrate(f, :x; build = build, lift = identity)
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(a + b * asinh(-I + d * x ^ 2)), :x; build = build, lift = identity)
+    imsub(e) = e in (:(sqrt(-1)), :I) ? im : e isa Expr ? Expr(e.head, map(imsub, e.args)...) : e
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(A = 0.6 + 0im), :(B = 1.7 + 0im), :(c = 0.4 + 0im),
+                                                :(d = 0.9 + 0im), :(x = $t + 0im)), imsub(e)))
+    f = :(sqrt(a + I * a * tan(c + d * x)) * tan(c + d * x) ^ (3 // 2) * (A + B * tan(c + d * x)))
+    F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+    for x0 in (0.21, 0.77, 1.1)
+        @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6)
     end
 end
 
@@ -4148,4 +4153,23 @@ end
     end
     # (a bare x beside x²: no u = xⁿ)
     @test Risch.integrate_monomial_power_subst(:(sqrt(x) / (1 + x + x ^ 2) ^ (3 / 4)), :x; build = build, lift = identity) === nothing
+end
+
+# two square-root radicands over ℚ(i)(…) whose exponents sum to an integer, as step RM merges them after t = tan:
+# √(L₁ L₂) = σ L₁ √(L₂/L₁), one Möbius radicand (step PQ; Rubi 4.3.2.1, 4.3.3.1, √(a + i a tan) tan^(3/2) (A + B tan))
+@testset "Step PQ: √((a + i a t)(c + d t)) through the Möbius radicand" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    imsub(e) = e == :(sqrt(-1)) ? im : e isa Expr ? Expr(e.head, map(imsub, e.args)...) : e
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(A = 0.6 + 0im), :(B = 1.7 + 0im), :(c = 0.4 + 0im),
+                                                :(d = 0.9 + 0im), :(e = 0.3 + 0im), :(f = 1.2 + 0im), :(x = $t + 0im)), imsub(e)))
+    I = :(sqrt(-1))
+    for g in (:((c + d * tan(e + f * x)) ^ (3 / 2) / (a + $I * a * tan(e + f * x)) ^ (3 / 2)),
+              :(sqrt(a + $I * a * tan(c + d * x)) * tan(c + d * x) ^ (3 / 2) * (A + B * tan(c + d * x))),
+              :((A + B * tan(c + d * x)) / (tan(c + d * x) ^ (3 / 2) * (a + $I * a * tan(c + d * x)) ^ (5 / 2))))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test F isa Expr
+        for x0 in (0.21, 0.77, 1.1, -0.5)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(g, x0); rtol = 1e-6)
+        end
+    end
 end
