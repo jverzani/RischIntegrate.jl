@@ -292,7 +292,9 @@ function merge_square_roots(f, x, xk::String, build, lift)
     end
     odd = Any[u for (u, E) in values(rads) if !isinteger(E)]
     length(odd) >= 2 || return nothing
-    any(u -> any(n -> has_op(u, n), RM_FUNCS), odd) || return nothing
+    # (or radicands with i whose product is real: (d + i c d x)^(3/2) (f - i c f x)^(5/2) = σ d f (1 + c²x²)^(3/2)·…,
+    # sample 2700, beside asinh(c x))
+    (any(u -> any(n -> has_op(u, n), RM_FUNCS), odd) || all(has_imag_unit, odd)) || return nothing
     for (u, E) in values(rads)
         k = Int(isinteger(E) ? E : E - Q(1) // 2)
         k == 0 || push!(hs, pw(u, k))
