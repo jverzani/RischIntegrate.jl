@@ -414,6 +414,8 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     xk = string(x)
     r = integrate_big_power(f, x, build, lift)        # (a x + b)^n, |n| > 10_000: the power rule (step BP)
     r === nothing || return r
+    r = integrate_inverse_compositions(f, x; build = build, lift = lift, verify = verify)   # atanh(tanh(a + b x)) (IC)
+    r === nothing || return r
     g = rewrite_sinc(f, x, build, lift)                # sinc(u) = sin(πu)/(πu), Julia's normalized sinc
     g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
     # products of sines and cosines of rational multiples of one frequency over xᵐ (the Borwein integrals): to a sum,

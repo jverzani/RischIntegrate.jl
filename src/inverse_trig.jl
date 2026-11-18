@@ -1036,3 +1036,61 @@ function acosh_radical_ratio(f, x, xk::String, build, lift)
     σ = length(σs) == 1 ? σs[1] : mk(bd, :*, σs...)
     g, σ, bd, Any[(u, Qt)]
 end
+
+# ---------------------------------------------------------------------------
+# Step IC: an inverse function of its own function, w = atanh(tanh(L)), acoth(tanh L), atanh(coth L), acoth(coth L),
+# atan(tan L), acot(cot L), asinh(sinh L) (w' = L'), atan(cot L), acot(tan L) (w' = -L'), L = s + r linear in x with a
+# symbol s found nowhere else in f (Rubi 7.3.7, x³ atanh(tanh(a + b x))³): w = σL + κ with κ' = 0 (κ = iπ/2 for acoth
+# of tanh, a multiple of π for atan of tan, between their jumps). ∫ f with w ↦ σL is F(x; s), an identity in s, so
+# F(x; σw - r) is ∫ f: Rubi's answers in w.
+# ---------------------------------------------------------------------------
+const INV_COMPOSITIONS = Dict((:atanh, :tanh) => 1, (:acoth, :tanh) => 1, (:atanh, :coth) => 1, (:acoth, :coth) => 1,
+                              (:atan, :tan) => 1, (:acot, :cot) => 1, (:asinh, :sinh) => 1,
+                              (:atan, :cot) => -1, (:acot, :tan) => -1)
+
+function integrate_inverse_compositions(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    comp(t) = (isnode(t) && length(arguments(t)) == 1 && isnode(arguments(t)[1]) &&
+               length(arguments(arguments(t)[1])) == 1 &&
+               haskey(INV_COMPOSITIONS, (opname(operation(t)), opname(operation(arguments(t)[1]))))) ?
+              INV_COMPOSITIONS[(opname(operation(t)), opname(operation(arguments(t)[1])))] : nothing
+    ws = Any[]
+    find(t) = (comp(t) !== nothing && depends_on(t, xk)) ? push!(ws, t) : (isnode(t) && foreach(find, arguments(t)))
+    find(f)
+    isempty(ws) && return nothing
+    L = arguments(arguments(ws[1])[1])[1]
+    all(w -> string(arguments(arguments(w)[1])[1]) == string(L), ws) || return nothing
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    # L = s + r: s a symbol summand of L (not x), found in f only inside the w's; L linear in x
+    (isnode(L) && opname(operation(L)) === :+) || return nothing
+    b = term_deriv(bd, L, xk)
+    (b === nothing || depends_on(b, xk)) && return nothing
+    leaves(t, acc = Set{String}()) = (isnode(t) ? foreach(a -> leaves(a, acc), arguments(t)) : push!(acc, string(t)); acc)
+    wstr = Set(string(w) for w in ws)
+    outside(t, acc = Set{String}()) = (string(t) in wstr ? acc : isnode(t) ? (foreach(a -> outside(a, acc), arguments(t)); acc) :
+                                       (push!(acc, string(t)); acc))
+    out = outside(f)
+    Ls = arguments(L)
+    i = findfirst(a -> !isnode(a) && string(a) != xk && leaf_rational(a) === nothing && !is_e_const(a) &&
+                       string(a) ∉ ("π", "pi") && !(string(a) in out) && !(string(a) in leaves(b)), Ls)
+    i === nothing && return nothing
+    s = string(Ls[i])
+    σ = comp(ws[1])
+    all(w -> comp(w) == σ, ws) || return nothing
+    σL = σ == 1 ? L : mk(bd, :*, bd.lift(-1), L)
+    rw(t) = string(t) in wstr ? σL : isnode(t) ? term_rebuild(bd, t, Any[rw(a) for a in arguments(t)]) : t
+    F = try
+        risch_integrate(rw(f), x; build = build, lift = lift, verify = verify)
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        return nothing
+    end
+    # s ↦ σw - r, r = L - s
+    rest = Any[a for (j, a) in enumerate(Ls) if j != i]
+    r = length(rest) == 1 ? rest[1] : mk(bd, :+, rest...)
+    w = ws[1]
+    snew = mk(bd, :+, σ == 1 ? w : mk(bd, :*, bd.lift(-1), w), mk(bd, :*, bd.lift(-1), r))
+    back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(a) for a in arguments(t)]) : (string(t) == s ? snew : t)
+    subst_answer(F, back, bd)
+end
