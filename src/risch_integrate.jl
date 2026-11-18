@@ -132,6 +132,11 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             r2 = integrate_binomial_scaled(f, x; build = build, lift = lift, verify = verify)
             r2 === nothing || return r2
         end
+        # a RootSum for a denominator of several squarefree factors: the partial fractions alone (step SF)
+        if r isa IntegralWithRootSums
+            r2 = integrate_squarefree_split(f, x; build = build, lift = lift, verify = verify)
+            r2 === nothing || return r2
+        end
         # a RootSum for a sum: term by term (step LS), kept when it has fewer RootSums (a1/(V - b) - a2/(V² + 2bV - b²)
         # - a3/V, SymPy #15726: the residue polynomial of the whole factors over ℚ(a1, a2, a3, b), which is not found;
         # each term alone gives logs)
