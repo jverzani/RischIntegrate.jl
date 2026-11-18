@@ -4211,6 +4211,21 @@ end
     end
 end
 
+# a RootSum for a denominator of several squarefree factors: each partial fraction alone, where step BN scales
+# 2 - x³ to closed form (step SF; sample 1808, cot² (a + i a tan)^(1/3) after u³ = 1 + i tan)
+@testset "Step SF: partial fractions by squarefree factors" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    imsub(e) = e in (:(sqrt(-1)), :I) ? im : e isa Expr ? Expr(e.head, map(imsub, e.args)...) : e
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(c = 0.4 + 0im), :(d = 0.9 + 0im), :(x = $t + 0im)), imsub(e)))
+    for g in (:(3 / ((x ^ 3 - 1) ^ 2 * (2 - x ^ 3))), :(cot(c + d * x) ^ 2 * (a + I * a * tan(c + d * x)) ^ (1 / 3)))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test F isa Expr
+        for x0 in (0.21, 0.77, 1.1, -0.5)
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(g, x0); rtol = 1e-6)
+        end
+    end
+end
+
 # a large root index beside radical-free summands: those integrated apart. x^2.5556 = x^(6389/2500) made the whole sum
 # an integral in u = x^(1/2500), x/(x - 3.6⁷⁰) one of degree 2500 that did not finish (SymPy audit,
 # risch-float-exponent-ratio-huge-power-r12; x/(x - 5) took 27 s)
