@@ -519,6 +519,8 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         end
         r === nothing || return r
     end
+    r = integrate_hyp_bioche(f, x; build = build, lift = lift, verify = verify)   # u = cosh L, sinh L (step HB)
+    r === nothing || return r
     r = try                                            # sin(e + f x): y = e + f x (step SL)
         integrate_linear_shift(f, x; build = build, lift = lift, verify = verify)
     catch e

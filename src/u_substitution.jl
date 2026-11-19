@@ -561,3 +561,48 @@ function integrate_monomial_power_subst(f, x; build = nothing, lift = nothing, v
     back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(a) for a in arguments(t)]) : (isx(t) ? xn : t)
     subst_answer(G, back, bd)
 end
+
+# ---------------------------------------------------------------------------
+# Step HB: Bioche's rules for hyperbolic functions, the odd cases. f with parameters, its x only inside hyperbolic
+# functions of one argument L: u = cosh L (f = sinh L · g(cosh L), with sinh² L = u² - 1) or u = sinh L, by
+# derivative-divides (`integrate_usub`, exact), before the route through e^L, whose degree in e^L doubles the
+# quartic: sinh(c + d x)⁹/(a - b sinh(c + d x)⁴)², sample 2496, ran for minutes there and takes a second in u. Nothing
+# when f is not of this kind (the trigonometric cases are step TS's, in θ = e^(iL)).
+# ---------------------------------------------------------------------------
+const HYP_FUNS = (:sinh, :cosh, :tanh, :coth, :sech, :csch)
+function integrate_hyp_bioche(f, x; build, lift, verify::Bool)
+    @nospecialize f x
+    xk = string(x)
+    (USUB_DEPTH[] < 2 && has_param_not_i(f, xk)) || return nothing
+    L = nothing
+    function walk(t)
+        (safe_iscall(t) && !isempty(arguments(t))) || return string(t) != xk     # (x only inside the functions)
+        n = opname(operation(t))
+        if n in HYP_FUNS && length(arguments(t)) == 1 && has_x(arguments(t)[1], xk)
+            a = arguments(t)[1]
+            L === nothing && (L = a)
+            return string(a) == string(L)
+        end
+        (n in (:+, :-, :*, :/, :^) || !has_x(t, xk)) || return false
+        all(walk, arguments(t))
+    end
+    (walk(f) && L !== nothing) || return nothing
+    pp = poly_parts(Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x), L, xk)
+    (pp === nothing || maximum(keys(pp)) != 1) && return nothing       # (L linear in x)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    USUB_DEPTH[] += 1
+    try
+        for h in (:cosh, :sinh)
+            r = try
+                integrate_usub(f, x, mk(bd, h, L), bd; build = build, lift = lift, verify = verify)
+            catch e
+                (e isa RischNotImplemented || e isa NotElementary || e isa DivideError) || rethrow()
+                nothing
+            end
+            r === nothing || return r
+        end
+    finally
+        USUB_DEPTH[] -= 1
+    end
+    nothing
+end
