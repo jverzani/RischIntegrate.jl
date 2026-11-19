@@ -276,6 +276,11 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         # Then radicals of trigonometric functions of one linear argument by t = tan(L/2) (step HT).
         # Last, two or more square roots merged into one, the answer times σ = ±1 (step RM), and the same again.
         # a radicand with the imaginary unit: i as a parameter (step IP)
+        # a radical of c·x^p, p symbolic: (c x^p)^e/x^(p e) constant for x > 0 (step RS)
+        if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg)
+            r = integrate_symbolic_power_radical(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
+        end
         if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg) && RISCH_DEPTH[] == 1 &&
            has_imag_unit(f)
             # hyperbolic functions beside i: trigonometric ones of i L (step HI)
