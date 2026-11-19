@@ -3417,6 +3417,24 @@ end
     @test occursin("expinti((1 + n) * log(x))", string(Risch.risch_integrate(x ^ n / log(x), x)))
 end
 
+# SymJ: x^(p/q)/log x (x = eᵘ gives exp(u)^(p/q), an InexactError in gamma_factors): Ei((p/q + 1) log x), and
+# ∫₀¹ (√x - 1)/log x = log(3/2) from Ei((3/2) log x) - Ei(log x)
+@testset "x^(p/q)/log x: Ei((p/q + 1) log x)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(expinti = SpecialFunctions.expinti), :(x = $x0)), e))
+    dcheck(f, F, pts) = all(x0 -> isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-6), pts)
+    for (f, s) in ((:(x ^ (3 // 2) / log(x)), "expinti(5//2 * log(x))"), (:(sqrt(x) / log(x)), "expinti(3//2 * log(x))"),
+                   (:(x ^ (1 // 2) / log(x)), "expinti(3//2 * log(x))"), (:(x ^ (-1 // 2) / log(x)), "expinti(1//2 * log(x))"),
+                   (:((sqrt(x) - 1) / log(x)), "expinti(3//2 * log(x))"), (:(x ^ (1 // 3) / log(x) ^ 2), "expinti(4//3 * log(x))"))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test occursin(s, string(F)) && dcheck(f, F, (0.4, 1.7, 2.9))
+    end
+    F = Risch.risch_integrate(:((sqrt(x) - 1) / log(x)), :x; build = build, lift = identity)
+    @test isapprox(ev(F, 1 - 1e-9) - ev(F, 1e-12), log(3 / 2); atol = 1e-6)
+    x = SymEngine.symbols("x")
+    @test occursin("expinti", string(Risch.risch_integrate(x ^ (3 // 2) / log(x), x)))
+end
+
 # one radicand a + b tan + c tan² (step TQR): S(t)/√Q split over t, 1 + t², Q; the 1 + t² part from ∫ dt/((t - i)√Q)
 # in real form (√(a - c + ib) = P + iP′, Rubi 4.3.9's √(a - c ± √((a - c)² + b²))), the t-poles by ln|…| forms
 @testset "a + b tan + c tan² under a square root (step TQR)" begin
