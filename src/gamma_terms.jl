@@ -251,7 +251,7 @@ end
 # H3 through x = eᵘ: f(x) with log x (∫ 1/log(x)^(n+1) = ∫ e^u u^(-n-1) du), g(u) = f(eᵘ)·eᵘ with log x ↦ u
 # (u printed as x), integrated by `try_gamma`, and u = log x put back. Nothing when f has no log x or g is
 # not of the gamma kind.
-function try_gamma_log(f, x; build = nothing, lift = nothing, verify::Bool = true)
+function try_gamma_log(f, x; build = nothing, lift = nothing, verify::Bool = true, hyp::Bool = true)
     @nospecialize f x
     xk = string(x)
     # log(xᵏ) = k log x for x > 0, k rational: log(1/x), log(x⁻¹), log(√x) (SymPy #11876, √log(1/x))
@@ -272,13 +272,6 @@ function try_gamma_log(f, x; build = nothing, lift = nothing, verify::Bool = tru
     islogx(t) = logk(t) !== nothing
     haslog(t) = islogx(t) || (isnode(t) && any(haslog, arguments(t)))
     haslog(f) || return nothing
-    b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
-    ex = mk(b0, :exp, b0.x)
-    sub(t) = islogx(t) ? (k = logk(t); isone(k) ? b0.x : mk(b0, :*, b0.lift(k), b0.x)) : isnode(t) ? term_rebuild(b0, t, Any[sub(a) for a in arguments(t)]) : (string(t) == xk ? ex : t)
-    g = mk(b0, :*, sub(f), ex)
-    G = try_gamma(g, x; build = build, lift = lift, verify = verify)
-    # x^(p/q)/log x: g = e^((p/q + 1)u)/u has only integer powers of u, which try_gamma leaves to the usual
-    # integrator; through it, Ei((p/q + 1) log x) (SymJ: ∫ √x/log x, ∫₀¹ (√x - 1)/log x = log(3/2))
     function xfrac(t)
         isnode(t) || return false
         n, as = opname(operation(t)), arguments(t)
@@ -289,6 +282,15 @@ function try_gamma_log(f, x; build = nothing, lift = nothing, verify::Bool = tru
         end
         any(xfrac, as)
     end
+    hyp || xfrac(f) || return nothing
+    b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    ex = mk(b0, :exp, b0.x)
+    sub(t) = islogx(t) ? (k = logk(t); isone(k) ? b0.x : mk(b0, :*, b0.lift(k), b0.x)) : isnode(t) ? term_rebuild(b0, t, Any[sub(a) for a in arguments(t)]) : (string(t) == xk ? ex : t)
+    g = mk(b0, :*, sub(f), ex)
+    # (hyp = false, with HYP_ANSWERS off: only the elementary-integrator route below)
+    G = hyp ? try_gamma(g, x; build = build, lift = lift, verify = verify) : nothing
+    # x^(p/q)/log x: g = e^((p/q + 1)u)/u has only integer powers of u, which try_gamma leaves to the usual
+    # integrator; through it, Ei((p/q + 1) log x) (SymJ: ∫ √x/log x, ∫₀¹ (√x - 1)/log x = log(3/2))
     if G === nothing && xfrac(f)
         G = try
             risch_integrate(g, x; build = build, lift = lift, verify = verify)
