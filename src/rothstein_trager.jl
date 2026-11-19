@@ -152,6 +152,16 @@ function quad_factor_t!(logs, atans, A::UPoly{C}, D::UPoly{C}, dD::UPoly{C}, q::
     true
 end
 
+# step BR's split when the outermost call's retry has it on; in the first attempt, a note that it would apply
+function br_part(A::UPoly{C}, D::UPoly{C}, binomial::Bool) where {C}
+    BR_STAGE[] == 0 && return nothing                   # (outside an outermost call with a parameter)
+    bq = biquad_roots_part(A, D; binomial = binomial)
+    bq === nothing && return nothing
+    BR_STAGE[] == 2 && return bq
+    BR_SEEN[] = true
+    nothing
+end
+
 function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
     if rational_tfield(C) && !iszero(A)
         G = tfree_factor(D)
@@ -193,6 +203,14 @@ function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
     iszero(A) && return logs, atans, unresolved, quads
     dD = deriv(D)
     # (the resultant over more than MAX_ROOTSUM_GENS parameters does not finish for a quartic)
+    # an even quartic over more parameters: the roots of the quadratic in x², not the resultant (step BR; in the
+    # outermost call's retry only, `risch_integrate`)
+    if rational_tfield(C) && ngens(C, D) > MAX_ROOTSUM_GENS && degree(D) in (4, 5) && !IMAG_PARAM[]
+        bq = biquad_log_part(A, D)
+        bq === nothing || return bq
+        bq = br_part(A, D, true)
+        bq === nothing || return bq
+    end
     is_tfield(C) && ngens(C, D) > MAX_ROOTSUM_GENS && degree(D) > 2 && throw(RischNotImplemented(
         "residues of a denominator of degree $(degree(D)) over more than $MAX_ROOTSUM_GENS symbolic constants"))
     # (over exactly MAX_ROOTSUM_GENS parameters, a high degree: the resultant takes minutes, step RB;
@@ -233,6 +251,11 @@ function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
         bq = biquad_log_part(A, D)
         bq === nothing || return bq
     end
+    # (step BR, not a RootSum; not for a binomial x⁴ + q, whose RootSum step PS and others take in real form)
+    if degree(hard) > 0 && rational_tfield(C) && degree(D) in (4, 5) && !IMAG_PARAM[]
+        bq = br_part(A, D, false)
+        bq === nothing || return bq
+    end
     degree(hard) > 0 && push!(unresolved, (hard, A, D))
     logs, atans, unresolved, quads
 end
@@ -259,7 +282,7 @@ function derivative_of(res::RationalIntegral{C}) where {C}
     for q in res.quads
         if q isa RationalIntegral || q isa QuarticNested   # real form of a quartic RootSum (R2, NR)
             tot = tot + qs_down(derivative_of(q))
-        elseif q isa BiquadTerm                             # even quartic (BQ4)
+        elseif q isa BiquadTerm || q isa BiquadRoots        # even quartic (BQ4, BR)
             tot = tot + derivative_of(q)
         elseif q isa QuadLog  # d/dx [β√d log(W/W̄)] = 2βd (V'U - U'V)/(U² - dV²)
             U, V = q.U, q.V

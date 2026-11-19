@@ -3230,9 +3230,10 @@ end
 # RootSum answers with parameters, evaluated at parameter values: F(x => a, b => 1.5, …)
 @testset "RootSum answers evaluated at parameter values" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
-    for (f, pv) in ((:(x ^ 2 / (a + b * x ^ 2 + c * x ^ 4) ^ 2), (:a => 1.13, :b => 2.13, :c => 3.13)),
-                    (:(cos(x) ^ 4 / (a + b * cos(x) + c * cos(x) ^ 2)), (:a => 3.13, :b => 1.13, :c => 0.53)),
-                    (:((A + B * x) / ((a + b * x + c * x ^ 2) ^ 2 * sqrt(x))), (:A => 1.13, :B => 2.13, :a => 3.13, :b => 4.13, :c => 5.13)))
+    # (even quartics take step BR's closed form instead: x²/(a + b x² + c x⁴)², cos(x)⁴/(a + b cos x + c cos² x),
+    # (A + B x)/((a + b x + c x²)² √x), checked there)
+    for (f, pv) in ((:(x ^ 2 / (a + b * x + c * x ^ 4) ^ 2), (:a => 1.13, :b => 2.13, :c => 3.13)),
+                    (:((A + B * x) / ((a + b * x + c * x ^ 3) * sqrt(x))), (:A => 1.13, :B => 2.13, :a => 3.13, :b => 4.13, :c => 5.13)))
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)
         @test F isa Risch.IntegralWithRootSums
         ev(x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), (:($(p.first) = $(p.second)) for p in pv)...), f))
@@ -4350,6 +4351,29 @@ end
         @test occursin("log(x)", string(F))
         for x0 in (0.4, 1.3, 2.7), (n, b) in ((3.0, 2.0), (-1.7, 0.6))
             @test isapprox((ev(F, x0 + 1e-6, n, b) - ev(F, x0 - 1e-6, n, b)) / 2e-6, ev(g, x0, n, b); rtol = 1e-6)
+        end
+    end
+end
+
+@testset "Step BR: even quartics over a parameter field, by the roots of the quadratic in x²" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, t, ps) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $t), [:($k = $v) for (k, v) in ps]...), e))
+    # (Δ = p² - 4q of either sign: the answer is complex in between, its derivative the integrand)
+    pss = ((:a => 1.3 + 0im, :b => 0.7 + 0im, :c => 2.1 + 0im, :d => 0.4 + 0im, :e => 1.6 + 0im, :p => 0.8 + 0im, :q => 2.3 + 0im,
+            :A => 1.1 + 0im, :B => 2.1 + 0im),
+           (:a => -0.9 + 0im, :b => 2.6 + 0im, :c => 1.2 + 0im, :d => 1.5 + 0im, :e => 0.6 + 0im, :p => -3.1 + 0im, :q => 1.1 + 0im,
+            :A => -0.4 + 0im, :B => 0.8 + 0im))
+    for g in (:(1 / (x ^ 4 + p * x ^ 2 + q)), :((x ^ 3 + x - 1) / (x ^ 4 + p * x ^ 2 + q)),
+              :(1 / (x * (x ^ 4 + p * x ^ 2 + q))), :(1 / ((d + e * x) ^ 4 + b * (d + e * x) ^ 2 + a)),
+              :(sqrt(d + e * x) / (a + b * x + c * x ^ 2)), :(1 / (sqrt(d + e * x) * (a + b * x + c * x ^ 2))),   # samples 758, 759
+              :((x * sqrt(d + e * x)) / (a + b * x + c * x ^ 2)),                                                  # 903
+              :((d + e * x ^ 2) ^ 3 / (a + b * x ^ 2 + c * x ^ 4) ^ 2),                                           # 997
+              :(x ^ 2 / (a + b * x ^ 2 + c * x ^ 4) ^ 2), :((A + B * x) / ((a + b * x + c * x ^ 2) ^ 2 * sqrt(x))),
+              :(cos(x) ^ 4 / (a + b * cos(x) + c * cos(x) ^ 2)))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test !occursin("RootSum", string(F))
+        for ps in pss, x0 in (0.37, 1.9)
+            @test isapprox((ev(F, x0 + 1e-6, ps) - ev(F, x0 - 1e-6, ps)) / 2e-6, ev(g, x0 + 0im, ps); rtol = 1e-5)
         end
     end
 end
