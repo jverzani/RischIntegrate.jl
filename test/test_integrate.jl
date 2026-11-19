@@ -4289,3 +4289,17 @@ end
     F = Risch.risch_integrate(g, :t; build = build, lift = identity)
     @test isapprox(real(ev(F, π - 1e-7, 2.0) - ev(F, 1e-7, 2.0)), 1.0; rtol = 1e-6)
 end
+
+# a square under an even root over the parameter field: (r² W²)^e = σ (r W)^(2e), σ locally constant (step RI;
+# sample 950, Rubi 1.2.2.2: 1/(a² + 2ab x² + b² x⁴)^(1/4) = σ/√(a + b x²))
+@testset "Step RI: a square under a fourth root" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, t, a, b) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $t + 0im), :(a = $a + 0im), :(b = $b + 0im)), e))
+    for g in (:(1 / (a ^ 2 + 2 * a * b * x ^ 2 + b ^ 2 * x ^ 4) ^ (1 / 4)), :(x ^ 2 / (a ^ 2 + 2 * a * b * x ^ 2 + b ^ 2 * x ^ 4) ^ (3 / 4)))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test F isa Expr
+        for (a, b) in ((1.3, 0.7), (2.0, -0.5)), x0 in (0.3, 0.9, -0.6, 1.4)
+            @test isapprox((ev(F, x0 + 1e-6, a, b) - ev(F, x0 - 1e-6, a, b)) / 2e-6, ev(g, x0, a, b); rtol = 1e-6)
+        end
+    end
+end
