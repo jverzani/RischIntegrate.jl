@@ -215,6 +215,8 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             (g1 === nothing && e isa NotElementary) && (g1 = integrate_log_radicals(f, x; build = build, lift = lift, verify = verify, inexp = true))
             # exponentials of polynomials in 1/x: u = 1/x (step UR, e^(1/x²) with erfi)
             (g1 === nothing && e isa NotElementary) && (g1 = integrate_reciprocal_exp(f, x; build = build, lift = lift, verify = verify))
+            # exp(c + a x² + b/x²), a b > 0: two erf (erfi) terms (step XR, e^(-x² - 1/x²))
+            (g1 === nothing && e isa NotElementary) && (g1 = integrate_exp_x2_inv_x2(f, x; build = build, lift = lift, verify = verify))
             g1 === nothing && (g1 = try_atan_subst(f, x; build = build, lift = lift, verify = verify))
             # Lambert's W(x): x = w eʷ (step LW)
             g1 === nothing && e isa RischNotImplemented && (g1 = try_lambertw(f, x; build = build, lift = lift, verify = verify))
@@ -628,6 +630,8 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     end
     if any(((_, u),) -> has_param(u, xk), rads)        # parameters in a radicand: x = s u + h (step PR)
         r = integrate_param_repeated(f, x, rads; build = build, lift = lift, verify = verify)   # u = sⁿ w (PM)
+        r === nothing || return r
+        r = integrate_radical_index_halved(f, x, rads; build = build, lift = lift, verify = verify)   # (c W²)^e (RI)
         r === nothing || return r
         g = rewrite_two_linear(f, x, rads; build = build, lift = lift)   # (a + bx)^E₁ (c + dx)^E₂, E₁ + E₂ ∈ ℤ (LL)
         if g !== nothing

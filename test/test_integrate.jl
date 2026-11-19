@@ -4290,6 +4290,56 @@ end
     @test isapprox(real(ev(F, π - 1e-7, 2.0) - ev(F, 1e-7, 2.0)), 1.0; rtol = 1e-6)
 end
 
+# a square under an even root over the parameter field: (r² W²)^e = σ (r W)^(2e), σ locally constant (step RI;
+# sample 950, Rubi 1.2.2.2: 1/(a² + 2ab x² + b² x⁴)^(1/4) = σ/√(a + b x²))
+@testset "Step RI: a square under a fourth root" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, t, a, b) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $t + 0im), :(a = $a + 0im), :(b = $b + 0im)), e))
+    for g in (:(1 / (a ^ 2 + 2 * a * b * x ^ 2 + b ^ 2 * x ^ 4) ^ (1 / 4)), :(x ^ 2 / (a ^ 2 + 2 * a * b * x ^ 2 + b ^ 2 * x ^ 4) ^ (3 / 4)))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test F isa Expr
+        for (a, b) in ((1.3, 0.7), (2.0, -0.5)), x0 in (0.3, 0.9, -0.6, 1.4)
+            @test isapprox((ev(F, x0 + 1e-6, a, b) - ev(F, x0 - 1e-6, a, b)) / 2e-6, ev(g, x0, a, b); rtol = 1e-6)
+        end
+    end
+end
+
+# log(1/u) as -log(u) (step LR): ∫ log(1/x)/(1 - x) was li₂(1/x) with log(x - 1), complex on (0, 1); now -li₂(1 - x), real
+# there, with ∫₀¹ = π²/6 (SymPy audit, definite-antiderivative-complex-on-interval)
+@testset "Step LR: log(1/u) as -log(u)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, a) = real(Risch.term_value(e, "x", a))       # li2 evaluated by PolyLog
+    F = Risch.risch_integrate(:(log(1 / x) / (1 - x)), :x; build = build, lift = identity)
+    @test !occursin("1 / x", string(F))
+    for x0 in (0.2, 0.5, 0.8)
+        @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, log(1 / x0) / (1 - x0); rtol = 1e-6)
+    end
+    @test string(Risch.risch_integrate(:(log(1 / x) ^ 2 / x), :x; build = build, lift = identity)) == "1//3 * log(x) ^ 3"
+end
+
+# exp(c + a x² + b/x²), a b > 0: completing the squares (√|a| x ∓ √|b|/x)², two erf (erfi) terms (step XR; SymPy audit,
+# risch-erf-rational-argument-missing: ∫ e^(-x² - 1/x²) = √π/4 (e⁻² erf(x - 1/x) + e² erf(x + 1/x)))
+@testset "Step XR: exp(a x² + b/x²)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $t), :(π = big(pi)), :(erf = $(SpecialFunctions.erf))), e))
+    setprecision(256) do
+        for g in (:(exp(-x ^ 2 - 1 / x ^ 2)), :(exp(-2 * x ^ 2 - 3 / x ^ 2)), :(exp(-(x ^ 4 + 1) / x ^ 2)))
+            F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+            @test occursin("erf", string(F))
+            h = big"1e-30"
+            for x0 in big.((0.4, 0.9, 1.3, -0.7))
+                @test isapprox((ev(F, x0 + h) - ev(F, x0 - h)) / (2h), ev(g, x0); rtol = 1e-12)
+            end
+        end
+    end
+    F = Risch.risch_integrate(:(5 * exp(1 + x ^ 2 + 1 / x ^ 2)), :x; build = build, lift = identity)
+    @test occursin("erfi", string(F))
+    for x0 in (0.6, 1.3)
+        @test isapprox((Risch.term_value(F, "x", x0 + 1e-6) - Risch.term_value(F, "x", x0 - 1e-6)) / 2e-6,
+                       5 * exp(1 + x0 ^ 2 + 1 / x0 ^ 2); rtol = 1e-6)
+    end
+end
+
 # a radical of c·x^p with p symbolic: (c x^p)^e / x^(p e) is constant for x > 0 (step RS; sample 438, Rubi 1.1.3.2:
 # ∫ x^(-1 - n/2) √(b xⁿ) = √(b xⁿ) x^(-n/2) log x)
 @testset "Step RS: radicals of c·x^p, p symbolic" begin

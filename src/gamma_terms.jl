@@ -272,12 +272,17 @@ function try_gamma_log(f, x; build = nothing, lift = nothing, verify::Bool = tru
     back(G)
 end
 
-# step LR: log(u^e) ↦ e·log(u), 0 < e ≤ 1 and u depending on x; nothing when f has no such log
+# step LR: log(u^e) ↦ e·log(u), 0 < e ≤ 1 and u depending on x; also log(1/u) ↦ -log(u) (the same up to a locally
+# constant term: ∫ log(1/x)/(1 - x) was li₂(1/x) and log(x - 1), complex on (0, 1), where through -log x it is
+# -li₂(1 - x); SymPy audit, definite-antiderivative-complex-on-interval). Nothing when f has no such log
 function log_of_roots(f, x, build, lift)
     @nospecialize f x
     xk = string(x)
+    recip(a) = isnode(a) && opname(operation(a)) === :/ && length(arguments(a)) == 2 &&
+               leaf_rational(arguments(a)[1]) == 1 && has_x(arguments(a)[2], xk)
     has(t) = isnode(t) && ((opname(operation(t)) === :log && length(arguments(t)) == 1 &&
-                            (rp = radical_parts(arguments(t)[1]); rp !== nothing && 0 < rp[1] <= 1 && has_x(rp[2], xk))) ||
+                            (recip(arguments(t)[1]) ||
+                             (rp = radical_parts(arguments(t)[1]); rp !== nothing && 0 < rp[1] <= 1 && has_x(rp[2], xk)))) ||
                            any(has, arguments(t)))
     has(f) || return nothing
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
@@ -285,6 +290,7 @@ function log_of_roots(f, x, build, lift)
         isnode(t) || return t
         args = arguments(t)
         if opname(operation(t)) === :log && length(args) == 1
+            recip(args[1]) && return mk(bd, :*, bd.lift(-1), mk(bd, :log, rw(arguments(args[1])[2])))
             rp = radical_parts(args[1])
             if rp !== nothing && 0 < rp[1] <= 1 && has_x(rp[2], xk)
                 l = mk(bd, :log, rw(rp[2]))
@@ -846,4 +852,54 @@ function special_rational_nonelementary(f, x; build = nothing, lift = nothing, v
         R isa IntegralWithRootSums && return nothing
     end
     throw(NotElementary("∫ A·$(opname(operation(F)))(u) with A, u rational and ∫ A not rational: no elementary antiderivative (Liouville)"))
+end
+
+# step XR: K·exp(c + a x² + b/x²), K and c free of x, a and b rational of one sign (SymPy audit,
+# risch-erf-rational-argument-missing: ∫ e^(-x² - 1/x²)). With A = |a|, B = |b|, s = sign(a):
+#   A x² + B/x² = (√A x - √B/x)² + 2√(AB) = (√A x + √B/x)² - 2√(AB), and 1 = ((√A + √B/x²) + (√A - √B/x²))/(2√A),
+# whose halves are the derivatives of √A x ∓ √B/x, so
+#   ∫ e^(-(A x² + B/x²)) = √π/(4√A) (e^(-2√(AB)) erf(√A x - √B/x) + e^(2√(AB)) erf(√A x + √B/x)),
+#   ∫ e^(A x² + B/x²)    = √π/(4√A) (e^(2√(AB)) erfi(√A x - √B/x) + e^(-2√(AB)) erfi(√A x + √B/x)).
+# The answer, or nothing.
+function integrate_exp_x2_inv_x2(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    fs = product_factors!(Any[], f, 1)
+    ie = findall(((t, e),) -> e == 1 && exp_arg(t) !== nothing && depends_on(exp_arg(t), xk), fs)
+    length(ie) == 1 || return nothing
+    any(((t, _),) -> depends_on(t, xk), fs[[i for i in eachindex(fs) if i != ie[1]]]) && return nothing
+    w = exp_arg(fs[ie[1]][1])
+    T, el = try
+        build_tower(w, xk)
+    catch err
+        (err isa RischNotImplemented || err isa RischError || err isa NeedComplex) || rethrow()
+        return nothing
+    end
+    (isempty(T.levels) && ctype(T) === Q) || return nothing
+    # w = (b + c x² + a x⁴)/(d x²)
+    D, N = el.den, el.num
+    (degree(D) == 2 && is_monomial(D) && degree(N) == 4 && iszero(N.c[2]) && iszero(N.c[4])) || return nothing
+    d = lc(D)
+    b, c, a = N.c[1] / d, N.c[3] / d, N.c[5] / d
+    (sign(a) == sign(b) && !iszero(b)) || return nothing
+    s = Int(sign(a))
+    A, B = abs(a), abs(b)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    lq(q) = isinteger(q) ? bd.lift(Int(q)) : bd.lift(q)
+    sq(q) = (r = rat_sqrt(q); r === nothing ? mk(bd, :sqrt, lq(q)) : lq(r))
+    sA, sB = sq(A), sq(B)
+    r2 = rat_sqrt(A * B)
+    two_sab = r2 === nothing ? mk(bd, :*, bd.lift(2), mk(bd, :sqrt, lq(A * B))) : lq(2 * r2)
+    neg(t) = mk(bd, :*, bd.lift(-1), t)
+    one_(q) = rat_sqrt(q) !== nothing && isone(rat_sqrt(q))
+    X = one_(A) ? bd.x : mk(bd, :*, sA, bd.x)
+    Y = mk(bd, :/, one_(B) ? bd.lift(1) : sB, bd.x)
+    fn = s < 0 ? :erf : :erfi
+    e1, e2 = s < 0 ? (neg(two_sab), two_sab) : (two_sab, neg(two_sab))
+    t1 = mk(bd, :*, mk(bd, :exp, e1), mk(bd, fn, mk(bd, :+, X, neg(Y))))
+    t2 = mk(bd, :*, mk(bd, :exp, e2), mk(bd, fn, mk(bd, :+, X, Y)))
+    K = Any[e == 1 ? t : mk(bd, :^, t, bd.lift(e)) for (i, (t, e)) in enumerate(fs) if i != ie[1]]
+    iszero(c) || push!(K, mk(bd, :exp, lq(c)))
+    pref = mk(bd, :/, mk(bd, :sqrt, bd.lift(π)), one_(A) ? bd.lift(4) : mk(bd, :*, bd.lift(4), sA))
+    mk(bd, :*, K..., pref, mk(bd, :+, t1, t2))
 end
