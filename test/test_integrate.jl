@@ -4377,3 +4377,18 @@ end
         end
     end
 end
+
+@testset "Step HB: u = cosh L or sinh L for hyperbolic integrands odd in sinh or cosh" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $t), :(a = 2.3 + 0im), :(b = 0.7 + 0im), :(c = 0.4 + 0im), :(d = 1.3 + 0im)), e))
+    for g in (:(sinh(c + d * x) ^ 9 / (a - b * sinh(c + d * x) ^ 4) ^ 2),          # sample 2496 (minutes before)
+              :(sinh(x) ^ 5 / (a - b * sinh(x) ^ 4) ^ 2), :(cosh(d * x) ^ 3 / (a + b * sinh(d * x) ^ 2) ^ 2))
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 60
+        @test !occursin("exp", string(F))
+        for x0 in (0.3, 0.9, 1.6)
+            # (step BR's form inside: complex at some parameter values, its derivative the integrand)
+            @test isapprox((ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, ev(g, x0); rtol = 1e-5)
+        end
+    end
+end
