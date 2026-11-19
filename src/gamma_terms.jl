@@ -82,12 +82,21 @@ function gamma_factors(t, xk::String, sign::Int = 1, acc = (Any[], Ref(Q(0)), An
     if n === :^ && length(args) == 2 && exp_arg(args[1]) !== nothing   # exp(u)^k
         k = leaf_rational(args[2])
         k === nothing && return nothing
-        push!(exps, (exp_arg(args[1]), sign * Int(k)))  # (only integer k reach here in practice)
+        push!(exps, (exp_arg(args[1]), sign * Q(k)))    # (k rational: x^(p/q) through x = eᵘ, try_gamma_log)
         return acc
     end
     nothing
 end
 has_x(t, xk::String) = safe_iscall(t) && !isempty(arguments(t)) ? any(a -> has_x(a, xk), arguments(t)) : string(t) == xk
+
+# c xˢ exp(Σ kᵢ uᵢ) from gamma_factors' parts (s an integer)
+function gamma_rebuild(b0::Builder, cs, s::Q, exps)
+    fs = Any[e == 1 ? u : mk(b0, :/, b0.lift(1), u) for (u, e) in cs]
+    iszero(s) || push!(fs, isone(s) ? b0.x : mk(b0, :^, b0.x, b0.lift(Int(s))))
+    es = Any[isone(k) ? u : mk(b0, :*, cterm(b0, Q(k)), u) for (u, k) in exps]
+    push!(fs, mk(b0, :exp, length(es) == 1 ? es[1] : mk(b0, :+, es...)))
+    length(fs) == 1 ? fs[1] : mk(b0, :*, fs...)
+end
 
 # the terms of a sum
 function gamma_summands(t)
@@ -122,6 +131,8 @@ function try_gamma(f, x; build = nothing, lift = nothing, verify::Bool = true)
         end
         s = sq[]
         if isempty(ssym) && isone(denominator(s))       # an integer power: the usual integrator
+            # exp(u)^(p/q) as exp((p/q)·u) (√x/log x through x = eᵘ: e^(3u/2)/u, an Ei)
+            any(e -> !isone(denominator(Q(e[2]))), exps) && (t = gamma_rebuild(b0, cs, s, exps))
             push!(rest, sg == 1 ? t : mk(b0, :*, b0.lift(-1), t))
             continue
         end
@@ -240,7 +251,7 @@ end
 # H3 through x = eᵘ: f(x) with log x (∫ 1/log(x)^(n+1) = ∫ e^u u^(-n-1) du), g(u) = f(eᵘ)·eᵘ with log x ↦ u
 # (u printed as x), integrated by `try_gamma`, and u = log x put back. Nothing when f has no log x or g is
 # not of the gamma kind.
-function try_gamma_log(f, x; build = nothing, lift = nothing, verify::Bool = true)
+function try_gamma_log(f, x; build = nothing, lift = nothing, verify::Bool = true, hyp::Bool = true)
     @nospecialize f x
     xk = string(x)
     # log(xᵏ) = k log x for x > 0, k rational: log(1/x), log(x⁻¹), log(√x) (SymPy #11876, √log(1/x))
@@ -261,10 +272,33 @@ function try_gamma_log(f, x; build = nothing, lift = nothing, verify::Bool = tru
     islogx(t) = logk(t) !== nothing
     haslog(t) = islogx(t) || (isnode(t) && any(haslog, arguments(t)))
     haslog(f) || return nothing
+    function xfrac(t)
+        isnode(t) || return false
+        n, as = opname(operation(t)), arguments(t)
+        (n === :sqrt && length(as) == 1 && string(as[1]) == xk) && return true
+        if n === :^ && length(as) == 2 && string(as[1]) == xk
+            k = leaf_rational(as[2])
+            k !== nothing && !isinteger(k) && return true
+        end
+        any(xfrac, as)
+    end
+    hyp || xfrac(f) || return nothing
     b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     ex = mk(b0, :exp, b0.x)
     sub(t) = islogx(t) ? (k = logk(t); isone(k) ? b0.x : mk(b0, :*, b0.lift(k), b0.x)) : isnode(t) ? term_rebuild(b0, t, Any[sub(a) for a in arguments(t)]) : (string(t) == xk ? ex : t)
-    G = try_gamma(mk(b0, :*, sub(f), ex), x; build = build, lift = lift, verify = verify)
+    g = mk(b0, :*, sub(f), ex)
+    # (hyp = false, with HYP_ANSWERS off: only the elementary-integrator route below)
+    G = hyp ? try_gamma(g, x; build = build, lift = lift, verify = verify) : nothing
+    # x^(p/q)/log x: g = e^((p/q + 1)u)/u has only integer powers of u, which try_gamma leaves to the usual
+    # integrator; through it, Ei((p/q + 1) log x) (SymJ: ∫ √x/log x, ∫₀¹ (√x - 1)/log x = log(3/2))
+    if G === nothing && xfrac(f)
+        G = try
+            risch_integrate(g, x; build = build, lift = lift, verify = verify)
+        catch e
+            e isa Union{NotElementary, RischNotImplemented} || rethrow()
+            nothing
+        end
+    end
     G === nothing && return nothing
     lx = mk(b0, :log, b0.x)
     back(t) = isnode(t) ? term_rebuild(b0, t, Any[back(a) for a in arguments(t)]) : (string(t) == xk ? lx : t)
