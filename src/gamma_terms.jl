@@ -272,12 +272,17 @@ function try_gamma_log(f, x; build = nothing, lift = nothing, verify::Bool = tru
     back(G)
 end
 
-# step LR: log(u^e) ↦ e·log(u), 0 < e ≤ 1 and u depending on x; nothing when f has no such log
+# step LR: log(u^e) ↦ e·log(u), 0 < e ≤ 1 and u depending on x; also log(1/u) ↦ -log(u) (the same up to a locally
+# constant term: ∫ log(1/x)/(1 - x) was li₂(1/x) and log(x - 1), complex on (0, 1), where through -log x it is
+# -li₂(1 - x); SymPy audit, definite-antiderivative-complex-on-interval). Nothing when f has no such log
 function log_of_roots(f, x, build, lift)
     @nospecialize f x
     xk = string(x)
+    recip(a) = isnode(a) && opname(operation(a)) === :/ && length(arguments(a)) == 2 &&
+               leaf_rational(arguments(a)[1]) == 1 && has_x(arguments(a)[2], xk)
     has(t) = isnode(t) && ((opname(operation(t)) === :log && length(arguments(t)) == 1 &&
-                            (rp = radical_parts(arguments(t)[1]); rp !== nothing && 0 < rp[1] <= 1 && has_x(rp[2], xk))) ||
+                            (recip(arguments(t)[1]) ||
+                             (rp = radical_parts(arguments(t)[1]); rp !== nothing && 0 < rp[1] <= 1 && has_x(rp[2], xk)))) ||
                            any(has, arguments(t)))
     has(f) || return nothing
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
@@ -285,6 +290,7 @@ function log_of_roots(f, x, build, lift)
         isnode(t) || return t
         args = arguments(t)
         if opname(operation(t)) === :log && length(args) == 1
+            recip(args[1]) && return mk(bd, :*, bd.lift(-1), mk(bd, :log, rw(arguments(args[1])[2])))
             rp = radical_parts(args[1])
             if rp !== nothing && 0 < rp[1] <= 1 && has_x(rp[2], xk)
                 l = mk(bd, :log, rw(rp[2]))

@@ -1372,3 +1372,51 @@ function integrate_squarefree_split(f, x; build = nothing, lift = nothing, verif
     isempty(Fs) && return nothing
     length(Fs) == 1 ? Fs[1] : mk(b, :+, Fs...)
 end
+
+# step RI: one radical factor u^e of f (f = h·u^e, h free of u), u = c W² over the parameter field with c = r² (a² + 2ab x² +
+# b² x⁴ = b² (x² + a/b)², sample 950, Rubi 1.2.2.2) and the index of e even: u^e = σ (r W)^(2e), σ = u^e/(r W)^(2e) locally
+# constant, so ∫ f = σ ∫ h (r W)^(2e). (Step PM takes out only full n-th powers: nothing of a square under a 4th root.)
+# The answer, or nothing.
+function integrate_radical_index_halved(f, x, rads; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    isempty(rads) && return nothing
+    us = string(rads[1][2])
+    all(((_, u),) -> string(u) == us, rads) || return nothing
+    ut = rads[1][2]
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    fs = product_factors!(Any[], f, 1)
+    ir = findall(((t, _),) -> (rp = radical_parts(t); rp !== nothing && string(rp[2]) == us), fs)
+    length(ir) == 1 || return nothing
+    any(i -> i != ir[1] && occursin(us, string(fs[i][1])), eachindex(fs)) && return nothing
+    t, k = fs[ir[1]]
+    e = radical_parts(t)[1] * k                         # f = h·u^e
+    iseven(Int(denominator(e))) || return nothing
+    T, el = try
+        build_tower(ut, xk)
+    catch err
+        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        return nothing
+    end
+    (isempty(T.levels) && isone(el.den) && degree(el.num) >= 2) || return nothing
+    C = ctype(T)
+    P = UPoly{C}
+    sf = squarefree(el.num)
+    all(((_, m),) -> iseven(m), sf) || return nothing
+    r = csqrt(lc(el.num))
+    r === nothing && return nothing
+    W = prod((a^(m ÷ 2) for (a, m) in sf); init = one(P))
+    v = frac_term(Builder(bd.build, bd.lift, bd.x, T.consts), frac(scale(r, W)))   # r W
+    h = Any[kk == 1 ? tt : mk(bd, :^, tt, bd.lift(kk)) for (i, (tt, kk)) in enumerate(fs) if i != ir[1]]
+    pw(b, q) = isone(q) ? b : mk(bd, :^, b, bd.lift(q))
+    g = mk(bd, :*, h..., pw(v, 2e))
+    G = try
+        risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    catch err
+        (err isa RischNotImplemented || err isa NotElementary) || rethrow()
+        return nothing
+    end
+    G isa IntegralWithRootSums && return nothing
+    σ = mk(bd, :/, pw(ut, e), pw(v, 2e))
+    mk(bd, :*, σ, G)
+end
