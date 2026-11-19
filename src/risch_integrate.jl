@@ -526,6 +526,9 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         (occursin("no real form", e.msg) && has_imag_unit(f)) && rethrow()   # (not this one: step CI)
         (startswith(e.msg, TAN_ELLIPTIC_MSG) || startswith(e.msg, TAN_SYMBOLIC_MSG)) && rethrow()   # (nor step TQ's final
         # refusals: step TS2 took minutes)
+        # (nor in step BR's first attempt once it met a quartic step BR takes: the retry comes next, with step TS2
+        # still after it; sample 1512, sin(c + d x)⁴/(a - b sin(c + d x)⁴)², where step TS2 took a minute to refuse)
+        BR_STAGE[] == 1 && BR_SEEN[] && rethrow()
         nothing
     end
     r === nothing || return r
