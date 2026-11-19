@@ -240,8 +240,9 @@ function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
         bq = biquad_log_part(A, D)
         bq === nothing || return bq
     end
-    if degree(hard) > 0 && rational_tfield(C) && degree(D) in (4, 5) && !IMAG_PARAM[]   # (step BR, not a RootSum)
-        bq = biquad_roots_part(A, D)
+    # (step BR, not a RootSum; not for a binomial x⁴ + q, whose RootSum step PS and others take in real form)
+    if degree(hard) > 0 && rational_tfield(C) && degree(D) in (4, 5) && !IMAG_PARAM[]
+        bq = biquad_roots_part(A, D; binomial = false)
         bq === nothing || return bq
     end
     degree(hard) > 0 && push!(unresolved, (hard, A, D))

@@ -310,7 +310,8 @@ function shift_poly(p::UPoly{C}, h::C) where {C}
     foldr((c, acc) -> acc * lin + UPoly{C}(C[c]), p.c; init = zero(UPoly{C}))
 end
 # D (monic, squarefree) an even quartic G in y = x - h, or (x - h)·G, h = minus the mean of the roots
-function biquad_roots_part(A::UPoly{C}, D::UPoly{C}) where {C<:TField}
+# (binomial = false: not when p = 0)
+function biquad_roots_part(A::UPoly{C}, D::UPoly{C}; binomial::Bool = true) where {C<:TField}
     n = degree(D)
     h = -D.c[n] / cfromQ(C, Q(n))
     Ds = shift_poly(D, h)
@@ -320,6 +321,7 @@ function biquad_roots_part(A::UPoly{C}, D::UPoly{C}) where {C<:TField}
         Gs = UPoly{C}(Ds.c[2:end])
     end
     is_even_quartic(Gs) || return nothing
+    binomial || !iszero(Gs.c[3]) || return nothing
     G = shift_poly(Gs, -h)
     biquad_split(A, D, [G], (a, g) -> BiquadRoots(a, g, h))
 end
