@@ -205,13 +205,13 @@ function biquad_log_part(A::UPoly{C}, D::UPoly{C}) where {C<:TField}
     is_biquad(G) || return nothing
     biquad_split(A, D, [G])
 end
-function biquad_split(A::UPoly{C}, D::UPoly{C}, gs) where {C}
+function biquad_split(A::UPoly{C}, D::UPoly{C}, gs, T = BiquadTerm) where {C}
     logs, atans, unresolved, quads = Tuple{C,UPoly{C}}[], Tuple{C,Frac{UPoly{C}}}[], Any[], Any[]
     for G in gs
         H = quo(D, G)
         s, t, g = gcdex(H, G)                           # s H + t G = 1
         isone(g) || return nothing
-        push!(quads, BiquadTerm(rem(A * s, G), G))
+        push!(quads, T(rem(A * s, G), G))
         A, D = rem(A * t, H), H
     end
     if degree(D) > 0 && !iszero(A)
@@ -283,4 +283,88 @@ function biquad_jump(b, q::BiquadTerm{P}) where {P}
     a0q = iszero(a0) ? nothing : mk(b, :/, cterm(b, a0 / cq(2)), qt)
     α = a0q === nothing ? cterm(b, a2 / cq(2)) : iszero(a2) ? a0q : mk(b, :+, cterm(b, a2 / cq(2)), a0q)
     mk(b, :/, mk(b, :*, b.lift(2), α), s)                   # 2 atans, coefficient α/s, σ = +1 each
+end
+
+# Step BR: an even quartic G = x⁴ + p x² + q over ℚ(a, …) (or D = x G) that step BQP does not take (the sign of
+# 4q - p² undecided) and whose residues have no closed form over the parameter field (more than
+# MAX_ROOTSUM_GENS parameters: the resultant does not finish; or a RootSum left). With Δ = p² - 4q and
+# w± = (-p ± √Δ)/2 the roots of w² + p w + q (G = (x² - w₊)(x² - w₋), w₊ - w₋ = √Δ):
+#   odd part, y = x²:  ∫ (a₁x + a₃x³)/G = (a₃/4) log G - (a₁ - a₃p/2)/√Δ atanh((2x² + p)/√Δ)
+#   even part E(x²) = a₀ + a₂x²:  E(x²)/G = (E(w₊)/(x² - w₊) - E(w₋)/(x² - w₋))/√Δ,
+#   ∫ dx/(x² - w) = -atanh(x/√w)/√w,
+# Rubi's form, atanh written as a log (sample 758: √(d + e x)/(a + b x + c x²) through u = √(d + e x)). Each
+# identity is algebraic: its derivative is A/G for any branch of √Δ and of √w±, so the answer holds wherever it is
+# defined, real or not. A quartic in x - h (sample 1063, d + e x) is taken with h minus the mean of the roots.
+struct BiquadRoots{P,C}
+    A::P
+    G::P
+    h::C          # G(y + h) even in y = x - h (a quartic of d + e x, sample 1063)
+end
+derivative_of(q::BiquadRoots) = frac(q.A, q.G)
+tower_quad(q::BiquadRoots) = BaseTerms(q, derivative_of(q))
+is_even_quartic(g::UPoly) = degree(g) == 4 && iszero(g.c[2]) && iszero(g.c[4]) && isone(g.c[5]) && !iszero(g.c[1])
+# p(y + h)
+function shift_poly(p::UPoly{C}, h::C) where {C}
+    iszero(h) && return p
+    lin = UPoly{C}(C[h, one(C)])
+    foldr((c, acc) -> acc * lin + UPoly{C}(C[c]), p.c; init = zero(UPoly{C}))
+end
+# D (monic, squarefree) an even quartic G in y = x - h, or (x - h)·G, h = minus the mean of the roots
+function biquad_roots_part(A::UPoly{C}, D::UPoly{C}) where {C<:TField}
+    n = degree(D)
+    h = -D.c[n] / cfromQ(C, Q(n))
+    Ds = shift_poly(D, h)
+    Gs = Ds
+    if n == 5
+        iszero(Ds.c[1]) || return nothing
+        Gs = UPoly{C}(Ds.c[2:end])
+    end
+    is_even_quartic(Gs) || return nothing
+    G = shift_poly(Gs, -h)
+    biquad_split(A, D, [G], (a, g) -> BiquadRoots(a, g, h))
+end
+
+function to_term(b, q::BiquadRoots{P}) where {P}
+    C = eltype(q.G.c)
+    cq(v) = cfromQ(C, Q(v))
+    co(p, k) = k <= length(p.c) ? p.c[k] : zero(C)
+    As, Gs = shift_poly(q.A, q.h), shift_poly(q.G, q.h)
+    a0, a1, a2, a3 = co(As, 1), co(As, 2), co(As, 3), co(As, 4)
+    p, qq = Gs.c[3], Gs.c[1]
+    neg(t) = mk(b, :*, b.lift(-1), t)
+    x = iszero(q.h) ? b.x : mk(b, :+, b.x, cterm(b, -q.h))
+    Δ = p^2 - cq(4) * qq
+    sΔ = csqrt(Δ)
+    rΔ = sΔ === nothing ? csqrt_term(b, Δ) : cterm(b, sΔ)
+    # atanh(y/r) = log((r + y)/(r - y))/2, written as the log (the half in the coefficient)
+    lratio(r, y) = mk(b, :log, mk(b, :/, mk(b, :+, r, y), mk(b, :+, r, neg(y))))
+    ts = Any[]
+    iszero(a3) || push!(ts, mk(b, :*, cterm(b, a3 / cq(4)), mk(b, :log, poly_term(b, q.G))))
+    k = a1 - a3 * p / cq(2)
+    if !iszero(k)
+        y = mk(b, :+, cterm(b, p), mk(b, :*, b.lift(2), mk(b, :^, x, b.lift(2))))
+        push!(ts, mk(b, :*, neg(mk(b, :/, cterm(b, k / cq(2)), rΔ)), lratio(rΔ, y)))
+    end
+    for σ in (1, -1)
+        # E(w) = a₀ - a₂p/2 + σ (a₂/2)√Δ and w = -p/2 + σ √Δ/2: exact when √Δ is in the field
+        e0, e1 = a0 - a2 * p / cq(2), a2 / cq(2)
+        if sΔ === nothing
+            iszero(e0) && iszero(e1) && continue
+            Et = iszero(e1) ? cterm(b, e0) : iszero(e0) ? mk(b, :*, cterm(b, cq(σ) * e1), rΔ) :
+                 mk(b, :+, cterm(b, e0), mk(b, :*, cterm(b, cq(σ) * e1), rΔ))
+            wt = mk(b, :+, cterm(b, -p / cq(2)), mk(b, :*, cterm(b, cq(σ) / cq(2)), rΔ))
+            rw = mk(b, :sqrt, wt)
+        else
+            E = e0 + cq(σ) * e1 * sΔ
+            iszero(E) && continue
+            Et = cterm(b, E)
+            w = -p / cq(2) + cq(σ) * sΔ / cq(2)
+            sw = csqrt(w)
+            rw = sw === nothing ? csqrt_term(b, w) : cterm(b, sw)
+        end
+        # -σ E(w)/(√Δ √w) atanh(x/√w)
+        c = mk(b, :/, Et, mk(b, :*, b.lift(2), rΔ, rw))
+        push!(ts, mk(b, :*, σ == 1 ? neg(c) : c, lratio(rw, x)))
+    end
+    isempty(ts) ? b.lift(0) : length(ts) == 1 ? ts[1] : mk(b, :+, ts...)
 end

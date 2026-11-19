@@ -4353,3 +4353,22 @@ end
         end
     end
 end
+
+@testset "Step BR: even quartics over a parameter field, by the roots of the quadratic in x²" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, t, ps) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $t), [:($k = $v) for (k, v) in ps]...), e))
+    # (Δ = p² - 4q of either sign: the answer is complex in between, its derivative the integrand)
+    pss = ((:a => 1.3 + 0im, :b => 0.7 + 0im, :c => 2.1 + 0im, :d => 0.4 + 0im, :e => 1.6 + 0im, :p => 0.8 + 0im, :q => 2.3 + 0im),
+           (:a => -0.9 + 0im, :b => 2.6 + 0im, :c => 1.2 + 0im, :d => 1.5 + 0im, :e => 0.6 + 0im, :p => -3.1 + 0im, :q => 1.1 + 0im))
+    for g in (:(1 / (x ^ 4 + p * x ^ 2 + q)), :((x ^ 3 + 2x ^ 2 + x - 1) / (x ^ 4 + p * x ^ 2 + q)),
+              :(1 / (x * (x ^ 4 + p * x ^ 2 + q))), :(1 / ((d + e * x) ^ 4 + b * (d + e * x) ^ 2 + a)),
+              :(sqrt(d + e * x) / (a + b * x + c * x ^ 2)), :(1 / (sqrt(d + e * x) * (a + b * x + c * x ^ 2))),   # samples 758, 759
+              :((x * sqrt(d + e * x)) / (a + b * x + c * x ^ 2)),                                                  # 903
+              :((d + e * x ^ 2) ^ 3 / (a + b * x ^ 2 + c * x ^ 4) ^ 2))                                           # 997
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test !occursin("RootSum", string(F))
+        for ps in pss, x0 in (0.37, 1.9)
+            @test isapprox((ev(F, x0 + 1e-6, ps) - ev(F, x0 - 1e-6, ps)) / 2e-6, ev(g, x0 + 0im, ps); rtol = 1e-5)
+        end
+    end
+end
