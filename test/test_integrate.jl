@@ -4377,3 +4377,20 @@ end
         end
     end
 end
+
+@testset "Step BS: Bioche's s = sin u, cos u with parameters and possible real poles" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, t, a, b) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $t), :(a = $a), :(b = $b), :(c = 0.4), :(d = 1.3)), e))
+    for g in (:(cos(c + d * x) ^ 5 / (a + b * sin(c + d * x)) ^ 8),           # sample 1338 (minutes before)
+              :(cos(x) ^ 5 / (a + b * sin(x)) ^ 3), :(sin(x) ^ 3 / (a + b * cos(x)) ^ 2))
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 60
+        @test !occursin("RootSum", string(F))
+        # (a pole in the range, |a| < |b|, or none)
+        # (in BigFloat: the power 8 answer cancels heavily; points away from the poles)
+        for (a, b) in ((0.6, 1.7), (2.9, 0.8)), x0 in (0.3, 1.1)
+            a, b, x0, h = big(a), big(b), big(x0), big(10.0)^-20
+            @test isapprox((ev(F, x0 + h, a, b) - ev(F, x0 - h, a, b)) / 2h, ev(g, x0, a, b); rtol = 1e-10)
+        end
+    end
+end
