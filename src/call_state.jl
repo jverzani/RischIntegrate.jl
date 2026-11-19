@@ -40,9 +40,10 @@ mutable struct CallState
     imag_param::Bool
     erf_depth::Int
     sum_split::Int
+    symbolic_params::Bool        # step BR: the outermost integrand has a parameter (a symbol other than x and i)
 end
 CallState() = CallState(false, false, false, false, 0, false, false, 0, 0, false, 0, false, false, false, false, false,
-                        false, 0, false, false, false, 0, false, false, false, false, false, 0, 0)
+                        false, 0, false, false, false, 0, false, false, false, false, false, 0, 0, false)
 
 const CALL_STATE = Base.ScopedValues.ScopedValue{Union{Nothing,CallState}}(nothing)
 const DIRECT_STATE = CallState()                         # outside any risch_integrate call
@@ -83,3 +84,4 @@ const AH_ACTIVE = StateField{:ah_active}()
 const IMAG_PARAM = StateField{:imag_param}()
 const ERF_DEPTH = StateField{:erf_depth}()
 const SUM_SPLIT = StateField{:sum_split}()
+const SYMBOLIC_PARAMS = StateField{:symbolic_params}()

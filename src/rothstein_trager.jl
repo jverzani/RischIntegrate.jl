@@ -240,8 +240,10 @@ function log_part(A::UPoly{C}, D::UPoly{C}) where {C}
         bq = biquad_log_part(A, D)
         bq === nothing || return bq
     end
-    # (step BR, not a RootSum; not for a binomial x⁴ + q, whose RootSum step PS and others take in real form)
-    if degree(hard) > 0 && rational_tfield(C) && degree(D) in (4, 5) && !IMAG_PARAM[]
+    # (step BR, not a RootSum; not for a binomial x⁴ + q, whose RootSum step PS and others take in real form; and only
+    # with a parameter in the integrand: over opaque constants √2, √3 alone, SymPy #26502, w± have known signs, and
+    # the RootSum is real where the form with √w₋, w₋ < 0, is not)
+    if degree(hard) > 0 && rational_tfield(C) && degree(D) in (4, 5) && !IMAG_PARAM[] && SYMBOLIC_PARAMS[]
         bq = biquad_roots_part(A, D; binomial = false)
         bq === nothing || return bq
     end

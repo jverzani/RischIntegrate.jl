@@ -123,6 +123,7 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         return F
     end
     RISCH_DEPTH[] += 1
+    RISCH_DEPTH[] == 1 && (SYMBOLIC_PARAMS[] = has_param_not_i(f, string(x)))
     try
         r = integrate_direct(f, x; build = build, lift = lift, verify = verify)
         # a RootSum over a parameter field: a homogeneous f scales to ℚ (step PS)
