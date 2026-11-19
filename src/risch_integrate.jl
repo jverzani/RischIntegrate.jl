@@ -51,6 +51,35 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             err isa SignOracleZero ? throw(RischNotImplemented(err.msg)) : rethrow()
         end
     end
+    # step BR (even quartics over a parameter field by the roots of the quadratic in x²) only as a last resort: its
+    # form has √w₋ with w₋ < 0 at real parameter values where a later step finds a real form (SymPy round 9, step PS).
+    # An outermost answer with a RootSum, or a refusal, is tried again with step BR on when the first attempt met a
+    # quartic it takes (with a parameter in the integrand: over opaque constants √2, √3 alone, SymPy #26502, the
+    # RootSum is real where √w₋ is not)
+    if RISCH_DEPTH[] == 0 && BR_STAGE[] == 0 && has_param_not_i(f, string(x))
+        BR_STAGE[] = 1
+        BR_SEEN[] = false
+        F = try
+            risch_integrate(f, x; build = build, lift = lift, verify = verify)
+        catch e
+            (e isa RischNotImplemented && BR_SEEN[]) || (BR_STAGE[] = 0; rethrow())
+            e
+        end
+        if F isa Exception || (F isa IntegralWithRootSums && BR_SEEN[])
+            BR_STAGE[] = 2
+            F2 = try
+                risch_integrate(f, x; build = build, lift = lift, verify = verify)
+            catch e
+                (e isa RischNotImplemented || e isa NotElementary || e isa RischError) || (BR_STAGE[] = 0; rethrow())
+                nothing
+            end
+            BR_STAGE[] = 0
+            (F2 === nothing || F2 isa IntegralWithRootSums) || return F2
+            F isa Exception && throw(F)
+        end
+        BR_STAGE[] = 0
+        return F
+    end
     # step PR's answers with a RootSum (a parameter radical whose RootSum step PS cannot scale away) only as a last
     # resort: an outermost answer that used one is tried again with them deferred, and an answer without a RootSum is
     # kept (atan(a x)/(c + d x²)^(7/2), samples 2385/2386: by parts used such a RootSum, whose logs took the wrong
@@ -123,7 +152,6 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         return F
     end
     RISCH_DEPTH[] += 1
-    RISCH_DEPTH[] == 1 && (SYMBOLIC_PARAMS[] = has_param_not_i(f, string(x)))
     try
         r = integrate_direct(f, x; build = build, lift = lift, verify = verify)
         # a RootSum over a parameter field: a homogeneous f scales to ℚ (step PS)
