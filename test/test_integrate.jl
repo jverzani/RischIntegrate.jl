@@ -4303,3 +4303,16 @@ end
         end
     end
 end
+
+# log(1/u) as -log(u) (step LR): ∫ log(1/x)/(1 - x) was li₂(1/x) with log(x - 1), complex on (0, 1); now -li₂(1 - x), real
+# there, with ∫₀¹ = π²/6 (SymPy audit, definite-antiderivative-complex-on-interval)
+@testset "Step LR: log(1/u) as -log(u)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, a) = real(Risch.term_value(e, "x", a))       # li2 evaluated by PolyLog
+    F = Risch.risch_integrate(:(log(1 / x) / (1 - x)), :x; build = build, lift = identity)
+    @test !occursin("1 / x", string(F))
+    for x0 in (0.2, 0.5, 0.8)
+        @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, log(1 / x0) / (1 - x0); rtol = 1e-6)
+    end
+    @test string(Risch.risch_integrate(:(log(1 / x) ^ 2 / x), :x; build = build, lift = identity)) == "1//3 * log(x) ^ 3"
+end
