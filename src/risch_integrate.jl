@@ -275,6 +275,9 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             g === nothing || return g
             g = try_trig_power(f, x; build = build, lift = lift, verify = verify)   # xˢ sin, cos (H4)
             g === nothing || return g
+        elseif e isa NotElementary                        # x^(p/q)/log x: Ei, not a hypergeometric answer
+            g = try_gamma_log(f, x; build = build, lift = lift, verify = verify, hyp = false)
+            g === nothing || return g
         end
         r = try_usub(f, x; build = build, lift = lift, verify = verify)    # step US
         r === nothing || return r

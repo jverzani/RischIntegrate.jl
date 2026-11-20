@@ -150,7 +150,12 @@ function bioche(f, x; build = nothing, lift = nothing)
     realpoles = false
     if kind !== :half
         nr = real_root_count(gq.den, rng..., sg)
-        if nr != 0
+        if nr != 0 && kind in (:sin, :cos) && any(c -> c.kind === :sym, T.consts)
+            # step BS: s = sin u or cos u with parameters and a real pole of g possibly in [-1, 1] (a + b sin u): that
+            # pole is a pole of f too, and G(s(u)) holds between them, its logs with real roots as (c/2) log w² below
+            # (the general route over ℚ(i)(a, b) in e^(iu) took minutes for cos⁵ u/(a + b sin u)⁸, sample 1338)
+            realpoles = true
+        elseif nr != 0
             # (with parameters only: without them the general route is quick, and its cot forms shorter, cot⁴ x)
             (kind === :tan && any(c -> c.kind === :sym, T.consts)) || return nothing
             # (undecided with parameters, a + b s² for a b of unknown sign: the full route, step TQ2)
@@ -170,7 +175,7 @@ function bioche(f, x; build = nothing, lift = nothing)
     # since g has no pole in [-1, 1]); for s = tan u see step TT below
     unres = res.unresolved
     if realpoles && (!isempty(unres) || any(q -> !(q isa QuadAtan), res.quads))
-        return any(c -> c.kind === :sym, T.consts) ? bioche_tan_full(f, x, gq, k, T; build = build, lift = lift) : nothing
+        return kind === :tan && any(c -> c.kind === :sym, T.consts) ? bioche_tan_full(f, x, gq, k, T; build = build, lift = lift) : nothing
     end
     # step TB: for s = tan u without RootSums, the general route (TC/TH) gives a linear term plus atans
     # of trigonometric ratios with nonvanishing denominators (no tan, no correction terms); use it when
