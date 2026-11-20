@@ -83,17 +83,46 @@ function rewrite_exp_logs(f, x, build, lift; inline::Bool = false)
     xk = string(x)
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     one_t = bd.lift(1)
-    # t = c L(u) with c ∈ ℚ, L ∈ (log, atanh, acoth): (c, L, u), else nothing
+    # t = c L(u) with c ∈ ℚ, L ∈ (log, atanh, acoth): (c, L, u), else nothing; also c i atan(u) as (c, :iatan, u)
+    # (exp(c i atan u) = ((1 + iu)/(1 - iu))^(c/2), every real u: (1 + iu)/(1 - iu) = e^(2i atan u) with
+    # 2 atan u ∈ (-π, π), so the principal power; Rubi 5.3.6, sample 2392-2400)
+    iunit = Ref{Any}(nothing)
+    # a constant product of rationals and the imaginary unit: (q, number of i factors), else nothing
+    function cfac(t)
+        q = leaf_rational(t)
+        q === nothing || return (Q(q), 0)
+        is_imag_unit(t) && (iunit[] = t; return (Q(1), 1))
+        if safe_iscall(t) && opname(operation(t)) === :* && !isempty(arguments(t))
+            q, k = Q(1), 0
+            for b in arguments(t)
+                r = cfac(b); r === nothing && return nothing
+                q *= r[1]; k += r[2]
+            end
+            return (q, k)
+        end
+        nothing
+    end
     function cl(t)
         safe_iscall(t) || return nothing
         n, a = opname(operation(t)), arguments(t)
         if n in (:log, :atanh, :acoth) && length(a) == 1
             return depends_on(a[1], xk) ? (Q(1), n, a[1]) : nothing
+        elseif n === :atan && length(a) == 1           # (only with a factor i, below)
+            return depends_on(a[1], xk) ? (Q(1), :atan, a[1]) : nothing
         elseif n === :* && length(a) >= 2
-            k = findall(b -> leaf_rational(b) === nothing, a)
+            cs = map(cfac, a)
+            k = findall(isnothing, cs)
             length(k) == 1 || return nothing
             r = cl(a[k[1]]); r === nothing && return nothing
-            return (prod(leaf_rational(a[j]) for j in eachindex(a) if j != k[1]) * r[1], r[2], r[3])
+            q = prod(c[1] for c in cs if c !== nothing)
+            ni = sum(c[2] for c in cs if c !== nothing)
+            if r[2] === :atan || r[2] === :iatan
+                i1 = r[2] === :iatan ? 1 : 0
+                ni + i1 == 1 && return (q * r[1], :iatan, r[3])
+                return nothing
+            end
+            ni == 0 || return nothing
+            return (q * r[1], r[2], r[3])
         elseif n === :/ && length(a) == 2 && (d = leaf_rational(a[2]); d !== nothing && !iszero(d))
             r = cl(a[1]); r === nothing && return nothing
             return (r[1] / d, r[2], r[3])
@@ -106,6 +135,10 @@ function rewrite_exp_logs(f, x, build, lift; inline::Bool = false)
     pw(b, e) = isone(e) ? b : mk(bd, :^, b, cterm(bd, e))
     function power(c, L, u)
         L === :log && return pw(u, c)
+        if L === :iatan
+            iu = mk(bd, :*, iunit[], u)
+            return pw(mk(bd, :/, mk(bd, :+, one_t, iu), mk(bd, :+, one_t, mk(bd, :*, bd.lift(-1), iu))), Q(c) / 2)
+        end
         if !isinteger(c)                    # one radicand, (1 + u)/(1 - u) > 0 (atanh), (u + 1)/(u - 1) > 0 (acoth)
             neg_u = mk(bd, :*, bd.lift(-1), u)
             r = L === :atanh ? mk(bd, :/, mk(bd, :+, one_t, u), mk(bd, :+, one_t, neg_u)) :
@@ -135,7 +168,7 @@ function rewrite_exp_logs(f, x, build, lift; inline::Bool = false)
             istop = any(s -> s === t, tops)
             g = walk(exp_arg(t))
             ts = safe_iscall(g) && opname(operation(g)) === :+ ? collect(Any, arguments(g)) : Any[g]
-            ms = map(cl, ts)
+            ms = Any[(m = cl(s); m === nothing || m[2] === :atan ? nothing : m) for s in ts]
             if any(!isnothing, ms)
                 cur_top[] = istop
                 changed = true
