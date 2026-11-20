@@ -1420,3 +1420,109 @@ function integrate_radical_index_halved(f, x, rads; build = nothing, lift = noth
     σ = mk(bd, :/, pw(ut, e), pw(v, 2e))
     mk(bd, :*, σ, G)
 end
+
+# step RP: f = h u^e, one radicand u (a polynomial in x), h rational in x with two or more coprime factors of its
+# denominator as written, of degree 1 or 2 (d + e x, (f + g x)³), over a parameter field with more than MAX_ROOTSUM_GENS symbols: the
+# partial fractions of h over those factors, each times u^e integrated alone (√(a + b x + c x²)/((d + e x)(f + g x)³),
+# sample 917: over 120 s, and refused with residues over the 7 parameters for (d + e x)(f + g x); each piece 0.5 s).
+# Nothing when the shape differs or a piece is refused or has a RootSum.
+function integrate_radical_partial_fractions(f, x, rads; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    isempty(rads) && return nothing
+    us = string(rads[1][2])
+    all(((_, u),) -> string(u) == us, rads) || return nothing
+    ps = Set{String}()
+    leaves(t) = isnode(t) ? foreach(leaves, arguments(t)) : (has_param_not_i(t, xk) && push!(ps, string(t)))
+    leaves(f)
+    length(ps) > MAX_ROOTSUM_GENS || return nothing
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    fs = product_factors!(Any[], f, 1)
+    ir = findall(((t, _),) -> (rp = radical_parts(t); rp !== nothing && string(rp[2]) == us), fs)
+    length(ir) == 1 || return nothing
+    t, k = fs[ir[1]]
+    radf = k == 1 ? t : mk(bd, :^, t, bd.lift(k))
+    dens = Dict{String,Tuple{Any,Int}}()
+    nums = Any[]
+    for (i, (s, m)) in enumerate(fs)
+        i == ir[1] && continue
+        if m < 0 && has_x(s, xk)
+            occursin(us, string(s)) && return nothing
+            d = get(dens, string(s), (s, 0))
+            dens[string(s)] = (s, d[2] - m)
+        else
+            push!(nums, m == 1 ? s : mk(bd, :^, s, bd.lift(m)))
+        end
+    end
+    length(dens) >= 2 || return nothing
+    hd = Any[m == 1 ? s : mk(bd, :^, s, bd.lift(m)) for (s, m) in values(dens)]
+    h = mk(bd, :/, isempty(nums) ? bd.lift(1) : length(nums) == 1 ? nums[1] : mk(bd, :*, nums...), length(hd) == 1 ? hd[1] : mk(bd, :*, hd...))
+    T, el = try
+        build_tower(h, xk)
+    catch err
+        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        return nothing
+    end
+    isempty(T.levels) || return nothing
+    fac = Any[]                                          # (factor term s, its polynomial F, multiplicity m)
+    for (s, m) in values(dens)
+        e1 = try
+            parse_tower(s, T)
+        catch err
+            (err isa RischNotImplemented || err isa RischError) || rethrow()
+            return nothing
+        end
+        # (factors of degree 1 or 2: a quartic's piece took longer than the whole, (d + e x²)^(3/2)/(x (a + b x² + c x⁴)), sample 1016)
+        (isone(e1.den) && 1 <= degree(e1.num) <= 2) || return nothing
+        push!(fac, (s, e1.num, m))
+    end
+    Pis = Any[monic(F)^m for (_, F, m) in fac]
+    for i in eachindex(Pis), j in i+1:length(Pis)
+        _, _, g = gcdex(Pis[i], Pis[j])
+        degree(g) == 0 || return nothing
+    end
+    N, D = el.num, el.den
+    q, r = divrem(N, D)
+    Dm = monic(D)
+    r = scale_div(r, lc(D))
+    degree(Dm) == sum(degree, Pis) || return nothing
+    b = Builder(bd.build, bd.lift, bd.x, T.consts)
+    # pieces (coefficient term or nothing, integrand): Aᵢ/Fᵢᵐ = Σⱼ aⱼ/Fᵢʲ (Fᵢ-adic), as aⱼ lcᵢʲ/sᵢʲ with the factor sᵢ
+    # as written (√Q/(f + g x)³, not the monic x + f/g); a constant aⱼ outside the integral
+    pieces = Any[]
+    iszero(q) || push!(pieces, (nothing, mk(bd, :*, frac_term(b, frac(q)), radf)))
+    for (i, (s, F, m)) in enumerate(fac)
+        Pi = Pis[i]
+        Ei = divrem(Dm, Pi)[1]
+        sx, _, g = gcdex(Ei, Pi)
+        isone(g) || return nothing
+        Ai = rem(r * sx, Pi)
+        Fm, l = monic(F), lc(F)
+        for j in m:-1:1                                  # Ai = Σ_{j} a_{m-j} Fm^(m-j), lowest first
+            iszero(Ai) && break
+            Ai, aj = divrem(Ai, Fm)
+            iszero(aj) && continue
+            aj = scale(l^j, aj)                           # aⱼ/Fmʲ = aⱼ lʲ/Fʲ
+            sj = j == 1 ? s : mk(bd, :^, s, bd.lift(j))
+            if degree(aj) <= 0
+                push!(pieces, (cterm(b, aj.c[1]), mk(bd, :/, radf, sj)))
+            else
+                push!(pieces, (nothing, mk(bd, :/, mk(bd, :*, frac_term(b, frac(aj)), radf), sj)))
+            end
+        end
+        iszero(Ai) || return nothing
+    end
+    Fs = Any[]
+    for (c, p) in pieces
+        G = try
+            risch_integrate(p, x; build = build, lift = lift, verify = verify)
+        catch e
+            (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+            return nothing
+        end
+        G isa IntegralWithRootSums && return nothing
+        push!(Fs, c === nothing ? G : mk(bd, :*, c, G))
+    end
+    isempty(Fs) && return nothing
+    length(Fs) == 1 ? Fs[1] : mk(bd, :+, Fs...)
+end

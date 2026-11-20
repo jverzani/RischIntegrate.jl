@@ -4478,3 +4478,23 @@ end
     # a part with no elementary integral: none for the whole (A = 0, 1)
     @test_throws Risch.NotElementary Risch.risch_integrate(:((A + B * cos(x)) / (x * (a + b * cos(x)))), :x; build = build, lift = identity)
 end
+
+# step RP: f = h u^e with more than MAX_ROOTSUM_GENS parameters, h split by partial fractions over its denominator's
+# written factors, each piece aⱼ u^e/sᵢʲ integrated alone (sample 917: over 120 s, and refused for (d + e x)(f + g x))
+@testset "Step RP: partial fractions of the rational factor of a radical integrand" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    vals = Dict(:a => 2.3, :b => 0.7, :c => 1.1, :d => 0.4, :e => 1.3, :f => 0.9, :g => 0.6)
+    ev(ex, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(sqrt = z -> Base.sqrt(complex(z))), :(log = z -> Base.log(complex(z))),
+                                           :(x = $(complex(big(x0)))), [:($k = $(big(v))) for (k, v) in vals]...), ex))
+    h = big(10.0)^-20
+    for g in (:(sqrt(a + b * x + c * x ^ 2) / ((d + e * x) * (f + g * x) ^ 3)),          # 917
+              :(sqrt(a + b * x + c * x ^ 2) / ((d + e * x) * (f + g * x))),
+              :((d + e * x) / ((f + g * x) ^ 2 * (a + x) * sqrt(b + c * x))))
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 60
+        @test !(F isa Risch.IntegralWithRootSums)
+        for x0 in (0.3, 1.9, -0.2)
+            @test isapprox((ev(F, x0 + h) - ev(F, x0 - h)) / 2h, ev(g, x0); rtol = 1e-12)
+        end
+    end
+end

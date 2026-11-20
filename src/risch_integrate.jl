@@ -783,6 +783,9 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         r === nothing || return r
     end
     if !isempty(rads)                  # a RootSum is in the substitution variable t: evaluate through x
+        # partial fractions of the rational factor over its written factors, with many parameters (step RP)
+        r = integrate_radical_partial_fractions(f, x, rads; build = build, lift = lift, verify = verify)
+        r === nothing || return r
         F = try
             integrate_radical(f, x, rads; build = build, lift = lift, verify = verify)
         catch e
