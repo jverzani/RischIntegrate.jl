@@ -99,10 +99,15 @@ end
 
 # step RK: a radical (c V)^e whose radicand has a factor c free of x with a parameter in every summand
 # ((a + a sin x)^(3/2), √(d + c²d x²), (e cos x)^(7/2)) is c^e V^e for c > 0, and (-c)^e (-V)^e for c < 0, the
-# sign of c from the caller (step SO) or the positive parameter values. c^e is then a constant (step IT) and V
-# has rational coefficients again, for steps PW, MR and the radicals of x. Nothing when no radical has such a
-# factor or a sign is undecided. Tried when the integrand is refused for a radical of a non-rational radicand.
-function split_radicand_content(f, x, xk::String, build, lift)
+# sign of c proven (a rational, or the caller's facts, step SO). c^e is then a constant (step IT) and V has
+# rational coefficients again, for steps PW, MR and the radicals of x. A sign that is not proven is not taken
+# from the parameter values (the answer would hold for those signs only): a radical that is a factor of f, to
+# the power k, is V^e there instead (c^e V^e for step RQ), and the answer is multiplied by K = ((c V)^e/V^e)^k, constant on
+# every interval of x where neither radicand crosses a branch cut (K = c^e for c > 0, so the answer holds for
+# all generic signs of the parameters). With `undecided`, only those factors are rewritten (step RQ). Returns (g, K), K nothing when it is 1, or nothing when no radical has
+# such a factor or a sign is undecided inside a sum. Tried when the integrand is refused for a radical of a
+# non-rational radicand.
+function split_radicand_content(f, x, xk::String, build, lift; undecided::Bool = false)
     @nospecialize f x
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     function summands(u, sg, out)
@@ -158,10 +163,7 @@ function split_radicand_content(f, x, xk::String, build, lift)
             (e isa RischNotImplemented || e isa RischError) || rethrow()
             return nothing
         end
-        sgn = const_sign(c)
-        sgn == 1 && return (collect(values(common)), V)
-        sgn == -1 && return (Any[(mk(bd, :*, bd.lift(-1), c), 1)], mk(bd, :*, bd.lift(-1), V))
-        nothing
+        (collect(values(common)), V, const_sign(c), c)
     end
     function const_sign(c)
         T, el = try
@@ -171,27 +173,62 @@ function split_radicand_content(f, x, xk::String, build, lift)
             return nothing
         end
         (isempty(T.levels) && degree(el.num) <= 0 && degree(el.den) == 0) || return nothing
-        param_sign(el.num.c[1] / el.den.c[1], T.consts)
+        r = el.num.c[1] / el.den.c[1]
+        q = crational(r)
+        q === nothing || return Int(sign(q))
+        oracle_sign(r, T.consts)
     end
+    rad(b, e) = e == Q(1) // 2 ? mk(bd, :sqrt, b) : mk(bd, :^, b, bd.lift(e))
     changed = false
+    # a radical split by a proven sign: c^e V^e (or (-c)^e (-V)^e), else nothing
+    function proven(t)
+        rp = radical_parts(t)
+        (rp !== nothing && has_x(rp[2], xk)) || return nothing
+        cv = split(rp[2])
+        (cv === nothing || cv[3] === nothing) && return nothing
+        e = rp[1]
+        cfs, V = cv[3] == 1 ? (cv[1], cv[2]) : (Any[(mk(bd, :*, bd.lift(-1), cv[4]), 1)], mk(bd, :*, bd.lift(-1), cv[2]))
+        # (tᵏ)^e = t^(k e) for an integer k e and t > 0: √(a²) = a, not a factor a/√(a²) in the answer
+        cs = Any[(isinteger(k * e) && const_sign(t) == 1) ? pw(t, Int(k * e)) : rad(pw(t, k), e) for (t, k) in cfs]
+        mk(bd, :*, cs..., rad(V, e))
+    end
     function rw(t)
         safe_iscall(t) && !isempty(arguments(t)) || return t
-        rp = radical_parts(t)
-        if rp !== nothing && has_x(rp[2], xk)
-            cv = split(rp[2])
-            if cv !== nothing
-                changed = true
-                e = rp[1]
-                rad(b) = e == Q(1) // 2 ? mk(bd, :sqrt, b) : mk(bd, :^, b, bd.lift(e))
-                # (tᵏ)^e = t^(k e) for an integer k e and t > 0: √(a²) = a, not a factor a/√(a²) in the answer
-                cs = Any[(isinteger(k * e) && const_sign(t) == 1) ? pw(t, Int(k * e)) : rad(pw(t, k)) for (t, k) in cv[1]]
-                return mk(bd, :*, cs..., rad(cv[2]))
-            end
-        end
+        r = proven(t)
+        r === nothing || (changed = true; return r)
         term_rebuild(bd, t, Any[rw(a) for a in arguments(t)])
     end
-    g = rw(f)
-    changed ? g : nothing
+    Ks = Any[]
+    gs = Any[]
+    for (t, k) in product_factors!(Any[], f, 1)
+        rp = radical_parts(t)
+        cv = (rp === nothing || !has_x(rp[2], xk)) ? nothing : split(rp[2])
+        if cv !== nothing && cv[3] === nothing
+            # the sign of c undecided: V^e here, the ratio (c V)^e/V^e into the answer's factor K
+            changed = true
+            r = rad(cv[2], rp[1])
+            if undecided
+                # (step RQ: c^e kept, a constant of the field as it would be for c > 0, so that the steps after
+                # take the integrand as they do with a proven sign; K = (c V)^e/(c^e V^e) is 1 for c > 0)
+                r = mk(bd, :*, rad(cv[4], rp[1]), r)
+            end
+            push!(gs, pw(r, k))
+            push!(Ks, pw(mk(bd, :/, t, r), k))
+        else
+            push!(gs, pw(undecided ? t : rw(t), k))
+        end
+    end
+    (changed && !(undecided && isempty(Ks))) || return nothing
+    g = length(gs) == 1 ? gs[1] : mk(bd, :*, gs...)
+    K = isempty(Ks) ? nothing : length(Ks) == 1 ? Ks[1] : mk(bd, :*, Ks...)
+    (g, K)
+end
+
+# K F, for step RK's factor K (constant on intervals) of an answer F, or F when K is nothing
+function scale_answer(bd::Builder, K, F)
+    K === nothing && return F
+    F isa IntegralWithRootSums || return mk(bd, :*, K, F)
+    IntegralWithRootSums(mk(bd, :*, K, F.elementary), Any[ScaledRootSum(K, rs) for rs in F.rootsums], F.var)
 end
 
 # step MN: f = h ∏ (cⱼ Mⱼ)^(eⱼ), radicals of monomials Mⱼ in the six trigonometric (or hyperbolic) functions of one

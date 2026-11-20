@@ -121,6 +121,17 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         return F
     end
     check_leaves(f, string(x))                                         # step WR
+    # step RQ: a radical factor (c V)^e of f whose parameter factor c has a sign that is not proven is K V^e, K =
+    # (c V)^e/V^e constant on intervals (step RK's split), before any step takes c^e out of it at the parameter
+    # values' signs ((b sec x)^(5/2) = b^(5/2) sec^(5/2) x for b > 0 only): the answer holds for all generic signs
+    # (not with i: radicals of a ± i a tan L go to steps TS, TQ, whose own factor M is sign-free, by a faster route)
+    if has_param(f, string(x)) && !has_imag_unit(f) && !isempty(collect_radicals(f, string(x)))
+        gK = split_radicand_content(f, x, string(x), build, lift; undecided = true)
+        if gK !== nothing
+            bq = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+            return scale_answer(bq, gK[2], risch_integrate(gK[1], x; build = build, lift = lift, verify = verify))
+        end
+    end
     # step LR: log(u^e) = e log u for 0 < e ≤ 1 (principal branches: Im(e log u) ∈ (-π, π]): log(√((cos t - cos x)² +
     # (sin t - sin x)²)) went through the radical fallbacks for minutes (SymPy #6382)
     let g = log_of_roots(f, x, build, lift)
@@ -343,7 +354,8 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             (r === nothing || r isa IntegralWithRootSums) || return r
             r_rs = r
             # (after step RK's parameter factors, which a merged radicand (a + a sec x) cos x would hide)
-            fk = split_radicand_content(f, x, string(x), build, lift)
+            fkK = split_radicand_content(f, x, string(x), build, lift)
+            fk, Kk = fkK === nothing ? (nothing, nothing) : fkK
             m = merge_square_roots(fk === nothing ? f : fk, x, string(x), build, lift)
             if m !== nothing
                 g, σ = m
@@ -360,8 +372,7 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
                 end
                 if r !== nothing && !(r_rs !== nothing && r isa IntegralWithRootSums)
                     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
-                    r isa IntegralWithRootSums || return mk(bd, :*, σ, r)
-                    return IntegralWithRootSums(mk(bd, :*, σ, r.elementary), Any[ScaledRootSum(σ, rs) for rs in r.rootsums], r.var)
+                    return scale_answer(bd, Kk, scale_answer(bd, σ, r))
                 end
             end
             r_rs === nothing || return r_rs
@@ -1022,17 +1033,24 @@ function integrate_xl(gσ, x; build, lift, verify::Bool)
         (e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg)) || rethrow()
         g2 = split_radicand_content(g, x, string(x), build, lift)
         g2 === nothing && rethrow()
-        risch_integrate(g2, x; build = build, lift = lift, verify = verify)
+        bk = Builder(build === nothing ? auto_build(g, x) : build, lift === nothing ? auto_lift(g, x) : lift, x)
+        scale_answer(bk, g2[2], risch_integrate(g2[1], x; build = build, lift = lift, verify = verify))
     end
-    σ === nothing && return F
     bd = Builder(build === nothing ? auto_build(g, x) : build, lift === nothing ? auto_lift(g, x) : lift, x)
-    F isa IntegralWithRootSums || return mk(bd, :*, σ, F)
-    IntegralWithRootSums(mk(bd, :*, σ, F.elementary), Any[ScaledRootSum(σ, rs) for rs in F.rootsums], F.var)
+    scale_answer(bd, σ, F)
 end
 
 function radicand_fallbacks(f, x; build, lift, verify::Bool)
     @nospecialize f x
-    g = split_radicand_content(f, x, string(x), build, lift)
+    gK = split_radicand_content(f, x, string(x), build, lift)
+    gK === nothing && return radicand_fallbacks(f, nothing, x; build = build, lift = lift, verify = verify)
+    r = radicand_fallbacks(f, gK[1], x; build = build, lift = lift, verify = verify)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    r === nothing ? nothing : scale_answer(bd, gK[2], r)
+end
+# (g: f with step RK's split, or nothing)
+function radicand_fallbacks(f, g, x; build, lift, verify::Bool)
+    @nospecialize f g x
     r = g === nothing ? nothing : try
         risch_integrate(g, x; build = build, lift = lift, verify = verify)
     catch e

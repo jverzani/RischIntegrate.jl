@@ -305,8 +305,9 @@ function integrate_arcs_scaled(f, x, arcs; build = nothing, lift = nothing, veri
     # the radicands rewritten in y keep a parameter factor (d + d y² from d + c²d x²): out (step RK), so that the
     # radical is u′'s, √(1 + y²) for asinh y
     g2 = split_radicand_content(g, x, xk, build, lift)
-    (g2 !== nothing && any(a -> a[1] in INV_HYP, arcs)) && (g = g2)
-    G = risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    K = nothing
+    (g2 !== nothing && any(a -> a[1] in INV_HYP, arcs)) && ((g, K) = g2)
+    G = scale_answer(bd, K, risch_integrate(g, x; build = build, lift = lift, verify = verify))
     back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(s) for s in arguments(t)]) : (string(t) == xk ? L : t)
     subst_answer(G, back, bd)
 end

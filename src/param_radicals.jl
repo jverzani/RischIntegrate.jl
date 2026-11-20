@@ -318,8 +318,9 @@ function integrate_complex_linear_radicals(f, x, rads, T, el; build = nothing, l
     # rational integral in u is free of it: in ℚ(a)(u) the log part of 1/((u² - a)²(u² - 2a)) needs √a (a RootSum),
     # in ℚ(u) it does not (cot(c + d x)² √(a + i a tan(c + d x)) after step MR's s = tan(c + d x))
     if has_param(ut0, xk)
-        g = split_radicand_content(f, x, xk, build, lift)
-        if g !== nothing
+        gK = split_radicand_content(f, x, xk, build, lift)
+        if gK !== nothing
+            g, Kr = gK
             # the constant factors (√a) out of the product: inside, the residues are in ℚ(√a) (√(-1/(8a)) and an
             # atan, for tan³/√(a + i a tan))
             bk = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
@@ -338,7 +339,7 @@ function integrate_complex_linear_radicals(f, x, rads, T, el; build = nothing, l
                 (e isa RischNotImplemented || e isa NotElementary) || rethrow()
                 nothing
             end
-            (r === nothing || r isa IntegralWithRootSums) || return cg === nothing ? r : mk(bk, :*, cg, r)
+            (r === nothing || r isa IntegralWithRootSums) || return scale_answer(bk, Kr, cg === nothing ? r : mk(bk, :*, cg, r))
         end
     end
     n = lcm([Int(denominator(e)) for (e, _) in rads])
