@@ -802,6 +802,8 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         catch e
             e isa RischNotImplemented || rethrow()
         end
+        r = integrate_linear_params(f, x; build = build, lift = lift, verify = verify)   # f₀ + A f₁ (step LP)
+        r === nothing || return r
         r = bioche(f, x; build = build, lift = lift)    # rational in sin u, cos u (step TS)
         r === nothing || return r
     end

@@ -4461,3 +4461,20 @@ end
         end
     end
 end
+
+# step LP: parameters that are only linear coefficients split off before step TS, ∫ (f₀ + A f₁) = ∫ f₀ + A ∫ f₁
+# (sample 1688, 1703, 1734: over 120 s through tan(u/2) over ℚ(A, B, C, a, b), seconds by parts)
+@testset "Step LP: linear-coefficient parameters split off before step TS" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(sqrt = z -> Base.sqrt(complex(z))), :(x = $(complex(x0))),
+                                          :(a = 2.3), :(b = 0.7), :(c = 0.4), :(d = 1.3), :(e = 0.8), :(A = 1.1), :(B = -0.6), :(C = 0.9)), e))
+    for f in (:(((A + B * cos(c + d * x) + C * cos(c + d * x) ^ 2) * sec(c + d * x) ^ 2) / (a + b * cos(c + d * x)) ^ 2),   # 1703
+              :(((A + C * cos(c + d * x) ^ 2) * sec(c + d * x) ^ 3) / (a + b * cos(c + d * x)) ^ 4),                         # 1688
+              :((A + B * cos(d + e * x) + C * sin(d + e * x)) / (a + b * cos(d + e * x)) ^ 4))                               # 1734
+        t = @elapsed F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test t < 60
+        @test all(x0 -> isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5), (0.3, 1.1, -0.7))
+    end
+    # a part with no elementary integral: none for the whole (A = 0, 1)
+    @test_throws Risch.NotElementary Risch.risch_integrate(:((A + B * cos(x)) / (x * (a + b * cos(x)))), :x; build = build, lift = identity)
+end
