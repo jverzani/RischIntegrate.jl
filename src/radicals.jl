@@ -876,3 +876,80 @@ function integrate_symbolic_power_radical(f, x; build = nothing, lift = nothing,
     G isa IntegralWithRootSums && return nothing
     mk(bd, :*, mk(bd, :/, mk(bd, :^, u, bd.lift(e)), mk(bd, :^, bd.x, pe)), G)
 end
+
+# step SA: a square root of R = c₀(1 ± h(L)), h = sin or cos, L linear (√(a + a sin), Rubi 4.1.2): with the conjugate
+# R̄ = c₀(1 ∓ h), R R̄ = c₀² p² (p = cos for sin, sin for cos), so √R = σ c₀ p/√R̄ with σ = √R √R̄/(c₀ p) = ±1, constant
+# where p keeps its sign. f R^(k/2) (k odd) is then σ c₀ p R^((k-1)/2) R̄^(-1/2) f, a function of u = h(L) times p dx:
+# u = h(L) (step US) with radicals of polynomials in u only, and the answer is σ ∫. (√(a + a sin)/(sin √(c + d sin)),
+# sample 1480, over 120 s through t = tan(L/2): √ of a quartic in t.) One such radical, a factor of f; else nothing.
+function integrate_half_sine_radicals(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    # R = c₀ + c₁ h(L) with c₁ = ±c₀: (h, L, s = c₁/c₀, c₀), else nothing
+    function half_radicand(R)
+        hs = Any[]
+        findh(t) = isnode(t) && ((opname(operation(t)) in (:sin, :cos) && length(arguments(t)) == 1 && has_x(arguments(t)[1], xk) &&
+                                  (push!(hs, t); true)) || (foreach(findh, arguments(t)); false))
+        findh(R)
+        length(unique(string.(hs))) == 1 || return nothing
+        hL = hs[1]
+        rep(t, v) = isnode(t) ? (string(t) == string(hL) ? v : term_rebuild(bd, t, Any[rep(a, v) for a in arguments(t)])) : t
+        has_x(rep(R, bd.lift(0)), xk) && return nothing            # (x only inside h(L))
+        pp = poly_parts(bd, rep(R, bd.x), xk)
+        (pp === nothing || sort!(collect(keys(pp))) != [0, 1]) && return nothing
+        L = arguments(hL)[1]
+        lp = poly_parts(bd, L, xk)
+        (lp === nothing || maximum(keys(lp)) != 1) && return nothing
+        # c₁/c₀ = ±1 at random parameter values
+        ps = Dict{String,ComplexF64}()
+        leaves(t) = isnode(t) ? foreach(leaves, arguments(t)) : (has_param_not_i(t, xk) && (ps[string(t)] = 0.3 + rand()))
+        leaves(R)
+        q = try
+            Base.ScopedValues.with(LEAF_VALUES => ps) do
+                term_value(pp[1], xk, 0.0) / term_value(pp[0], xk, 0.0)
+            end
+        catch
+            return nothing
+        end
+        s = isapprox(q, 1; atol = 1e-12) ? 1 : isapprox(q, -1; atol = 1e-12) ? -1 : 0
+        s == 0 && return nothing
+        (opname(operation(hL)), L, s, pp[0])
+    end
+    # (x only inside trigonometric functions of the radicand's argument: x²/√(a - a cos x), sample 1569, is not one)
+    onlytrig(t) = isnode(t) ? (opname(operation(t)) in (:sin, :cos, :tan, :cot, :sec, :csc) && length(arguments(t)) == 1 ? true :
+                               all(onlytrig, arguments(t))) : string(t) != xk
+    onlytrig(f) || return nothing
+    fs = product_factors!(Any[], f, 1)
+    k = findall(fs) do (t, e)
+        rp = radical_parts(t)
+        rp !== nothing && denominator(rp[1]) == 2 && half_radicand(rp[2]) !== nothing
+    end
+    length(k) == 1 || return nothing
+    t, e = fs[k[1]]
+    rp = radical_parts(t)
+    R, ex = rp[2], rp[1] * e                                      # R^ex, ex = k/2, k odd
+    h, L, s, c0 = half_radicand(R)
+    p = mk(bd, h === :sin ? :cos : :sin, L)
+    hL = mk(bd, h, L)
+    Rb = mk(bd, :+, c0, mk(bd, :*, bd.lift(-s), c0, hL))          # R̄ = c₀(1 ∓ h)
+    rest = Any[u for (j, (u, ee)) in enumerate(fs) for _ in 1:abs(ee) if j != k[1] && ee > 0]
+    den = Any[u for (j, (u, ee)) in enumerate(fs) for _ in 1:abs(ee) if j != k[1] && ee < 0]
+    pw(b, q) = isone(q) ? b : mk(bd, :^, b, cterm(bd, Q(q)))
+    m = (ex - Q(1, 2))                                            # R^((k-1)/2)
+    num = Any[rest..., c0, p]
+    iszero(m) || push!(num, pw(R, m))
+    g = mk(bd, :*, num..., pw(Rb, Q(-1, 2)))
+    isempty(den) || (g = mk(bd, :/, g, length(den) == 1 ? den[1] : mk(bd, :*, den...)))
+    G = try
+        integrate_usub(g, x, hL, bd; build = build, lift = lift, verify = verify)
+    catch e2
+        (e2 isa RischNotImplemented || e2 isa NotElementary || e2 isa DivideError) || rethrow()
+        nothing
+    end
+    G === nothing && return nothing
+    σ = mk(bd, :/, mk(bd, :*, mk(bd, :sqrt, R), mk(bd, :sqrt, Rb)), mk(bd, :*, c0, p))
+    G isa IntegralWithRootSums &&
+        return IntegralWithRootSums(mk(bd, :*, σ, G.elementary), Any[ScaledRootSum(σ, rs) for rs in G.rootsums], G.var)
+    mk(bd, :*, σ, G)
+end

@@ -4445,3 +4445,24 @@ end
     end
     @test Risch.rewrite_exp_logs(:(exp(atan(x)) * x), :x, build, identity) === nothing   # (no factor i: not algebraic)
 end
+
+# step SA: √(c₀(1 ± sin L)) = σ c₀ cos L/√(c₀(1 ∓ sin L)), σ = ±1, then u = sin L (cos the same with sin), before
+# step HT's tan(L/2) (sample 1402, 1403, 1480: over 120 s; √ of a quartic in tan(L/2))
+@testset "Step SA: square roots of a(1 ± sin L) by u = sin L" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0, a, c, d) = Core.eval(Main, Expr(:let, Expr(:block, :(sqrt = z -> Base.sqrt(complex(z))), :(x = $(complex(big(x0)))),
+                                                    :(a = $(big(a))), :(c = $(big(c))), :(d = $(big(d))), :(e = $(big(0.4))), :(f = $(big(1.3)))), e))
+    h = big(10.0)^-20
+    for g in (:(sqrt(a + a * sin(e + f * x)) / (sin(e + f * x) * sqrt(c + d * sin(e + f * x)))),          # 1480
+              :((a + a * sin(e + f * x)) ^ (1 / 2) / (c + d * sin(e + f * x)) ^ (7 / 2)),                    # 1402
+              :((c + d * sin(e + f * x)) ^ (5 / 2) / (a + a * sin(e + f * x)) ^ (1 / 2)),                    # 1403
+              :(sqrt(a - a * cos(x)) / (c + d * cos(x)) ^ (3 / 2)))
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 60
+        @test !occursin("tan(1//2", string(F))
+        # (parameters positive, c > d: the radical steps' answers in u take d > 0)
+        for (a, c, d) in ((2.3, 1.7, 0.6), (1.4, 0.8, 0.5)), x0 in (0.3, 1.9, -1.4)
+            @test isapprox((ev(F, x0 + h, a, c, d) - ev(F, x0 - h, a, c, d)) / 2h, ev(g, x0, a, c, d); rtol = 1e-12)
+        end
+    end
+end
