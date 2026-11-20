@@ -322,6 +322,9 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             r === nothing || return r
         end
         if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg) && RISCH_DEPTH[] == 1
+            # √(c₀(1 ± sin L)) as σ c₀ cos L/√(c₀(1 ∓ sin L)), then u = sin L (step SA), before step HT's tan(L/2)
+            r = integrate_half_sine_radicals(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
             r = try
                 radicand_fallbacks(f, x; build = build, lift = lift, verify = verify)
             catch e2
