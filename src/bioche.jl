@@ -454,3 +454,88 @@ function bioche_tan_full(f, x, gq, k, T; build = nothing, lift = nothing, half::
     numeric_antiderivative(f, H, xk) || return nothing
     H
 end
+
+# step LP: parameters that are only linear coefficients, f = f₀ + A f₁ (A free of f₀, f₁; recursively in B, C, …), split
+# off before step TS: ∫ f = ∫ f₀ + A ∫ f₁, each over a smaller constant field. (A + B cos u + C cos² u) sec² u/(a + b cos u)²
+# took over 300 s through s = tan(u/2) over ℚ(A, B, C, a, b) and its parts 0.5 s each (sample 1688, 1703, 1734). Sound
+# both ways: a part with no elementary integral means none for f (A = 0, 1). Nothing when no such parameter, or a part
+# is undecided or has a RootSum.
+function integrate_linear_params(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    params = Dict{String,Any}()
+    function gather(t)
+        if safe_iscall(t) && !isempty(arguments(t))
+            foreach(gather, arguments(t))
+        elseif has_param_not_i(t, xk)
+            params[string(t)] = t
+        end
+    end
+    gather(f)
+    isempty(params) && return nothing
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    has_s(t, s) = safe_iscall(t) && !isempty(arguments(t)) ? any(a -> has_s(a, s), arguments(t)) : string(t) == s
+    add(a, b) = a === nothing ? b : b === nothing ? a : mk(bd, :+, a, b)
+    neg(a) = a === nothing ? nothing : mk(bd, :*, bd.lift(-1), a)
+    # (f₀, f₁) with t = f₀ + s f₁ (nothing for 0), or :fail when s is not a linear coefficient
+    function coef(t, s)
+        has_s(t, s) || return (t, nothing)
+        safe_iscall(t) && !isempty(arguments(t)) || return (nothing, bd.lift(1))
+        n, as = opname(operation(t)), arguments(t)
+        if n === :+
+            r = Any[coef(a, s) for a in as]
+            any(==(:fail), r) && return :fail
+            return (reduce(add, first.(r)), reduce(add, last.(r)))
+        elseif n === :- && length(as) == 1
+            r = coef(as[1], s); r === :fail && return r
+            return (neg(r[1]), neg(r[2]))
+        elseif n === :- && length(as) == 2
+            r1, r2 = coef(as[1], s), coef(as[2], s)
+            (r1 === :fail || r2 === :fail) && return :fail
+            return (add(r1[1], neg(r2[1])), add(r1[2], neg(r2[2])))
+        elseif n === :*
+            k = findall(a -> has_s(a, s), as)
+            length(k) == 1 || return :fail
+            r = coef(as[k[1]], s); r === :fail && return r
+            rest = Any[as[j] for j in eachindex(as) if j != k[1]]
+            m(c) = c === nothing ? nothing : mk(bd, :*, rest..., c)
+            return (m(r[1]), m(r[2]))
+        elseif n === :/ && length(as) == 2 && !has_s(as[2], s)
+            r = coef(as[1], s); r === :fail && return r
+            d(c) = c === nothing ? nothing : mk(bd, :/, c, as[2])
+            return (d(r[1]), d(r[2]))
+        end
+        :fail
+    end
+    # [(coefficient: a product of parameters or nothing for 1, part)]
+    function lsplit(g, ps)
+        isempty(ps) && return Any[(nothing, g)]
+        r = coef(g, ps[1])
+        r === :fail && return lsplit(g, ps[2:end])
+        out = Any[]
+        r[1] === nothing || append!(out, lsplit(r[1], ps[2:end]))
+        if r[2] !== nothing
+            p = params[ps[1]]
+            for (c, h) in lsplit(r[2], ps[2:end])
+                push!(out, (c === nothing ? p : mk(bd, :*, p, c), h))
+            end
+        end
+        out
+    end
+    parts = lsplit(f, sort!(collect_keys(params)))
+    length(parts) > 1 || return nothing
+    terms = Any[]
+    for (c, g) in parts
+        F = try
+            risch_integrate(g, x; build = build, lift = lift, verify = verify)
+        catch e
+            e isa NotElementary && rethrow()
+            e isa RischNotImplemented || rethrow()
+            return nothing
+        end
+        F isa IntegralWithRootSums && return nothing
+        push!(terms, c === nothing ? F : mk(bd, :*, c, F))
+    end
+    length(terms) == 1 ? terms[1] : mk(bd, :+, terms...)
+end
+collect_keys(d::Dict) = collect(keys(d))
