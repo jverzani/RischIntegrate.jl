@@ -125,11 +125,21 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
     # (c V)^e/V^e constant on intervals (step RK's split), before any step takes c^e out of it at the parameter
     # values' signs ((b sec x)^(5/2) = b^(5/2) sec^(5/2) x for b > 0 only): the answer holds for all generic signs
     # (not with i: radicals of a ± i a tan L go to steps TS, TQ, whose own factor M is sign-free, by a faster route)
-    if has_param(f, string(x)) && !has_imag_unit(f) && !isempty(collect_radicals(f, string(x)))
+    # (nor inside step IP, whose parameter ⅈ is i)
+    if has_param(f, string(x)) && !has_imag_unit(f) && !IMAG_PARAM[] && !isempty(collect_radicals(f, string(x)))
         gK = split_radicand_content(f, x, string(x), build, lift; undecided = true)
         if gK !== nothing
             bq = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
-            return scale_answer(bq, gK[2], risch_integrate(gK[1], x; build = build, lift = lift, verify = verify))
+            return try
+                scale_answer(bq, gK[2], risch_integrate(gK[1], x; build = build, lift = lift, verify = verify))
+            catch e
+                # refused: f term by term as written (step LS; (a + b asin(c x))/((d + c d x)^(5/2) √(f - c f x)) as
+                # a quotient splits, the product K-form does not; sample 2306), each term through step RQ again
+                (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+                r = try_sum_split(f, x; build = build, lift = lift, verify = verify)
+                r === nothing && rethrow()
+                r
+            end
         end
     end
     # step LR: log(u^e) = e log u for 0 < e ≤ 1 (principal branches: Im(e log u) ∈ (-π, π]): log(√((cos t - cos x)² +
@@ -684,10 +694,11 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         r === nothing || return r
         r = integrate_radical_index_halved(f, x, rads; build = build, lift = lift, verify = verify)   # (c W²)^e (RI)
         r === nothing || return r
-        g = rewrite_two_linear(f, x, rads; build = build, lift = lift)   # (a + bx)^E₁ (c + dx)^E₂, E₁ + E₂ ∈ ℤ (LL)
-        if g !== nothing
+        gσ = rewrite_two_linear(f, x, rads; build = build, lift = lift)   # (a + bx)^E₁ (c + dx)^E₂, E₁ + E₂ ∈ ℤ (LL)
+        if gσ !== nothing
             r = try
-                risch_integrate(g, x; build = build, lift = lift, verify = verify)
+                bσ = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+                scale_answer(bσ, gσ[2], risch_integrate(gσ[1], x; build = build, lift = lift, verify = verify))
             catch e
                 (e isa RischNotImplemented || e isa NotElementary) || rethrow()
                 nothing
@@ -705,6 +716,22 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
             nothing
         end
         r === nothing || return r
+    end
+    # two linear radicands over ℚ, L₁^E₁ L₂^E₂ with E₁ + E₂ ∈ ℤ, as for parameters (step LL): one quadratic radicand
+    # with σ (∫ asin(x)/((1 + x)^(5/2) √(1 - x)) by parts, whose ∫ Q L′ was refused for Q from the nested substitution:
+    # sample 2306, whose parameters d, f step RQ takes out)
+    if length(rads) >= 2 && !any(((_, u),) -> has_param(u, xk), rads)
+        gσ = rewrite_two_linear(f, x, rads; build = build, lift = lift, params = false)
+        if gσ !== nothing
+            r = try
+                bσ = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+                scale_answer(bσ, gσ[2], risch_integrate(gσ[1], x; build = build, lift = lift, verify = verify))
+            catch e
+                (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+                nothing
+            end
+            r === nothing || return r
+        end
     end
     if any(((_, u),) -> radicand_element(u, xk) === nothing, rads)
         # a hyperbolic function of k·log(u) in a radicand: rational in uᵏ (step HL)

@@ -231,6 +231,34 @@ function scale_answer(bd::Builder, K, F)
     IntegralWithRootSums(mk(bd, :*, K, F.elementary), Any[ScaledRootSum(K, rs) for rs in F.rootsums], F.var)
 end
 
+# t locally constant in x: a product of powers uᵢ^(eᵢ) (radicals of rational uᵢ, and factors free of x) whose
+# logarithmic derivative Σ eᵢ uᵢ′/uᵢ is 0, the quotients σ = (c V)^e/V^e, √L₁ √L₂/√(L₁ L₂) of steps RK, LL, RM: ±1 or a
+# root of unity on each interval, so a constant for ∫ (∫ σ g = σ ∫ g)
+function locally_constant(t, xk::String, bd::Builder)
+    @nospecialize t
+    (has_leaf(t, xk) && !isempty(collect_radicals(t, xk))) || return false
+    E = Dict{String,Tuple{Any,Q}}()
+    for (s, k) in product_factors!(Any[], t, 1)
+        has_leaf(s, xk) || continue
+        rp = radical_parts(s)
+        u, e = rp === nothing ? (s, Q(1)) : (rp[2], rp[1])
+        isempty(collect_radicals(u, xk)) || return false
+        key = string(u)
+        E[key] = (u, get(E, key, (u, Q(0)))[2] + e * k)
+    end
+    es = Q[e for (_, e) in values(E) if !iszero(e)]
+    length(es) >= 2 || return false
+    N = lcm([Int(denominator(e)) for e in es])
+    ps = Any[(m = Int(N * e); m == 1 ? u : mk(bd, :^, u, bd.lift(m))) for (u, e) in values(E) if !iszero(e)]
+    T, el = try
+        build_tower(length(ps) == 1 ? ps[1] : mk(bd, :*, ps...), xk)
+    catch err
+        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        return false
+    end
+    isempty(T.levels) && !iszero(el) && degree(el.num) <= 0 && degree(el.den) <= 0
+end
+
 # step MN: f = h ∏ (cⱼ Mⱼ)^(eⱼ), radicals of monomials Mⱼ in the six trigonometric (or hyperbolic) functions of one
 # argument L, cⱼ free of x, h free of radicals, two or more such radicals (one alone is step RK's): the product is
 # σ ∏ cⱼ^(eⱼ) sᴾ cᵠ (s, c = sin L, cos L, or sinh L, cosh L), written tanᴾ c^(P+Q) when P, Q ∉ ℤ and P + Q ∈ ℤ (the

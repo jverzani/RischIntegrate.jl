@@ -686,13 +686,28 @@ function try_parts(f, x; build = nothing, lift = nothing, verify::Bool = true)
         G = with_parts() do
             Qt = isempty(rest) ? bd.x : risch_integrate(A, x; build = build, lift = lift, verify = verify)
             Qt isa IntegralWithRootSums && return nothing
-            dL = align_radicals(term_deriv(bd, L, xk), Qt, xk, bd)
+            # Q = σ Q₀ with σ locally constant (step LL's √L₁ √L₂/√(L₁ L₂)): ∫ Q L′ = σ ∫ Q₀ L′, σ kept out of the
+            # integrand (sample 2306, whose σ's radicals took step AS's substitution to √(1 + sin t))
+            σq, Qt0 = nothing, Qt
+            mfactors(t) = (safe_iscall(t) && !isempty(arguments(t)) && opname(operation(t)) === :*) ?
+                          Any[s for a in arguments(t) for s in mfactors(a)] : Any[t]
+            qf = mfactors(Qt)
+            if length(qf) >= 2
+                iσ = findfirst(t -> locally_constant(t, xk, bd), qf)
+                if iσ !== nothing
+                    σq = qf[iσ]
+                    rq = Any[t for (m, t) in enumerate(qf) if m != iσ]
+                    Qt0 = length(rq) == 1 ? rq[1] : mk(bd, :*, rq...)
+                end
+            end
+            dL = align_radicals(term_deriv(bd, L, xk), Qt0, xk, bd)
             Lk = k == 1 ? L : mk(bd, :^, L, bd.lift(k))
             dLk = k == 1 ? dL : mk(bd, :*, bd.lift(k), k == 2 ? L : mk(bd, :^, L, bd.lift(k - 1)), dL)
             # (one flat product, so that step IT sees a constant factor of Q: b·(…)√(1 + x²)·(1/√(1 + x²)))
-            QdL = Any[e == 1 ? t : mk(bd, :^, t, bd.lift(e)) for (t, e) in product_factors!(product_factors!(Any[], Qt, 1), dLk, 1)]
+            QdL = Any[e == 1 ? t : mk(bd, :^, t, bd.lift(e)) for (t, e) in product_factors!(product_factors!(Any[], Qt0, 1), dLk, 1)]
             H = risch_integrate(length(QdL) == 1 ? QdL[1] : mk(bd, :*, QdL...), x; build = build, lift = lift, verify = verify)
             H isa IntegralWithRootSums && return nothing
+            σq === nothing || (H = mk(bd, :*, σq, H))
             mk(bd, :+, mk(bd, :*, Qt, Lk), mk(bd, :*, bd.lift(-1), H))
         end
         # Q and H are each checked, but in the tower log(w) and log(-w) are one generator: the iπ of a log of a
