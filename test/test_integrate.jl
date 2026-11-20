@@ -4446,6 +4446,22 @@ end
     @test Risch.rewrite_exp_logs(:(exp(atan(x)) * x), :x, build, identity) === nothing   # (no factor i: not algebraic)
 end
 
+# step HB with u = tanh L or coth L, the other written as 1/u: a radical of a rational function of u (sample 2570, 2588,
+# over 120 s before)
+@testset "Step HB: u = tanh L or coth L for hyperbolic radicals" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0, a, b) = Core.eval(Main, Expr(:let, Expr(:block, :(sqrt = z -> Base.sqrt(complex(z))), :(x = $(complex(x0))),
+                                                  :(a = $a), :(b = $b)), e))
+    for f in (:(coth(x) ^ 3 / sqrt(a + b * tanh(x) ^ 2)), :(coth(x) * (a + b * coth(x) ^ 2) ^ (3 / 2)),
+              :(tanh(2x + 1) / sqrt(a + b * coth(2x + 1) ^ 2)))
+        t = @elapsed F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test t < 60
+        for (a, b) in ((2.3, 0.7), (0.6, -1.9), (-0.8, 1.7)), x0 in (0.3, 1.1)
+            @test isapprox((ev(F, x0 + 1e-6, a, b) - ev(F, x0 - 1e-6, a, b)) / 2e-6, ev(f, x0, a, b); rtol = 1e-5)
+        end
+    end
+end
+
 # step SA: √(c₀(1 ± sin L)) = σ c₀ cos L/√(c₀(1 ∓ sin L)), σ = ±1, then u = sin L (cos the same with sin), before
 # step HT's tan(L/2) (sample 1402, 1403, 1480: over 120 s; √ of a quartic in tan(L/2))
 @testset "Step SA: square roots of a(1 ± sin L) by u = sin L" begin
