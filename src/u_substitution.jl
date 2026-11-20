@@ -583,7 +583,7 @@ function integrate_hyp_bioche(f, x; build, lift, verify::Bool)
             L === nothing && (L = a)
             return string(a) == string(L)
         end
-        (n in (:+, :-, :*, :/, :^) || !has_x(t, xk)) || return false
+        (n in (:+, :-, :*, :/, :^, :sqrt) || !has_x(t, xk)) || return false
         all(walk, arguments(t))
     end
     (walk(f) && L !== nothing) || return nothing
@@ -595,6 +595,23 @@ function integrate_hyp_bioche(f, x; build, lift, verify::Bool)
         for h in (:cosh, :sinh)
             r = try
                 integrate_usub(f, x, mk(bd, h, L), bd; build = build, lift = lift, verify = verify)
+            catch e
+                (e isa RischNotImplemented || e isa NotElementary || e isa DivideError) || rethrow()
+                nothing
+            end
+            r === nothing || return r
+        end
+        # u = tanh L or coth L, the other written as 1/u (coth³/√(a + b tanh²), sample 2570; coth (a + b coth²)^(3/2), 2588:
+        # a radical of a rational function of u, which the radical steps take)
+        hs = ((:tanh, :coth), (:coth, :tanh))         # (the one in f first: coth for 2588, no 1/tanh in the answer)
+        hasf(t, n) = isnode(t) && ((opname(operation(t)) === n && string(arguments(t)[1]) == string(L)) || any(a -> hasf(a, n), arguments(t)))
+        (hasf(f, :coth) && !hasf(f, :tanh)) && (hs = reverse(hs))
+        for (h, o) in hs
+            Ls = string(L)
+            recip(t) = isnode(t) ? (opname(operation(t)) === o && length(arguments(t)) == 1 && string(arguments(t)[1]) == Ls ?
+                                    mk(bd, :/, bd.lift(1), mk(bd, h, L)) : term_rebuild(bd, t, Any[recip(a) for a in arguments(t)])) : t
+            r = try
+                integrate_usub(recip(f), x, mk(bd, h, L), bd; build = build, lift = lift, verify = verify)
             catch e
                 (e isa RischNotImplemented || e isa NotElementary || e isa DivideError) || rethrow()
                 nothing
