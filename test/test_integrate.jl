@@ -4478,3 +4478,22 @@ end
     # a part with no elementary integral: none for the whole (A = 0, 1)
     @test_throws Risch.NotElementary Risch.risch_integrate(:((A + B * cos(x)) / (x * (a + b * cos(x)))), :x; build = build, lift = identity)
 end
+
+# steps TQ, TQR with t = cot L when the radicals have cot L and no tan L: √(a + b cot + c cot²) a radical of a quadratic
+# in t (sample 1946, 1947: over 120 s, a degree-6 RootSum through t = tan L's 1/t)
+@testset "Steps TQ, TQR in t = cot L" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0, a, b, c) = Core.eval(Main, Expr(:let, Expr(:block, :(sqrt = z -> Base.sqrt(complex(z))), :(log = z -> Base.log(complex(z))),
+                                                    :(x = $(complex(big(x0)))), :(a = $(big(a))), :(b = $(big(b))), :(c = $(big(c))),
+                                                    :(d = $(big(0.4))), :(e = $(big(1.3)))), e))
+    h = big(10.0)^-20
+    for g in (:(sqrt(a + b * cot(d + e * x) + c * cot(d + e * x) ^ 2) * tan(d + e * x) ^ 3),           # 1946
+              :(tan(d + e * x) ^ 3 / (a + b * cot(d + e * x) + c * cot(d + e * x) ^ 2) ^ (3 / 2)),       # 1947
+              :(tan(x) / sqrt(a + b * cot(x))))
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 60
+        for (a, b, c) in ((2.3, 0.7, 1.1), (1.4, -0.5, 0.8)), x0 in (0.3, 0.9, -0.5)
+            @test isapprox((ev(F, x0 + h, a, b, c) - ev(F, x0 - h, a, b, c)) / 2h, ev(g, x0, a, b, c); rtol = 1e-12)
+        end
+    end
+end
