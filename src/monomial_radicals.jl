@@ -624,7 +624,9 @@ function trig_of(u, Ls::String)
      string(arguments(u)[1]) == Ls) ? opname(operation(u)) : nothing
 end
 # u -> u in t = tan L (the builder's variable), or nothing when u is not a rational function of tan L (step TQ)
-function tan_walker(bd::Builder, Ls::String)
+# (cot = true: t = cot L, the co-functions swapped: cot ↦ t, tan ↦ 1/t, cos ↦ t w⁻¹, sin ↦ w⁻¹, sec ↦ w/t, csc ↦ w,
+# w² = 1 + t² = csc² L; for radicals of a + b cot L + c cot² L, sample 1946, 1947)
+function tan_walker(bd::Builder, Ls::String; cot::Bool = false)
     t = bd.x
     one_ = bd.lift(1)
     W2 = mk(bd, :+, one_, mk(bd, :^, t, bd.lift(2)))
@@ -641,8 +643,8 @@ function tan_walker(bd::Builder, Ls::String)
         fs = product_factors!(Any[], u, 1)
         if length(fs) == 1 && fs[1][2] == 1 && fs[1][1] === u      # a call: tan, cot, a radical, …
             k = trig_of(u, Ls)
-            k === :tan && return t
-            k === :cot && return mk(bd, :/, one_, t)
+            k === (cot ? :cot : :tan) && return t
+            k === (cot ? :tan : :cot) && return mk(bd, :/, one_, t)
             k === nothing || return nothing                         # sin, cos, sec, csc to an odd power
             as = Any[walk(s) for s in arguments(u)]
             any(isnothing, as) && return nothing
@@ -652,6 +654,7 @@ function tan_walker(bd::Builder, Ls::String)
         parts = Any[]
         for (b, e) in fs
             k = trig_of(b, Ls)
+            cot && (k = get(Dict(:sin => :cos, :cos => :sin, :sec => :csc, :csc => :sec), k, k))   # (the co-functions)
             if k === :sin
                 push!(parts, pw(t, e)); w -= e
             elseif k === :cos
@@ -672,6 +675,9 @@ function tan_walker(bd::Builder, Ls::String)
     end
 end
 
+# t = cot L for the tan-radical steps: radicals of cot L and none of tan L
+cot_mode(f, xk::String) = (rs = collect_radicals(f, xk); any(((_, u),) -> has_op(u, :cot), rs) && !any(((_, u),) -> has_op(u, :tan), rs))
+
 # a square root (or its odd powers) of a + b tan L, a or b a parameter (param = true), L the one trigonometric argument
 # of f: the radicals that step TQ takes before steps MR and HT
 function tan_linear_radicand(e, u, f, x; param::Bool = true, deg::Int = 1)
@@ -682,7 +688,7 @@ function tan_linear_radicand(e, u, f, x; param::Bool = true, deg::Int = 1)
     L === nothing && return false
     try
         bd = Builder(expr_build, identity, :t__)
-        ut = tan_walker(bd, string(L))(u)
+        ut = tan_walker(bd, string(L); cot = cot_mode(f, xk))(u)
         ut === nothing && return false
         T, el = build_tower(ut, "t__")
         isempty(T.levels) && degree(el.den) == 0 && degree(el.num) == deg
@@ -1090,10 +1096,11 @@ function integrate_tan_radicals(f, x; build = nothing, lift = nothing, verify::B
     t = bd.x
     one_ = bd.lift(1)
     W2 = mk(bd, :+, one_, mk(bd, :^, t, bd.lift(2)))
-    walk = tan_walker(bd, Ls)
+    cm = cot_mode(f, xk)                                # t = cot L: dt = -a (1 + t²) dx
+    walk = tan_walker(bd, Ls; cot = cm)
     ft = walk(f)
     ft === nothing && return nothing
-    g = mk(bd, :/, ft, mk(bd, :*, a, W2))
+    g = mk(bd, :/, ft, mk(bd, :*, cm ? mk(bd, :*, bd.lift(-1), a) : a, W2))
     G = integrate_tan_quadratic_radical(g, x, bd; build = build, lift = lift, verify = verify)
     G === nothing && (G = integrate_two_linear_radicals(g, x, bd; build = build, lift = lift, verify = verify))
     parts = G === nothing ? tan_split_parts(g, xk, bd) : nothing
@@ -1107,7 +1114,7 @@ function integrate_tan_radicals(f, x; build = nothing, lift = nothing, verify::B
         (Gs === nothing || any(F -> F isa IntegralWithRootSums, Gs)) || (G = mk(bd, :+, Gs...))
     end
     G === nothing && (G = risch_integrate(g, x; build = build, lift = lift, verify = verify))
-    tL = mk(bd, :tan, L)
+    tL = mk(bd, cm ? :cot : :tan, L)
     radmap = Dict{String,Any}()
     function radicals!(u)
         isnode(u) || return
