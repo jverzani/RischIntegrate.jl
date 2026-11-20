@@ -59,7 +59,7 @@ end
 const MAX_EXP_RATIO = 1000
 
 # the times make_log identified log(-w) with log(w), dropping the constant iπ (counted for the power parse)
-function make_log(T::Tower, u)
+function make_log(T::Tower, u; term = nothing)
     c = dconst_value(T, u)
     if c !== nothing
         isone(c) && return zero(T.Ts[1])
@@ -98,6 +98,15 @@ function make_log(T::Tower, u)
         cv = dconst_value(T, R)
         cv === nothing && throw(RischError("inconsistent logarithmic relation (not a constant ratio)"))
         res = liftto(T, res, top)
+        # log u - Σ ρᵢ (log of generator i) = κ is constant on each interval, but it is log(cv)/q only up to 2πik/q,
+        # k jumping where an argument crosses its branch cut (log(c w) = log c + log w fails for c, w < 0; log(c (a +
+        # bx)^p) = log c + p log(a + b x) for a + bx < 0): multiplied by a function of x, the jump is not a constant
+        # of the integral (∫ x log(c (a + b x)^p)/(d + e x), sample 1263). κ, printed log u - Σ ρᵢ (…), is then an
+        # opaque constant of the field, exact for every sign of the parameters. Not when the relation is one
+        # generator to the power 1, log(r w) = log r + log w (r > 0 rational) or log(c eᵛ) = log c + v (v free of
+        # logs, real), where no jump can occur
+        κ = term === nothing ? nothing : log_relation_constant(T, term, idx, r, q, cv)
+        κ === nothing || return res + liftto(T, κ, top)
         # u^q = cv · Π(...): log u = Σ ρᵢ (log of generator i) + log(cv)/q. A ratio of -1 keeps the
         # behaviour from before Step 6 (the constant log(-1) = iπ is dropped).
         if !(isone(cv) || isone(-cv))
@@ -108,6 +117,43 @@ function make_log(T::Tower, u)
     end
     add_level!(T, :log, u, UPoly{K}(K[w]), 0)
     theta(T, top + 1)
+end
+
+# κ = log u - Σ ρᵢ (log of generator i) as an opaque constant (see `make_log`), or nothing when no jump can occur
+# or the term cannot be rebuilt
+function log_relation_constant(T::Tower, term, idx, r, q, cv)
+    T.subst === nothing || return nothing
+    nz = [(i, ρ) for (ri, i) in enumerate(idx) for ρ in (r[ri],) if !iszero(ρ)]
+    isempty(nz) && return nothing
+    if length(nz) == 1 && isone(nz[1][2]) && isone(q)
+        i = nz[1][1]
+        lv = T.levels[i]
+        if lv.kind === :exp
+            # (v free of log levels: real for real x)
+            any(j -> T.levels[j].kind === :log, 1:levelof(T, lv.arg)) || return nothing
+        else
+            cq = crational(cv)
+            (cq !== nothing && cq > 0) && return nothing
+        end
+    end
+    leaves = collect_leaves!(Dict{String,Any}(), term)
+    haskey(leaves, T.xk) || return nothing
+    xt = leaves[T.xk]
+    b = xt isa Symbol ? Builder(expr_build, identity, xt, T.consts) : Builder(auto_build(term, xt), auto_lift(term, xt), xt, T.consts)
+    gs = Any[]
+    # (a generator with no real form, exp(i t) of step 7's trigonometric functions: the relation as it was)
+    try
+        for (i, ρ) in nz
+            lv = T.levels[i]
+            g = lv.kind === :exp ? tower_to_term(b, T, lv.arg) : theta_term(b, T, i)
+            push!(gs, isone(ρ) ? g : mk(b, :*, b.lift(ρ), g))
+        end
+    catch e
+        (e isa RischError || e isa RischNotImplemented) || rethrow()
+        return nothing
+    end
+    sum_ = length(gs) == 1 ? gs[1] : mk(b, :+, gs...)
+    sym_const(T, mk(b, :+, term, mk(b, :*, b.lift(-1), sum_)))
 end
 
 # Step TA: atan(u), a primitive monomial: θ' = u'/(1 + u²) ∈ K. It is new unless θ' is a ℚ-linear

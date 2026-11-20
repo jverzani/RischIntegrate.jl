@@ -1095,8 +1095,8 @@ end
 #   else:     L₁^E₁ L₂^E₂ = σ (L₁/L₂)^E₁ L₂^(E₁ + E₂)    (linear-fractional: step PR)
 # σ, the quotient of the two sides, has logarithmic derivative 0: it is locally constant, 1 where L₁, L₂ > 0 and
 # ±1 (a root of unity) elsewhere, so ∫ f = σ ∫ g on every interval, for every sign of the parameters. (Without σ,
-# √(a + bx) √(a - bx) = √(a² - b²x²) failed for a < 0, where both factors are negative: sample 312.) (g, σ), or
-# nothing when the radicands are not both linear or are not plain factors of f.
+# √(a + bx) √(a - bx) = √(a² - b²x²) failed for a < 0, where both factors are negative: sample 312.) (g, σ), σ nothing when
+# it is 1, or nothing when the radicands are not both linear or (σ ≠ 1) are not plain factors of f.
 # ---------------------------------------------------------------------------
 
 function rewrite_two_linear(f, x, rads; build = nothing, lift = nothing, params::Bool = true)
@@ -1105,6 +1105,7 @@ function rewrite_two_linear(f, x, rads; build = nothing, lift = nothing, params:
     us = unique(string(u) for (_, u) in rads)
     (length(us) == 2 && (!params || any(((_, u),) -> has_param(u, xk), rads))) || return nothing
     uts = Any[first(u for (_, u) in rads if string(u) == s) for s in us]
+    lins = Any[]
     for ut in uts
         T, el = try
             build_tower(ut, xk)
@@ -1113,12 +1114,64 @@ function rewrite_two_linear(f, x, rads; build = nothing, lift = nothing, params:
             return nothing
         end
         (isempty(T.levels) && degree(el.num) == 1 && degree(el.den) == 0) || return nothing
+        push!(lins, (T, el))
     end
     n = lcm([Int(denominator(e)) for (e, _) in rads])
     b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     L1, L2 = uts
     v = n == 2 ? mk(b0, :*, L1, L2) : mk(b0, :/, L1, L2)
     pw(t, e) = iszero(e) ? nothing : isone(e) ? t : mk(b0, :^, t, b0.lift(e))
+    # σ = 1 when L₁, L₂ are never both negative (index 2): opposite slopes, ρ = -β₂/β₁ a positive rational, and
+    # ρ L₁ + L₂ = ρ α₁ + α₂ a constant of proven positive sign (√(1 - a x)/√(1 + a x) = √((1 - a x)/(1 + a x))·…
+    # for every a: sample 2483, inside sinh). Then every product, also inside other functions, is rewritten.
+    σone = n == 2 && begin
+        (T1, e1), (T2, e2) = lins
+        α1, β1 = e1.num.c[1] / e1.den.c[1], e1.num.c[2] / e1.den.c[1]
+        α2, β2 = e2.num.c[1] / e2.den.c[1], e2.num.c[2] / e2.den.c[1]
+        ok = false
+        if typeof(α1) == typeof(α2) && T1.consts == T2.consts
+            ρ = crational(-β2 / β1)
+            if ρ !== nothing && ρ > 0
+                s = α1 * cfromQ(typeof(α1), Q(ρ)) + α2
+                sq = crational(s)
+                ok = sq !== nothing ? sq > 0 : oracle_sign(s, T1.consts) == 1
+            end
+        end
+        ok
+    end
+    if σone
+        ismult(t) = (o = opname(operation(t)); o === :* || o === :/ || radical_parts(t) !== nothing ||
+                     (o === :^ && (p = leaf_rational(arguments(t)[2]); p !== nothing && isone(denominator(p)))))
+        function rw(t)
+            (safe_iscall(t) && !isempty(arguments(t))) || return t
+            ismult(t) || return term_rebuild(b0, t, Any[rw(a) for a in arguments(t)])
+            local E = [Q(0), Q(0)]                     # (local: the names below are the function's too)
+            local fs = Any[]
+            for (s, e) in product_factors!(Any[], t, 1)
+                rp = radical_parts(s)
+                k = rp === nothing ? nothing : findfirst(==(string(rp[2])), us)
+                if k === nothing
+                    # (a factor that is t itself, another radical such as √-1: its arguments, else rw recurses forever)
+                    push!(fs, pw(string(s) == string(t) ? term_rebuild(b0, s, Any[rw(a) for a in arguments(s)]) : rw(s), e))
+                else
+                    E[k] += rp[1] * e
+                end
+            end
+            if !all(iszero, E)
+                isone(denominator(E[1] + E[2])) || throw(RischNotImplemented("radicals of $L1 and $L2 that do not combine"))
+                push!(fs, pw(v, E[1]), pw(L2, E[2] - E[1]))
+            end
+            fs = Any[t for t in fs if t !== nothing]
+            isempty(fs) ? b0.lift(1) : length(fs) == 1 ? fs[1] : mk(b0, :*, fs...)
+        end
+        g1 = try
+            rw(f)
+        catch err
+            err isa RischNotImplemented || rethrow()
+            return nothing
+        end
+        return length(unique(string(u) for (_, u) in collect_radicals(g1, xk))) == 1 ? (g1, nothing) : nothing
+    end
     E = [Q(0), Q(0)]
     hs, olds = Any[], Any[]
     for (s, e) in product_factors!(Any[], f, 1)
@@ -1138,18 +1191,7 @@ function rewrite_two_linear(f, x, rads; build = nothing, lift = nothing, params:
     g = isempty(fs) ? b0.lift(1) : length(fs) == 1 ? fs[1] : mk(b0, :*, fs...)
     olds = Any[t for t in olds if t !== nothing]
     prodt(ts) = length(ts) == 1 ? ts[1] : mk(b0, :*, ts...)
-    # (σ = 1 when L₁, L₂ ∈ ℚ[x] are never both negative, index 2: √(1 + x) √(1 - x) = √(1 - x²) on all of ℝ)
-    if n == 2
-        l1, l2 = radicand_element(L1, xk), radicand_element(L2, xk)
-        if l1 !== nothing && l2 !== nothing && isone(l1.den) && isone(l2.den)
-            (a1, b1), (a2, b2) = l1.num.c, l2.num.c
-            # {L₁ < 0} ∩ {L₂ < 0} = ∅: slopes of opposite signs, and the half-lines x < r₊, x > r₋ disjoint
-            r1, r2 = -a1 / b1, -a2 / b2
-            sign(b1) != sign(b2) && (b1 > 0 ? r2 >= r1 : r1 >= r2) && return (g, nothing)
-        end
-    end
-    σ = mk(b0, :/, prodt(olds), prodt(news))
-    (g, σ)
+    (g, mk(b0, :/, prodt(olds), prodt(news)))
 end
 
 # Step PQ: u^e, e half an odd integer, u = L₁ L₂ (a product term of two factors linear in x over ℚ(i)(…), step RM's
