@@ -920,6 +920,9 @@ function integrate_half_sine_radicals(f, x; build = nothing, lift = nothing, ver
     onlytrig(t) = isnode(t) ? (opname(operation(t)) in (:sin, :cos, :tan, :cot, :sec, :csc) && length(arguments(t)) == 1 ? true :
                                all(onlytrig, arguments(t))) : string(t) != xk
     onlytrig(f) || return nothing
+    # (not inside step PX's parts: its σ-form antiderivative of 1/√(a - a cos x) sent ∫ x²/√(a - a cos x) to a DomainError
+    # after minutes, where without it NotElementary in seconds, sample 1569)
+    PXPARTS[] && return nothing
     fs = product_factors!(Any[], f, 1)
     k = findall(fs) do (t, e)
         rp = radical_parts(t)
