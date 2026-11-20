@@ -4428,6 +4428,24 @@ end
     end
 end
 
+# step XL for atan: exp(c i atan u) = ((1 + iu)/(1 - iu))^(c/2), every real u (Rubi 5.3.6, sample 2392-2400)
+@testset "Step XL: exp(c i atan u) as a radical" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    ev(e, x0, a, b) = Core.eval(Main, Expr(:let, Expr(:block, :(I = im), :(sqrt = z -> Base.sqrt(complex(z))),
+                                                  :(x = $(complex(x0))), :(a = $a), :(b = $b)), e))
+    for f in (:(1 / (exp(3 * I * atan(a * x)) * x ^ 3)), :(exp((1 / 2) * I * atan(a * x)) * x),
+              :(1 / (exp((3 / 2) * I * atan(a * x)) * x ^ 5)), :(exp(3 * im * atan(a + b * x)) / x),
+              :(exp((3 / 2) * I * atan(a + b * x)) * x ^ 2), :(exp(2im * atan(x)) * x))
+        t = @elapsed F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        @test t < 30
+        @test !occursin("atan(a", string(F))
+        for (a, b, x0) in ((0.7, 1.3, 0.3), (0.7, 1.3, 1.1), (-1.9, 0.4, -0.8))
+            @test isapprox((ev(F, x0 + 1e-6, a, b) - ev(F, x0 - 1e-6, a, b)) / 2e-6, ev(f, x0, a, b); rtol = 1e-5)
+        end
+    end
+    @test Risch.rewrite_exp_logs(:(exp(atan(x)) * x), :x, build, identity) === nothing   # (no factor i: not algebraic)
+end
+
 # step HB with u = tanh L or coth L, the other written as 1/u: a radical of a rational function of u (sample 2570, 2588,
 # over 120 s before)
 @testset "Step HB: u = tanh L or coth L for hyperbolic radicals" begin
