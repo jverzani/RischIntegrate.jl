@@ -636,6 +636,11 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         r = integrate_param_linear(f, x; build = build, lift = lift, verify = verify)
         r === nothing || return r
     end
+    # h(x)/E(x²), E an even quartic with parameters: by the roots of E(w), one symbol for them (step QW; outermost call)
+    if RISCH_DEPTH[] == 1 && !isempty(rads)
+        r = integrate_quartic_split(f, x; build = build, lift = lift, verify = verify)
+        r === nothing || return r
+    end
     if !isempty(rads)
         # only powers of √(1 - u²), u linear: the substitution u = sin t first (gives asin(u)), step AS
         a1 = unit_circle_radicand(f, x, rads, xk; build = build, lift = lift)
