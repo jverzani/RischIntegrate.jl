@@ -1107,7 +1107,7 @@ function rewrite_two_linear(f, x, rads; build = nothing, lift = nothing, params:
     us = unique(string(u) for (_, u) in rads)
     (length(us) == 2 && (!params || any(((_, u),) -> has_param(u, xk), rads))) || return nothing
     uts = Any[first(u for (_, u) in rads if string(u) == s) for s in us]
-    lins = Any[]
+    lin_towers = Any[]
     for ut in uts
         T, el = try
             build_tower(ut, xk)
@@ -1116,7 +1116,7 @@ function rewrite_two_linear(f, x, rads; build = nothing, lift = nothing, params:
             return nothing
         end
         (isempty(T.levels) && degree(el.num) == 1 && degree(el.den) == 0) || return nothing
-        push!(lins, (T, el))
+        push!(lin_towers, (T, el))
     end
     n = lcm([Int(denominator(e)) for (e, _) in rads])
     # (radicands over ℚ that are never both positive, √x √(-x - 1): f is nowhere real, and the answer for the
@@ -1137,7 +1137,7 @@ function rewrite_two_linear(f, x, rads; build = nothing, lift = nothing, params:
     # ρ L₁ + L₂ = ρ α₁ + α₂ a constant of proven positive sign (√(1 - a x)/√(1 + a x) = √((1 - a x)/(1 + a x))·…
     # for every a: sample 2483, inside sinh). Then every product, also inside other functions, is rewritten.
     σone = n == 2 && begin
-        (T1, e1), (T2, e2) = lins
+        (T1, e1), (T2, e2) = lin_towers
         α1, β1 = e1.num.c[1] / e1.den.c[1], e1.num.c[2] / e1.den.c[1]
         α2, β2 = e2.num.c[1] / e2.den.c[1], e2.num.c[2] / e2.den.c[1]
         ok = false
