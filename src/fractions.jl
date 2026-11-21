@@ -47,7 +47,25 @@ function Base.:+(f::Frac{P}, g::Frac{P}) where {P}
     h = gcd(t, G)
     degree(h) <= 0 ? Frac{P}(t, bg * d) : Frac{P}(quo(t, h), bg * quo(d, h))
 end
-Base.:-(f::Frac{P}, g::Frac{P}) where {P} = f + (-g)
+# f - g as f + g above, without negating g first (a copy of g's nested coefficients)
+function Base.:-(f::Frac{P}, g::Frac{P}) where {P}
+    iszero(g.num) && return f
+    iszero(f.num) && return -g
+    a, b, c, d = f.num, f.den, g.num, g.den
+    isone(b) && isone(d) && return Frac{P}(a - c, b)
+    b == d && return frac(a - c, b)
+    isone(b) && return Frac{P}(a * d - c, d)
+    isone(d) && return Frac{P}(a - c * b, b)
+    G = gcd(b, d)
+    if degree(G) <= 0
+        return Frac{P}(a * d - c * b, b * d)
+    end
+    bg, dg = quo(b, G), quo(d, G)
+    t = a * dg - c * bg
+    iszero(t) && return zero(f)
+    h = gcd(t, G)
+    degree(h) <= 0 ? Frac{P}(t, bg * d) : Frac{P}(quo(t, h), bg * quo(d, h))
+end
 
 # gcd over a rational function field K = B(t₁, …, tₖ) (parameters, tower monomials; B = ℚ, ℚ(i), ℚ(√d), …):
 # first the images at a point tⱼ = vⱼ. When every coefficient is defined there and neither leading coefficient
