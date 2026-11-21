@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=ff8659e5">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=4f7680c8">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -603,7 +603,7 @@
 <td style="text-align:left">RK</td>
 <td style="text-align:left">a radical refused for its radicand, in the outermost call</td>
 <td style="text-align:left"><span class="md-math md-math-inline">\((cV)^e\)</span> with a factor <span class="md-math md-math-inline">\(c\)</span> free of <code class="md-code-inline">x</code>, with a parameter, in every summand of the radicand</td>
-<td style="text-align:left"><span class="md-math md-math-inline">\(c^e V^e\)</span> for <span class="md-math md-math-inline">\(c &gt; 0\)</span> (<span class="md-math md-math-inline">\((-c)^e(-V)^e\)</span> for <span class="md-math md-math-inline">\(c &lt; 0\)</span>; the sign from step SO or the positive parameter values), <span class="md-math md-math-inline">\((t^k)^e = t^{ke}\)</span> for an integer <span class="md-math md-math-inline">\(ke\)</span> and <span class="md-math md-math-inline">\(t &gt; 0\)</span>. Then <span class="md-math md-math-inline">\(V\)</span> has rational coefficients: <span class="md-math md-math-inline">\(\sqrt{a + a\sin x} = \sqrt a \sqrt{1 + \sin x}\)</span> for step PW. Last, and not inside another call, so that a substitution refused inside (steps AL, US) leaves the next route its chance. A call from a step that only shifts or rescales (SL, IT) counts as the outermost one: <span class="md-math md-math-inline">\(\int (d\sec(e + fx))^{1/2}(b\tan(e + fx))^{5/2}\)</span> by steps SL, RK, IT and HT. (Step RK&#39;s own call stays nested, so that step RM, not HT, takes <span class="md-math md-math-inline">\((a + a\sin x)^{3/2}(c - c\sin x)^{7/2}\)</span>)</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(c^e V^e\)</span> for a proven <span class="md-math md-math-inline">\(c &gt; 0\)</span> (<span class="md-math md-math-inline">\((-c)^e(-V)^e\)</span> for <span class="md-math md-math-inline">\(c &lt; 0\)</span>; the sign from a rational, a constant&#39;s value or step SO), <span class="md-math md-math-inline">\((t^k)^e = t^{ke}\)</span> for an integer <span class="md-math md-math-inline">\(ke\)</span> and <span class="md-math md-math-inline">\(t &gt; 0\)</span>; a sign not proven gives <span class="md-math md-math-inline">\(V^e\)</span> and the answer times <span class="md-math md-math-inline">\(K = (cV)^e/V^e\)</span>, constant on each interval (step RQ applies this at entry). Then <span class="md-math md-math-inline">\(V\)</span> has rational coefficients: <span class="md-math md-math-inline">\(\sqrt{a + a\sin x} = \sqrt a \sqrt{1 + \sin x}\)</span> for step PW. Last, and not inside another call, so that a substitution refused inside (steps AL, US) leaves the next route its chance. A call from a step that only shifts or rescales (SL, IT) counts as the outermost one: <span class="md-math md-math-inline">\(\int (d\sec(e + fx))^{1/2}(b\tan(e + fx))^{5/2}\)</span> by steps SL, RK, IT and HT. (Step RK&#39;s own call stays nested, so that step RM, not HT, takes <span class="md-math md-math-inline">\((a + a\sin x)^{3/2}(c - c\sin x)^{7/2}\)</span>)</td>
 </tr>
 <tr>
 <td style="text-align:left">HT</td>
@@ -782,7 +782,7 @@
 </li>
 <li><p><strong>Complex constants</strong> in the input are opaque (<span class="md-math md-math-inline">\(\sqrt{-1}\)</span>) rather than elements of <span class="md-math md-math-inline">\(ℚ(i)\)</span>: answers are correct identities, but <span class="md-math md-math-inline">\(i^2 = -1\)</span> is not used to simplify them.</p>
 </li>
-<li><p><strong>Parameters</strong> are capped in number. Answers that depend on the sign of a parameter expression hold for one choice of signs: the caller&#39;s, through the sign oracle (step SO), else the signs of fixed positive values.</p>
+<li><p><strong>Parameters</strong> are capped in number. Answers hold for every generic real value of the parameters (see <em>What an answer means</em> in the usage notes); a sign is used only when it is proven, by a rational, a constant&#39;s value, or the caller&#39;s sign oracle (step SO). Steps PR, BN and the real forms of logarithms with symbolic residues still choose a form at fixed positive parameter values in some cases.</p>
 </li>
 <li><p><strong>Output form.</strong> Answers are not simplified beyond what the algorithm produces; leaf counts are often larger than Rubi&#39;s optimal answers, and forms such as <span class="md-math md-math-inline">\(\sqrt{a^2}\)</span> are left (<span class="md-math md-math-inline">\(∫ 1/\sqrt{a^2 - x^2} = a \operatorname{asin}(x/a)/\sqrt{a^2}\)</span>). Simplification is the caller&#39;s CAS&#39;s job.</p>
 </li>
@@ -1173,6 +1173,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=ff8659e5"></script>
+  <script src="../assets/materialdocs.js?v=4f7680c8"></script>
 </body>
 </html>
