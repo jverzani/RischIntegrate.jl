@@ -4176,7 +4176,11 @@ end
 # in u (step CB; Rubi 1.1.3, (c x)^(1/2)/(a - b x²)^(3/4), x⁸/(a - b x⁴)^(1/4))
 @testset "Step CB: x^m (a + b xⁿ)^p by u = xⁿ" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
-    ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(a = 1.13 + 0im), :(b = 0.37 + 0im), :(c = 1.6 + 0im), :(x = $t + 0im)), e))
+    # (in 256-bit precision: at x = 0.31, f ≈ 8e-5 beside |F| ≈ 2, and the Float64 difference quotient lost 3e-6)
+    ev(e, t) = setprecision(BigFloat, 256) do
+        Core.eval(Main, Expr(:let, Expr(:block, :(a = big"1.13" + 0im), :(b = big"0.37" + 0im), :(c = big"1.6" + 0im),
+                                        :(x = $(big(t)) + 0im)), e))
+    end
     for f in (:(x ^ (1 / 2) / (1 - x ^ 2) ^ (3 / 4)), :((c * x) ^ (1 / 2) / (a - b * x ^ 2) ^ (3 / 4)),
               :(x ^ 8 / (a - b * x ^ 4) ^ (1 / 4)), :(1 / ((c * x) ^ (5 / 2) * (a + b * x ^ 2) ^ (5 / 4))))
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)
