@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Usage — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=55d74b8e">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=94f3230a">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Usage — RischIntegrate.jl">
   <meta property="og:title" content="Usage — RischIntegrate.jl">
@@ -215,6 +215,16 @@ integrate(:(x * exp(x)), :x; build = build, lift = identity)</code></pre>
 </div>
 <pre class="md-output md-output-text"><code class="nohighlight ansi">0.15</code></pre>
 </div>
+<h2 id="What-an-answer-means" class="md-heading">What an answer means<a href="#What-an-answer-means" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
+<p>An answer <code class="md-code-inline">F</code> to <code class="md-code-inline">integrate(f, x)</code> satisfies <code class="md-code-inline">F′ = f</code> as functions of a real <code class="md-code-inline">x</code>, on each interval where the integrand&#39;s radicals are real (their radicands positive) and that contains no pole of <code class="md-code-inline">f</code> or <code class="md-code-inline">F</code>. Other symbols are parameters, and the answer holds <strong>for every generic real value of them</strong>, not only for positive ones: <span class="md-math md-math-inline">\(∫ 1/(x^2 + a)\)</span> is <span class="md-math md-math-inline">\(\operatorname{atan}(x/\sqrt a)/\sqrt a\)</span>, correct for <span class="md-math md-math-inline">\(a &lt; 0\)</span> too, where <span class="md-math md-math-inline">\(\sqrt a\)</span> is imaginary.</p>
+<ul class="md-list-tight">
+<li><p>A logarithm <span class="md-math md-math-inline">\(\log w\)</span> of a negative <span class="md-math md-math-inline">\(w\)</span> differs from <span class="md-math md-math-inline">\(\log|w|\)</span> by the constant <span class="md-math md-math-inline">\(iπ\)</span>. Where a radical of a parameter is taken out, as in <span class="md-math md-math-inline">\((c\,V)^e = c^e V^e\)</span>, the answer carries the factor <span class="md-math md-math-inline">\((c\,V)^e/(c^e V^e)\)</span>, which is <span class="md-math md-math-inline">\(1\)</span> for <span class="md-math md-math-inline">\(c &gt; 0\)</span> and constant on each interval for any sign of <span class="md-math md-math-inline">\(c\)</span>.</p>
+</li>
+<li><p>A sign is used only when it is known: a rational number, a constant such as <span class="md-math md-math-inline">\(π\)</span>, or the caller&#39;s sign oracle (the <code class="md-code-inline">sign</code> keyword, step SO), which can give simpler real forms.</p>
+</li>
+<li><p>Special functions follow the same rule where a single form exists for every sign. <span class="md-math md-math-inline">\(Li_2\)</span> answers hold on the interval next to the zero of the logarithm&#39;s argument, and <span class="md-math md-math-inline">\({}_2F_1\)</span> answers hold where the hypergeometric argument is below 1.</p>
+</li>
+</ul>
 <h2 id="Non-elementary-integrals" class="md-heading">Non-elementary integrals<a href="#Non-elementary-integrals" class="md-heading-anchor" aria-label="Link to this section">#</a></h2>
 <p>Integrals that can be written with the special functions of <a href="https://github.com/JuliaMath/SpecialFunctions.jl">SpecialFunctions.jl</a> (<code class="md-code-inline">expinti</code>, <code class="md-code-inline">sinint</code>, <code class="md-code-inline">cosint</code>, <code class="md-code-inline">erf</code>, <code class="md-code-inline">erfi</code>) and <a href="https://github.com/Expander/PolyLog.jl">PolyLog.jl</a> (<code class="md-code-inline">li2</code>) are returned that way, when the term type has methods for them (SymbolicUtils does):</p>
 <div class="md-multi-output">
@@ -327,6 +337,7 @@ G(x =&gt; 2.0, a =&gt; 1.0, b =&gt; 3.0) - G(x =&gt; 1.0, a =&gt; 1.0, b =&gt; 3
           <a class="md-toc-link md-toc-h2" href="#Symbolics.jl">Symbolics.jl</a>
           <a class="md-toc-link md-toc-h2" href="#Giac.jl">Giac.jl</a>
           <a class="md-toc-link md-toc-h2" href="#Expr-and-other-term-types">Expr and other term types</a>
+          <a class="md-toc-link md-toc-h2" href="#What-an-answer-means">What an answer means</a>
           <a class="md-toc-link md-toc-h2" href="#Non-elementary-integrals">Non-elementary integrals</a>
           <a class="md-toc-link md-toc-h2" href="#Non-elementary-algebraic-integrals:-F">Non-elementary algebraic integrals: ₂F₁</a>
           <a class="md-toc-link md-toc-h2" href="#RootSums">RootSums</a>
@@ -347,6 +358,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=55d74b8e"></script>
+  <script src="../assets/materialdocs.js?v=94f3230a"></script>
 </body>
 </html>
