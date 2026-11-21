@@ -297,7 +297,9 @@ function derivative_of(res::RationalIntegral{C}) where {C}
 end
 function check_result(res::RationalIntegral{C}, f::Frac) where {C}
     isempty(res.unresolved) || return false
-    if is_tfield(C) && isempty(res.quads)
+    # (an even quartic's pieces, steps BQ4 and BR, have the derivative A/G by construction: specialized as well.
+    # The exact check over ℚ(a, …, g) took minutes for sample 1032, (d + e x² + f x⁴ + g x⁶)/(x⁴ (a + b x² + c x⁴)²))
+    if is_tfield(C) && all(q -> q isa BiquadTerm || q isa BiquadRoots, res.quads)
         r = check_at_points(res, f)
         r === nothing || return r
     end
@@ -335,6 +337,11 @@ function check_at_points(res::RationalIntegral{C}, f::Frac, rss = ()) where {C}
             den = one(uk) + uk * uk
             iszero(den) && return nothing
             tot = tot + kconst(ck) * dx(uk) / den
+        end
+        for q in res.quads                              # (BiquadTerm, BiquadRoots: A/G)
+            dq = fim(derivative_of(q))
+            dq === nothing && return nothing
+            tot = tot + dq
         end
         for rs in rss
             mk = pim(rs.poly)
