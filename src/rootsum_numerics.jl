@@ -195,8 +195,15 @@ function rs_value_continuous(rs, xk::String, a::Real)
     end
     x0 === nothing && return rs_value(rs, xk, a)        # no reference point found: principal logs
     θ, w = angle.(w0), w0
-    n = max(8, ceil(Int, 8 * abs(a - x0)))
-    xs = range(x0, a; length = n + 1)
+    # (a grid from x₀ that does not depend on a, then one last step to a: nearby a follow the same path, so a pole
+    # or branch point of W on the way is passed the same way for both. The grid scaled to a, x₀ + k(a - x₀)/n,
+    # passed one inside step RN's refinement differently for a and a + 10⁻⁵, a jump of 2π Im α in F: sample 613,
+    # x = 0 between x₀ = 1 and a < 0)
+    step = 1 / 8
+    sg = a >= x0 ? 1 : -1
+    m = floor(Int, abs(a - x0) / step)
+    xs = Float64[x0 + sg * k * step for k in 0:m]
+    xs[end] == a || push!(xs, a)
     for k in 2:length(xs)
         θ, w = continue_phase(Wf, xs[k - 1], xs[k], w, θ)
     end

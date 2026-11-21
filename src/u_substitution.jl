@@ -561,7 +561,38 @@ function integrate_monomial_power_subst(f, x; build = nothing, lift = nothing, v
         return nothing
     end
     xn = mk(bd, :^, bd.x, bd.lift(n))
-    back(t) = isnode(t) ? term_rebuild(bd, t, Any[back(a) for a in arguments(t)]) : (isx(t) ? xn : t)
+    back0(t) = isnode(t) ? term_rebuild(bd, t, Any[back0(a) for a in arguments(t)]) : (isx(t) ? xn : t)
+    # u = xⁿ put back, the answer's radicals with powers of x in the radicand as real roots: (Q x^k)^e = Q^e x^(k e)
+    # for an integer k e ((x³)^(1/3) = x, ((a + b x³)/x³)^(1/3) = (a + b x³)^(1/3)/x). These radicals are not the
+    # integrand's: any root, the same everywhere, keeps F′ = f (an identity in the radicals with rᵠ = R and
+    # r′ = e r R′/R; the factors σ = r₁ r₂/r₃ of steps LL, RM are then exact ratios of those roots). The principal
+    # ones are not real for x < 0 with n odd, where the integral in u, for u > 0, does not continue (sample 613,
+    # x³ (a + b x³)^(2/3)/(c + d x³), at a + b x³ > 0, x < 0)
+    function realroots(t)
+        isnode(t) || return t
+        t = term_rebuild(bd, t, Any[realroots(a) for a in arguments(t)])
+        rp = radical_parts(t)
+        (rp === nothing || !depends_on(rp[2], xk)) && return t
+        e, R = rp
+        k, rest = Q(0), Any[]
+        for (s, j) in product_factors!(Any[], R, 1)
+            if isx(s)
+                k += j
+            elseif isnode(s) && opname(operation(s)) === :^ && length(arguments(s)) == 2 && isx(arguments(s)[1]) &&
+                   (p = leaf_rational(arguments(s)[2]); p !== nothing && isone(denominator(p)))
+                k += Int(p) * j
+            else
+                push!(rest, j == 1 ? s : mk(bd, :^, s, bd.lift(j)))
+            end
+        end
+        (iszero(k) || !isone(denominator(k * e))) && return t
+        xk_ = Int(k * e)
+        xp = xk_ == 1 ? bd.x : mk(bd, :^, bd.x, bd.lift(xk_))
+        isempty(rest) && return xp
+        Rr = length(rest) == 1 ? rest[1] : mk(bd, :*, rest...)
+        mk(bd, :*, e == Q(1) // 2 ? mk(bd, :sqrt, Rr) : mk(bd, :^, Rr, bd.lift(e)), xp)
+    end
+    back(t) = realroots(back0(t))
     subst_answer(G, back, bd)
 end
 
