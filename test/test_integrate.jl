@@ -1183,8 +1183,15 @@ end
     build(op, args...) = Expr(:call, nameof(op), args...)
     @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(1 / ((a + c * x ^ 2) ^ (3 // 2) * (d + e * x + f * x ^ 2))), :x;
                                                                 build = build, lift = identity)
-    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(x ^ 6 / ((a + b * x ^ 2 + c * x ^ 4) * sqrt(d + e * x ^ 2))), :x;
-                                                                build = build, lift = identity)
+    # (x⁶/((a + b x² + c x⁴) √(d + e x²)), sample 1018, refused here before: step QW's roots of a + b w + c w² now, in
+    # one symbol)
+    let f = :(x ^ 6 / ((a + b * x ^ 2 + c * x ^ 4) * sqrt(d + e * x ^ 2)))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        for (vals, x0) in (((1.3, 0.7, 2.1, 1.1, 0.9), 0.4), ((1.3, -2.7, 0.6, 1.1, 0.9), 0.3), ((-1.3, 0.7, 2.1, 1.1, -0.9), 0.5))
+            ev(e, t) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(t))), (:($s = $(complex(v))) for (s, v) in zip((:a, :b, :c, :d, :e), vals))...), e))
+            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+        end
+    end
 end
 
 # step RB: over four parameters, only a high degree or a large RootSum polynomial is refused; small ones are
