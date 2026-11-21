@@ -149,6 +149,16 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
             # x²/((1 + 2x²)√(c + x²)) needed a RootSum)
             kk = Int(numerator(k))
             kk == 1 ? mk(b0, :sqrt, cterm(b0, κ)) : mk(b0, :^, mk(b0, :sqrt, cterm(b0, κ)), b0.lift(kk))
+        elseif isodd(denominator(e)) && crational(κ) === nothing
+            # an odd index q: κ^(p/q) as the real root's power, κ_r = κ (κ²)^(-(q-1)/(2q)), real for either sign of κ
+            # (κ_r^q = κ); the answer's R^(1/q) is then u₀^(1/q)/κ_r, real where u₀ > 0 for every sign of κ. The
+            # principal κ^(1/q) is not real for κ < 0, where the integral in u (real R) does not continue to it
+            # (((a + b x)/x)^(2/3) with b < 0 after u = x³, sample 613)
+            q = Int(denominator(e))
+            kt = cterm(b0, κ)
+            κr = mk(b0, :*, kt, mk(b0, :^, mk(b0, :^, kt, b0.lift(2)), b0.lift(Q(-(q - 1), 2q))))
+            p = Int(numerator(e))
+            isone(p) ? κr : mk(b0, :^, κr, b0.lift(p))
         else
             mk(b0, :^, cterm(b0, κ), b0.lift(e))
         end
@@ -748,6 +758,8 @@ function integrate_param_binomial(f, x, rads; build = nothing, lift = nothing, v
     n = degree(N)
     (n >= 3 && count(!iszero, N.c) == 2 && !iszero(N.c[1])) || return nothing
     A, B = N.c[1], N.c[n + 1]
+    # (signs at the parameter values when not proven: the answer then holds for those signs. With proven signs only,
+    # the other routes, step CB's u = xⁿ for x > 0, were wrong for x < 0 even for a, b > 0)
     pos(c) = param_sign(c, T.consts) == 1
     sg(c) = pos(c) ? 1 : pos(-c) ? -1 : 0
     σ, sA, sB = sg(B / A), sg(A), sg(B)
