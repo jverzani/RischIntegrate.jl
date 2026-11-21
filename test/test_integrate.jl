@@ -1583,8 +1583,10 @@ end
               :((a + a * sin(x)) ^ (3 / 2) * (c - c * sin(x)) ^ (7 / 2)), :(1 / ((a + a * sin(x)) ^ (5 / 2) * (c - c * sin(x)) ^ (3 / 2))),
               :((A + C * cos(x) ^ 2) * sqrt(a + a * cos(x)) / cos(x) ^ (7 / 2)))
         F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        # (complex arithmetic, real parts: an answer may have log(-1 + tan(x/2)), log|1 - tan(x/2)| + iπ, a constant
+        # apart; step RQ's parameter-free integrand for (a + a sin x)^(-5/2) (c - c sin x)^(-3/2) takes step HT)
         for x0 in (-0.4, 0.3, 6.0)
-            @test isapprox((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6, ev(f, x0); rtol = 1e-5)
+            @test isapprox(real(ev(F, complex(x0 + 1e-6)) - ev(F, complex(x0 - 1e-6))) / 2e-6, ev(f, x0); rtol = 1e-5)
         end
     end
     # (1 + sec x)(1 - sec x) = -tan² x ≤ 0: nowhere real. Refused while the answer for the merged √U had a sign change;
@@ -2500,7 +2502,13 @@ end
         end
     end
     SymEngine.@vars x a
-    @test string(integrate(asin(x / a) ^ 2 / sqrt(a ^ 2 - x ^ 2), x)) == "(1/3)*asin(x/a)^3"
+    # (a √(1 - x²/a²)/√(a² - x²) = a/|a|: asin(x/a)³/3 alone holds for a > 0 only)
+    F = integrate(asin(x / a) ^ 2 / sqrt(a ^ 2 - x ^ 2), x)
+    @test string(F) == "(1/3)*a*asin(x/a)^3*sqrt(1 - x^2/a^2)/sqrt(a^2 - x^2)"
+    for av in (1.7, -1.7), x0 in (0.3, 1.1)
+        evs(e, t) = Float64(SymEngine.N(SymEngine.subs(e, x => t, a => av)))
+        @test isapprox((evs(F, x0 + 1e-6) - evs(F, x0 - 1e-6)) / 2e-6, evs(asin(x / a) ^ 2 / sqrt(a ^ 2 - x ^ 2), x0); rtol = 1e-6)
+    end
 end
 
 # step IH: atanh, acoth, asinh, acosh as logarithms
@@ -2526,8 +2534,15 @@ end
     # ∫ asech(a x)/x needs polylogarithms; u′ = 0 in step US's tower was a DivideError
     @test_throws Risch.NotElementary Risch.risch_integrate(:(asech(a * x) / x), :x; build = build, lift = identity)
     # by parts, Q = ∫ x³ log(1 - x²) has log(x² - 1): its iπ (|x| < 1) times atanh x was lost in ∫ Q L′, a wrong
-    # answer; the numeric check G′ = f rejects it (dilogarithms are needed)
-    @test_throws Risch.NotElementary Risch.risch_integrate(:(x ^ 3 * atanh(x) * log(1 - x ^ 2)), :x; build = build, lift = identity)
+    # answer the numeric check rejected. The tower keeps it: κ = log(x² - 1) - log(1 - x²) is an opaque constant
+    # (see `make_log`), and the answer holds inside and outside |x| < 1
+    let f = :(x ^ 3 * atanh(x) * log(1 - x ^ 2))
+        F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+        evc(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x0)))), e))
+        for x0 in (0.3, -0.5, 1.5, -2.5)
+            @test isapprox((evc(F, x0 + 1e-6) - evc(F, x0 - 1e-6)) / 2e-6, evc(f, x0); rtol = 1e-6)
+        end
+    end
 end
 
 # step AL for the inverse hyperbolic functions: y = c x, √(d + d y²) = √d √(1 + y²) (step RK); then step US before

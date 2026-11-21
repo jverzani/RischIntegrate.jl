@@ -103,8 +103,13 @@ function run_tests(x, evalat, name)
     @testset "$name: rejected input" begin
         @test_throws Risch.RischNotImplemented shape(sqrt(x), x)                # algebraic
         @test_throws Risch.RischNotImplemented shape(sin(x) + sin(x + log(2)), x)   # 2^i
-        @test_throws Risch.RischNotImplemented shape(log(x) + log(-2x), x)      # log(-2): complex
         @test_throws Risch.RischNotImplemented shape(exp(x) + exp(x + log(x + 1) / 2), x)  # √(x+1)
+    end
+    # log(-2x) beside log x: log x + κ, κ = log(-2x) - log x an opaque constant (log(-2) needs iπ, and the 2πi
+    # jumps of a split log(c w) are not constants of an integral), one log level
+    @testset "$name: a log related to another by an opaque constant" begin
+        @test shape(log(x) + log(-2x), x) == [:log]
+        @test any(c -> c.kind === :sym, Risch.build_tower(log(x) + log(-2x), string(x))[1].consts)
     end
 end
 

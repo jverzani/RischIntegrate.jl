@@ -209,8 +209,11 @@ rs_real_value(rs, xk::String, a::Real) = real(rs_value_continuous(rs, xk, a))
 complex_answer(F::IntegralWithRootSums) = has_imag_unit(F.elementary) || any(complex_factor, F.rootsums)
 complex_factor(r) = false
 function (F::IntegralWithRootSums)(a::Real)
-    v = term_value(F.elementary, F.var, a) + sum(rs_real_value(rs, F.var, a) for rs in F.rootsums; init = 0.0im)
-    complex_answer(F) ? v : real(v)
+    e = term_value(F.elementary, F.var, a)
+    v = e + sum(rs_real_value(rs, F.var, a) for rs in F.rootsums; init = 0.0im)
+    # (also an elementary part that is not real there: a log relation's constant κ = log(c (a + b x³)^p) - p log(a + b x³)
+    # for a + b x³ < 0, sample 1258, whose imaginary part the integrand has too)
+    (complex_answer(F) || abs(imag(e)) > 1e-12 * max(1, abs(e))) ? v : real(v)
 end
 # substitution syntax `F(x => value)` with a numeric value (definite integrals `F(x => b) - F(x => a)`), and
 # `F(x => value, a => 1.5, …)` with real values of the parameters (the other leaves of the answer; the real part of each

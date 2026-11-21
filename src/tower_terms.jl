@@ -146,7 +146,7 @@ function parse_tower(t, T::Tower)
                 has_x(args[1], T.xk) && return make_exp(T, a[1])
                 return const_exp_or_opaque(T, t, a[1])
             elseif n === :log && length(a) == 1
-                return make_log(T, a[1])
+                return make_log(T, a[1]; term = t)
             elseif n in (:sinh, :cosh, :tanh, :coth, :sech, :csch) && length(a) == 1
                 # (of a constant whose exp the field has no generator for, cosh(cos 4): an opaque constant, as for
                 # exp, SymPy #21034)
