@@ -174,7 +174,8 @@ function continue_phase(Wf, s, t, ws, θ, depth::Int = 0)
     # a zero of W on the path is a pole of the integrand (F has a log singularity there): step over it
     (wt === nothing || !w_ok(wt)) && return θ, ws
     d = angle.(wt ./ ws)
-    if maximum(abs, d) > 0.5 && depth < 40
+    # (a segment of length < 1e-10: a jump there is a pole or branch point passed, not resolved by halving)
+    if maximum(abs, d) > 0.5 && depth < 40 && abs(t - s) > 1e-10
         m = (s + t) / 2
         θ, wm = continue_phase(Wf, s, m, ws, θ, depth + 1)
         return continue_phase(Wf, m, t, wm, θ, depth + 1)
@@ -195,8 +196,17 @@ function rs_value_continuous(rs, xk::String, a::Real)
     end
     x0 === nothing && return rs_value(rs, xk, a)        # no reference point found: principal logs
     θ, w = angle.(w0), w0
-    n = max(8, ceil(Int, 8 * abs(a - x0)))
-    xs = range(x0, a; length = n + 1)
+    # (a grid from x₀ that does not depend on a, then one last step to a: nearby a follow the same path, so a pole
+    # or branch point of W on the way is passed the same way for both. The grid scaled to a, x₀ + k(a - x₀)/n,
+    # passed one inside step RN's refinement differently for a and a + 10⁻⁵, a jump of 2π Im α in F: sample 613,
+    # x = 0 between x₀ = 1 and a < 0)
+    # (a step with no simple multiples, so that the grid avoids the integrand's poles at 0, ±1/2, …, where the
+    # refinement above halved down to depth 40 on both sides: minutes for samples 243, 704)
+    step = 0.1234567891
+    sg = a >= x0 ? 1 : -1
+    m = floor(Int, abs(a - x0) / step)
+    xs = Float64[x0 + sg * k * step for k in 0:m]
+    xs[end] == a || push!(xs, a)
     for k in 2:length(xs)
         θ, w = continue_phase(Wf, xs[k - 1], xs[k], w, θ)
     end
