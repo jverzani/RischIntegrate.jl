@@ -66,7 +66,11 @@ function Base.:+(a::CF{B}, b::CF{B}) where {B}
     cf_binop(+, a, b)
 end
 Base.:-(a::CF{B}) where {B} = a.lev == 0 ? CF{B}(-a.val) : CF{B}(a.lev, bzero(B), -a.f)
-Base.:-(a::CF{B}, b::CF{B}) where {B} = a + (-b)
+function Base.:-(a::CF{B}, b::CF{B}) where {B}
+    iszero(b) && return a
+    iszero(a) && return -b
+    cf_binop(-, a, b)
+end
 function Base.:*(a::CF{B}, b::CF{B}) where {B}
     (iszero(a) || iszero(b)) && return zero(a)
     isone(a) && return b
