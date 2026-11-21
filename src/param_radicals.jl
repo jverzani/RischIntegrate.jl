@@ -449,7 +449,9 @@ function oracle_sign(c, consts)
     t = try
         cterm(Builder(o.build, o.lift, o.x, consts), c)
     catch err
-        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        # (or constants of another term type, Expr symbols from an inner Expr call beside the caller's SymEngine
+        # build: undecided, and step RK's sign-free K applies)
+        (err isa RischNotImplemented || err isa RischError || err isa MethodError) || rethrow()
         return nothing
     end
     s = oracle_ask(o, (c, consts), t)
@@ -1117,6 +1119,16 @@ function rewrite_two_linear(f, x, rads; build = nothing, lift = nothing, params:
         push!(lins, (T, el))
     end
     n = lcm([Int(denominator(e)) for (e, _) in rads])
+    # (radicands over ℚ that are never both positive, √x √(-x - 1): f is nowhere real, and the answer for the
+    # merged √(-x - x²) holds on (-1, 0) only, where it is positive; step NP's i √(x + 1) instead)
+    if !params
+        l1, l2 = (radicand_element(u, xk) for u in uts)
+        if l1 !== nothing && l2 !== nothing && isone(l1.den) && isone(l2.den)
+            (a1, b1), (a2, b2) = l1.num.c, l2.num.c
+            # {L₁ > 0} ∩ {L₂ > 0} = ∅: opposite slopes, the rising one's zero at or beyond the falling one's
+            (sign(b1) != sign(b2) && (b1 > 0 ? -a1 / b1 >= -a2 / b2 : -a2 / b2 >= -a1 / b1)) && return nothing
+        end
+    end
     b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     L1, L2 = uts
     v = n == 2 ? mk(b0, :*, L1, L2) : mk(b0, :/, L1, L2)

@@ -166,6 +166,11 @@ function split_radicand_content(f, x, xk::String, build, lift; undecided::Bool =
         (collect(values(common)), V, const_sign(c), c)
     end
     function const_sign(c)
+        # (no parameter, π or ℯ only: its value decides, √(π/x) = √π/√x)
+        if !has_param(c, xk)
+            v = try numeric_evaluator(xk, c)(c, 0.5) catch; NaN end
+            (isfinite(v) && abs(imag(v)) <= 1e-12 * abs(v) && !iszero(real(v))) && return Int(sign(real(v)))
+        end
         T, el = try
             build_tower(c, xk)
         catch e
@@ -209,11 +214,16 @@ function split_radicand_content(f, x, xk::String, build, lift; undecided::Bool =
             r = rad(cv[2], rp[1])
             if undecided
                 # (step RQ: c^e kept, a constant of the field as it would be for c > 0, so that the steps after
-                # take the integrand as they do with a proven sign; K = (c V)^e/(c^e V^e) is 1 for c > 0)
-                r = mk(bd, :*, rad(cv[4], rp[1]), r)
+                # take the integrand as they do with a proven sign; K = (c V)^e/(c^e V^e) is 1 for c > 0. A factor of
+                # its own, as step IT takes it out: inside (c^e V^e)^k, sec² x/(a + a sin x)^(3/2) took the
+                # tan(x/4) route, with √(-225/2048) in the answer)
+                ce = rad(cv[4], rp[1])
+                push!(gs, pw(ce, k))
+                push!(Ks, pw(mk(bd, :/, t, mk(bd, :*, ce, r)), k))
+            else
+                push!(Ks, pw(mk(bd, :/, t, r), k))
             end
             push!(gs, pw(r, k))
-            push!(Ks, pw(mk(bd, :/, t, r), k))
         else
             push!(gs, pw(undecided ? t : rw(t), k))
         end

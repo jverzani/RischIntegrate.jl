@@ -130,16 +130,16 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         gK = split_radicand_content(f, x, string(x), build, lift; undecided = true)
         if gK !== nothing
             bq = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
-            return try
+            r = try
                 scale_answer(bq, gK[2], risch_integrate(gK[1], x; build = build, lift = lift, verify = verify))
             catch e
                 # refused: f term by term as written (step LS; (a + b asin(c x))/((d + c d x)^(5/2) √(f - c f x)) as
                 # a quotient splits, the product K-form does not; sample 2306), each term through step RQ again
                 (e isa RischNotImplemented || e isa NotElementary) || rethrow()
-                r = try_sum_split(f, x; build = build, lift = lift, verify = verify)
-                r === nothing && rethrow()
-                r
+                try_sum_split(f, x; build = build, lift = lift, verify = verify)
             end
+            r === nothing || return r
+            # (else f by the usual route: √(a²/(a² - x²)) = a asin(x/a) by step KV, whose K-form was refused)
         end
     end
     # step LR: log(u^e) = e log u for 0 < e ≤ 1 (principal branches: Im(e log u) ∈ (-π, π]): log(√((cos t - cos x)² +
