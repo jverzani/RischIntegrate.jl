@@ -142,6 +142,23 @@ quoted. Over the region between y = x² and y = x for 0 ≤ x ≤ 1:
 @integrate(x + y, (y, :(x^2), :x), (x, 0, 1))
 ```
 
+## What an answer means
+
+An answer `F` to `integrate(f, x)` satisfies `F′ = f` as functions of a real `x`, on each interval
+where the integrand's radicals are real (their radicands positive) and that contains no pole of
+`f` or `F`. Other symbols are parameters, and the answer holds **for every generic real value of
+them**, not only for positive ones: ``∫ 1/(x^2 + a)`` is ``\operatorname{atan}(x/\sqrt a)/\sqrt a``,
+correct for ``a < 0`` too, where ``\sqrt a`` is imaginary.
+
+- A logarithm ``\log w`` of a negative ``w`` differs from ``\log|w|`` by the constant ``iπ``. Where
+  a radical of a parameter is taken out, as in ``(c\,V)^e = c^e V^e``, the answer carries the factor
+  ``(c\,V)^e/(c^e V^e)``, which is ``1`` for ``c > 0`` and constant on each interval for any sign of ``c``.
+- A sign is used only when it is known: a rational number, a constant such as ``π``, or the
+  caller's sign oracle (the `sign` keyword, step SO), which can give simpler real forms.
+- Special functions follow the same rule where a single form exists for every sign. ``Li_2`` answers
+  hold on the interval next to the zero of the logarithm's argument, and ``{}_2F_1`` answers hold where
+  the hypergeometric argument is below 1.
+
 ## Non-elementary integrals
 
 Integrals that can be written with the special functions of
