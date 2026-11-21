@@ -495,6 +495,12 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     r === nothing || return r
     r = integrate_inverse_compositions(f, x; build = build, lift = lift, verify = verify)   # atanh(tanh(a + b x)) (IC)
     r === nothing || return r
+    # h/E(g), E a quadratic with three or more parameters in a function g of x (sec²x/(a + b sin x + c sin²x)): by
+    # the roots of E, one symbol for them (step QW; outermost call)
+    if RISCH_DEPTH[] == 1
+        r = integrate_quartic_split(f, x; build = build, lift = lift, verify = verify, kernel = :fun)
+        r === nothing || return r
+    end
     g = rewrite_sinc(f, x, build, lift)                # sinc(u) = sin(πu)/(πu), Julia's normalized sinc
     g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
     # products of sines and cosines of rational multiples of one frequency over xᵐ (the Borwein integrals): to a sum,
