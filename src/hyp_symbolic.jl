@@ -147,13 +147,12 @@ end
 
 # the answer c α^q u^(m+1)/(m+1) ₂F₁(-q, (m+1)/n; (m+1)/n + 1; -βuⁿ/α), u = bd.x (x, x + x₀ or sin(kx))
 # a term positive by the convention for parameters: a positive rational, or a product of parameters and positive
-# rationals (no minus sign, no sum)
+# α > 0 proven: a positive rational, or the caller's sign oracle (a parameter's sign is not assumed: the answer holds
+# for every generic sign, with the ratio below)
 function positive_like(t)
     r = leaf_rational(t)
     r !== nothing && return r > 0
-    safe_iscall(t) || return true                       # a parameter
-    opname(operation(t)) in (:*, :/, :^) || return false
-    all(a -> positive_like(a) || (opname(operation(t)) === :^ && leaf_rational(a) !== nothing), arguments(t))
+    term_oracle_sign(t) == 1
 end
 function binomial_answer(bd::Builder, f, cs, m::SymExp, q::SymExp, α, β, n::Int)
     !symbolic(m) && m.r == -1 && return binomial_over_x(bd, f, cs, α, β, n, q)
@@ -169,9 +168,9 @@ function binomial_answer(bd::Builder, f, cs, m::SymExp, q::SymExp, α, β, n::In
     F21 = hyp2f1_term(bd, f, exp_term(bd, SymExp(-q.r, Any[mk(bd, :*, bd.lift(-1), t) for t in q.ts])), a,
                       mk(bd, :+, a, bd.lift(1)), z)
     fs = Any[t for t in cs if !isunit(t)]
-    # α^q (1 - z)^q = (α + β xⁿ)^q needs α > 0 (or q ∈ ℤ): a positive rational, or a product of parameters (taken
-    # positive, the convention for parameters); else the ratio (α + β xⁿ)^q/(1 - z)^q, constant on each interval,
-    # as Rubi writes it (α = -a/b after a shift: x^m/(a + b x)^(3/2), sample 129, was wrong for x > 0)
+    # α^q (1 - z)^q = (α + β xⁿ)^q needs α > 0 (or q ∈ ℤ): a positive rational, or a sign the oracle gives; else the
+    # ratio (α + β xⁿ)^q/(1 - z)^q, constant on each interval, as Rubi writes it (α = -a/b after a shift: x^m/(a +
+    # b x)^(3/2), sample 129, was wrong for x > 0; a^n for a < 0, samples 132, 560)
     if !isunit(α)
         if positive_like(α) || (!symbolic(q) && isinteger(q.r))
             push!(fs, mk(bd, :^, α, qt))

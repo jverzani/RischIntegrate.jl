@@ -6,7 +6,8 @@
 # keeps that derivative for the exact check (as SpecialTerm); the rest of the integrand goes through
 # the normal algorithm. Printed with `PolyLog.li2`, which the symbolic package must support.
 # (ρ, a, b, c in the constant field: ℚ, or a parameter field ℚ(a, …) (∫ log(x)/(a + bx)); there the sign
-# of K is `param_sign`'s: the oracle's, else at the parameter values a = 1, b = 2, …, as for the step PQ forms)
+# of K is proven (a rational, or the oracle's); else Rubi's form log v · log(1 - v/K) + Li₂(v/K), v = a x + b, for
+# every sign of K, on the interval of v > 0 next to v = 0)
 # Poles in pairs: c, c̄ ∈ ℚ(i) (`DilogPairTerm`), c, c̄ ∈ ℚ(√d) real (`DilogQuadTerm`); θ = log of a product of
 # linear factors: step LF (`DilogGroup`).
 struct DilogTerm
@@ -23,7 +24,7 @@ end
 #     + 2ρr Re Li₂(v/|K| e^(-iα)) - 2ρi Im Li₂(v/|K| e^(-iα)),   -α = atan(Kr/Ki) - sgn π/2,
 # (arg(1 - v/K) = arg(K - v) - α, continuous from 0 at v = 0); deriv: (ρ/(x - c) + ρ̄/(x - c̄)) θ.
 # (over a parameter field ℚ(a, …) too: then c = cr + i ci, ρ = ρr + i ρi, a, b have parts in that field, and the sign
-# of Ki is `param_sign`'s)
+# of Ki, when not proven, is Ki/√(Ki²) in the answer)
 struct DilogPairTerm
     ρr::Any
     ρi::Any
@@ -219,9 +220,9 @@ function dilog_split(T::Tower, i::Int, p::UPoly)
             sq = csqrt(two * two * p0 - p1 * p1)
             (sq === nothing || iszero(sq)) && continue
             cr, ci = -p1 / two, sq / two
-            sg = param_sign(ci, T.consts)
-            sg === nothing && continue
-            sg < 0 && (ci = -ci)
+            # (ci < 0 swaps c and c̄, ρ and ρ̄: the pair's terms are the same, so an unproven sign is kept as it is)
+            sg = proven_sign(ci, T.consts)
+            sg == -1 && (ci = -ci)
             c = to_complex(CC, cr) + I * to_complex(CC, ci)
             ρ = peval(up(r.num), c) / peval(up(deriv(D1)), c)
             iszero(ρ) && continue
@@ -276,6 +277,9 @@ function dilog_split(T::Tower, i::Int, p::UPoly)
     (P(eltype(p.c)[p.c[1] + liftto(T, rat0, i - 1), r - simple]), terms, P(eltype(p.c)[zero(eltype(p.c)), liftto(T, extra, i - 1)]))
 end
 
+# the sign of a constant when it is proven (a rational, or the caller's oracle), else nothing
+proven_sign(c, consts) = (q = crational(c); q !== nothing ? Int(sign(q)) : oracle_sign(c, consts))
+
 function dilog_term(b::Builder, q::DilogTerm)
     C = typeof(q.c)
     st = poly_term(b, UPoly{C}(C[-q.c, one(C)]))       # s = x - c
@@ -287,7 +291,17 @@ function dilog_term(b::Builder, q::DilogTerm)
         return isone(q.ρ) ? core : mk(b, :*, cterm(b, q.ρ), core)
     end
     Kr = crational(K)
-    Kpos = Kr !== nothing ? Kr > 0 : K isa QSB ? qs_float(K) > 0 : param_sign(K, b.consts) == 1
+    Ks = Kr !== nothing ? Int(sign(Kr)) : K isa QSB ? Int(sign(qs_float(K))) : oracle_sign(K, b.consts)
+    if Ks === nothing
+        # the sign of K not proven: with v = a x + b, log v · log(1 - v/K) + Li₂(v/K) (Rubi's form; derivative
+        # ρ θ/(x - c) where v/K < 1, no case on K's sign: on all of v > 0 for K < 0, between v = 0 and the pole for
+        # K > 0). Each form below holds for its sign of K only (sample 1205 at e/d < 0 took the K < 0 one)
+        v = poly_term(b, UPoly{C}(C[q.b, q.a]))
+        vK = mk(b, :/, v, cterm(b, K))
+        core = mk(b, :+, mk(b, :*, mk(b, :log, v), mk(b, :log, mk(b, :+, b.lift(1), mk(b, :*, b.lift(-1), vK)))), li(vK))
+        return isone(q.ρ) ? core : mk(b, :*, cterm(b, q.ρ), core)
+    end
+    Kpos = Ks == 1
     if Kpos
         L = li(mk(b, :*, cterm(b, -q.a / K), st))
         core = isone(K) ? mk(b, :*, b.lift(-1), L) :           # log K · ½ log(s²) - Li₂(-a s/K)
@@ -361,11 +375,17 @@ function dilog_pair_term(b::Builder, q::DilogPairTerm)
         push!(ts, sc(cfromQ(C, Q(-2)) * ρi, mk(b, :*, lv, at)))
     end
     m = csqrt(n2)                                       # v/|K|
-    m === nothing || C === Q || (param_sign(m, b.consts) == -1 && (m = -m))
+    # (m = ±|K|: with its sign not proven, √(|K|²), the principal root)
+    if !(m === nothing || C === Q)
+        sm = proven_sign(m, b.consts)
+        m = sm === nothing ? nothing : sm == -1 ? -m : m
+    end
     ρt = m === nothing ? mk(b, :/, vt, mk(b, :sqrt, cterm(b, n2))) : poly_term(b, UPoly{C}(C[c / m for c in vp.c]))
     Kir = C === Q ? Ki : crational(Ki)
-    Kipos = Kir !== nothing ? Kir > 0 : param_sign(Ki, b.consts) == 1
-    hp = mk(b, :*, cterm(b, Q(Kipos ? -1 : 1, 2)), b.lift(π))
+    sKi = Kir !== nothing ? Int(sign(Kir)) : proven_sign(Ki, b.consts)
+    # -sgn(Ki) π/2; sgn(Ki) = Ki/√(Ki²) when not proven (exact for every real Ki: sample 2418, acot(c + d coth))
+    hp = sKi !== nothing ? mk(b, :*, cterm(b, Q(-sKi, 2)), b.lift(π)) :
+         mk(b, :*, cterm(b, Q(-1, 2)), mk(b, :/, cterm(b, Ki), mk(b, :sqrt, mk(b, :^, cterm(b, Ki), b.lift(2)))), b.lift(π))
     φt = iszero(Kr) ? hp : mk(b, :+, mk(b, :atan, cterm(b, Kr / Ki)), hp)
     iszero(ρr) || push!(ts, sc(cfromQ(C, Q(2)) * ρr, mk(b, :ReLi, b.lift(2), ρt, φt)))
     iszero(ρi) || push!(ts, sc(cfromQ(C, Q(-2)) * ρi, mk(b, :ImLi, b.lift(2), ρt, φt)))
