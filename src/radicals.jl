@@ -725,7 +725,15 @@ function integrate_subst(f, xk::String, ::Type{S}, φ, radval, bt::Builder, veri
         end
         to_K0(T, radval(ue, e))
     end
-    T, el = build_tower(f, xk; subst = sub, constants = constants)
+    # (t printed as bt.x, for a log relation's constant κ, which is printed as it is built: `log_relation_constant`)
+    T, el = let old = SUBST_TPRINT[]
+        SUBST_TPRINT[] = bt.x
+        try
+            build_tower(f, xk; subst = sub, constants = constants)
+        finally
+            SUBST_TPRINT[] = old
+        end
+    end
     T.subst = nothing
     g = el * liftto(T, to_K0(T, dφ), levelof(T, el))     # f(φ(t), …) φ'(t)
     T, g = minimal(T, g)

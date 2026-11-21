@@ -105,7 +105,7 @@ function make_log(T::Tower, u; term = nothing)
         # opaque constant of the field, exact for every sign of the parameters. Not when the relation is one
         # generator to the power 1, log(r w) = log r + log w (r > 0 rational) or log(c eᵛ) = log c + v (v free of
         # logs, real), where no jump can occur
-        κ = term === nothing ? nothing : log_relation_constant(T, term, idx, r, q, cv)
+        κ = term === nothing ? nothing : log_relation_constant(T, term, u, idx, r, q, cv)
         κ === nothing || return res + liftto(T, κ, top)
         # u^q = cv · Π(...): log u = Σ ρᵢ (log of generator i) + log(cv)/q. A ratio of -1 keeps the
         # behaviour from before Step 6 (the constant log(-1) = iπ is dropped).
@@ -121,8 +121,11 @@ end
 
 # κ = log u - Σ ρᵢ (log of generator i) as an opaque constant (see `make_log`), or nothing when no jump can occur
 # or the term cannot be rebuilt
-function log_relation_constant(T::Tower, term, idx, r, q, cv)
-    T.subst === nothing || return nothing
+const SUBST_TPRINT = Ref{Any}(nothing)
+function log_relation_constant(T::Tower, term, u, idx, r, q, cv)
+    # (after a substitution x = φ(t): only step 10's, whose t is printed as SUBST_TPRINT[]; κ is the user's log, in x,
+    # less the generators printed with t as that term (samples 1271, 1272, t = x^(1/3)))
+    T.subst === nothing || SUBST_TPRINT[] !== nothing || return nothing
     nz = [(i, ρ) for (ri, i) in enumerate(idx) for ρ in (r[ri],) if !iszero(ρ)]
     isempty(nz) && return nothing
     if length(nz) == 1 && isone(nz[1][2]) && isone(q)
@@ -139,7 +142,9 @@ function log_relation_constant(T::Tower, term, idx, r, q, cv)
     leaves = collect_leaves!(Dict{String,Any}(), term)
     haskey(leaves, T.xk) || return nothing
     xt = leaves[T.xk]
-    b = xt isa Symbol ? Builder(expr_build, identity, xt, T.consts) : Builder(auto_build(term, xt), auto_lift(term, xt), xt, T.consts)
+    tp = T.subst === nothing ? xt : SUBST_TPRINT[]
+    b = xt isa Symbol ? Builder(expr_build, identity, tp, T.consts) :
+        Builder(auto_build(term, xt), auto_lift(term, xt), tp, T.consts)
     gs = Any[]
     # (a generator with no real form, exp(i t) of step 7's trigonometric functions: the relation as it was)
     try

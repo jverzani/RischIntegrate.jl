@@ -66,14 +66,17 @@ function term_deriv(bd::Builder, t, xk::String)
         sq(s, t) = mk(bd, :sqrt, mk(bd, :+, bd.lift(s), mk(bd, :*, bd.lift(-s), mk(bd, :^, t, bd.lift(2))))) # √(s - s t²)
         n === :acot && return neg(mk(bd, :/, d[1], mk(bd, :+, bd.lift(1), mk(bd, :^, a[1], bd.lift(2)))))
         # asin(N/D) or asin(c N) with a factor D = 1/c free of x and not rational (a parameter): N′/√(D² - N²)
-        # for D > 0, the radical of the integrand (∫ asin(x/a)^(3/2)/√(a² - x²) by u = asin(x/a)), and
-        # -N′/√(D² - N²) when the caller's oracle says D < 0 (step SO)
+        # for D > 0, the radical of the integrand (∫ asin(x/a)^(3/2)/√(a² - x²) by u = asin(x/a)), -N′/√(D² - N²)
+        # when the caller's oracle says D < 0 (step SO), and with the factor D/√(D²) when the sign is not known
+        # (exact for every real D: x acos(a x²), sample 2345, was wrong for a < 0)
         if n in (:asin, :acos)
             ND = param_quotient(bd, a[1], xk)
             if ND !== nothing
                 N, Dd = ND
                 r = mk(bd, :/, term_deriv(bd, N, xk), mk(bd, :sqrt, bd.build(-, mk(bd, :^, Dd, bd.lift(2)), mk(bd, :^, N, bd.lift(2)))))
-                term_oracle_sign(Dd) == -1 && (r = neg(r))
+                sD = term_oracle_sign(Dd)
+                sD == -1 && (r = neg(r))
+                sD === nothing && (r = mk(bd, :*, mk(bd, :/, Dd, mk(bd, :sqrt, mk(bd, :^, Dd, bd.lift(2)))), r))
                 return n === :asin ? r : neg(r)
             end
         end
