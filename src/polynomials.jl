@@ -45,7 +45,18 @@ function Base.:+(p::UPoly{T}, q::UPoly{T}) where {T}
     UPoly{T}(r, Val(:fresh))
 end
 Base.:-(p::UPoly{T}) where {T} = UPoly{T}(T[-a for a in p.c], Val(:fresh))
-Base.:-(p::UPoly{T}, q::UPoly{T}) where {T} = p + (-q)
+# p - q directly (not p + (-q), which copies q, nested coefficients and their BigInts too: a third of sample 2616's
+# 94 s was that negation in step PR's Euler substitution)
+function Base.:-(p::UPoly{T}, q::UPoly{T}) where {T}
+    np, nq = length(p.c), length(q.c)
+    r = np >= nq ? copy(p.c) : T[i <= np ? p.c[i] : zero(T) for i in 1:nq]
+    for i in eachindex(q.c)
+        b = q.c[i]
+        iszero(b) && continue
+        r[i] = iszero(r[i]) ? -b : r[i] - b
+    end
+    UPoly{T}(r, Val(:fresh))
+end
 function Base.:*(p::UPoly{T}, q::UPoly{T}) where {T}
     (iszero(p) || iszero(q)) && return zero(p)
     z = zero(T)
