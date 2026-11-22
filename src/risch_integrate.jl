@@ -1049,7 +1049,17 @@ end
 Base.show(io::IO, s::ScaledRootSum) = print(io, "(", s.factor, ")*", s.rs)
 rs_value(s::ScaledRootSum, xk::String, a) = term_value(s.factor, xk, a) * rs_value(s.rs, xk, a)
 rs_value_continuous(s::ScaledRootSum, xk::String, a::Real) = term_value(s.factor, xk, a) * rs_value_continuous(s.rs, xk, a)
-rs_real_value(s::ScaledRootSum, xk::String, a::Real) = term_value(s.factor, xk, a) * rs_real_value(s.rs, xk, a)
+# the real part of factor·RootSum: Re(c R) = c Re(R) for a real factor c, but a factor of parameters is not real at
+# every parameter value (√(a/c)/√a at c < 0, the remainder ∫ 1/((d + e x + f x²)√(a + c x²)) of sample 929: c·Re(R) was
+# imaginary and F(x => t, …) read 0 there, so the answer looked wrong at those signs). Kept as c·Re(R) when only Re(R) is
+# an antiderivative, a RootSum over ℚ(i) (step RC), or when c has i in it (step CI's i·Re(R) for ∫ v)
+rs_real_value(s::ScaledRootSum, xk::String, a::Real) =
+    (has_imag_unit(s.factor) || rs_over_qi(s.rs)) ? term_value(s.factor, xk, a) * rs_real_value(s.rs, xk, a) :
+    real(rs_value_continuous(s, xk, a))
+rs_over_qi(s::ScaledRootSum) = rs_over_qi(s.rs)
+rs_over_qi(rs::TermRootSum) = any(c -> c isa Tuple, rs.coeffs)
+rs_over_qi(rs::RootSum{C}) where {C} = is_complex_field(C)
+rs_over_qi(rs) = true                                   # (anything else: as before)
 complex_factor(s::ScaledRootSum) = has_imag_unit(s.factor) || complex_factor(s.rs)
 
 # an answer with its variable substituted (a substitution step putting u back): the elementary part by the term

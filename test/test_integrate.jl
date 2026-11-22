@@ -3269,6 +3269,21 @@ end
     x = SymEngine.symbols(:x); a, b = SymEngine.symbols(:a), SymEngine.symbols(:b)
     G = Risch.risch_integrate(1 / (x ^ 4 + a * x + b), x)
     @test isapprox((G(x => 1.0 + 1e-5, a => 1.0, b => 3.0) - G(x => 1.0 - 1e-5, a => 1.0, b => 3.0)) / 2e-5, 1 / 5; rtol = 1e-6)
+    # a scaled RootSum whose factor is not real at these parameter values (√(a/c)/√a at c < 0, the remainder of sample 929):
+    # Re(c R), not c·Re(R), which was imaginary and read 0, so that F′ = 0 there
+    f = :(1 / ((d + e * x + f * x ^ 2) * sqrt(a + c * x ^ 2)))
+    F = Risch.risch_integrate(f, :x; build = build, lift = identity)
+    @test F isa Risch.IntegralWithRootSums
+    for pv in ((:a => 1.13, :c => 2.13, :d => 3.13, :e => 4.13, :f => 5.13), (:a => 1.13, :c => -2.13, :d => 3.13, :e => -4.13, :f => 5.13),
+               (:a => -1.13, :c => 2.13, :d => -3.13, :e => 4.13, :f => -5.13))
+        ev(x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $x0), (:($(p.first) = $(p.second)) for p in pv)...),
+                                      :(1 / ((d + e * x + f * x ^ 2) * sqrt(complex(a + c * x ^ 2))))))
+        for x0 in (0.31, -0.43, 1.37)
+            v = ev(x0)
+            abs(imag(v)) > 1e-12 && continue                                # (where the integrand is real)
+            @test isapprox((F(:x => x0 + 1e-5, pv...) - F(:x => x0 - 1e-5, pv...)) / 2e-5, real(v); rtol = 1e-6)
+        end
+    end
 end
 
 # SymPy #25457, #26116, #26249: an unknown function is refused with the subterm named (`term`), so that a caller can
