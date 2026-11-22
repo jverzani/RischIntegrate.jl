@@ -1631,6 +1631,9 @@ function integrate_param_conic_hermite(f, x, ut0, b0::Builder; build, lift, veri
     end
     # (h with i, √(c - i c t)/(a + i a t)^(7/2) merged into √(a c (1 + t²)): the remainder reached steps with no complex form)
     (isempty(T.levels) && !is_complex_field(ctype(T))) || return nothing
+    # (at most MAX_ROOTSUM_GENS parameters: over seven, (A + B x)(d + e x)⁵/(a + b x + c x²)^(7/2), sample 879, the
+    # reduction's arithmetic alone took 36 s; the usual route 0.1 s)
+    nparams(T) <= MAX_ROOTSUM_GENS || return nothing
     hel, ael = try
         parse_tower(h, T), parse_tower(ut0, T)
     catch err
@@ -1642,8 +1645,13 @@ function integrate_param_conic_hermite(f, x, ut0, b0::Builder; build, lift, veri
     # h a^E = h a^(E + 1/2)/y = B/(D y)
     n = Int(E + Q(1) // 2)
     BD = n >= 0 ? hel * frac(a)^n : hel / frac(a)^(-n)
+    # (h a polynomial, D = c aᵐ: the reduction with that known factorization. A denominator of h beside a, x⁸ or (d + e x)⁸
+    # over six parameters (samples 433, 760), took over 120 s in the generic reduction's gcds; nothing then)
+    degree(hel.den) == 0 || return nothing
+    m = degree(BD.den) ÷ 2
+    monic(BD.den) == monic(a)^m || return nothing
     g, P, R, D = try
-        hyp_reduce(a, BD.num, BD.den)
+        hyp_reduce(a, BD.num, BD.den; apow = m)
     catch err
         err isa RischError || rethrow()
         return nothing

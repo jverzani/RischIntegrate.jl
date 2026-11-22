@@ -84,12 +84,19 @@ function hyp_solve_mod(B::P, M::P, V::P) where {P<:UPoly}
 end
 
 # ∫ B/(D y) dx = g y + ∫ (P + R/D)/y dx, D squarefree and coprime to a, deg P ≤ deg a - 2. Over ℚ, or over a parameter
-# field (step EP)
-function hyp_reduce(a::UPoly{C}, B::UPoly{C}, D::UPoly{C}) where {C}
+# field (step EP). apow = m: D = c aᵐ (a squarefree, B any), the ramified steps a^m → a^(m-1) without the gcds and
+# squarefree factorizations, which over seven parameters took 35 s for D = a³ (sample 879)
+function hyp_reduce(a::UPoly{C}, B::UPoly{C}, D::UPoly{C}; apow::Union{Nothing,Int} = nothing) where {C}
     cq(r) = cfromQ(C, Q(r))
     g = zero(Frac{UPoly{C}})
     da = deriv(a)
     while true
+        if apow !== nothing
+            apow == 0 && break
+            step = (a, apow, true)
+            apow -= 1
+            @goto reduce
+        end
         h = gcd(B, D)
         degree(h) > 0 && (B = quo(B, h); D = quo(D, h))
         step = nothing
@@ -105,6 +112,7 @@ function hyp_reduce(a::UPoly{C}, B::UPoly{C}, D::UPoly{C}) where {C}
             end
         end
         step === nothing && break
+        @label reduce
         V, m, ram = step
         Ds = quo(D, V^m)
         dV = deriv(V)
