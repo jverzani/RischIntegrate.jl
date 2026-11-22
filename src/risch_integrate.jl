@@ -434,9 +434,11 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         RISCH_DEPTH[] -= 1
     end
 end
-# a radical of a constant with a parameter (√(-1/n²)), which the tower takes as an opaque constant
+# a radical of a constant with a parameter (√(-1/n²)), which the tower takes as an opaque constant, or of a negative
+# rational number (√(-1/4): ∫ sin(a + √(-1/4) log x)² had 1/(1/4 + √(-1/4)²) = 1/0 in its answer, not refused)
 has_opaque_radical(t, xk::String) = safe_iscall(t) && !isempty(arguments(t)) &&
-    ((rp = radical_parts(t); rp !== nothing && !has_x(rp[2], xk) && has_param(rp[2], xk)) || any(a -> has_opaque_radical(a, xk), arguments(t)))
+    ((rp = radical_parts(t); rp !== nothing && !has_x(rp[2], xk) &&
+      (has_param(rp[2], xk) || (r = leaf_rational(rp[2]); r !== nothing && r < 0))) || any(a -> has_opaque_radical(a, xk), arguments(t)))
 # step HZ: |G| > 10⁸ max(1, |f|) at two of three generic points where f is finite (parameters at the fixed
 # values of `numeric_evaluator`); false when G cannot be evaluated
 function hidden_zero(f, G, xk::String)
