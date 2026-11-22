@@ -1220,6 +1220,8 @@ end
     I(f) = Risch.risch_integrate(f, :x; build = build, lift = identity)
     @test_throws Risch.RischNotImplemented I(:(x ^ 2 * (a + b * x) ^ n / (-a - b * x) ^ n))
     @test_throws Risch.RischNotImplemented I(:(sin(a + log(c * x ^ n) * sqrt(-1 / (4 * n ^ 2))) ^ 2))
+    # the same with n = 1: a radical of a negative rational, 1/4 + √(-1/4)² = 0 in the answer's denominator
+    @test_throws Risch.RischNotImplemented I(:(sin(a + log(x) * sqrt(-1 // 4)) ^ 2))
     f = :(x ^ m / (a + b * x) ^ (3 // 2))
     isdefined(Main, :_₂F₁) || Main.eval(:(const _₂F₁ = $(Risch._₂F₁)))
     hyp = Risch.HYP_ANSWERS[]
