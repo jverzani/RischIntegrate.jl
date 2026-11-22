@@ -1039,3 +1039,50 @@ function integrate_half_sine_radicals(f, x; build = nothing, lift = nothing, ver
         return IntegralWithRootSums(mk(bd, :*, σ, G.elementary), Any[ScaledRootSum(σ, rs) for rs in G.rootsums], G.var)
     mk(bd, :*, σ, G)
 end
+
+# step SS: radicals (Aᵢ + Bᵢ sec L)^eᵢ (or csc L, with p = cos or sin L): (Aᵢ p + Bᵢ)^eᵢ p^(-Σ eᵢ) when Σ eᵢ is an
+# integer, the ratio σ = ±1 constant where p keeps its sign; then step SA on that (√(a + a sec)/√(c + d sec), sample
+# 2039, over 120 s through t = tan(L/2): resultants over ℚ(a, c, d) of a quartic in t; Rubi's 4.5.2.1). Else nothing.
+function integrate_sec_half_sine_radicals(f, x; build = nothing, lift = nothing, verify::Bool = true)
+    @nospecialize f x
+    xk = string(x)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    fs = product_factors!(Any[], f, 1)
+    hs = Any[]
+    findh(t) = isnode(t) ? ((opname(operation(t)) in (:sec, :csc) && length(arguments(t)) == 1 && has_x(arguments(t)[1], xk)) ?
+                            push!(hs, t) : foreach(findh, arguments(t))) : nothing
+    rads = Int[]
+    for (j, (t, e)) in enumerate(fs)
+        rp = radical_parts(t)
+        rp === nothing && continue
+        n0 = length(hs)
+        findh(rp[2])
+        length(hs) > n0 && push!(rads, j)
+    end
+    (isempty(rads) || length(unique(string.(hs))) != 1) && return nothing
+    hL = hs[1]
+    h, L = opname(operation(hL)), arguments(hL)[1]
+    p = mk(bd, h === :sec ? :cos : :sin, L)
+    rep(t, v) = isnode(t) ? (string(t) == string(hL) ? v : term_rebuild(bd, t, Any[rep(a, v) for a in arguments(t)])) : t
+    olds, news = Any[], Any[]
+    E = Q(0)
+    for j in rads
+        t, e = fs[j]
+        r, R = radical_parts(t)
+        has_x(rep(R, bd.lift(0)), xk) && return nothing            # (x only inside sec L)
+        pp = poly_parts(bd, rep(R, bd.x), xk)
+        (pp === nothing || sort!(collect(keys(pp))) != [0, 1]) && return nothing
+        ex = r * e
+        push!(olds, isone(e) ? t : mk(bd, :^, t, bd.lift(e)))
+        push!(news, mk(bd, :^, mk(bd, :+, mk(bd, :*, pp[0], p), pp[1]), cterm(bd, ex)))
+        E += ex
+    end
+    isone(denominator(E)) || return nothing
+    iszero(E) || push!(news, mk(bd, :^, p, bd.lift(Int(-E))))
+    rest = Any[isone(e) ? t : mk(bd, :^, t, bd.lift(e)) for (j, (t, e)) in enumerate(fs) if !(j in rads)]
+    g = mk(bd, :*, rest..., news...)
+    G = integrate_half_sine_radicals(g, x; build = build, lift = lift, verify = verify)
+    (G === nothing || G isa IntegralWithRootSums) && return nothing
+    σ = mk(bd, :/, mk(bd, :*, olds...), mk(bd, :*, news...))
+    mk(bd, :*, σ, G)
+end

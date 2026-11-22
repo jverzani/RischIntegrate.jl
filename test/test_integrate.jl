@@ -4545,6 +4545,33 @@ end
     end
 end
 
+# step SS: (A + B sec L)^e as (A cos L + B)^e cos L^(-e), the radicals' Σ e an integer, then step SA (sample 2039:
+# over 120 s through tan(L/2), resultants over ℚ(a, c, d))
+@testset "Step SS: radicals linear in sec L or csc L by step SA" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    cb(v) = complex(big(v))
+    ev(e, x0, a, c, d) = Core.eval(Main, Expr(:let, Expr(:block, :(sqrt = z -> Base.sqrt(complex(z))), :(x = $(cb(x0))),
+                                                    :(a = $(cb(a))), :(c = $(cb(c))), :(d = $(cb(d))), :(e = $(big(0.4))), :(f = $(big(1.3)))), e))
+    h = big(10.0)^-20
+    P = ((2.3, 1.7, 0.6), (1.4, 0.8, 0.5), (-1.4, 0.8, -0.5))
+    # (the csc case at positive parameters only: step SA's answer for √(a sin L - a)/√(c sin L + d) has the wrong
+    # sign at a < 0, c > 0, d < 0 before this step too, its u-integral taking the default signs)
+    for (g, ps) in ((:(sqrt(a + a * sec(e + f * x)) / (c + d * sec(e + f * x)) ^ (1 / 2)), P),             # 2039
+                    (:(sqrt(a + a * sec(x)) * sqrt(c + d * sec(x))), P),
+                    (:((a + a * sec(x)) ^ (3 / 2) / sqrt(c + d * sec(x))), P),
+                    (:(sqrt(a - a * csc(x)) / sqrt(c + d * csc(x))), P[1:2]))
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 60
+        @test !occursin("tan(1//2", string(F))
+        # (where the integrand is real)
+        for (a, c, d) in ps, x0 in (0.3, 1.9, -1.4, 2.8, -2.6)
+            v = ev(g, x0, a, c, d)
+            iszero(imag(v)) || continue
+            @test isapprox((ev(F, x0 + h, a, c, d) - ev(F, x0 - h, a, c, d)) / 2h, v; rtol = 1e-12)
+        end
+    end
+end
+
 @testset "Step RP: partial fractions of the rational factor of a radical integrand" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     vals = Dict(:a => 2.3, :b => 0.7, :c => 1.1, :d => 0.4, :e => 1.3, :f => 0.9, :g => 0.6)
