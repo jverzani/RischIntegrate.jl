@@ -4524,6 +4524,20 @@ end
     end
 end
 
+# step SR: x only in c xᵏ, so the integrand in y = c^(1/k) x is free of c, for a NotElementary first (sample 2749:
+# over 120 s in residues over ℚ(a, b, d); Rubi's answer has Shi and Chi)
+@testset "Step SR: a refusal in y = c^(1/k) x" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    for g in (:(1 / (a + b * acosh(1 + d * x ^ 2)) ^ 2),                                                 # 2749
+              :(1 / (a + b * acosh(1 + d * x ^ 2))))
+        t = @elapsed @test_throws Risch.NotElementary Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 60
+    end
+    # (an answer on the same route is unchanged)
+    F = Risch.risch_integrate(:(x * acosh(1 + d * x ^ 2)), :x; build = build, lift = identity)
+    @test occursin("acosh", string(F))
+end
+
 # step SA: √(c₀(1 ± sin L)) = σ c₀ cos L/√(c₀(1 ∓ sin L)), σ = ±1, then u = sin L (cos the same with sin), before
 # step HT's tan(L/2) (sample 1402, 1403, 1480: over 120 s; √ of a quartic in tan(L/2))
 @testset "Step SA: square roots of a(1 ± sin L) by u = sin L" begin
