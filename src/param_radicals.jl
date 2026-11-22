@@ -1634,20 +1634,20 @@ function integrate_param_conic_hermite(f, x, ut0, b0::Builder; build, lift, veri
     # (at most MAX_ROOTSUM_GENS parameters: over seven, (A + B x)(d + e x)⁵/(a + b x + c x²)^(7/2), sample 879, the
     # reduction's arithmetic alone took 36 s; the usual route 0.1 s)
     nparams(T) <= MAX_ROOTSUM_GENS || return nothing
-    hel, ael = try
+    hfr, afr = try
         parse_tower(h, T), parse_tower(ut0, T)
     catch err
         (err isa RischNotImplemented || err isa RischError) || rethrow()
         return nothing
     end
-    (isone(ael.den) && degree(ael.num) == 2) || return nothing
-    a = ael.num
+    (isone(afr.den) && degree(afr.num) == 2) || return nothing
+    a = afr.num
     # h a^E = h a^(E + 1/2)/y = B/(D y)
     n = Int(E + Q(1) // 2)
-    BD = n >= 0 ? hel * frac(a)^n : hel / frac(a)^(-n)
+    BD = n >= 0 ? hfr * frac(a)^n : hfr / frac(a)^(-n)
     # (h a polynomial, D = c aᵐ: the reduction with that known factorization. A denominator of h beside a, x⁸ or (d + e x)⁸
     # over six parameters (samples 433, 760), took over 120 s in the generic reduction's gcds; nothing then)
-    degree(hel.den) == 0 || return nothing
+    degree(hfr.den) == 0 || return nothing
     m = degree(BD.den) ÷ 2
     monic(BD.den) == monic(a)^m || return nothing
     g, P, R, D = try
