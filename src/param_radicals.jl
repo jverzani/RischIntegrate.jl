@@ -134,6 +134,13 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
     st, ht = s isa Tuple ? mk(b0, :sqrt, cterm(b0, s[2])) : cterm(b0, s), cterm(b0, h)
     σ = csqrt(κ)                                        # (else √κ is an opaque constant of the parameters)
+    # the algebraic part over the parameter field first, when s or √κ would be an opaque root (step EP; a radicand with
+    # parameters only: for √(7 - 2x²) the remainder ∫ 1/√(7 - 2x²) took the Euler route's atan, not step PR's asin)
+    # (and real: over ℚ(i)(…) the remainder reached steps with no complex form, √(a + i a tan(c + d x)))
+    if !rational && !is_complex_field(C) && isone(Dn) && degree(N) == 2 && (s isa Tuple || σ === nothing)
+        G = integrate_param_conic_hermite(f, x, ut0, b0; build = b0.build, lift = b0.lift, verify = verify)
+        G === nothing || return G
+    end
     Rt = frac_term(b0, Ru)
     function κpow(e)                                    # κ^e as a term
         k = 2 * e
@@ -1594,4 +1601,86 @@ function integrate_radical_partial_fractions(f, x, rads; build = nothing, lift =
     end
     isempty(Fs) && return nothing
     length(Fs) == 1 ? Fs[1] : mk(bd, :+, Fs...)
+end
+
+# step EP: f = h·u^E, one quadratic radicand u = a(x) over a parameter field, h rational in x (free of u), E half an odd
+# integer: the conic Hermite reduction (`hyp_reduce`, as step EQ over ℚ) over the parameter field,
+#   ∫ h a^E = g √a + ∫ (P + R/D)/√a,   g ∈ K(x),
+# before step PR's x = s u + h, when s or √κ would be an opaque root: the algebraic part is then g √a with g over
+# K = ℚ(a, …), not a rational function of x/√(d/e) times √(d/e) and √d (∫ (d + e x²)^(-7/2), whose opaque √(d c²/e)
+# after step AP's parts for (a + b acosh(c x))/(d + e x²)^(7/2) left the route refused, sample 2737). Nothing when g = 0, or when
+# the remainder needs a RootSum.
+function integrate_param_conic_hermite(f, x, ut0, b0::Builder; build, lift, verify::Bool)
+    @nospecialize f x
+    xk = string(x)
+    us = string(ut0)
+    fs = product_factors!(Any[], f, 1)
+    ir = findall(((t, _),) -> (rp = radical_parts(t); rp !== nothing && string(rp[2]) == us), fs)
+    length(ir) == 1 || return nothing
+    t, k = fs[ir[1]]
+    E = radical_parts(t)[1] * k
+    (denominator(E) == 2) || return nothing
+    hs = Any[m == 1 ? s : mk(b0, :^, s, b0.lift(m)) for (i, (s, m)) in enumerate(fs) if i != ir[1]]
+    any(s -> occursin(us, string(s)), hs) && return nothing
+    h = isempty(hs) ? b0.lift(1) : length(hs) == 1 ? hs[1] : mk(b0, :*, hs...)
+    T, el = try
+        build_tower(mk(b0, :*, h, ut0), xk)
+    catch err
+        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        return nothing
+    end
+    # (h with i, √(c - i c t)/(a + i a t)^(7/2) merged into √(a c (1 + t²)): the remainder reached steps with no complex form)
+    (isempty(T.levels) && !is_complex_field(ctype(T))) || return nothing
+    # (at most MAX_ROOTSUM_GENS parameters: over seven, (A + B x)(d + e x)⁵/(a + b x + c x²)^(7/2), sample 879, the
+    # reduction's arithmetic alone took 36 s; the usual route 0.1 s)
+    nparams(T) <= MAX_ROOTSUM_GENS || return nothing
+    hfr, afr = try
+        parse_tower(h, T), parse_tower(ut0, T)
+    catch err
+        (err isa RischNotImplemented || err isa RischError) || rethrow()
+        return nothing
+    end
+    (isone(afr.den) && degree(afr.num) == 2) || return nothing
+    a = afr.num
+    # h a^E = h a^(E + 1/2)/y = B/(D y)
+    n = Int(E + Q(1) // 2)
+    BD = n >= 0 ? hfr * frac(a)^n : hfr / frac(a)^(-n)
+    # (h a polynomial, D = c aᵐ: the reduction with that known factorization. A denominator of h beside a, x⁸ or (d + e x)⁸
+    # over six parameters (samples 433, 760), took over 120 s in the generic reduction's gcds; nothing then)
+    degree(hfr.den) == 0 || return nothing
+    m = degree(BD.den) ÷ 2
+    monic(BD.den) == monic(a)^m || return nothing
+    g, P, R, D = try
+        hyp_reduce(a, BD.num, BD.den; apow = m)
+    catch err
+        err isa RischError || rethrow()
+        return nothing
+    end
+    iszero(g) && return nothing
+    if verify                                           # d(g y) = (B/D - P - R/D)/y
+        da = frac(deriv(a))
+        dg = frac(deriv(g.num) * g.den - g.num * deriv(g.den), g.den * g.den)
+        lhs = dg * frac(a)
+        rhs = BD - frac(P) - frac(R, D)
+        lhs + lhs + g * da == rhs + rhs ||
+            throw(RischError("internal check failed: Hermite reduction on the conic over a parameter field"))
+    end
+    b = Builder(b0.build, b0.lift, b0.x, T.consts)
+    y = mk(b, :sqrt, ut0)
+    Fs = Any[isone(g) ? y : mk(b, :*, frac_term(b, g), y)]
+    W = frac(P) + frac(R, D)
+    if !iszero(W)
+        # (a RootSum left for the remainder: nothing, the usual route instead. ∫ R/((d + e x + f x²)√(a + c x²)) gives a quartic
+        # RootSum in step PR's x/√(a/c), wrong for c < 0 (sample 929, refused before; also wrong alone on v1.5.0))
+        # (refused: nothing too; the usual route may take it apart otherwise, √Q/((d + e x)(f + g x)³) in step RP's pieces)
+        Gw = try
+            risch_integrate(mk(b, :/, frac_term(b, W), y), x; build = build, lift = lift, verify = verify)
+        catch err
+            (err isa RischNotImplemented || err isa NotElementary) || rethrow()
+            return nothing
+        end
+        Gw isa IntegralWithRootSums && return nothing
+        push!(Fs, Gw)
+    end
+    add_answers(b, Fs, xk)
 end

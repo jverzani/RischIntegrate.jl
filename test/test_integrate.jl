@@ -4562,3 +4562,29 @@ end
         end
     end
 end
+
+# step EP: the conic Hermite reduction over the parameter field before step PR's x = s u when s = √(d/e) would be
+# an opaque root: ∫ (d + e x²)^(-7/2) = x P(x²)/(…)·√(d + e x²) over ℚ(d, e), and by parts (a + b acosh(c x))/(d + e x²)^(7/2)
+# (sample 2737: refused after 35 s)
+@testset "Step EP: conic Hermite reduction over a parameter field" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    h = big(10.0)^-20
+    for (g, vs) in ((:((d + e * x ^ 2) ^ (-7 / 2)), ((1.3, 0.7, 0.0), (1.3, -0.7, 0.0), (-1.3, 0.7, 0.0))),
+                    (:(x ^ 2 / (d + e * x ^ 2) ^ (3 / 2)), ((1.3, 0.7, 0.0), (-1.3, 0.7, 0.0))),
+                    (:((a + b * acosh(c * x)) / (d + e * x ^ 2) ^ (7 / 2)), ((1.3, 0.7, 1.1), (1.3, -0.2, 1.1), (1.3, 0.7, -1.1))))
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 60
+        # (the algebraic part over ℚ(d, e); ∫ 1/√(d + e x²), left from x²/(d + e x²)^(3/2), keeps its √(d/e))
+        occursin("acosh", string(g)) || occursin("x ^ 2 /", string(g)) || @test !occursin("sqrt", replace(string(F), "sqrt(d + e * x ^ 2)" => ""))
+        for (d, e, c) in vs, x0 in (1.4, 1.9, 2.6, -1.4, -2.6)
+            ev(ex, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(sqrt = z -> Base.sqrt(complex(z))), :(log = z -> Base.log(complex(z))),
+                                                  :(acosh = z -> Base.acosh(complex(z))), :(atanh = z -> Base.atanh(complex(z))),
+                                                  :(x = $(complex(big(x0)))), :(a = $(big(0.6))), :(b = $(big(1.7))),
+                                                  :(c = $(big(c))), :(d = $(big(d))), :(e = $(big(e)))), ex))
+            # (where the radicals are real: d + e x² > 0, and c x > 1 for acosh's √(c x - 1) √(c x + 1))
+            real(ev(:(d + e * x ^ 2), x0)) > 0 || continue
+            occursin("acosh", string(g)) && c * x0 <= 1 && continue
+            @test isapprox((ev(F, x0 + h) - ev(F, x0 - h)) / 2h, ev(g, x0); rtol = 1e-12)
+        end
+    end
+end
