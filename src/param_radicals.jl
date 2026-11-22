@@ -229,6 +229,7 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     # is an opaque square root: with s and √κ in the parameter field the answer's R(u)^e is right where the radicand is
     # positive, and later steps take the parameter-free radical (step AS's √(1 - u²) for √(1 - c²(x/c)²))
     map_rads = s isa Tuple || σ === nothing
+    asin_atan = map_rads && σ === nothing && !(crational(κ) !== nothing ? crational(κ) > 0 : oracle_sign(κ, T.consts) == 1)
     function walk_back(t)
         safe_iscall(t) || return string(t) == xk ? back : t
         args = arguments(t)
@@ -238,6 +239,19 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
             e = rp[1]
             ue = isone(2 * e) ? mk(b0, :sqrt, ut0) : mk(b0, :^, ut0, b0.lift(e))
             return isone(κ) ? ue : mk(b0, :/, ue, κpow(e))
+        end
+        # asin v with 1 - v² = R(u): atan(v/√(1 - v²)), whose √(1 - v²) the map above takes. asin's derivative
+        # 1/√(1 - v²) is a radical of its own, the same as the integrand's only where κ > 0: for κ < 0 the answer
+        # continued across asin's cut |v| > 1 had derivative -f on one side (∫ 1/√(d - c x²) at c, d < 0, x < 0; ∫ √(a +
+        # a sin x)/√(c + d sin x) with c < 0 through step SA). atan's derivative is rational: Rubi's atan(√c x/√(d - c x²))/√c
+        # (asin kept where κ > 0 is proven: a rational κ, the caller's oracle, step SO, or κ = σ²)
+        if asin_atan && opname(operation(t)) in (:asin, :acos) && length(args) == 1
+            v = args[1]
+            r1 = mk(b0, :+, b0.lift(1), mk(b0, :*, b0.lift(-1), mk(b0, :^, v, b0.lift(2))))
+            if radicand_element(r1, xk) == Ru
+                at = mk(b0, :atan, mk(b0, :/, walk_back(v), walk_back(mk(b0, :sqrt, r1))))
+                return opname(operation(t)) === :asin ? at : mk(b0, :*, b0.lift(-1), at)    # (acos v = π/2 - asin v)
+            end
         end
         b0.build(op_function(t), (walk_back(a) for a in args)...)
     end

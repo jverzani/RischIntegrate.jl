@@ -4559,31 +4559,69 @@ end
     end
 end
 
+# the value of the expression e at vals (symbol ↦ number), each operation in Complex{BigFloat} at 256 bits, a zero
+# imaginary part made +0 after each (as the mixed-sign checker does): a -0.0 from sin(x + 0im) at cos x < 0 takes the
+# other side of a principal branch cut, and an answer right on the real line looked wrong there
+function evb_pz(e, vals)
+    setprecision(BigFloat, 256) do
+        function go(t)
+            z = t isa Symbol ? (haskey(vals, t) ? Complex{BigFloat}(vals[t]) : Core.eval(Main, t)) : t isa Number ? t :
+                (t isa Expr && t.head === :call) ? Core.eval(Main, t.args[1])(map(go, t.args[2:end])...) : Core.eval(Main, t)
+            z isa Number || return z
+            w = Complex{BigFloat}(z)
+            iszero(imag(w)) ? Complex(real(w), big(0.0)) : w
+        end
+        go(e)
+    end
+end
+
 # step SS: (A + B sec L)^e as (A cos L + B)^e cos L^(-e), the radicals' Σ e an integer, then step SA (sample 2039:
 # over 120 s through tan(L/2), resultants over ℚ(a, c, d))
 @testset "Step SS: radicals linear in sec L or csc L by step SA" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
-    cb(v) = complex(big(v))
-    ev(e, x0, a, c, d) = Core.eval(Main, Expr(:let, Expr(:block, :(sqrt = z -> Base.sqrt(complex(z))), :(x = $(cb(x0))),
-                                                    :(a = $(cb(a))), :(c = $(cb(c))), :(d = $(cb(d))), :(e = $(big(0.4))), :(f = $(big(1.3)))), e))
-    h = big(10.0)^-20
-    P = ((2.3, 1.7, 0.6), (1.4, 0.8, 0.5), (-1.4, 0.8, -0.5))
-    # (the csc case at positive parameters only: step SA's answer for √(a sin L - a)/√(c sin L + d) has the wrong
-    # sign at a < 0, c > 0, d < 0 before this step too, its u-integral taking the default signs)
-    for (g, ps) in ((:(sqrt(a + a * sec(e + f * x)) / (c + d * sec(e + f * x)) ^ (1 / 2)), P),             # 2039
-                    (:(sqrt(a + a * sec(x)) * sqrt(c + d * sec(x))), P),
-                    (:((a + a * sec(x)) ^ (3 / 2) / sqrt(c + d * sec(x))), P),
-                    (:(sqrt(a - a * csc(x)) / sqrt(c + d * csc(x))), P[1:2]))
+    ev(e, x0, a, c, d) = evb_pz(e, Dict(:x => x0, :a => a, :c => c, :d => d, :e => 0.4, :f => 1.3))
+    h = big"1e-30"
+    # (every sign pattern: c < 0 had derivative -f through step PR's asin, before its atan form)
+    P = ((2.3, 1.7, 0.6), (1.4, 0.8, 0.5), (-1.4, 0.8, -0.5), (-1.4, 0.8, 0.5), (1.4, -0.8, 0.5), (-1.4, -0.8, -0.5))
+    for g in (:(sqrt(a + a * sec(e + f * x)) / (c + d * sec(e + f * x)) ^ (1 / 2)),             # 2039
+              :(sqrt(a + a * sec(x)) * sqrt(c + d * sec(x))),
+              :((a + a * sec(x)) ^ (3 / 2) / sqrt(c + d * sec(x))),
+              :(sqrt(a - a * csc(x)) / sqrt(c + d * csc(x))))
         t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
         @test t < 60
         @test !occursin("tan(1//2", string(F))
         # (where the integrand is real)
-        for (a, c, d) in ps, x0 in (0.3, 1.9, -1.4, 2.8, -2.6)
+        for (a, c, d) in P, x0 in (0.3, 1.9, -1.4, 2.8, -2.6)
             v = ev(g, x0, a, c, d)
-            iszero(imag(v)) || continue
-            @test isapprox((ev(F, x0 + h, a, c, d) - ev(F, x0 - h, a, c, d)) / 2h, v; rtol = 1e-12)
+            abs(imag(v)) > 1e-30 && continue
+            @test abs((ev(F, x0 + h, a, c, d) - ev(F, x0 - h, a, c, d)) / 2h - v) <= big"1e-20" * max(1, abs(v))
         end
     end
+end
+
+# step PR, κ not a square of the parameter field and its sign not proven: asin v (1 - v² = R(u)) as atan(v/√(1 - v²)),
+# √(1 - v²) = √u₀/√κ, whose derivative is f for every sign of κ (asin(x/√(d/c)) for ∫ 1/√(d - c x²) had derivative -f
+# at c, d < 0, x < 0, across asin's cut)
+@testset "Step PR: atan for asin when the sign of κ is not proven" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    h = big"1e-30"
+    P = ((1.4, 0.8, 0.5), (-1.4, 0.8, -0.5), (-1.4, 0.8, 0.5), (1.4, -0.8, 0.5), (-1.4, -0.8, -0.5), (1.4, 0.8, -0.5))
+    for g in (:(1 / sqrt(d - c * x ^ 2)), :(1 / sqrt(d + c * x - c * x ^ 2)), :(1 / (sqrt(1 - x) * sqrt(c * x + d))),
+              :(1 / (sqrt(a - a * x) * sqrt(c * x + d))), :(sqrt(1 - x) / sqrt(c * x + d)), :(sqrt(d - c * x ^ 2)))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test !occursin("asin", string(F))
+        n = 0
+        for (a, c, d) in P, x0 in (0.3, -0.5, 0.55, 0.9, -0.9, 1.5, 3.0)
+            ev(e, t) = evb_pz(e, Dict(:x => t, :a => a, :c => c, :d => d))
+            v = ev(g, big(x0))
+            abs(imag(v)) > 1e-30 && continue
+            n += 1
+            @test abs((ev(F, big(x0) + h) - ev(F, big(x0) - h)) / 2h - v) <= big"1e-20" * max(1, abs(v))
+        end
+        @test n >= 15
+    end
+    # (κ > 0 proven, a rational: asin stays)
+    @test occursin("asin", string(Risch.risch_integrate(:(1 / sqrt(3 - c ^ 2 * x ^ 2)), :x; build = build, lift = identity)))
 end
 
 @testset "Step RP: partial fractions of the rational factor of a radical integrand" begin
