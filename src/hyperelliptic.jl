@@ -83,9 +83,11 @@ function hyp_solve_mod(B::P, M::P, V::P) where {P<:UPoly}
     rem(s * B, V)
 end
 
-# ∫ B/(D y) dx = g y + ∫ (P + R/D)/y dx, D squarefree and coprime to a, deg P ≤ deg a - 2
-function hyp_reduce(a::QX, B::QX, D::QX)
-    g = zero(QXF)
+# ∫ B/(D y) dx = g y + ∫ (P + R/D)/y dx, D squarefree and coprime to a, deg P ≤ deg a - 2. Over ℚ, or over a parameter
+# field (step EP)
+function hyp_reduce(a::UPoly{C}, B::UPoly{C}, D::UPoly{C}) where {C}
+    cq(r) = cfromQ(C, Q(r))
+    g = zero(Frac{UPoly{C}})
     da = deriv(a)
     while true
         h = gcd(B, D)
@@ -109,14 +111,14 @@ function hyp_reduce(a::QX, B::QX, D::QX)
         if ram
             W = quo(a, V)
             k = m
-            Cc = hyp_solve_mod(B, scale(Q(1) // 2 - k, Ds * dV * W), V)
+            Cc = hyp_solve_mod(B, scale(cq(Q(1) // 2 - k), Ds * dV * W), V)
             # d(C y/Vᵏ) = (C′VW + CVW′/2 + (1/2 - k)CV′W)/(Vᵏ y)
-            Nn = deriv(Cc) * V * W + scale(Q(1) // 2, Cc * V * deriv(W)) + scale(Q(1) // 2 - k, Cc * dV * W)
+            Nn = deriv(Cc) * V * W + scale(cq(Q(1) // 2), Cc * V * deriv(W)) + scale(cq(Q(1) // 2 - k), Cc * dV * W)
         else
             k = m - 1
-            Cc = hyp_solve_mod(B, scale(Q(-k), Ds * dV * a), V)
+            Cc = hyp_solve_mod(B, scale(cq(-k), Ds * dV * a), V)
             # d(C y/Vᵏ) = (C′aV - kCV′a + CVa′/2)/(V^{k+1} y)
-            Nn = deriv(Cc) * a * V - scale(Q(k), Cc * dV * a) + scale(Q(1) // 2, Cc * V * da)
+            Nn = deriv(Cc) * a * V - scale(cq(k), Cc * dV * a) + scale(cq(Q(1) // 2), Cc * V * da)
         end
         g = g + frac(Cc, V^k)
         r, z = divrem(B - Ds * Nn, V)
@@ -127,9 +129,9 @@ function hyp_reduce(a::QX, B::QX, D::QX)
     n = degree(a)
     while degree(P) >= n - 1                            # at infinity: d(xᵏ y)
         k = degree(P) - n + 1
-        c = lc(P) / (lc(a) * (k + Q(n) // 2))
-        xk = xpoly(Q)^k
-        dk = (k == 0 ? zero(QX) : scale(Q(k), xpoly(Q)^(k - 1) * a)) + scale(Q(1) // 2, xk * da)
+        c = lc(P) / (lc(a) * cq(k + Q(n) // 2))
+        xk = xpoly(C)^k
+        dk = (k == 0 ? zero(UPoly{C}) : scale(cq(k), xpoly(C)^(k - 1) * a)) + scale(cq(Q(1) // 2), xk * da)
         P = P - scale(c, dk)
         g = g + frac(scale(c, xk))
     end
