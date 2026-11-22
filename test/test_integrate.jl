@@ -4607,6 +4607,25 @@ end
 # step EP: the conic Hermite reduction over the parameter field before step PR's x = s u when s = √(d/e) would be
 # an opaque root: ∫ (d + e x²)^(-7/2) = x P(x²)/(…)·√(d + e x²) over ℚ(d, e), and by parts (a + b acosh(c x))/(d + e x²)^(7/2)
 # (sample 2737: refused after 35 s)
+# step PR's s = √r with r/κ a square: s = β √κ, not an independent √r (sample 1124: a false NotElementary, e s and √a
+# unrelated in the tower)
+@testset "Step PR: s through the radical's own √κ" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    cb(v) = complex(big(v))
+    vals = Dict(:a => 2.3, :d => 0.7, :e => 1.1, :f => 0.9, :n => 0.6)
+    ev(ex, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(sqrt = z -> Base.sqrt(complex(z))), :(log = z -> Base.log(complex(z))),
+                                           :(x = $(cb(x0))), [:($k = $(cb(v))) for (k, v) in vals]...), ex))
+    h = big(10.0)^-20
+    for g in (:((e * x + sqrt(e ^ 2 * x ^ 2 + a)) ^ n / sqrt(e ^ 2 * x ^ 2 + a)),
+              :((d + e * x + f * sqrt(a + (2 * d * e * x) / f ^ 2 + (e ^ 2 * x ^ 2) / f ^ 2)) ^ n /
+                (a + (2 * d * e * x) / f ^ 2 + (e ^ 2 * x ^ 2) / f ^ 2) ^ (1 / 2)))                     # 1124
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        for x0 in (0.3, -1.2, 2.5)
+            @test isapprox((ev(F, x0 + h) - ev(F, x0 - h)) / 2h, ev(g, x0); rtol = 1e-12)
+        end
+    end
+end
+
 @testset "Step EP: conic Hermite reduction over a parameter field" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     h = big(10.0)^-20

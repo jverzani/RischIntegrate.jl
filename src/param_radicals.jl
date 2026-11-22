@@ -134,6 +134,16 @@ function integrate_param_radicals(f, x, rads; build = nothing, lift = nothing, v
     b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
     st, ht = s isa Tuple ? mk(b0, :sqrt, cterm(b0, s[2])) : cterm(b0, s), cterm(b0, h)
     σ = csqrt(κ)                                        # (else √κ is an opaque constant of the parameters)
+    # s = √r opaque with r/κ = β² in the field: s = β √κ, the same √κ as the radical's, not an independent √r
+    # (∫ (e x + √(e² x² + a))ⁿ/√(e² x² + a), sample 1124: e s and √a unrelated, the Risch equation for
+    # exp(n log(e s u + √a √(1 + u²))) had no solution there, a false NotElementary)
+    if s isa Tuple && σ === nothing
+        β = csqrt(s[2] / κ)
+        if β !== nothing
+            param_sign(β, T.consts) == -1 && (β = -β)
+            st = mk(b0, :*, cterm(b0, β), mk(b0, :sqrt, cterm(b0, κ)))
+        end
+    end
     # the algebraic part over the parameter field first, when s or √κ would be an opaque root (step EP; a radicand with
     # parameters only: for √(7 - 2x²) the remainder ∫ 1/√(7 - 2x²) took the Euler route's atan, not step PR's asin)
     # (and real: over ℚ(i)(…) the remainder reached steps with no complex form, √(a + i a tan(c + d x)))
