@@ -617,6 +617,8 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         # a factor (a + b L): term by term, each by parts (x √(1 + x²) (a + b asinh x)); else on to the logs
         r = distribute_sum_factor(f, x, xk, n -> n in INV_HYP; build = build, lift = lift, verify = verify)
         r === nothing || return r
+        # x only in c xᵏ: the integrand in y = c^(1/k) x, free of c, for a NotElementary first (step SR)
+        scaled_refusal(f, x, xk, build, lift, verify)
         return risch_integrate(rewrite_invhyp(f, x, build, lift), x; build = build, lift = lift, verify = verify)
     end
     arcs = collect_arcs(f, xk)                  # asin / acos: substitution u = sin t / cos t (step AS)
@@ -1565,4 +1567,50 @@ function constant_over_poly_radicand(f, x, xk::String, rads, build, lift)
         bd.build(op_function(t), (walk(a) for a in args)...)
     end
     walk(f)
+end
+
+# step SR: x only in c xᵏ (one c with a parameter, one integer k ≥ 1, as 1/(a + b acosh(1 + d x²))², sample 2749): with
+# y = c^(1/k) x, ∫ f dx = c^(-1/k) ∫ g(y) dy, g free of c; a constant field extension keeps elementarity, so g's
+# NotElementary is f's, at every sign of c. A refusal test only (g's answer, with c^(1/k), is not used): `nothing` else.
+function scaled_refusal(f, x, xk::String, build, lift, verify::Bool)
+    @nospecialize f x
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    isxv(t) = !isnode(t) && string(t) == xk
+    function xpow(t)                                       # k for x or x^k (k a positive integer literal)
+        isxv(t) && return 1
+        if isnode(t) && opname(operation(t)) === :^ && length(arguments(t)) == 2 && isxv(arguments(t)[1])
+            k = leaf_rational(arguments(t)[2])
+            k !== nothing && isone(denominator(k)) && k >= 1 && return Int(k)
+        end
+        nothing
+    end
+    key = Ref{Any}(nothing)
+    ok = Ref(true)
+    function walk(t)
+        ok[] || return t
+        isnode(t) || (isxv(t) && (ok[] = false); return t)
+        if opname(operation(t)) === :*
+            as = arguments(t)
+            js = findall(a -> depends_on(a, xk), as)
+            if length(js) == 1 && (k = xpow(as[js[1]])) !== nothing
+                cs = Any[a for (j, a) in enumerate(as) if j != js[1]]
+                c = length(cs) == 1 ? cs[1] : mk(bd, :*, cs...)
+                kk = (string(c), k)
+                (has_param(c, xk) && (key[] === nothing || key[] == kk)) || (ok[] = false; return t)
+                key[] = kk
+                return k == 1 ? bd.x : mk(bd, :^, bd.x, bd.lift(k))
+            end
+        end
+        xpow(t) !== nothing && (ok[] = false; return t)
+        term_rebuild(bd, t, Any[walk(a) for a in arguments(t)])
+    end
+    g = walk(f)
+    (ok[] && key[] !== nothing) || return nothing
+    try
+        risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    catch e
+        e isa NotElementary && throw(NotElementary("with y = (" * key[][1] * ")^(1/" * string(key[][2]) * ") " * xk * ": " * e.msg))
+        (e isa RischNotImplemented || e isa DivideError) || rethrow()
+    end
+    nothing
 end
