@@ -223,6 +223,27 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             r = integrate_log_radicals(f, x; build = build, lift = lift, verify = verify)
             r === nothing || return r
         end
+        # step GU: u = x/√R for an even quartic R (pseudo-elliptic integrands over the parameters)
+        if e isa RischNotImplemented && (occursin("radical of a non-rational expression", e.msg) || startswith(e.msg, "radicals of"))
+            r = integrate_quartic_goursat(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
+        end
+        # step RX: a radicand Σ cᵢ x^(sᵢ) with symbolic sᵢ, a rational power of x taken out (elementary answers only:
+        # K R with a RootSum R is evaluated as Re(K R), wrong for K not real)
+        if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg)
+            gK = split_radicand_xpower(f, x, string(x), build, lift)
+            if gK !== nothing
+                bq = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+                r = try
+                    G = risch_integrate(gK[1], x; build = build, lift = lift, verify = verify)
+                    G isa IntegralWithRootSums ? nothing : scale_answer(bq, gK[2], G)
+                catch e2
+                    (e2 isa RischNotImplemented || e2 isa NotElementary) || rethrow()
+                    nothing
+                end
+                r === nothing || return r
+            end
+        end
         if e isa RischNotImplemented && startswith(e.msg, "exp of the constant")
             r = integrate_rewritten_expr(f, x, (fe, xs) -> split_exp_constants(fe, xs, expr_build, identity), EK_ACTIVE;
                                          build = build, lift = lift, verify = verify)

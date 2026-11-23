@@ -4667,6 +4667,33 @@ end
           Risch.IntegralWithRootSums
 end
 
+# step RX: a radicand Σ cᵢ x^(sᵢ) with symbolic sᵢ, a rational power of x taken out (√(a/x² + b xⁿ) = K √(a + b x^(n + 2))/x,
+# sample 655); step GU: u = x/√R for an even quartic R, √R/(a - c x⁴) dx = du/((1 - b u²)² - 4 a c u⁴) (sample 1036)
+@testset "Steps RX, GU: radicands with symbolic powers; Goursat's u = x/√R" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    h = big"1e-30"
+    P = ((1.4, 0.8, 0.5, 0.7), (-1.4, -0.8, -0.5, 0.7), (1.4, -0.8, 0.5, -0.7), (-1.4, 0.8, -0.5, -0.7), (1.4, 2.9, 0.5, 1.1))
+    for g in (:(sqrt(a / x ^ 2 + b * x ^ n)), :(sqrt(a + b * x ^ 2 + c * x ^ 4) / (a * d - c * d * x ^ 4)),
+              :(sqrt(1 + b * x ^ 2 + x ^ 4) / (1 - x ^ 4)), :((a + c * x ^ 4) / ((a - c * x ^ 4) * sqrt(a + b * x ^ 2 + c * x ^ 4))))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test F isa Expr
+        m = 0
+        for (a, b, c, d) in P, n in (0.37, 1.6), x0 in (0.3, 0.9, 1.7, -0.6, -1.3)
+            ev(t, y) = evb_pz(t, Dict(:x => y, :a => a, :b => b, :c => c, :d => d, :n => n))
+            v = ev(g, big(x0))
+            abs(imag(v)) > 1e-30 && continue
+            m += 1
+            @test abs((ev(F, big(x0) + h) - ev(F, big(x0) - h)) / 2h - v) <= big"1e-20" * max(1, abs(v))
+        end
+        @test m >= 15
+    end
+    @test string(Risch.risch_integrate(:((a - c * x ^ 4) / (a + b * x ^ 2 + c * x ^ 4) ^ (3 // 2)), :x; build = build,
+                                       lift = identity)) == "x / sqrt(a + b * x ^ 2 + c * x ^ 4)"
+    # (elliptic: refused, as before)
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(1 / sqrt(a + b * x ^ 2 + c * x ^ 4)), :x; build = build,
+                                                                 lift = identity)
+end
+
 @testset "Step RP: partial fractions of the rational factor of a radical integrand" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     vals = Dict(:a => 2.3, :b => 0.7, :c => 1.1, :d => 0.4, :e => 1.3, :f => 0.9, :g => 0.6)

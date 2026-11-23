@@ -59,7 +59,7 @@ end
 # user's terms: a term type may undo the rewrite (SymJ merges exp(α) exp(iβ) back into exp(α + iβ), e^(-c x) e^(c y)
 # into e^(-c (x - y))), which looped refusal and rewrite. `active` guards against the rewrite inside its own integral.
 function integrate_rewritten_expr(f, x, rw, active; build = nothing, lift = nothing, verify::Bool = true,
-                                  rootsums::Bool = false)
+                                  rootsums::Bool = false, answer = nothing)
     @nospecialize f x
     active[] && return nothing
     xk = string(x)
@@ -67,14 +67,17 @@ function integrate_rewritten_expr(f, x, rw, active; build = nothing, lift = noth
     collect_leaves!(leaves, f)
     toexpr(t) = is_imag_unit(t) ? :im : (safe_iscall(t) && !isempty(arguments(t))) ?
         Expr(:call, opname(operation(t)), (toexpr(a) for a in arguments(t))...) : term_to_expr(t)
-    g = rw(toexpr(f), Symbol(xk))
-    g === nothing && return nothing
+    # (`answer`: the Expr answer of the step itself, in place of a rewritten integrand)
+    g = answer === nothing ? rw(toexpr(f), Symbol(xk)) : nothing
+    answer === nothing && g === nothing && return nothing
     active[] = true
     F = try
-        risch_integrate(g, Symbol(xk); build = expr_build, lift = identity, verify = verify)
+        answer === nothing ? risch_integrate(g, Symbol(xk); build = expr_build, lift = identity, verify = verify) :
+                             answer(toexpr(f), Symbol(xk))
     finally
         active[] = false
     end
+    F === nothing && return nothing
     # (a RootSum answer only for an exact rewrite (`rootsums`, step XA), and in Expr, the user's terms)
     F isa IntegralWithRootSums && return (rootsums && f isa Expr) ? F : nothing
     f isa Expr && return F

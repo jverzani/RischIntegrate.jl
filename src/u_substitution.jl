@@ -657,3 +657,88 @@ function integrate_hyp_bioche(f, x; build, lift, verify::Bool)
     end
     nothing
 end
+
+# step GU: u = x/√R for an even quartic R = a + b x² + c x⁴ (a, c ≠ 0), Goursat's substitution for pseudo-elliptic
+# integrands: u′ = (a - c x⁴)/R^(3/2), and a rational function of t = x² that is unchanged by t ↦ a/(c t) is one of
+# u² = t/R. With f/u′ = N(t)/D(t) (√R written S, f S³/(a - c x⁴) even in S, S² = R), N and D reduced modulo
+# Q(t) = c u² t² + (b u² - 1) t + a u² (whose roots are the two t of one u) leave n₁ t + n₀ and d₁ t + d₀,
+# proportional when f/u′ is a function of u: then f dx = W(u) du, W = n₁/d₁ (or n₀/d₀). √(a + b x² + c x⁴)/(a - c x⁴)
+# is 1/((1 - b u²)² - 4 a c u⁴) (sample 1036: over the parameters, the hyperelliptic log part's torsion search, done
+# modulo primes, does not apply). Expr in and out; nothing when f is not so
+function goursat_quartic_expr(f, xs::Symbol; verify::Bool = true)
+    xk = string(xs)
+    rads = collect_radicals(f, xk)
+    isempty(rads) && return nothing
+    R = rads[1][2]
+    all(((e, v),) -> denominator(e) == 2 && v == R, rads) || return nothing
+    tw(t, v) = try
+        build_tower(t, v)
+    catch e
+        (e isa RischNotImplemented || e isa RischError || e isa DivideError) || rethrow()
+        (nothing, nothing)
+    end
+    TR, eR = tw(R, xk)
+    (TR !== nothing && isempty(TR.levels) && isone(eR.den) && degree(eR.num) == 4) || return nothing
+    cR = eR.num.c
+    (iszero(cR[2]) && iszero(cR[4]) && !iszero(cR[1]) && !iszero(cR[5])) || return nothing
+    bR = Builder(expr_build, identity, xs, TR.consts)
+    A, B, C = cterm(bR, cR[1]), cterm(bR, cR[3]), cterm(bR, cR[5])
+    S = gensym("S")
+    function srad(t)
+        t isa Expr || return t
+        rp = radical_parts(t)
+        (rp !== nothing && rp[2] == R) && return Expr(:call, :^, S, Int(2 * rp[1]))
+        Expr(t.head, map(srad, t.args)...)
+    end
+    # f/u′ in S, then S² = R: a rational function of x
+    TS, eS = tw(:($(srad(f)) * $S ^ 3 / ($A - $C * $xs ^ 4)), string(S))
+    (TS !== nothing && isempty(TS.levels)) || return nothing
+    bS = Builder(expr_build, identity, S, TS.consts)
+    function sq(p)
+        all(i -> iszero(p.c[i]) || isodd(i), eachindex(p.c)) || return nothing
+        Expr(:call, :+, 0, (:($(cterm(bS, p.c[i])) * $R ^ $((i - 1) ÷ 2)) for i in 1:2:length(p.c) if !iszero(p.c[i]))...)
+    end
+    nw, dw = sq(eS.num), sq(eS.den)
+    (nw === nothing || dw === nothing) && return nothing
+    T, el = tw(:($nw / $dw), xk)
+    (T !== nothing && isempty(T.levels) && !is_complex_field(ctype(T))) || return nothing
+    even(p) = all(i -> iszero(p.c[i]) || isodd(i), eachindex(p.c))
+    (even(el.num) && even(el.den)) || return nothing
+    b = Builder(expr_build, identity, xs, T.consts)
+    # coefficients of t⁰, t¹, … (x standing for u), then the remainder modulo Q
+    tco(p) = Any[cterm(b, p.c[i]) for i in 1:2:length(p.c)]
+    q0, q1, q2 = :($A * $xs ^ 2), :($B * $xs ^ 2 - 1), :($C * $xs ^ 2)
+    function remq(cs)
+        cs = copy(cs)
+        for k in length(cs):-1:3
+            m = :($(cs[k]) / $q2)
+            cs[k-1] = :($(cs[k-1]) - $m * $q1)
+            cs[k-2] = :($(cs[k-2]) - $m * $q0)
+        end
+        length(cs) == 1 ? (cs[1], 0) : (cs[1], cs[2])
+    end
+    function iszero_t(t)
+        Tz, ez = tw(t, xk)
+        Tz !== nothing && isempty(Tz.levels) && iszero(ez.num)
+    end
+    (n0, n1), (d0, d1) = remq(tco(el.num)), remq(tco(el.den))
+    iszero_t(:($n1 * $d0 - $n0 * $d1)) || return nothing
+    W = iszero_t(d1) ? :($n0 / $d0) : :($n1 / $d1)
+    USUB_DEPTH[] += 1
+    H = try
+        risch_integrate(W, xs; build = expr_build, lift = identity, verify = verify)
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        nothing
+    finally
+        USUB_DEPTH[] -= 1
+    end
+    (H === nothing || H isa IntegralWithRootSums) && return nothing
+    u = :($xs / sqrt($R))
+    back(t) = t === xs ? u : t isa Expr ? Expr(t.head, map(back, t.args)...) : t
+    back(H)
+end
+
+integrate_quartic_goursat(f, x; build = nothing, lift = nothing, verify::Bool = true) = USUB_DEPTH[] < 2 ?
+    integrate_rewritten_expr(f, x, (fe, xs) -> nothing, GU_ACTIVE; build = build, lift = lift, verify = verify,
+                             answer = (fe, xs) -> goursat_quartic_expr(fe, xs; verify = verify)) : nothing
