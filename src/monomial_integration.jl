@@ -403,6 +403,22 @@ function integrate_log_poly(T::Tower, i::Int, p::UPoly)
             cv = dconst_value(T, tgt / Lθ)
             if cv === nothing                           # tgt - c·u'/u may still be a derivative b' with b ∈ K
                 cb = log_ratio_match(T, i - 1, tgt, Lθ)  # (log(e²ˣ + 1) - x = log(cosh x) + log 2)
+                if cb === nothing && !isatan
+                    # a log w already in the tower below (log(a + b x) under θ = log(c + d x)): c log w is then
+                    # in K, a part of b, not a new logarithm (step LF). The squared logs that step LK writes for
+                    # (K + B n (log(a + b x) - log(c + d x)))² were refused as non-elementary (sample 1231)
+                    rv2, tgt2 = rv, zero(K)
+                    for (cj, wj) in r.logs
+                        le = log_element(T, i - 1, wj)
+                        if le !== nothing
+                            rv2 = rv2 + lconst(T, cj, i - 1) * le
+                        else
+                            tgt2 = tgt2 + lconst(T, cj, i - 1) * (D(T, i - 1, wj) / wj)
+                        end
+                    end
+                    cv2 = iszero(tgt2) ? zero(ctype(T)) : dconst_value(T, tgt2 / Lθ)
+                    cb = cv2 === nothing ? nothing : (cv2, rv2 - rv)
+                end
                 cb === nothing && throw(NotElementary(
                     "the integral of the coefficient of log^$n involves logarithms other than log(u)"))
                 cv, bv = cb

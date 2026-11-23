@@ -844,3 +844,155 @@ end
 integrate_quadratic_split(f, x; build = nothing, lift = nothing, verify::Bool = true) =
     integrate_rewritten_expr(f, x, (fe, xs) -> nothing, QS_ACTIVE; build = build, lift = lift, verify = verify,
                              answer = (fe, xs) -> quadratic_split_expr(fe, xs; verify = verify))
+
+# step LK: A + B log(c Π Vⱼ^kⱼ), with A, B, c, kⱼ free of x and the Vⱼ not, is K + B Σ kⱼ log Vⱼ, K a new symbol
+# standing for the constant A + B log(c Π Vⱼ^kⱼ) - B Σ kⱼ log Vⱼ (a bare log with c ≠ 1 the same, A = 0, B = 1).
+# A, B, c and the constant the tower makes for log(c Π Vⱼ^kⱼ) - Σ kⱼ log Vⱼ are then one: (A + B log(e ((a + b x)/
+# (c + d x))^n))² over g³ i² was refused with 9 constants (samples 1231-1233). Taken on the refusal "more than N
+# transcendental constants" only. An elementary answer only. Expr in and out; nothing when f has no such log
+function log_content_expr(f, xs::Symbol; verify::Bool = true)
+    xk = string(xs)
+    hx(t) = has_x(t, xk)
+    # log(u) as (constant factors, [(Vⱼ, kⱼ)]): products, quotients and powers with exponents free of x split
+    function lsplit!(cs, vs, u, k)
+        if u isa Expr && u.head === :call
+            op = u.args[1]
+            if op === :* 
+                foreach(a -> lsplit!(cs, vs, a, k), u.args[2:end])
+                return
+            elseif op === :/ && length(u.args) == 3
+                lsplit!(cs, vs, u.args[2], k)
+                lsplit!(cs, vs, u.args[3], k === 1 ? -1 : :(-$k))
+                return
+            elseif op === :^ && length(u.args) == 3 && !hx(u.args[3]) && hx(u.args[2])
+                lsplit!(cs, vs, u.args[2], k === 1 ? u.args[3] : :($k * $(u.args[3])))
+                return
+            end
+        end
+        hx(u) ? push!(vs, (u, k)) : push!(cs, (u, k))
+    end
+    islog(t) = t isa Expr && t.head === :call && t.args[1] === :log && length(t.args) == 2 && hx(t.args[2])
+    Ks = Dict{Symbol,Any}()
+    # B log(u) → (B, log(u)) when B is free of x
+    function coeflog(t)
+        islog(t) && return (1, t)
+        if t isa Expr && t.head === :call && t.args[1] === :* 
+            ls = [a for a in t.args[2:end] if islog(a)]
+            (length(ls) == 1 && all(a -> a === ls[1] || !hx(a), t.args[2:end])) || return nothing
+            bs = [a for a in t.args[2:end] if a !== ls[1]]
+            return (length(bs) == 1 ? bs[1] : Expr(:call, :*, bs...), ls[1])
+        end
+        nothing
+    end
+    # A + B log(u) → K + B Σ kⱼ log Vⱼ, or nothing when there is nothing to merge
+    function merge(A, B, L)
+        cs, vs = Any[], Any[]
+        lsplit!(cs, vs, L.args[2], 1)
+        (A === nothing && isempty(cs)) && return nothing
+        isempty(vs) && return nothing
+        K = gensym("K")
+        lv = Any[k === 1 ? :(log($V)) : :($k * log($V)) for (V, k) in vs]
+        S = length(lv) == 1 ? lv[1] : Expr(:call, :+, lv...)
+        BS = B === 1 ? S : :($B * $S)
+        Ks[K] = A === nothing ? :($L - $S) : :($A + $B * $L - $BS)
+        :($K + $BS)
+    end
+    function rw(e)
+        e isa Expr || return e
+        if e.head === :call && e.args[1] === :+
+            args = e.args[2:end]
+            cl = [coeflog(a) for a in args]
+            il = findall(c -> c !== nothing, cl)
+            if length(il) == 1 && all(i -> i == il[1] || !hx(args[i]), eachindex(args))
+                rest = [args[i] for i in eachindex(args) if i != il[1]]
+                A = isempty(rest) ? nothing : length(rest) == 1 ? rest[1] : Expr(:call, :+, rest...)
+                B, L = cl[il[1]]
+                m = merge(A, B, L)
+                m === nothing || return m
+            end
+        end
+        if islog(e)
+            m = merge(nothing, 1, e)
+            m === nothing || return m
+        end
+        Expr(e.head, Any[rw(a) for a in e.args]...)
+    end
+    g = rw(f)
+    # the x-free content of each factor, (a g + b g x)³ = g³ (a + b x)³, and the constant factor outside the integral;
+    # with a symbolic power s, (h x)^m = K x^m and (a g + b g x)^m = K (a + b x)^m, K = B^s/V^s (as in step XK)
+    cs, hs = Any[], Any[]
+    split = !isempty(Ks)
+    for (t, k) in product_factors!(Any[], g, 1)
+        if !hx(t)
+            push!(cs, k == 1 ? t : :($t ^ $k))
+            continue
+        end
+        if t isa Expr && t.head === :call && t.args[1] === :^ && length(t.args) == 3 && !hx(t.args[3]) &&
+           leaf_rational(t.args[3]) === nothing
+            B, sp = t.args[2], t.args[3]
+            c, V = sum_symbol_content(B, xk)
+            if c === nothing
+                bfs = product_factors!(Any[], B, 1)
+                vs = [j == 1 ? u : :($u ^ $j) for (u, j) in bfs if hx(u)]
+                if length(vs) < length(bfs)
+                    c, V = true, length(vs) == 1 ? vs[1] : Expr(:call, :*, vs...)
+                end
+            end
+            if c !== nothing
+                Vs = :($V ^ $sp)
+                push!(cs, k == 1 ? :($t / $Vs) : :(($t / $Vs) ^ $k))
+                push!(hs, k == 1 ? Vs : :($Vs ^ $k))
+                split = true
+                continue
+            end
+        end
+        c, t = sum_symbol_content(t, xk)
+        c === nothing || (push!(cs, k == 1 ? c : :($c ^ $k)); split = true)
+        push!(hs, k == 1 ? t : :($t ^ $k))
+    end
+    split || return nothing
+    h = isempty(hs) ? 1 : length(hs) == 1 ? hs[1] : Expr(:call, :*, hs...)
+    G = try
+        risch_integrate(h, xs; build = expr_build, lift = identity, verify = verify)
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        nothing
+    end
+    (G === nothing || G isa IntegralWithRootSums) && return nothing
+    G = subst_symbols(G, Ks)
+    isempty(cs) ? G : Expr(:call, :*, cs..., G)
+end
+
+# (c, s/c) for a sum s whose summands have the symbols c (free of x, to integer powers) as common factors, else
+# (nothing, s): a g + b g x = g (a + b x)
+function sum_symbol_content(s, xk::String)
+    (s isa Expr && s.head === :call && s.args[1] === :+) || return (nothing, s)
+    fss = [product_factors!(Any[], a, 1) for a in s.args[2:end]]
+    syms(fs) = Dict{Symbol,Int}(t => k for (t, k) in fs if t isa Symbol && string(t) != xk && k > 0)
+    com = syms(fss[1])
+    for fs in fss[2:end]
+        d = syms(fs)
+        for (t, k) in collect(com)
+            haskey(d, t) ? (com[t] = min(k, d[t])) : delete!(com, t)
+        end
+    end
+    isempty(com) && return (nothing, s)
+    function strip(fs)
+        left = copy(com)
+        out = Any[]
+        for (t, k) in fs
+            if t isa Symbol && haskey(left, t)
+                k -= left[t]
+                delete!(left, t)
+            end
+            k == 0 || push!(out, k == 1 ? t : :($t ^ $k))
+        end
+        isempty(out) ? 1 : length(out) == 1 ? out[1] : Expr(:call, :*, out...)
+    end
+    c = [k == 1 ? t : :($t ^ $k) for (t, k) in com]
+    (length(c) == 1 ? c[1] : Expr(:call, :*, c...), Expr(:call, :+, map(strip, fss)...))
+end
+
+integrate_log_content(f, x; build = nothing, lift = nothing, verify::Bool = true) =
+    integrate_rewritten_expr(f, x, (fe, xs) -> nothing, LK_ACTIVE; build = build, lift = lift, verify = verify,
+                             answer = (fe, xs) -> log_content_expr(fe, xs; verify = verify))

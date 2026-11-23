@@ -4788,3 +4788,40 @@ end
         end
     end
 end
+
+# step LF: ∫ of the coefficient of θⁿ with c log w, log w already a level below θ, is in the field, not a new
+# logarithm (was a false NotElementary); step LK: A + B log(e ((a + b x)/(c + d x))ⁿ) = K + B n log(…) with K a
+# symbol, and the x-free content of each factor outside the integral, on "more than N transcendental constants"
+# (samples 640, 1231-1233)
+@testset "Steps LF, LK: logs already in the tower; A + B log(e Wⁿ) as one constant" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    h = big"1e-30"
+    for g in (:((log(x) - log(x + 1)) ^ 2 / (x ^ 2 * (x + 1) ^ 2)),
+              :((2 + log(x) - log(x + 1)) ^ 3 / (x ^ 3 * (x + 1))))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test F isa Expr
+        for x0 in (0.3, 0.9, 1.7, 4.2)
+            ev(t, y) = evb_pz(t, Dict(:x => y))
+            v = ev(g, big(x0))
+            @test abs((ev(F, big(x0) + h) - ev(F, big(x0) - h)) / 2h - v) <= big"1e-20" * max(1, abs(v))
+        end
+    end
+    base = (1.4, 0.8, 0.5, 0.7, 1.1, 0.9, 0.6, 1.3, 0.75, 1.2)
+    sg = ((1, 1, 1, 1, 1, 1, 1, 1, 1, 1), (1, -1, 1, -1, 1, -1, 1, -1, 1, -1), (1, 1, -1, 1, 1, 1, 1, -1, 1, 1))
+    for g in (:((A + B * log(e * ((a + b * x) / (c + d * x)) ^ n)) ^ 2 / ((a * g + b * g * x) ^ 3 * (c * i + d * i * x) ^ 2)),
+              :((a * g + b * g * x) ^ m * (c * i + d * i * x) ^ (-2 - m) * (A + B * log(e * ((a + b * x) / (c + d * x)) ^ n)) ^ 2))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test F isa Expr
+        m = 0
+        for s in sg, x0 in (0.3, 0.9, 1.7, -0.6, -1.3), n in (0.37, 1.6)
+            vs = s .* base
+            ev(t, y) = evb_pz(t, Dict(:x => y, :n => n, :m => 0.45,
+                                      (k => v for (k, v) in zip((:a, :b, :c, :d, :e, :g, :i, :A, :B), vs))...))
+            v = ev(g, big(x0))
+            abs(imag(v)) > 1e-30 && continue
+            m += 1
+            @test abs((ev(F, big(x0) + h) - ev(F, big(x0) - h)) / 2h - v) <= big"1e-20" * max(1, abs(v))
+        end
+        @test m >= 10
+    end
+end

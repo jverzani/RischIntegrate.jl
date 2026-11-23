@@ -276,6 +276,11 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             r = integrate_power_content(f, x; build = build, lift = lift, verify = verify)
             r === nothing || return r
         end
+        # step LK: the constants of A + B log(c Π Vⱼ^kⱼ) as one symbol K (samples 1231-1233)
+        if e isa RischNotImplemented && startswith(e.msg, "more than $MAX_CONSTS transcendental constants")
+            r = integrate_log_content(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
+        end
         # step XA: x^(r + L) as x^r x^L
         if e isa RischNotImplemented && startswith(e.msg, "exp of a rational multiple of a logarithm")
             r = integrate_rewritten_expr(f, x, (fe, xs) -> split_power_rational_part(fe, xs), XA_ACTIVE;
