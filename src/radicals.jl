@@ -241,6 +241,92 @@ function scale_answer(bd::Builder, K, F)
     IntegralWithRootSums(mk(bd, :*, K, F.elementary), Any[ScaledRootSum(K, rs) for rs in F.rootsums], F.var)
 end
 
+# step RX: a radical factor (Σ cᵢ x^(sᵢ))^e of f, some sᵢ symbolic (with a parameter), one rational sⱼ = r: the
+# power x^r taken out, K x^(r e) (Σ cᵢ x^(sᵢ - r))^e with K = (Σ cᵢ x^(sᵢ))^e/(x^(r e) (Σ cᵢ x^(sᵢ - r))^e) constant
+# on intervals of x; √(a/x² + b xⁿ) = K √(a + b x^(n + 2))/x (sample 655: the radicand is not rational in x, and
+# step RK's split takes only factors free of x). Returns (g, K), or nothing
+function split_radicand_xpower(f, x, xk::String, build, lift)
+    @nospecialize f x
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    isx(t) = !safe_iscall(t) && string(t) == xk
+    pw(t, k) = k == 1 ? t : mk(bd, :^, t, bd.lift(k))
+    prod_term(ts) = isempty(ts) ? bd.lift(1) : length(ts) == 1 ? ts[1] : mk(bd, :*, ts...)
+    function summands(u, sg, out)
+        if safe_iscall(u) && opname(operation(u)) === :+
+            foreach(a -> summands(a, sg, out), arguments(u))
+        elseif safe_iscall(u) && opname(operation(u)) === :- && length(arguments(u)) == 2
+            summands(arguments(u)[1], sg, out); summands(arguments(u)[2], -sg, out)
+        elseif safe_iscall(u) && opname(operation(u)) === :- && length(arguments(u)) == 1
+            summands(arguments(u)[1], -sg, out)
+        else
+            push!(out, (u, sg))
+        end
+        out
+    end
+    # a summand as (its factors free of x, r, L): c x^(r + L), L nothing or a symbolic exponent; nothing if not so
+    function monomial(u)
+        cs, r, L = Any[], Q(0), nothing
+        for (t, k) in product_factors!(Any[], u, 1)
+            if isx(t)
+                r += k
+            elseif !has_x(t, xk)
+                push!(cs, pw(t, k))
+            elseif safe_iscall(t) && opname(operation(t)) === :^ && length(arguments(t)) == 2 && isx(arguments(t)[1]) &&
+                   !has_x(arguments(t)[2], xk)
+                q = leaf_rational(arguments(t)[2])
+                if q !== nothing
+                    r += k * Q(q)
+                elseif L === nothing && has_param(arguments(t)[2], xk)
+                    L = k == 1 ? arguments(t)[2] : mk(bd, :*, bd.lift(k), arguments(t)[2])
+                else
+                    return nothing
+                end
+            else
+                return nothing
+            end
+        end
+        (cs, r, L)
+    end
+    rad(b, e) = e == Q(1) // 2 ? mk(bd, :sqrt, b) : mk(bd, :^, b, bd.lift(e))
+    gs, Ks = Any[], Any[]
+    for (t, k) in product_factors!(Any[], f, 1)
+        rp = radical_parts(t)
+        if rp !== nothing && has_x(rp[2], xk)
+            e, V = rp
+            ms = Any[]
+            for (u, sg) in summands(V, 1, Tuple{Any,Int}[])
+                m = monomial(u)
+                m === nothing && (ms = nothing; break)
+                push!(ms, (m, sg))
+            end
+            if ms !== nothing && length(ms) >= 2 && any(m -> m[1][3] !== nothing, ms) &&
+               (j = findfirst(m -> m[1][3] === nothing, ms)) !== nothing && !iszero(ms[j][1][2])
+                r = ms[j][1][2]
+                vs = Any[]
+                for ((cs, ri, L), sg) in ms
+                    d = ri - r
+                    xe = L === nothing ? (iszero(d) ? nothing : d) : iszero(d) ? L : mk(bd, :+, L, bd.lift(d))
+                    fs = copy(cs)
+                    xe === nothing || push!(fs, xe isa Q ? (isone(denominator(xe)) ? pw(x, Int(xe)) : mk(bd, :^, x, bd.lift(xe))) :
+                                                       mk(bd, :^, x, xe))
+                    v = prod_term(fs)
+                    push!(vs, sg == 1 ? v : mk(bd, :*, bd.lift(-1), v))
+                end
+                W = rad(mk(bd, :+, vs...), e)
+                re = r * e
+                xr = isone(denominator(re)) ? pw(x, Int(re)) : mk(bd, :^, x, bd.lift(re))
+                new = mk(bd, :*, xr, W)
+                push!(gs, pw(new, k))
+                push!(Ks, pw(mk(bd, :/, t, new), k))
+                continue
+            end
+        end
+        push!(gs, pw(t, k))
+    end
+    isempty(Ks) && return nothing
+    (prod_term(gs), prod_term(Ks))
+end
+
 # t locally constant in x: a product of powers uᵢ^(eᵢ) (radicals of rational uᵢ, and factors free of x) whose
 # logarithmic derivative Σ eᵢ uᵢ′/uᵢ is 0, the quotients σ = (c V)^e/V^e, √L₁ √L₂/√(L₁ L₂) of steps RK, LL, RM: ±1 or a
 # root of unity on each interval, so a constant for ∫ (∫ σ g = σ ∫ g)
