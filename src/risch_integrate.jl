@@ -228,6 +228,11 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             r = integrate_quartic_goursat(f, x; build = build, lift = lift, verify = verify)
             r === nothing || return r
         end
+        # step QS: 1/Q with Q quadratic over the parameters, partial fractions over its roots (elementary answers only)
+        if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg) && USUB_DEPTH[] < 2
+            r = integrate_quadratic_split(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
+        end
         # step RX: a radicand Σ cᵢ x^(sᵢ) with symbolic sᵢ, a rational power of x taken out (elementary answers only:
         # K R with a RootSum R is evaluated as Re(K R), wrong for K not real)
         if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg)
@@ -265,6 +270,11 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
                 end
                 r === nothing || return r
             end
+        end
+        # (and in every occurrence: (c V)^s = κ V^s with κ a symbol, a power inside a sum)
+        if e isa RischNotImplemented && startswith(e.msg, "exp of the constant")
+            r = integrate_power_content(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
         end
         # step XA: x^(r + L) as x^r x^L
         if e isa RischNotImplemented && startswith(e.msg, "exp of a rational multiple of a logarithm")

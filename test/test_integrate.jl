@@ -4694,6 +4694,38 @@ end
                                                                  lift = identity)
 end
 
+# step XK in every occurrence: (c xⁿ)^(1/n) = κ x, also inside a sum (sample 573); step QS: 1/(a + b x + c x²) over
+# the parameters split over its roots, one integral ∫ h/(x - ρ) for a symbol ρ (sample 905)
+@testset "Steps XK (every occurrence), QS: (c xⁿ)^(1/n) in a sum; 1/Q split over its roots" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    h = big"1e-30"
+    base = (1.4, 0.8, 0.5, 0.7, 1.1, 0.9, 0.6)
+    sg = ((1, 1, 1, 1, 1, 1, 1), (-1, -1, -1, -1, -1, -1, -1), (1, -1, 1, -1, 1, -1, 1), (-1, 1, -1, 1, -1, 1, -1),
+          (1, 1, -1, 1, 1, 1, 1))
+    for g in (:((c * x ^ n) ^ (1 / n) * (a + b * (c * x ^ n) ^ (1 / n))),                         # 573
+              :((c * x ^ n) ^ (3 / n) * (a + b * (c * x ^ n) ^ (-1 / n))),
+              :(sqrt(f + g * x) / ((d + e * x) ^ (3 / 2) * (a + c * x ^ 2))),                    # 905
+              :(x / ((a + c * x ^ 2) * sqrt(d + e * x))),
+              :(sqrt(d + e * x) / (a + b * x + c * x ^ 2)),
+              :((d + e * x) ^ (1 / 3) / (a + c * x ^ 2)))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test F isa Expr
+        m = 0
+        for s in sg, n in (0.37, 1.6), x0 in (0.3, 0.9, 1.7, -0.6, -1.3)
+            v7 = s .* base
+            ev(t, y) = evb_pz(t, Dict(:x => y, :n => n, (k => v for (k, v) in zip((:a, :b, :c, :d, :e, :f, :g), v7))...))
+            v = ev(g, big(x0))
+            abs(imag(v)) > 1e-30 && continue
+            m += 1
+            @test abs((ev(F, big(x0) + h) - ev(F, big(x0) - h)) / 2h - v) <= big"1e-20" * max(1, abs(v))
+        end
+        @test m >= 15
+    end
+    # (a radical of the power itself: refused, as before)
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(sqrt((c * x ^ n) ^ (1 / n)) * (a + b * (c * x ^ n) ^ (1 / n))),
+                                                                 :x; build = build, lift = identity)
+end
+
 @testset "Step RP: partial fractions of the rational factor of a radical integrand" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     vals = Dict(:a => 2.3, :b => 0.7, :c => 1.1, :d => 0.4, :e => 1.3, :f => 0.9, :g => 0.6)
