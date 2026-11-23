@@ -58,7 +58,8 @@ end
 # ∫ f by a rewrite `rw(fe, x)` of its Expr form fe (nothing: no change), integrated through Expr and put back in the
 # user's terms: a term type may undo the rewrite (SymJ merges exp(α) exp(iβ) back into exp(α + iβ), e^(-c x) e^(c y)
 # into e^(-c (x - y))), which looped refusal and rewrite. `active` guards against the rewrite inside its own integral.
-function integrate_rewritten_expr(f, x, rw, active; build = nothing, lift = nothing, verify::Bool = true)
+function integrate_rewritten_expr(f, x, rw, active; build = nothing, lift = nothing, verify::Bool = true,
+                                  rootsums::Bool = false)
     @nospecialize f x
     active[] && return nothing
     xk = string(x)
@@ -74,7 +75,8 @@ function integrate_rewritten_expr(f, x, rw, active; build = nothing, lift = noth
     finally
         active[] = false
     end
-    F isa IntegralWithRootSums && return nothing
+    # (a RootSum answer only for an exact rewrite (`rootsums`, step XA), and in Expr, the user's terms)
+    F isa IntegralWithRootSums && return (rootsums && f isa Expr) ? F : nothing
     f isa Expr && return F
     b0 = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     function back(ex)                                   # Expr → the user's term type

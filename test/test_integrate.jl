@@ -4641,6 +4641,32 @@ end
     @test occursin("asin", string(Risch.risch_integrate(:(1 / sqrt(3 - c ^ 2 * x ^ 2)), :x; build = build, lift = identity)))
 end
 
+# step XA: x^(r + L) = x^r x^L, so that x^(-7n) and xⁿ are powers of one generator (samples 548, 549); step XK: a
+# symbolic power (e x)^s = K x^s, K = (e x)^s/x^s constant on intervals (samples 2030, 2626); step XK keeps an
+# elementary answer only (K R with a RootSum R is evaluated as Re(K R), wrong for K not real: sample 555)
+@testset "Steps XA, XK: symbolic powers of x" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    h = big"1e-30"
+    P = ((1.4, 0.8, 0.5, 0.7, 2.3), (-1.4, -0.8, -0.5, -0.7, 2.3), (1.4, -0.8, 0.5, -0.7, -2.3), (-1.4, 0.8, -0.5, 0.7, -1.7))
+    for g in (:(x ^ (-1 - 7n) * (a + b * x ^ n) ^ 8), :(x ^ (-1 - 14n) * (a + b * x ^ n) ^ 8),
+              :(x ^ (-1 - 2n) * (a + b * x ^ n)), :((e * x) ^ (-1 + n) * (a + b * csch(c + d * x ^ n))),
+              :((e * x) ^ (-1 + n) / (a + b * sec(c + d * x ^ n)) ^ 2), :((e * x) ^ (n - 1) * sinh(c + d * x ^ n)))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test F isa Expr
+        for (a, b, c, d, e) in P, n in (0.37, -1.3), x0 in (0.3, 1.7, -0.6)
+            ev(t, y) = evb_pz(t, Dict(:x => y, :a => a, :b => b, :c => c, :d => d, :e => e, :n => n))
+            v = ev(g, big(x0))
+            @test abs((ev(F, big(x0) + h) - ev(F, big(x0) - h)) / 2h - v) <= big"1e-20" * max(1, abs(v))
+        end
+    end
+    # (a RootSum beside K: refused, as before)
+    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:((c * x) ^ (-1 - (2 / 3) * n) / (a + b * x ^ n)), :x;
+                                                                 build = build, lift = identity)
+    # (without the constant factor, step XA alone, a RootSum answer)
+    @test Risch.risch_integrate(:(x ^ (-1 - (2 / 3) * n) / (a + b * x ^ n)), :x; build = build, lift = identity) isa
+          Risch.IntegralWithRootSums
+end
+
 @testset "Step RP: partial fractions of the rational factor of a radical integrand" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     vals = Dict(:a => 2.3, :b => 0.7, :c => 1.1, :d => 0.4, :e => 1.3, :f => 0.9, :g => 0.6)
