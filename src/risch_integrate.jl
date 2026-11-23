@@ -228,6 +228,29 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
                                          build = build, lift = lift, verify = verify)
             r === nothing || return r
         end
+        # step XK: a symbolic power of a base with a constant factor, (e x)^(n - 1) = K x^(n - 1)
+        if e isa RischNotImplemented && startswith(e.msg, "exp of the constant")
+            gK = split_symbolic_power_content(f, x, build, lift)
+            if gK !== nothing
+                bq = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+                r = try
+                    # (an elementary answer only: K is not real for c < 0, and K times a RootSum is evaluated as
+                    # Re(K R), which drops Im(K) R′; sample 555 at c < 0)
+                    G = risch_integrate(gK[1], x; build = build, lift = lift, verify = verify)
+                    G isa IntegralWithRootSums ? nothing : scale_answer(bq, gK[2], G)
+                catch e2
+                    (e2 isa RischNotImplemented || e2 isa NotElementary) || rethrow()
+                    nothing
+                end
+                r === nothing || return r
+            end
+        end
+        # step XA: x^(r + L) as x^r x^L
+        if e isa RischNotImplemented && startswith(e.msg, "exp of a rational multiple of a logarithm")
+            r = integrate_rewritten_expr(f, x, (fe, xs) -> split_power_rational_part(fe, xs), XA_ACTIVE;
+                                         build = build, lift = lift, verify = verify, rootsums = true)
+            r === nothing || return r
+        end
         if e isa RischNotImplemented && startswith(e.msg, "not decided with atan in the tower")
             r = distribute_sum_factor(f, x, string(x), n -> n in (:atan, :acot); build = build, lift = lift, verify = verify)
             r === nothing || return r
@@ -1461,6 +1484,96 @@ function split_exp_constants(f, x, build, lift)
     g = rw(f)
     changed ? g : nothing
 end
+
+# step XA: x^(r + L), r ≠ 0 rational and L free of x with a parameter, is x^r x^L (exactly: exp is a homomorphism).
+# x^(-1 - 7n) beside xⁿ took exp((-1 - 7n) log x) as the generator, and xⁿ = its -1/7 power times x^(-1/7), an
+# algebraic function (refused); x^(-7n) and xⁿ are powers of one generator (samples 548, 549, 555). Expr in and
+# out (step XA's caller converts), or nothing when no power is split
+function split_power_rational_part(f, x)
+    xs = x isa Symbol ? x : Symbol(string(x))
+    xk = string(xs)
+    num(e) = e isa Integer ? Rational{BigInt}(e) : e isa Rational ? Rational{BigInt}(e) :
+             (e isa Expr && e.head === :call && length(e.args) == 3 && e.args[1] in (:/, ://) &&
+              (a = num(e.args[2]); b = num(e.args[3]); a !== nothing && b !== nothing && !iszero(b))) ? a / b :
+             (e isa Expr && e.head === :call && length(e.args) == 2 && e.args[1] === :- && (a = num(e.args[2]); a !== nothing)) ? -a :
+             nothing
+    # (r, L) with e = r + L, L nothing when e is a number
+    function lin(e)
+        v = num(e)
+        v === nothing || return (v, nothing)
+        if e isa Expr && e.head === :call
+            op, as = e.args[1], e.args[2:end]
+            if op === :+
+                r, Ls = Rational{BigInt}(0), Any[]
+                for a in as
+                    (ra, La) = lin(a); r += ra; La === nothing || push!(Ls, La)
+                end
+                return (r, isempty(Ls) ? nothing : length(Ls) == 1 ? Ls[1] : Expr(:call, :+, Ls...))
+            elseif op === :- && length(as) == 2
+                (r1, L1), (r2, L2) = lin(as[1]), lin(as[2])
+                L = L2 === nothing ? L1 : L1 === nothing ? Expr(:call, :*, -1, L2) : Expr(:call, :-, L1, L2)
+                return (r1 - r2, L)
+            elseif op === :- && length(as) == 1
+                (r1, L1) = lin(as[1])
+                return (-r1, L1 === nothing ? nothing : Expr(:call, :*, -1, L1))
+            elseif op === :* && length(as) == 2 && (c = num(as[1]); c !== nothing)
+                (r1, L1) = lin(as[2])
+                return (c * r1, L1 === nothing ? nothing : Expr(:call, :*, c, L1))
+            end
+        end
+        (Rational{BigInt}(0), e)
+    end
+    changed = false
+    function rw(e)
+        e isa Expr || return e
+        args = Any[rw(a) for a in e.args]
+        if e.head === :call && args[1] === :^ && length(args) == 3 && args[2] === xs && !has_x(args[3], xk) &&
+           has_param(args[3], xk)
+            (r, L) = lin(args[3])
+            if L !== nothing && !iszero(r)
+                changed = true
+                rq = isone(denominator(r)) ? Int(numerator(r)) : Expr(:call, :/, Int(numerator(r)), Int(denominator(r)))
+                return Expr(:call, :*, Expr(:call, :^, xs, rq), Expr(:call, :^, xs, L))
+            end
+        end
+        Expr(e.head, args...)
+    end
+    g = rw(f)
+    changed ? g : nothing
+end
+
+# step XK: a factor (c V)^s of f with s free of x and not a number (a symbolic power), c the factors of its base free
+# of x: K V^s, K = (c V)^s/V^s constant on intervals of x, as step RK does for a radical; (e x)^(n - 1) was refused
+# for the constant exp((n - 1) log e) (samples 2030, 2626). Returns (g, K), or nothing
+function split_symbolic_power_content(f, x, build, lift)
+    @nospecialize f x
+    xk = string(x)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    pw(t, k) = k == 1 ? t : mk(bd, :^, t, bd.lift(k))
+    prod_term(ts) = length(ts) == 1 ? ts[1] : mk(bd, :*, ts...)
+    gs, Ks = Any[], Any[]
+    for (t, k) in product_factors!(Any[], f, 1)
+        if safe_iscall(t) && opname(operation(t)) === :^ && length(arguments(t)) == 2
+            B, s = arguments(t)
+            if !has_x(s, xk) && leaf_rational(s) === nothing && has_x(B, xk)
+                bfs = product_factors!(Any[], B, 1)
+                cs = [(u, j) for (u, j) in bfs if !has_x(u, xk)]
+                vs = [(u, j) for (u, j) in bfs if has_x(u, xk)]
+                if !isempty(cs) && !isempty(vs)
+                    V = prod_term(Any[pw(u, j) for (u, j) in vs])
+                    Vs = mk(bd, :^, V, s)
+                    push!(gs, pw(Vs, k))
+                    push!(Ks, pw(mk(bd, :/, t, Vs), k))
+                    continue
+                end
+            end
+        end
+        push!(gs, pw(t, k))
+    end
+    isempty(Ks) && return nothing
+    (prod_term(gs), prod_term(Ks))
+end
+
 
 # step SQ: ∫ f with its constant square roots opaque (independent indeterminates s₆, s₃, s₂). The answer holds for
 # generic values; at s₆ = √6, … it is checked numerically: a hidden zero (a denominator that vanishes by a relation

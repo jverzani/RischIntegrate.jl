@@ -42,9 +42,10 @@ mutable struct CallState
     sum_split::Int
     br_stage::Int                # step BR: 0 not begun, 1 first attempt (BR off), 2 the retry (BR on)
     br_seen::Bool                # step BR: the first attempt met a quartic that step BR would take
+    xa_active::Bool              # step XA: x^(r + L) split as x^r x^L
 end
 CallState() = CallState(false, false, false, false, 0, false, false, 0, 0, false, 0, false, false, false, false, false,
-                        false, 0, false, false, false, 0, false, false, false, false, false, 0, 0, 0, false)
+                        false, 0, false, false, false, 0, false, false, false, false, false, 0, 0, 0, false, false)
 
 const CALL_STATE = Base.ScopedValues.ScopedValue{Union{Nothing,CallState}}(nothing)
 const DIRECT_STATE = CallState()                         # outside any risch_integrate call
@@ -77,6 +78,7 @@ const RISCH_DEPTH = StateField{:risch_depth}()
 const LINEAR_SHIFT = StateField{:linear_shift}()
 const CI_CHECK = StateField{:ci_check}()
 const EK_ACTIVE = StateField{:ek_active}()
+const XA_ACTIVE = StateField{:xa_active}()
 const NEG_LOG_DROPPED = StateField{:neg_log_dropped}()
 const BN_SHIFTED = StateField{:bn_shifted}()
 const ATAN_SUBST = StateField{:atan_subst}()
