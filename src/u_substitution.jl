@@ -742,3 +742,105 @@ end
 integrate_quartic_goursat(f, x; build = nothing, lift = nothing, verify::Bool = true) = USUB_DEPTH[] < 2 ?
     integrate_rewritten_expr(f, x, (fe, xs) -> nothing, GU_ACTIVE; build = build, lift = lift, verify = verify,
                              answer = (fe, xs) -> goursat_quartic_expr(fe, xs; verify = verify)) : nothing
+
+# t with each symbol that is a key of `d` replaced by its value
+subst_symbols(t, d::AbstractDict) = t isa Symbol ? get(d, t, t) : t isa Expr ? Expr(t.head, (subst_symbols(a, d) for a in t.args)...) : t
+
+# step XK in every occurrence: each (c V)^s of f (s free of x and not a number, c the factors of its base free of x)
+# is κ V^s, κ a new symbol standing for the constant (c V)^s/V^s. Step XK takes such a power as a factor of f only;
+# (c xⁿ)^(1/n) (a + b (c xⁿ)^(1/n)) has one inside a sum (sample 573). An elementary answer only (κ is not real for
+# c < 0, and a RootSum with a complex coefficient is evaluated as its real part). Expr in and out; nothing when f
+# has no such power
+function power_content_expr(f, xs::Symbol; verify::Bool = true)
+    xk = string(xs)
+    κs, Ks = Dict{Any,Symbol}(), Dict{Symbol,Any}()
+    pw(t, k) = k == 1 ? t : Expr(:call, :^, t, k)
+    function rw(e)
+        e isa Expr || return e
+        args = Any[rw(a) for a in e.args]
+        if e.head === :call && args[1] === :^ && length(args) == 3
+            B, s = args[2], args[3]
+            if !has_x(s, xk) && leaf_rational(s) === nothing && has_x(B, xk)
+                bfs = product_factors!(Any[], B, 1)
+                vs = [pw(u, j) for (u, j) in bfs if has_x(u, xk)]
+                if length(vs) < length(bfs) && !isempty(vs)
+                    V = length(vs) == 1 ? vs[1] : Expr(:call, :*, vs...)
+                    Vs = Expr(:call, :^, V, s)
+                    κ = get!(() -> gensym("κ"), κs, (B, s))
+                    Ks[κ] = Expr(:call, :/, Expr(:call, :^, B, s), Vs)
+                    return Expr(:call, :*, κ, Vs)
+                end
+            end
+        end
+        Expr(e.head, args...)
+    end
+    g = rw(f)
+    isempty(Ks) && return nothing
+    G = try
+        risch_integrate(g, xs; build = expr_build, lift = identity, verify = verify)
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        nothing
+    end
+    (G === nothing || G isa IntegralWithRootSums) && return nothing
+    subst_symbols(G, Ks)
+end
+
+integrate_power_content(f, x; build = nothing, lift = nothing, verify::Bool = true) =
+    integrate_rewritten_expr(f, x, (fe, xs) -> nothing, KP_ACTIVE; build = build, lift = lift, verify = verify,
+                             answer = (fe, xs) -> power_content_expr(fe, xs; verify = verify))
+
+# step QS: f = h/Q, Q = a + b x + c x² with parameters in its coefficients, by partial fractions over its roots:
+# 1/Q = (1/(x - r₁) - 1/(x - r₂))/√(b² - 4ac). ∫ h/(x - ρ) for a new symbol ρ holds for every ρ, so one integral
+# P(ρ) gives (P(r₁) - P(r₂))/√(b² - 4ac). Over the parameters the field lacks the roots, and the rational function
+# that √(p + q x)/((d + e x)^(3/2) Q) becomes is beyond the residues of a quartic over 6 symbols (sample 905). An
+# elementary answer only, for radicals of linear radicands; Expr in and out; nothing when f is not so
+function quadratic_split_expr(f, xs::Symbol; verify::Bool = true)
+    xk = string(xs)
+    fs = product_factors!(Any[], f, 1)
+    tw(t) = try
+        build_tower(t, xk)
+    catch e
+        (e isa RischNotImplemented || e isa RischError || e isa DivideError) || rethrow()
+        (nothing, nothing)
+    end
+    iq, T, el = 0, nothing, nothing
+    for (i, (t, k)) in enumerate(fs)
+        (k == -1 && has_x(t, xk) && has_param(t, xk) && count(u -> u[1] == t, fs) == 1) || continue
+        T, el = tw(t)
+        if T !== nothing && isempty(T.levels) && isone(el.den) && degree(el.num) == 2
+            iq = i
+            break
+        end
+    end
+    iq == 0 && return nothing
+    # (radicals of linear radicands only, rational after a substitution: a quadratic √(a + c x²) keeps its RootSum
+    # route, 1/((d + e x + f x²) √(a + c x²)))
+    for (_, v) in collect_radicals(f, xk)
+        Tv, ev = tw(v)
+        (Tv !== nothing && isempty(Tv.levels) && isone(ev.den) && degree(ev.num) <= 1) || return nothing
+    end
+    b = Builder(expr_build, identity, xs, T.consts)
+    A, B, C = (cterm(b, c) for c in el.num.c)
+    b0 = iszero(el.num.c[2])
+    Δ = b0 ? :(-4 * $A * $C) : :($B ^ 2 - 4 * $A * $C)
+    TΔ, eΔ = tw(Δ)
+    (TΔ === nothing || iszero(eΔ.num)) && return nothing
+    hs = Any[k == 1 ? t : Expr(:call, :^, t, k) for (i, (t, k)) in enumerate(fs) if i != iq]
+    h = isempty(hs) ? 1 : length(hs) == 1 ? hs[1] : Expr(:call, :*, hs...)
+    ρ = gensym("ρ")
+    P = try
+        risch_integrate(:($h / ($xs - $ρ)), xs; build = expr_build, lift = identity, verify = verify)
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        nothing
+    end
+    (P === nothing || P isa IntegralWithRootSums) && return nothing
+    D = :(sqrt($Δ))
+    r1, r2 = b0 ? (:($D / (2 * $C)), :(-$D / (2 * $C))) : (:((-$B + $D) / (2 * $C)), :((-$B - $D) / (2 * $C)))
+    :(($(subst_symbols(P, Dict(ρ => r1))) - $(subst_symbols(P, Dict(ρ => r2)))) / $D)
+end
+
+integrate_quadratic_split(f, x; build = nothing, lift = nothing, verify::Bool = true) =
+    integrate_rewritten_expr(f, x, (fe, xs) -> nothing, QS_ACTIVE; build = build, lift = lift, verify = verify,
+                             answer = (fe, xs) -> quadratic_split_expr(fe, xs; verify = verify))
