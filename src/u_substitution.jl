@@ -1170,13 +1170,13 @@ function linear_var_expr(f, xs::Symbol; verify::Bool = true)
         (e isa RischNotImplemented || e isa RischError || e isa DivideError) || rethrow()
         return nothing
     end
-    lins = Dict{Any,Tuple{Any,Any}}()                  # written linear sum ↦ (α, β) in the constant field
+    linear_terms = Dict{Any,Tuple{Any,Any}}()          # written linear sum ↦ (α, β) in the constant field
     cands = Tuple{Any,Any}[]
     function scan(t)
         t isa Expr || return
         foreach(scan, t.args)
         (t.head === :call && t.args[1] === :+ && has_x(t, xk) && has_param(t, xk)) || return
-        haskey(lins, t) && return
+        haskey(linear_terms, t) && return
         el = try
             parse_tower(t, T)
         catch e
@@ -1185,7 +1185,7 @@ function linear_var_expr(f, xs::Symbol; verify::Bool = true)
         end
         (isone(el.den) && degree(el.num) == 1 && !iszero(el.num.c[1])) || return
         αβ = (el.num.c[1], el.num.c[2])
-        lins[t] = αβ
+        linear_terms[t] = αβ
         any(c -> c[1] == αβ[1] && c[2] == αβ[2], cands) || push!(cands, αβ)
     end
     scan(f)
@@ -1196,8 +1196,8 @@ function linear_var_expr(f, xs::Symbol; verify::Bool = true)
         function rw(t)
             t === xs && return :(($u - $(cterm(b, P))) / $(cterm(b, Q)))
             t isa Expr || return t
-            if haskey(lins, t)
-                α, β = lins[t]
+            if haskey(linear_terms, t)
+                α, β = linear_terms[t]
                 α2, β2 = α - β * P / Q, β / Q
                 ut = isone(β2) ? u : :($(cterm(b, β2)) * $u)
                 return iszero(α2) ? ut : :($(cterm(b, α2)) + $ut)
