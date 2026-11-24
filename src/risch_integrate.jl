@@ -630,6 +630,9 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         catch e
             e isa NotElementary && throw(NotElementary(TAN_SYMBOLIC_NE * e.msg))
             e isa RischNotImplemented || rethrow()
+            # w = p + q tan L for the power's base (step TN)
+            r2 = integrate_tan_linear_power(f, x; build = build, lift = lift, verify = verify)
+            r2 === nothing || return r2
             throw(RischNotImplemented(TAN_SYMBOLIC_MSG * " (" * e.msg * ")"))
         end
         r === nothing || return r
