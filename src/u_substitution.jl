@@ -996,3 +996,152 @@ end
 integrate_log_content(f, x; build = nothing, lift = nothing, verify::Bool = true) =
     integrate_rewritten_expr(f, x, (fe, xs) -> nothing, LK_ACTIVE; build = build, lift = lift, verify = verify,
                              answer = (fe, xs) -> log_content_expr(fe, xs; verify = verify))
+
+# step TZ: sin, cos of one argument a + b log(c xⁿ) (a, b, c, n free of x) with b n = i r, r rational. Then
+# e^(i(a + b log(c xⁿ))) = E x^(-r), E = e^(i(a + b log(c xⁿ))) x^r constant on intervals, and sin, cos are
+# (E x^(-r) ∓ x^r/E)/(2i), (…)/2: powers of x. A square root √(-q²) in b (q rational in the parameters) is σ i q with
+# σ = ±1 locally constant: both signs are integrated and the answers joined as ((1 + σ) F₊ + (1 - σ) F₋)/2 with
+# σ = √(-q²)/(i q). Over the field the opaque √(-1/(4n²)) of sin(a + √(-1/(4n²)) log(c xⁿ))² left a denominator
+# 1 + 4n² s² that vanishes identically (samples 2228, 2230, 2232). Expr in and out; nothing when f is not so
+function trig_log_imag_expr(f, xs::Symbol; verify::Bool = true)
+    xk = string(xs)
+    hx(t) = has_x(t, xk)
+    I = :(sqrt(-1))
+    args = Any[]
+    function scan(t)
+        t isa Expr || return
+        if t.head === :call && t.args[1] in (:sin, :cos) && length(t.args) == 2 && hx(t.args[2])
+            push!(args, t.args[2])
+            return
+        end
+        foreach(scan, t.args)
+    end
+    scan(f)
+    (isempty(args) && return nothing)
+    all(==(args[1]), args) || return nothing
+    arg = args[1]
+    # arg = A + B log(L), L = c x^k
+    terms = (arg isa Expr && arg.head === :call && arg.args[1] === :+) ? arg.args[2:end] : Any[arg]
+    il = findall(hx, terms)
+    length(il) == 1 || return nothing
+    bl = terms[il[1]]
+    fs = (bl isa Expr && bl.head === :call && bl.args[1] === :*) ? bl.args[2:end] : Any[bl]
+    lg = findall(t -> t isa Expr && t.head === :call && t.args[1] === :log && length(t.args) == 2, fs)
+    (length(lg) == 1 && all(i -> i == lg[1] || !hx(fs[i]), eachindex(fs))) || return nothing
+    L = fs[lg[1]].args[2]
+    B = length(fs) == 1 ? 1 : length(fs) == 2 ? fs[3 - lg[1]] : Expr(:call, :*, fs[setdiff(eachindex(fs), lg)]...)
+    # L = c x^k
+    k = nothing
+    for u in ((L isa Expr && L.head === :call && L.args[1] === :*) ? L.args[2:end] : Any[L])
+        hx(u) || continue
+        k === nothing || return nothing
+        if u === xs
+            k = 1
+        elseif u isa Expr && u.head === :call && u.args[1] === :^ && u.args[2] === xs && !hx(u.args[3])
+            k = u.args[3]
+        else
+            return nothing
+        end
+    end
+    k === nothing && return nothing
+    tw(t) = try
+        build_tower(t, xk)
+    catch e
+        (e isa RischNotImplemented || e isa RischError || e isa DivideError) || rethrow()
+        (nothing, nothing)
+    end
+    # the square roots √(-q²) in B
+    sq = Dict{Any,Any}()
+    function findsq(t)
+        t isa Expr || return
+        if t.head === :call && t.args[1] === :sqrt && length(t.args) == 2 && !hx(t) && !is_imag_unit(t)
+            T, el = tw(:(-($(t.args[2]))))
+            if T !== nothing && isempty(T.levels) && degree(el.num) == 0 && degree(el.den) == 0
+                q = csqrt(el.num.c[1] / el.den.c[1])
+                q === nothing || (sq[t] = cterm(Builder(expr_build, identity, xs, T.consts), q))
+            end
+            return
+        end
+        foreach(findsq, t.args)
+    end
+    findsq(B)
+    length(sq) <= 1 || return nothing
+    sub(t, d) = haskey(d, t) ? d[t] : t isa Expr ? Expr(t.head, Any[sub(a, d) for a in t.args]...) : t
+    function branch(σ)
+        Bσ = isempty(sq) ? B : sub(B, Dict(s => :($σ * $I * $q) for (s, q) in sq))
+        T, el = tw(:($Bσ * $k))
+        (T === nothing || !isempty(T.levels) || degree(el.num) != 0 || degree(el.den) != 0) && return nothing
+        v = el.num.c[1] / el.den.c[1]                     # b n = i r
+        r = rational_const(-(v * cimag(typeof(v))))
+        (r === nothing || iszero(r)) && return nothing
+        E = gensym("E")
+        rr = numerator(r) // denominator(r)
+        xm, xp = :($xs ^ $(-rr)), :($xs ^ $rr)
+        rep(t) = t isa Expr ? (t.head === :call && t.args[1] in (:sin, :cos) && length(t.args) == 2 && t.args[2] == arg ?
+                 (t.args[1] === :sin ? :(($E * $xm - $xp / $E) / (2 * $I)) : :(($E * $xm + $xp / $E) / 2)) :
+                 Expr(t.head, Any[rep(a) for a in t.args]...)) : t
+        G = try
+            risch_integrate(rep(f), xs; build = expr_build, lift = identity, verify = verify)
+        catch e
+            (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+            nothing
+        end
+        (G === nothing || G isa IntegralWithRootSums) && return nothing
+        subst_symbols(G, Dict(E => :(exp($I * $arg) * $xp)))
+    end
+    isempty(sq) && return branch(1)
+    Fp, Fm = branch(1), branch(-1)
+    (Fp === nothing || Fm === nothing) && return nothing
+    s, q = first(sq)
+    σ = :($s / ($I * $q))
+    :(((1 + $σ) * $Fp + (1 - $σ) * $Fm) / 2)
+end
+
+integrate_trig_log_imag(f, x; build = nothing, lift = nothing, verify::Bool = true) =
+    integrate_rewritten_expr(f, x, (fe, xs) -> nothing, TZ_ACTIVE; build = build, lift = lift, verify = verify,
+                             answer = (fe, xs) -> trig_log_imag_expr(fe, xs; verify = verify))
+
+# step SE: a parameter p (a symbol) under a square root, √p, in f is s² with s a new symbol, √p = s: then the field
+# knows s² = p, which as the opaque √p it did not (x⁶ atanh(√e x/√(d + e x²)): 1 - u² had a denominator that vanishes
+# identically, sample 2843). An identity for every p (s = √p, principal); s is put back as √p. Expr in and out;
+# nothing when f has no such root
+function param_square_expr(f, xs::Symbol; verify::Bool = true)
+    xk = string(xs)
+    ps = Symbol[]
+    function scan(t)
+        t isa Expr || return
+        if t.head === :call && ((t.args[1] === :sqrt && length(t.args) == 2) ||
+                                (t.args[1] === :^ && length(t.args) == 3 && leaf_rational(t.args[3]) == 1//2))
+            p = t.args[2]
+            if p isa Symbol && string(p) != xk
+                p in ps || push!(ps, p)
+                return
+            end
+        end
+        foreach(scan, t.args)
+    end
+    scan(f)
+    isempty(ps) && return nothing
+    ss = Dict(p => gensym(string(p)) for p in ps)
+    function rw(t)
+        t isa Symbol && haskey(ss, t) && return :($(ss[t]) ^ 2)
+        t isa Expr || return t
+        if t.head === :call && ((t.args[1] === :sqrt && length(t.args) == 2) ||
+                                (t.args[1] === :^ && length(t.args) == 3 && leaf_rational(t.args[3]) == 1//2))
+            t.args[2] isa Symbol && haskey(ss, t.args[2]) && return ss[t.args[2]]
+        end
+        Expr(t.head, Any[rw(a) for a in t.args]...)
+    end
+    G = try
+        risch_integrate(rw(f), xs; build = expr_build, lift = identity, verify = verify)
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        nothing
+    end
+    (G === nothing || G isa IntegralWithRootSums) && return nothing
+    subst_symbols(G, Dict(s => :(sqrt($p)) for (p, s) in ss))
+end
+
+integrate_param_square(f, x; build = nothing, lift = nothing, verify::Bool = true) =
+    integrate_rewritten_expr(f, x, (fe, xs) -> nothing, SE_ACTIVE; build = build, lift = lift, verify = verify,
+                             answer = (fe, xs) -> param_square_expr(fe, xs; verify = verify))

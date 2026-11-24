@@ -1219,9 +1219,8 @@ end
     build(op, args...) = Expr(:call, nameof(op), args...)
     I(f) = Risch.risch_integrate(f, :x; build = build, lift = identity)
     @test_throws Risch.RischNotImplemented I(:(x ^ 2 * (a + b * x) ^ n / (-a - b * x) ^ n))
-    @test_throws Risch.RischNotImplemented I(:(sin(a + log(c * x ^ n) * sqrt(-1 / (4 * n ^ 2))) ^ 2))
-    # the same with n = 1: a radical of a negative rational, 1/4 + √(-1/4)² = 0 in the answer's denominator
-    @test_throws Risch.RischNotImplemented I(:(sin(a + log(x) * sqrt(-1 // 4)) ^ 2))
+    # (the hidden zeros of sin(a + log(c xⁿ) √(-1/(4n²)))², sin(a + log(x) √(-1/4))² are answered by step TZ since:
+    # testset "Steps TZ, SE")
     f = :(x ^ m / (a + b * x) ^ (3 // 2))
     isdefined(Main, :_₂F₁) || Main.eval(:(const _₂F₁ = $(Risch._₂F₁)))
     hyp = Risch.HYP_ANSWERS[]
@@ -4824,4 +4823,38 @@ end
         end
         @test m >= 10
     end
+end
+
+# step TZ: sin, cos of a + b log(c xⁿ) with b n = ±i r as powers of x, √(-q²) = σ i q split over σ = ±1; step SE: a
+# parameter under a square root as s² (the field then knows (√e)² = e). Both after step HZ found a hidden zero
+# (samples 2228, 2230, 2232, 2843)
+@testset "Steps TZ, SE: hidden zeros from opaque square roots" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    h = big"1e-30"
+    for g in (:(sin(a + log(c * x ^ n) * sqrt((-1 / 4) / n ^ 2)) ^ 2),
+              :(sin(a + log(c * x ^ n) * sqrt(-1 / (4 * n ^ 2))) ^ 2),
+              :(sin(a + log(x) * sqrt(-1 / 4)) ^ 2),                      # (n = 1: a radical of a negative rational)
+              :(x ^ 2 * sin(a + log(c * x ^ n) * sqrt(-1 / n ^ 2)) ^ 3),
+              :(cos(a + log(c * x ^ n) * sqrt((-1 / 9) / n ^ 2)) ^ 3))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test F isa Expr
+        for a in (0.7, -1.2), c in (1.3, 0.4), n in (2.5, -1.5, 0.6), x0 in (0.3, 1.1, 2.7)
+            ev(t, y) = evb_pz(t, Dict(:x => y, :a => a, :c => c, :n => n))
+            v = ev(g, big(x0))
+            @test abs((ev(F, big(x0) + h) - ev(F, big(x0) - h)) / 2h - v) <= big"1e-20" * max(1, abs(v))
+        end
+    end
+    g = :(x ^ 6 * atanh((x * sqrt(e)) / sqrt(d + e * x ^ 2)))
+    F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+    @test F isa Expr
+    m = 0
+    for d in (1.3, -0.8), e in (0.7, -2.1), x0 in (0.3, -0.5, 1.4, -2.2)
+        ev(t, y) = evb_pz(t, Dict(:x => y, :d => d, :e => e))
+        d + e * x0 ^ 2 > 0 || continue
+        v = ev(g, big(x0))
+        isfinite(real(v)) || continue
+        m += 1
+        @test abs((ev(F, big(x0) + h) - ev(F, big(x0) - h)) / 2h - v) <= big"1e-20" * max(1, abs(v))
+    end
+    @test m >= 8
 end

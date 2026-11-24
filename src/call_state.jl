@@ -46,10 +46,12 @@ mutable struct CallState
     gu_active::Bool              # step GU: u = x/√R for an even quartic R
     kp_active::Bool              # step XK, every occurrence: (c V)^s = κ V^s, κ a symbol
     qs_active::Bool              # step QS: 1/Q, Q quadratic, split over its roots
+    tz_active::Bool              # step TZ: sin, cos of a + b log(c xⁿ), b n = i r, as powers of x
+    se_active::Bool              # step SE: a parameter p with √p in f as s², √p = s
     lk_active::Bool              # step LK: A + B log(c Π Vⱼ^kⱼ) = K + B Σ kⱼ log Vⱼ, K a symbol
 end
 CallState() = CallState(false, false, false, false, 0, false, false, 0, 0, false, 0, false, false, false, false, false,
-                        false, 0, false, false, false, 0, false, false, false, false, false, 0, 0, 0, false, false, false, false, false, false)
+                        false, 0, false, false, false, 0, false, false, false, false, false, 0, 0, 0, false, false, false, false, false, false, false, false)
 
 const CALL_STATE = Base.ScopedValues.ScopedValue{Union{Nothing,CallState}}(nothing)
 const DIRECT_STATE = CallState()                         # outside any risch_integrate call
@@ -86,6 +88,8 @@ const XA_ACTIVE = StateField{:xa_active}()
 const GU_ACTIVE = StateField{:gu_active}()
 const KP_ACTIVE = StateField{:kp_active}()
 const QS_ACTIVE = StateField{:qs_active}()
+const TZ_ACTIVE = StateField{:tz_active}()
+const SE_ACTIVE = StateField{:se_active}()
 const LK_ACTIVE = StateField{:lk_active}()
 const NEG_LOG_DROPPED = StateField{:neg_log_dropped}()
 const BN_SHIFTED = StateField{:bn_shifted}()
