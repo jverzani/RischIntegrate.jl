@@ -116,9 +116,15 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         finally
             OUTER_CHECK[] = false
         end
-        F isa IntegralWithRootSums || !hidden_zero(f, F, string(x)) || throw(RischNotImplemented(
+        (F isa IntegralWithRootSums || !hidden_zero(f, F, string(x))) && return F
+        # step TZ: sin, cos of a + b log(c xⁿ) with b n = i r, r rational, as powers of x (samples 2228, 2230, 2232)
+        G = integrate_trig_log_imag(f, x; build = build, lift = lift, verify = verify)
+        G === nothing || return G
+        # step SE: a parameter p under a square root √p written as s², √p = s (sample 2843)
+        G = integrate_param_square(f, x; build = build, lift = lift, verify = verify)
+        G === nothing || return G
+        throw(RischNotImplemented(
             "the answer has a denominator that vanishes identically (a relation between constants that the field does not know)"))
-        return F
     end
     check_leaves(f, string(x))                                         # step WR
     # step RQ: a radical factor (c V)^e of f whose parameter factor c has a sign that is not proven is K V^e, K =
