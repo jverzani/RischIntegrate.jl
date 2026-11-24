@@ -239,6 +239,18 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             r = integrate_quadratic_split(f, x; build = build, lift = lift, verify = verify)
             r === nothing || return r
         end
+        # step LV: u = p + q x for a written linear p + q x, on the refusal of residues over too many parameters;
+        # step QS for a quadratic radicand on that refusal too (samples 927, 930). Both in the outermost call only,
+        # outside integration by parts (in the suite, step QS on the parts of an inverse trig integrand ran for an hour)
+        rp_top = e isa RischNotImplemented && startswith(e.msg, "residues of a denominator") && RISCH_DEPTH[] == 1 && !PARTS[]
+        if rp_top
+            r = integrate_linear_var(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
+        end
+        if rp_top && USUB_DEPTH[] < 2
+            r = integrate_quadratic_split(f, x; build = build, lift = lift, verify = verify, quad_rad = true)
+            r === nothing || return r
+        end
         # step RX: a radicand Σ cᵢ x^(sᵢ) with symbolic sᵢ, a rational power of x taken out (elementary answers only:
         # K R with a RootSum R is evaluated as Re(K R), wrong for K not real)
         if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg)

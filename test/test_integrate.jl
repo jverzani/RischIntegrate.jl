@@ -4858,3 +4858,29 @@ end
     end
     @test m >= 8
 end
+
+@testset "Steps LV, QS: residues over too many parameters" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    h = big"1e-30"
+    # (u = c + d x leaves a, b, e: step LV, sample 565; Q = d + e x + f x² and d - f x² over their roots with a
+    # quadratic radicand: step QS, samples 927 and 930)
+    cases = [(:(1 / ((c * e + d * e * x) ^ 3 * (a + b * (c + d * x) ^ 3))),
+              [Dict(:a => 1.3, :b => 0.7, :c => 0.4, :d => 1.1, :e => 0.9), Dict(:a => -2.1, :b => 0.6, :c => -0.3, :d => 0.8, :e => -1.2)]),
+             (:(1 / ((a + b * x + c * x ^ 2) ^ (3 / 2) * (d + e * x + f * x ^ 2))),
+              [Dict(:a => 2.0, :b => 0.5, :c => 1.3, :d => 1.1, :e => -0.4, :f => 0.9), Dict(:a => 1.5, :b => -0.7, :c => 0.8, :d => -1.2, :e => 0.3, :f => 2.1)]),
+             (:((a + b * x + c * x ^ 2) ^ (3 / 2) / (x ^ 2 * (d - f * x ^ 2))),
+              [Dict(:a => 2.0, :b => 0.5, :c => 1.3, :d => 1.1, :f => 0.6), Dict(:a => 1.5, :b => -0.7, :c => 0.8, :d => -1.2, :f => 2.1)])]
+    for (g, ps) in cases
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test F isa Expr
+        m = 0
+        for p in ps, x0 in (0.35, -0.55, 1.45, -2.25)
+            ev(t, y) = evb_pz(t, merge(Dict{Symbol,Any}(:x => y), p))
+            v = ev(g, big(x0))
+            isfinite(real(v)) || continue
+            m += 1
+            @test abs((ev(F, big(x0) + h) - ev(F, big(x0) - h)) / 2h - v) <= big"1e-20" * max(1, abs(v))
+        end
+        @test m >= 6
+    end
+end

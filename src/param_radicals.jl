@@ -1526,7 +1526,8 @@ end
 # partial fractions of h over those factors, each times u^e integrated alone (√(a + b x + c x²)/((d + e x)(f + g x)³),
 # sample 917: over 120 s, and refused with residues over the 7 parameters for (d + e x)(f + g x); each piece 0.5 s).
 # Nothing when the shape differs or a piece is refused or has a RootSum.
-function integrate_radical_partial_fractions(f, x, rads; build = nothing, lift = nothing, verify::Bool = true)
+function integrate_radical_partial_fractions(f, x, rads; build = nothing, lift = nothing, verify::Bool = true,
+                                            any_params::Bool = false)
     @nospecialize f x
     xk = string(x)
     isempty(rads) && return nothing
@@ -1535,7 +1536,7 @@ function integrate_radical_partial_fractions(f, x, rads; build = nothing, lift =
     ps = Set{String}()
     leaves(t) = isnode(t) ? foreach(leaves, arguments(t)) : (has_param_not_i(t, xk) && push!(ps, string(t)))
     leaves(f)
-    length(ps) > MAX_ROOTSUM_GENS || return nothing
+    (any_params || length(ps) > MAX_ROOTSUM_GENS) || return nothing   # (any_params: step QS's ∫ h/(x - ρ))
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     fs = product_factors!(Any[], f, 1)
     ir = findall(((t, _),) -> (rp = radical_parts(t); rp !== nothing && string(rp[2]) == us), fs)

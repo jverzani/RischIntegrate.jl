@@ -794,8 +794,11 @@ integrate_power_content(f, x; build = nothing, lift = nothing, verify::Bool = tr
 # 1/Q = (1/(x - r₁) - 1/(x - r₂))/√(b² - 4ac). ∫ h/(x - ρ) for a new symbol ρ holds for every ρ, so one integral
 # P(ρ) gives (P(r₁) - P(r₂))/√(b² - 4ac). Over the parameters the field lacks the roots, and the rational function
 # that √(p + q x)/((d + e x)^(3/2) Q) becomes is beyond the residues of a quartic over 6 symbols (sample 905). An
-# elementary answer only, for radicals of linear radicands; Expr in and out; nothing when f is not so
-function quadratic_split_expr(f, xs::Symbol; verify::Bool = true)
+# elementary answer only, for radicals of linear radicands; Expr in and out; nothing when f is not so.
+# With `quad_rad` (on the refusal of residues over too many parameters), radicals of one quadratic radicand too:
+# 1/((a + b x + c x²)^(3/2) (d + e x + f x²)), sample 927; then ∫ h/(x - ρ) by partial fractions over the written
+# factors of h's denominator when it is refused whole ((a + b x + c x²)^(3/2)/(x² (d - f x²)), sample 930)
+function quadratic_split_expr(f, xs::Symbol; verify::Bool = true, quad_rad::Bool = false)
     xk = string(xs)
     fs = product_factors!(Any[], f, 1)
     tw(t) = try
@@ -816,9 +819,11 @@ function quadratic_split_expr(f, xs::Symbol; verify::Bool = true)
     iq == 0 && return nothing
     # (radicals of linear radicands only, rational after a substitution: a quadratic √(a + c x²) keeps its RootSum
     # route, 1/((d + e x + f x²) √(a + c x²)))
-    for (_, v) in collect_radicals(f, xk)
+    rads = collect_radicals(f, xk)
+    quad_rad && (isempty(rads) || !all(((_, v),) -> string(v) == string(rads[1][2]), rads)) && return nothing
+    for (_, v) in rads
         Tv, ev = tw(v)
-        (Tv !== nothing && isempty(Tv.levels) && isone(ev.den) && degree(ev.num) <= 1) || return nothing
+        (Tv !== nothing && isempty(Tv.levels) && isone(ev.den) && degree(ev.num) <= (quad_rad ? 2 : 1)) || return nothing
     end
     b = Builder(expr_build, identity, xs, T.consts)
     A, B, C = (cterm(b, c) for c in el.num.c)
@@ -829,11 +834,16 @@ function quadratic_split_expr(f, xs::Symbol; verify::Bool = true)
     hs = Any[k == 1 ? t : Expr(:call, :^, t, k) for (i, (t, k)) in enumerate(fs) if i != iq]
     h = isempty(hs) ? 1 : length(hs) == 1 ? hs[1] : Expr(:call, :*, hs...)
     ρ = gensym("ρ")
+    g = :($h / ($xs - $ρ))
     P = try
-        risch_integrate(:($h / ($xs - $ρ)), xs; build = expr_build, lift = identity, verify = verify)
+        risch_integrate(g, xs; build = expr_build, lift = identity, verify = verify)
     catch e
         (e isa RischNotImplemented || e isa NotElementary) || rethrow()
         nothing
+    end
+    if quad_rad && (P === nothing || P isa IntegralWithRootSums)
+        P = integrate_radical_partial_fractions(g, xs, collect_radicals(g, xk); build = expr_build, lift = identity,
+                                                verify = verify, any_params = true)
     end
     (P === nothing || P isa IntegralWithRootSums) && return nothing
     D = :(sqrt($Δ))
@@ -841,9 +851,9 @@ function quadratic_split_expr(f, xs::Symbol; verify::Bool = true)
     :(($(subst_symbols(P, Dict(ρ => r1))) - $(subst_symbols(P, Dict(ρ => r2)))) / $D)
 end
 
-integrate_quadratic_split(f, x; build = nothing, lift = nothing, verify::Bool = true) =
+integrate_quadratic_split(f, x; build = nothing, lift = nothing, verify::Bool = true, quad_rad::Bool = false) =
     integrate_rewritten_expr(f, x, (fe, xs) -> nothing, QS_ACTIVE; build = build, lift = lift, verify = verify,
-                             answer = (fe, xs) -> quadratic_split_expr(fe, xs; verify = verify))
+                             answer = (fe, xs) -> quadratic_split_expr(fe, xs; verify = verify, quad_rad = quad_rad))
 
 # step LK: A + B log(c Π Vⱼ^kⱼ), with A, B, c, kⱼ free of x and the Vⱼ not, is K + B Σ kⱼ log Vⱼ, K a new symbol
 # standing for the constant A + B log(c Π Vⱼ^kⱼ) - B Σ kⱼ log Vⱼ (a bare log with c ≠ 1 the same, A = 0, B = 1).
@@ -1145,3 +1155,68 @@ end
 integrate_param_square(f, x; build = nothing, lift = nothing, verify::Bool = true) =
     integrate_rewritten_expr(f, x, (fe, xs) -> nothing, SE_ACTIVE; build = build, lift = lift, verify = verify,
                              answer = (fe, xs) -> param_square_expr(fe, xs; verify = verify))
+
+# step LV: u = p + q x for a linear polynomial p + q x (p ≠ 0, a parameter in p or q) written in f: x = (u - p)/q,
+# dx = du/q, and u put back as p + q x. Each linear α + β x written in f becomes (α - β p/q) + (β/q) u in the field,
+# so that parameters that cancel leave the integrand: 1/((c e + d e x)³ (a + b (c + d x)³)) was refused with residues
+# of a cubic over a, b, c, d, e, while 1/(d (e u)³ (a + b u³)) is over a, b, e (sample 565). Taken on the refusal of
+# residues over too many parameters; the written linear polynomials in turn (at most three). An elementary answer
+# only. Expr in and out; nothing when no substitution answers
+function linear_var_expr(f, xs::Symbol; verify::Bool = true)
+    xk = string(xs)
+    T, _ = try
+        build_tower(f, xk)
+    catch e
+        (e isa RischNotImplemented || e isa RischError || e isa DivideError) || rethrow()
+        return nothing
+    end
+    linear_terms = Dict{Any,Tuple{Any,Any}}()          # written linear sum ↦ (α, β) in the constant field
+    cands = Tuple{Any,Any}[]
+    function scan(t)
+        t isa Expr || return
+        foreach(scan, t.args)
+        (t.head === :call && t.args[1] === :+ && has_x(t, xk) && has_param(t, xk)) || return
+        haskey(linear_terms, t) && return
+        el = try
+            parse_tower(t, T)
+        catch e
+            (e isa RischNotImplemented || e isa RischError || e isa DivideError) || rethrow()
+            return
+        end
+        (isone(el.den) && degree(el.num) == 1 && !iszero(el.num.c[1])) || return
+        αβ = (el.num.c[1], el.num.c[2])
+        linear_terms[t] = αβ
+        any(c -> c[1] == αβ[1] && c[2] == αβ[2], cands) || push!(cands, αβ)
+    end
+    scan(f)
+    isempty(cands) && return nothing
+    b = Builder(expr_build, identity, xs, T.consts)
+    for (P, Q) in cands[1:min(end, 3)]
+        u = gensym("u")
+        function rw(t)
+            t === xs && return :(($u - $(cterm(b, P))) / $(cterm(b, Q)))
+            t isa Expr || return t
+            if haskey(linear_terms, t)
+                α, β = linear_terms[t]
+                α2, β2 = α - β * P / Q, β / Q
+                ut = isone(β2) ? u : :($(cterm(b, β2)) * $u)
+                return iszero(α2) ? ut : :($(cterm(b, α2)) + $ut)
+            end
+            Expr(t.head, Any[rw(a) for a in t.args]...)
+        end
+        g = :($(rw(f)) / $(cterm(b, Q)))
+        G = try
+            risch_integrate(g, u; build = expr_build, lift = identity, verify = verify)
+        catch e
+            (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+            nothing
+        end
+        (G === nothing || G isa IntegralWithRootSums) && continue
+        return subst_symbols(G, Dict(u => :($(cterm(b, P)) + $(cterm(b, Q)) * $xs)))
+    end
+    nothing
+end
+
+integrate_linear_var(f, x; build = nothing, lift = nothing, verify::Bool = true) =
+    integrate_rewritten_expr(f, x, (fe, xs) -> nothing, LV_ACTIVE; build = build, lift = lift, verify = verify,
+                             answer = (fe, xs) -> linear_var_expr(fe, xs; verify = verify))
