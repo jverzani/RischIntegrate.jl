@@ -233,6 +233,11 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             r = integrate_log_radicals(f, x; build = build, lift = lift, verify = verify)
             r === nothing || return r
         end
+        # step NE: u = d + e x + f √(a + b x + c x²) with f² c = e² (Rubi 1.3.2)
+        if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg)
+            r = integrate_nested_euler(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
+        end
         # step GU: u = x/√R for an even quartic R (pseudo-elliptic integrands over the parameters)
         if e isa RischNotImplemented && (occursin("radical of a non-rational expression", e.msg) || startswith(e.msg, "radicals of"))
             r = integrate_quartic_goursat(f, x; build = build, lift = lift, verify = verify)

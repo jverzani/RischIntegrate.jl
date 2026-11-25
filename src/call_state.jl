@@ -51,6 +51,7 @@ mutable struct CallState
     lv_active::Bool              # step LV: u = p + q x for a linear p + q x with parameters in f
     tn_active::Bool              # step TN: w = p + q tan L for a symbolic power (p + q tan L)ᵐ
     lk_active::Bool              # step LK: A + B log(c Π Vⱼ^kⱼ) = K + B Σ kⱼ log Vⱼ, K a symbol
+    ne_active::Bool              # step NE: u = d + e x + f √R, f² c = e²
 end
 CallState() = CallState(false, false, false, false, 0, false, false, 0, 0, false, 0, false, false, false, false, false,
                         false, 0, false, false, false, 0, false, false, false, false, false, 0, 0, 0, false, false, false, false, false, false, false, false, false, false)
@@ -100,6 +101,7 @@ const BN_SHIFTED = StateField{:bn_shifted}()
 const ATAN_SUBST = StateField{:atan_subst}()
 const PARTS = StateField{:parts}()
 const AH_ACTIVE = StateField{:ah_active}()
+const NE_ACTIVE = StateField{:ne_active}()
 const IMAG_PARAM = StateField{:imag_param}()
 const ERF_DEPTH = StateField{:erf_depth}()
 const SUM_SPLIT = StateField{:sum_split}()

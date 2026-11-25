@@ -1280,3 +1280,86 @@ end
 integrate_tan_linear_power(f, x; build = nothing, lift = nothing, verify::Bool = true) =
     integrate_rewritten_expr(f, x, (fe, xs) -> nothing, TN_ACTIVE; build = build, lift = lift, verify = verify,
                              answer = (fe, xs) -> tan_linear_power_expr(fe, xs; verify = verify))
+
+# step NE: B = d + e x + f √R with R = a + b x + c x² and f² c = e² (Rubi 1.3.2), x only in B: u = B. Then f² R =
+# (u - d - e x)² gives x = ((u - d)² - a f²)/(b f² + 2e (u - d)), rational in u, and ∫ g(B) dx = ∫ g(u) x'(u) du
+# (√(d + e x + f √(a + b x + e² x²/f²)), sample 1122). An identity (u = B exactly). Taken on the refusal of a
+# radical of a non-rational expression; an elementary answer only. Expr in and out; nothing when f is not so
+function nested_euler_expr(f, xs::Symbol; verify::Bool = true)
+    xk = string(xs)
+    tw(t) = try
+        build_tower(t, xk)
+    catch e
+        (e isa RischNotImplemented || e isa RischError || e isa DivideError) || rethrow()
+        (nothing, nothing)
+    end
+    # f·√R as (f, R), f free of x
+    function froot(t)
+        rp = radical_parts(t)
+        rp !== nothing && rp[1] == 1 // 2 && return (1, rp[2])
+        (t isa Expr && t.head === :call && t.args[1] === :*) || return nothing
+        rs = [(i, radical_parts(a)) for (i, a) in enumerate(t.args) if i > 1 && radical_parts(a) !== nothing]
+        (length(rs) == 1 && rs[1][2][1] == 1 // 2) || return nothing
+        cs = Any[a for (i, a) in enumerate(t.args) if i > 1 && i != rs[1][1]]
+        any(c -> has_x(c, xk), cs) && return nothing
+        (length(cs) == 1 ? cs[1] : Expr(:call, :*, cs...), rs[1][2][2])
+    end
+    found = nothing
+    function scan(t)
+        (found === nothing && t isa Expr) || return
+        if t.head === :call && t.args[1] === :+
+            ks = [i for i in 2:length(t.args) if froot(t.args[i]) !== nothing && has_x(froot(t.args[i])[2], xk)]
+            if length(ks) == 1
+                fe, R = froot(t.args[ks[1]])
+                rest = Any[t.args[i] for i in 2:length(t.args) if i != ks[1]]
+                L = isempty(rest) ? 0 : length(rest) == 1 ? rest[1] : Expr(:call, :+, rest...)
+                found = (t, fe, R, L)
+                return
+            end
+        end
+        foreach(scan, t.args)
+    end
+    scan(f)
+    found === nothing && return nothing
+    B, fe, R, L = found
+    T, _ = tw(:($L + $fe * $R))
+    T === nothing && return nothing
+    els = Any[]
+    for t in (R, L, fe)
+        el = try
+            parse_tower(t, T)
+        catch e
+            (e isa RischNotImplemented || e isa RischError || e isa DivideError) || rethrow()
+            return nothing
+        end
+        isone(el.den) || return nothing
+        push!(els, el.num)
+    end
+    Rp, Lp, Fp = els
+    (degree(Rp) == 2 && degree(Lp) <= 1 && degree(Fp) <= 0 && !iszero(Fp)) || return nothing
+    co(p, k) = length(p.c) > k ? p.c[k+1] : zero(eltype(p.c))
+    a, b, c = co(Rp, 0), co(Rp, 1), co(Rp, 2)
+    d, e, fv = co(Lp, 0), co(Lp, 1), co(Fp, 0)
+    (!iszero(e) && iszero(fv^2 * c - e^2)) || return nothing
+    u = gensym("u")
+    rb(t) = t == B ? u : t isa Expr ? Expr(t.head, Any[rb(s) for s in t.args]...) : t
+    g0 = rb(f)
+    has_x(g0, xk) && return nothing
+    bd = Builder(expr_build, identity, xs, T.consts)
+    ct(v) = cterm(bd, v)
+    D = :($(ct(b * fv^2)) + $(ct(2 * e)) * ($u - $(ct(d))))
+    N = :(($u - $(ct(d))) ^ 2 - $(ct(a * fv^2)))
+    xp = :((2 * ($u - $(ct(d))) * $D - $(ct(2 * e)) * $N) / $D ^ 2)
+    G = try
+        risch_integrate(:($g0 * $xp), u; build = expr_build, lift = identity, verify = verify)
+    catch err
+        (err isa RischNotImplemented || err isa NotElementary) || rethrow()
+        nothing
+    end
+    (G === nothing || G isa IntegralWithRootSums) && return nothing
+    subst_symbols(G, Dict(u => B))
+end
+
+integrate_nested_euler(f, x; build = nothing, lift = nothing, verify::Bool = true) =
+    integrate_rewritten_expr(f, x, (fe, xs) -> nothing, NE_ACTIVE; build = build, lift = lift, verify = verify,
+                             answer = (fe, xs) -> nested_euler_expr(fe, xs; verify = verify))
