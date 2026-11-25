@@ -1162,7 +1162,8 @@ integrate_param_square(f, x; build = nothing, lift = nothing, verify::Bool = tru
 # of a cubic over a, b, c, d, e, while 1/(d (e u)³ (a + b u³)) is over a, b, e (sample 565). Taken on the refusal of
 # residues over too many parameters; the written linear polynomials in turn (at most three). An elementary answer
 # only. Expr in and out; nothing when no substitution answers
-function linear_var_expr(f, xs::Symbol; verify::Bool = true)
+# (`base`: that linear sum alone as the candidate, step TN)
+function linear_var_expr(f, xs::Symbol; verify::Bool = true, base = nothing)
     xk = string(xs)
     T, _ = try
         build_tower(f, xk)
@@ -1175,7 +1176,7 @@ function linear_var_expr(f, xs::Symbol; verify::Bool = true)
     function scan(t)
         t isa Expr || return
         foreach(scan, t.args)
-        (t.head === :call && t.args[1] === :+ && has_x(t, xk) && has_param(t, xk)) || return
+        (t.head === :call && t.args[1] in (:+, :-) && length(t.args) >= 3 && has_x(t, xk) && has_param(t, xk)) || return
         haskey(linear_terms, t) && return
         el = try
             parse_tower(t, T)
@@ -1189,22 +1190,27 @@ function linear_var_expr(f, xs::Symbol; verify::Bool = true)
         any(c -> c[1] == αβ[1] && c[2] == αβ[2], cands) || push!(cands, αβ)
     end
     scan(f)
+    if base !== nothing
+        haskey(linear_terms, base) || return nothing
+        cands = [linear_terms[base]]
+    end
     isempty(cands) && return nothing
     b = Builder(expr_build, identity, xs, T.consts)
+    ct(c) = cterm_complex(b, c, T.consts)               # (i in the constants: step TN)
     for (P, Q) in cands[1:min(end, 3)]
         u = gensym("u")
         function rw(t)
-            t === xs && return :(($u - $(cterm(b, P))) / $(cterm(b, Q)))
+            t === xs && return :(($u - $(ct(P))) / $(ct(Q)))
             t isa Expr || return t
             if haskey(linear_terms, t)
                 α, β = linear_terms[t]
                 α2, β2 = α - β * P / Q, β / Q
-                ut = isone(β2) ? u : :($(cterm(b, β2)) * $u)
-                return iszero(α2) ? ut : :($(cterm(b, α2)) + $ut)
+                ut = isone(β2) ? u : :($(ct(β2)) * $u)
+                return iszero(α2) ? ut : :($(ct(α2)) + $ut)
             end
             Expr(t.head, Any[rw(a) for a in t.args]...)
         end
-        g = :($(rw(f)) / $(cterm(b, Q)))
+        g = :($(rw(f)) / $(ct(Q)))
         G = try
             risch_integrate(g, u; build = expr_build, lift = identity, verify = verify)
         catch e
@@ -1212,7 +1218,7 @@ function linear_var_expr(f, xs::Symbol; verify::Bool = true)
             nothing
         end
         (G === nothing || G isa IntegralWithRootSums) && continue
-        return subst_symbols(G, Dict(u => :($(cterm(b, P)) + $(cterm(b, Q)) * $xs)))
+        return subst_symbols(G, Dict(u => :($(ct(P)) + $(ct(Q)) * $xs)))
     end
     nothing
 end
@@ -1220,3 +1226,57 @@ end
 integrate_linear_var(f, x; build = nothing, lift = nothing, verify::Bool = true) =
     integrate_rewritten_expr(f, x, (fe, xs) -> nothing, LV_ACTIVE; build = build, lift = lift, verify = verify,
                              answer = (fe, xs) -> linear_var_expr(fe, xs; verify = verify))
+
+# step TN: a symbolic power (p + q tan L)ᵐ of f, L = e + k x and x only in tan L: t = tan L (dx = dt/(k (1 + t²))),
+# then w = p + q t by step LV's rewrite, with the other linear factors and 1 + t² rational in w. Step TQ's t = tan L
+# alone made (a + i a t)ᵐ a log generator that is not real, and its answer had no real form, while for q = ±i p
+# 1 + t² = w (2p - w)/p² and ∫ is powers of w: (a + i a tan(e + f x))ᵐ (c - i c tan(e + f x))², samples 1839, 1882.
+# Taken on step TQ's refusal. An elementary answer only. Expr in and out; nothing when f is not so
+function tan_linear_power_expr(f, xs::Symbol; verify::Bool = true)
+    xk = string(xs)
+    Ls = Any[]
+    function tans(u)
+        u isa Expr || return
+        if u.head === :call && u.args[1] === :tan && length(u.args) == 2 && has_x(u.args[2], xk)
+            any(==(u.args[2]), Ls) || push!(Ls, u.args[2])
+            return
+        end
+        foreach(tans, u.args)
+    end
+    tans(f)
+    length(Ls) == 1 || return nothing
+    L = Ls[1]
+    TL, eL = try
+        build_tower(L, xk)
+    catch e
+        (e isa RischNotImplemented || e isa RischError || e isa DivideError) || rethrow()
+        return nothing
+    end
+    (isempty(TL.levels) && isone(eL.den) && degree(eL.num) == 1) || return nothing
+    k = cterm_complex(Builder(expr_build, identity, xs, TL.consts), eL.num.c[2], TL.consts)
+    t = gensym("t")
+    rt(u) = u isa Expr ? (u.head === :call && u.args[1] === :tan && length(u.args) == 2 && u.args[2] == L ? t :
+                          Expr(u.head, Any[rt(a) for a in u.args]...)) : u
+    ft = rt(f)
+    has_x(ft, xk) && return nothing
+    bases = Any[]
+    function pows(u)
+        u isa Expr || return
+        foreach(pows, u.args)
+        if u.head === :call && u.args[1] === :^ && length(u.args) == 3 && has_x(u.args[2], string(t)) &&
+           !has_x(u.args[3], string(t)) && leaf_rational(u.args[3]) === nothing
+            any(==(u.args[2]), bases) || push!(bases, u.args[2])
+        end
+    end
+    pows(ft)
+    h = :($ft / ($k * (1 + $t ^ 2)))
+    for B in bases
+        G = linear_var_expr(h, t; verify = verify, base = B)
+        G === nothing || return subst_symbols(G, Dict(t => :(tan($L))))
+    end
+    nothing
+end
+
+integrate_tan_linear_power(f, x; build = nothing, lift = nothing, verify::Bool = true) =
+    integrate_rewritten_expr(f, x, (fe, xs) -> nothing, TN_ACTIVE; build = build, lift = lift, verify = verify,
+                             answer = (fe, xs) -> tan_linear_power_expr(fe, xs; verify = verify))

@@ -4859,6 +4859,24 @@ end
     @test m >= 8
 end
 
+@testset "Step TN: w = p + q tan L for a symbolic power" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    h = big"1e-30"
+    # (samples 1839, 1882: refused in t = tan L, the log of a + i a t having no real form)
+    for g in (:((a + sqrt(-1) * a * tan(e + f * x)) ^ m * (c - sqrt(-1) * c * tan(e + f * x)) ^ 2),
+              :((a + sqrt(-1) * a * tan(e + f * x)) ^ 2 * (A + B * tan(e + f * x)) * (c - sqrt(-1) * c * tan(e + f * x)) ^ n))
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test F isa Expr
+        for p in (Dict(:a => 1.3, :c => 0.7, :e => 0.2, :f => 1.1, :m => 1.7, :n => -0.6, :A => 0.9, :B => -1.4),
+                  Dict(:a => -0.8, :c => -1.2, :e => -0.5, :f => -0.7, :m => -2.3, :n => 2.5, :A => -1.1, :B => 0.6)),
+            x0 in (0.15, -0.35, 0.55)
+            ev(t, y) = evb_pz(t, merge(Dict{Symbol,Any}(:x => y), p))
+            v = ev(g, big(x0))
+            @test abs((ev(F, big(x0) + h) - ev(F, big(x0) - h)) / 2h - v) <= big"1e-20" * max(1, abs(v))
+        end
+    end
+end
+
 @testset "Steps LV, QS: residues over too many parameters" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     h = big"1e-30"
