@@ -153,6 +153,10 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
     let g = log_of_roots(f, x, build, lift)
         g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
     end
+    # step EN: Ei(n, z) for an integer n in e^(-z), powers of z and Ei(-z)
+    let g = rewrite_ei_order(f, x, build, lift)
+        g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    end
     # step CI: an answer to an integrand with i in it, checked numerically (complex values) in the outermost call:
     # a step that writes the real part of its answer, for a real integrand only, would drop the imaginary part
     if verify && RISCH_DEPTH[] == 0 && !CI_CHECK[] && has_imag_unit(f)
@@ -227,6 +231,11 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         # radicals of log x: x = eᵘ (step LU)
         if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg)
             r = integrate_log_radicals(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
+        end
+        # step NE: u = d + e x + f √(a + b x + c x²) with f² c = e² (Rubi 1.3.2)
+        if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg)
+            r = integrate_nested_euler(f, x; build = build, lift = lift, verify = verify)
             r === nothing || return r
         end
         # step GU: u = x/√R for an even quartic R (pseudo-elliptic integrands over the parameters)
@@ -391,7 +400,11 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         r === nothing || return r
         r = try_sum_split(f, x; build = build, lift = lift, verify = verify)   # term by term (step LS)
         r === nothing || return r
-        if e isa RischNotImplemented && (occursin("symbolic constants", e.msg) || occursin("transcendental constants", e.msg))
+        # (also a radical refused beside an inverse trig function: (a + b asec(c x)) x (d + e x²)^(3/2) in y = asec(c x)
+        # gave √(d + e sec²y/c²), while each term goes by parts; samples 2429, 2439)
+        if e isa RischNotImplemented && (occursin("symbolic constants", e.msg) || occursin("transcendental constants", e.msg) ||
+                                         (occursin("radical of a non-rational expression", e.msg) &&
+                                          any(op -> has_op(f, op), (:asin, :acos, :asec, :acsc, :atan, :acot))))
             r = split_param_sum(f, x; build = build, lift = lift, verify = verify)   # a sum factor term by term (SP)
             r === nothing || return r
         end

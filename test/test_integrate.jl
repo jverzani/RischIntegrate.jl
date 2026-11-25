@@ -4877,6 +4877,39 @@ end
     end
 end
 
+@testset "Steps SP (inverse trig), EN, NE: singletons of the stratified sample" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    h = big"1e-30"
+    Ei(z) = Risch.expinti(z)
+    # (step SP on a radical refused beside asec, acsc: samples 2429, 2439; step EN: Ei(n, z) = Eₙ(z), sample 2945;
+    # step NE: u = d + e x + f √R with f² c = e², sample 1122)
+    cases = [(:(x * (d + e * x ^ 2) ^ (3 / 2) * (a + b * asec(c * x))), Dict(:a => 1.3, :b => 0.7, :c => 1.1, :d => 0.9, :e => 1.2), (1.4, 2.3)),
+             (:(x ^ 5 * (a + b * acsc(c * x)) * sqrt(d + e * x ^ 2)), Dict(:a => -0.6, :b => 1.4, :c => 0.8, :d => 1.7, :e => 0.5), (1.6, 2.9)),
+             (:(Ei(-1, a + b * x)), Dict(:a => 0.4, :b => 1.3), (0.3, 1.2)),
+             (:(x ^ 2 * Ei(-2, b * x)), Dict(:b => 0.9), (0.4, 1.7)),
+             (:(x * Ei(2, b * x)), Dict(:b => 1.3), (0.3, 1.1)),
+             (:(x ^ 2 * Ei(3, a + b * x)), Dict(:a => 0.5, :b => 0.8), (0.2, 1.5)),
+             (:(sqrt(d + e * x + f * sqrt(a + b * x + (e ^ 2 * x ^ 2) / f ^ 2))), Dict(:a => 1.1, :b => 0.6, :d => 0.9, :e => 1.3, :f => 0.7), (0.4, 1.8)),
+             (:(1 / (d + e * x + f * sqrt(a + b * x + (e ^ 2 * x ^ 2) / f ^ 2)) ^ (3 / 2)), Dict(:a => 1.1, :b => 0.6, :d => 0.9, :e => 1.3, :f => 0.7), (0.4, 1.8))]
+    # the integrands' Ei(n, z) by its integral (n = -1, -2, 2, 3 at real z > 0), Eₙ(z) = ∫₁^∞ e^(-z t)/tⁿ dt
+    En(n, z) = n <= 0 ? exp(-z) * sum(factorial(-n) / factorial(j) * z ^ (j + n - 1) for j in 0:-n) :
+               (E = -Ei(-z); for m in 1:n-1; E = (exp(-z) - z * E) / m; end; E)
+    for (g, p, xs) in cases
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test F isa Expr
+        gv = Risch.subst_symbols(g, Dict(:Ei => :En))
+        hasei = occursin("Ei", string(g))
+        for x0 in xs
+            # (complex values for the radical answers, their intermediate radicands negative; Ei at real z > 0)
+            ev(t, y) = hasei ? Core.eval(@__MODULE__, Expr(:let, Expr(:block, :(x = $y), (:($k = $(big(v))) for (k, v) in p)...,
+                                                                    :(Ei = $Ei), :(expinti = $Ei), :(En = $En)), t)) :
+                       evb_pz(t, merge(Dict{Symbol,Any}(:x => y), p))
+            v = ev(gv, big(x0))
+            @test abs((ev(F, big(x0) + h) - ev(F, big(x0) - h)) / 2h - v) <= big"1e-20" * max(1, abs(v))
+        end
+    end
+end
+
 @testset "Steps LV, QS: residues over too many parameters" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     h = big"1e-30"

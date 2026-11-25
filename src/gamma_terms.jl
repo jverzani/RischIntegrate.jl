@@ -937,3 +937,62 @@ function integrate_exp_x2_inv_x2(f, x; build = nothing, lift = nothing, verify::
     pref = mk(bd, :/, mk(bd, :sqrt, bd.lift(π)), one_(A) ? bd.lift(4) : mk(bd, :*, bd.lift(4), sA))
     mk(bd, :*, K..., pref, mk(bd, :+, t1, t2))
 end
+
+# step EN: the generalized exponential integral Ei(n, z) = Eₙ(z) = ∫₁^∞ e^(-z t)/tⁿ dt (Rubi's ExpIntegralE) for an
+# integer n, in e^(-z), powers of z and the one-argument Ei: E₋ₖ(z) = k! e^(-z) Σ_{j=0}^k z^(j-k-1)/j! (k ≥ 0, elementary),
+# E₁(z) = -Ei(-z) (on z > 0; elsewhere it differs by a constant, iπ), Eₙ₊₁(z) = (e^(-z) - z Eₙ(z))/n. Nothing when f has
+# no such Ei (Ei(-1, a + b x), sample 2945)
+function rewrite_ei_order(f, x, build, lift)
+    @nospecialize f x
+    has_ei2(t) = safe_iscall(t) && !isempty(arguments(t)) &&
+        ((opname(operation(t)) === :Ei && length(arguments(t)) == 2) || any(has_ei2, arguments(t)))
+    has_ei2(f) || return nothing
+    found = Ref(false)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    neg(t) = mk(bd, :*, bd.lift(-1), t)
+    function En(n::Int, z)
+        ez = mk(bd, :exp, neg(z))
+        if n <= 0
+            k = -n
+            ts = Any[mk(bd, :*, bd.lift(factorial(big(k)) // factorial(big(j))), mk(bd, :^, z, bd.lift(j - k - 1))) for j in 0:k]
+            return mk(bd, :*, ez, length(ts) == 1 ? ts[1] : mk(bd, :+, ts...))
+        end
+        # Eₙ(z) = (-z)ⁿ⁻¹/(n-1)! (-Ei(-z)) + e^(-z)/(n-1)! Σ_{k=0}^{n-2} (n-k-2)! (-z)ᵏ, as a sum
+        c = 1 // factorial(big(n - 1))
+        ts = Any[mk(bd, :*, bd.lift(-c * (-1)^(n - 1)), n == 1 ? mk(bd, :Ei, neg(z)) :
+                    mk(bd, :*, mk(bd, :^, z, bd.lift(n - 1)), mk(bd, :Ei, neg(z))))]
+        for k in 0:n-2
+            ck = c * factorial(big(n - k - 2)) * (-1)^k
+            push!(ts, mk(bd, :*, bd.lift(ck), k == 0 ? ez : mk(bd, :*, mk(bd, :^, z, bd.lift(k)), ez)))
+        end
+        length(ts) == 1 ? ts[1] : mk(bd, :+, ts...)
+    end
+    # a product with a sum factor that has Ei, distributed (x (e^(-z) + z Ei(-z)) is refused as a product)
+    issum(t) = safe_iscall(t) && opname(operation(t)) === :+
+    function dist(t)
+        safe_iscall(t) && !isempty(arguments(t)) || return t
+        args = Any[dist(a) for a in arguments(t)]
+        if opname(operation(t)) === :*
+            j = findfirst(a -> issum(a) && (has_op(a, :Ei) || has_op(a, :expinti)), args)
+            if j !== nothing
+                rest = Any[a for (i, a) in enumerate(args) if i != j]
+                return mk(bd, :+, (dist(mk(bd, :*, s, rest...)) for s in arguments(args[j]))...)
+            end
+        end
+        term_rebuild(bd, t, args)
+    end
+    function rw(t)
+        safe_iscall(t) && !isempty(arguments(t)) || return t
+        args = Any[rw(a) for a in arguments(t)]
+        if opname(operation(t)) === :Ei && length(args) == 2
+            n = leaf_rational(args[1])
+            if n !== nothing && isinteger(n) && abs(n) <= 20
+                found[] = true
+                return En(Int(n), args[2])
+            end
+        end
+        all(i -> args[i] === arguments(t)[i], eachindex(args)) ? t : term_rebuild(bd, t, args)
+    end
+    g = rw(f)
+    found[] ? dist(g) : nothing
+end
