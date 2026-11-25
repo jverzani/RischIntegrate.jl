@@ -391,7 +391,11 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         r === nothing || return r
         r = try_sum_split(f, x; build = build, lift = lift, verify = verify)   # term by term (step LS)
         r === nothing || return r
-        if e isa RischNotImplemented && (occursin("symbolic constants", e.msg) || occursin("transcendental constants", e.msg))
+        # (also a radical refused beside an inverse trig function: (a + b asec(c x)) x (d + e x²)^(3/2) in y = asec(c x)
+        # gave √(d + e sec²y/c²), while each term goes by parts; samples 2429, 2439)
+        if e isa RischNotImplemented && (occursin("symbolic constants", e.msg) || occursin("transcendental constants", e.msg) ||
+                                         (occursin("radical of a non-rational expression", e.msg) &&
+                                          any(op -> has_op(f, op), (:asin, :acos, :asec, :acsc, :atan, :acot))))
             r = split_param_sum(f, x; build = build, lift = lift, verify = verify)   # a sum factor term by term (SP)
             r === nothing || return r
         end
