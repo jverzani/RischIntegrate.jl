@@ -4935,3 +4935,43 @@ end
         @test m >= 6
     end
 end
+
+# step PX: residues polynomial in x over e^(η x), Li_{j+1}(θ/r) terms in complex form (Rubi's form; samples 1350–2265,
+# 2452–2651: trig and hyperbolic functions of a linear argument times a polynomial)
+@testset "Step PX: P(x)·R(e^(ηx)) by polylogarithms" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    Main.eval(:(const polylog = $(Risch.polylog)))
+    # in ComplexF64, a zero imaginary part made +0 after each operation (as evb_pz)
+    function ev(e, vals)
+        go(t) = begin
+            z = t isa Symbol ? (haskey(vals, t) ? ComplexF64(vals[t]) : Core.eval(Main, t)) : t isa Number ? t :
+                (t isa Expr && t.head === :call) ? Core.eval(Main, t.args[1])(map(go, t.args[2:end])...) : Core.eval(Main, t)
+            z isa Number || return z
+            w = ComplexF64(z)
+            iszero(imag(w)) ? complex(real(w), 0.0) : w
+        end
+        go(e)
+    end
+    h = 1e-5
+    P = (Dict(:a => 2.3, :b => 0.7, :c => 0.4, :d => 1.3, :e => 0.6, :f => 0.9),
+         Dict(:a => -1.7, :b => 0.6, :c => -0.5, :d => 0.8, :e => -0.3, :f => 1.4))
+    for g in (:(x / (a + b * sin(x))), :(x / (2 + sin(x))), :(x * tan(2x + 1)), :(x ^ 2 * sech(x)), :(x ^ 2 * sech(a + b * x)),
+              :(x ^ 2 * exp(x) / (a + b * exp(2x))), :(x / (3 + cosh(x))), :((c + d * x) ^ 2 / (a + b * tanh(e + f * x))),
+              :((e + f * x) / (a + b * cos(c + d * x)) ^ 2), :((c + d * x) ^ 2 * sec(a + b * x) ^ 2),
+              :(x / (a + b * sin(x) ^ 2)), :(x / (a + b * cos(x) ^ 2 + c * sin(x) ^ 2)),        # θ⁴ + p θ² + s
+              :(x ^ 2 * sinh(x) ^ 2 * tanh(x) / (a + b * sinh(x))),                           # two quadratics (step ST)
+              :(x ^ 2 * cosh(x) / (1 + im * sinh(x))))
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 60
+        @test occursin("polylog", string(F)) || occursin("log", string(F))
+        for vals in P, x0 in (0.3, 1.1, -0.8)
+            v = ev(g, merge(vals, Dict(:x => x0)))
+            d = (ev(F, merge(vals, Dict(:x => x0 + h))) - ev(F, merge(vals, Dict(:x => x0 - h)))) / 2h
+            @test abs(d - v) <= 1e-6 * max(1, abs(v))
+        end
+    end
+    # real forms where step CL gives them
+    @test occursin("clausen2", string(Risch.risch_integrate(:(x * tan(x)), :x; build = build, lift = identity)))
+    @test Risch.polylog(2, 0.5) ≈ π^2 / 12 - log(2)^2 / 2
+    @test Risch.polylog(3, 0.5 + 0.2im) ≈ Risch.PolyLog.li(3, 0.5 + 0.2im)
+end

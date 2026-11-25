@@ -32,6 +32,9 @@ A table of all of them is at the end.
   continuous where the integrand is, whenever the algorithm can arrange it (real forms of complex
   logarithms, `atan`s of polynomials instead of rational functions, jump corrections for
   `tan`-substitutions).
+  The exception is step PX (``\int x/(a + b \sin x)``): its polylogarithms of ``e^{i x}/r``, with roots ``r``
+  such as ``(-ia \pm \sqrt{b^2 - a^2})/b``, are left in complex form, as Rubi writes them, since a real form
+  would need cases on the signs of the parameters.
 
 Simplifying expressions in symbolic constants, such as ``\cos^2 a + \sin^2 a = 1``, is left to the
 caller's CAS.
@@ -504,6 +507,7 @@ order:
 | LP | any | ``\log^j(x)\, L(wx)/x``, ``L`` = `atan`, `log`, `li2` | polylogarithms by parts: ``\int \operatorname{atan}(x)/x = \operatorname{Ti}_2(x)`` |
 | AT | any | `atan(u)` | ``u = \tan t`` |
 | XP | `NotElementary` | ``P(x) R(e^{kx})``, ``P`` a polynomial, ``x`` nowhere else | by parts with ``Q = \int R`` elementary: ``P Q - \int P' Q`` (``\int x/(e^x - 1)`` with ``\operatorname{Li}_2``) |
+| PX | `NotElementary`, after CL and XP | ``P(x) R(e^{\eta x})``: trig and hyperbolic functions of a linear argument times a polynomial, the residues after Hermite reduction polynomials in ``x`` | each root ``r`` of the remainder's denominator gives ``\sum_j (-1)^j w^{(j)} \operatorname{Li}_{j+1}(e^{\eta x}/r)/\eta^{j+1}``, ``w = -a_r/r``; roots of quadratics and of quadratics in ``\theta^2`` written with square roots. The answer is in complex form, as Rubi writes it (``\int x/(a + b \sin x)``) |
 | LW | `RischNotImplemented` | Lambert's ``W(ax + b)``, one argument | ``x = (w e^w - b)/a``, ``dx = (1 + w) e^w/a\,dw``, integrated in ``w``, then ``e^{kw} = ((ax + b)/W)^k``: ``\int W(x) = x(W - 1 + 1/W)`` |
 | AP | any | ``A \cdot L^k`` with ``L`` an inverse function or `log` | by parts, ``\int A L^k = Q L^k - k\int Q L^{k-1} L'`` |
 | HS | `NotElementary`; for ``\sin^p \cos^r`` also a radical refused for its radicand, or not elementary after step HT | ``x^m(α + βx^n)^q``, ``\sin^p \cos^r``, symbolic exponents (for ``\sin^p \cos^r`` also fractional ones: ``\sin^{7/2} x \cos^{3/2} x``) | ``{}_2F_1`` terms; ``α^q (1 + βx^n/α)^q = (α + βx^n)^q`` is used for ``α > 0`` (a positive rational, or a product of parameters), else the ratio ``(α + βx^n)^q/(1 + βx^n/α)^q``, constant on each interval, as Rubi writes it (``α = -a/b`` after a shift) |
@@ -798,6 +802,7 @@ failures, and their comments cite the Rubi problem numbers.
 | KR | `radicals.jl` | constant radicands written with `x` |
 | LP | `polylog_parts.jl` | polylogarithms by parts |
 | XP | `polylog_parts.jl` | ``P(x) R(e^{kx})`` by parts |
+| PX | `exp_polylog.jl` | ``P(x) R(e^{\eta x})``: residues polynomial in ``x``, ``\operatorname{Li}_{j+1}(e^{\eta x}/r)`` |
 | LW | `lambertw.jl` | Lambert's ``W(ax + b)`` by ``x = (w e^w - b)/a`` |
 | MR, PW, NR | `monomial_radicals.jl` | radicals of functions of a monomial; inner linear radicals |
 | NP | `radicals.jl` | square roots of never-positive radicands |

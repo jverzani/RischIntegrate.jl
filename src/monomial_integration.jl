@@ -513,14 +513,22 @@ function integrate_el(T::Tower, i::Int, f)::ElemIntegral
         rl, rq = try
             residue_logs(T, i, R, Dsf)
         catch e
-            (e isa NotElementary && lv.kind === :log) || rethrow()
-            sp = special_log(T, i, R, Dsf)
-            if sp === nothing                               # one factor θ + b of several: split it off
-                sps = special_log_split(T, i, R, Dsf)
-                sps === nothing && rethrow()
-                sps
+            # step PX: residues polynomial in x over e^(η x): Li_{j+1}(θ/r) terms, (R/D)(0) to the θ⁰ part
+            if e isa NotElementary && lv.kind === :exp
+                px = exp_polylog(T, i, R, Dsf)
+                px === nothing && rethrow()
+                addl!(0, px[2])
+                Tuple{ctype(T),Any}[], Any[px[1]]
             else
-                Tuple{ctype(T),Any}[], Any[sp]             # li-type: c·e^p·Ei(k·log(u) + k·b) (Step 8a)
+                (e isa NotElementary && lv.kind === :log) || rethrow()
+                sp = special_log(T, i, R, Dsf)
+                if sp === nothing                           # one factor θ + b of several: split it off
+                    sps = special_log_split(T, i, R, Dsf)
+                    sps === nothing && rethrow()
+                    sps
+                else
+                    Tuple{ctype(T),Any}[], Any[sp]         # li-type: c·e^p·Ei(k·log(u) + k·b) (Step 8a)
+                end
             end
         end
         for (c, W) in rl
@@ -617,7 +625,8 @@ end
 struct ImageUndefined <: Exception end
 Base.@nospecializeinfer function check_tower_images(@nospecialize(T::Tower), L::Int, @nospecialize(res::ElemIntegral), @nospecialize(f))
     all(q -> q isa SpecialTerm || q isa BaseTerms || q isa TowerRootSum || q isa BaseRootSum || q isa TowerRealForm ||
-             q isa DilogTerm || q isa DilogPairTerm || q isa DilogQuadTerm || q isa DilogGroup || q isa DilogConjTerm,
+             q isa DilogTerm || q isa DilogPairTerm || q isa DilogQuadTerm || q isa DilogGroup || q isa DilogConjTerm ||
+             q isa ExpPolylogTerm,
         res.quads) || return nothing
     B = fbase(ctype(T))
     for k in (0, 1)
@@ -686,7 +695,7 @@ function check_tower_exact(T::Tower, L::Int, res::ElemIntegral, f)
             tot = tot + lq(T, q.c * q.e, L) * D(T, L, u) / den
         elseif q isa SpecialTerm || q isa BaseTerms || q isa TowerRootSum || q isa BaseRootSum ||
                q isa TowerRealForm || q isa DilogTerm || q isa DilogPairTerm || q isa DilogQuadTerm || q isa DilogGroup ||
-               q isa DilogConjTerm
+               q isa DilogConjTerm || q isa ExpPolylogTerm
             # stored exact derivatives (8a, T1, RT, RF)
             tot = tot + liftto(T, q.deriv, L)
         elseif q isa ExtQuadPair    # a W'/W + σ_d(a W'/W), computed over ℚ(i)(√d), read back in T
@@ -703,6 +712,9 @@ function check_tower_exact(T::Tower, L::Int, res::ElemIntegral, f)
 end
 
 function to_term(b::Builder, T::Tower, res::ElemIntegral)
+    # an answer with Li_{j+1}(θ/r) terms (step PX) is written in complex form
+    (!COMPLEX_OUT[] && any(q -> q isa ExpPolylogTerm, res.quads)) &&
+        return Base.ScopedValues.with(() -> to_term(b, T, res), COMPLEX_OUT => true)
     ts = Any[]
     iszero(res.v) || push!(ts, tower_to_term(b, T, res.v))
     for (c, w) in res.logs
@@ -740,6 +752,8 @@ function to_term(b::Builder, T::Tower, res::ElemIntegral)
             push!(ts, dilog_conj_term(b, q))
         elseif q isa DilogGroup
             push!(ts, dilog_group_term(b, q))
+        elseif q isa ExpPolylogTerm
+            push!(ts, exp_polylog_out(b, T, q))
         elseif q isa TowerRealForm
             for (c, w) in q.logs
                 l = mk(b, :log, tower_to_term(b, q.T2, w))

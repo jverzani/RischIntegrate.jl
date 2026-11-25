@@ -28,6 +28,18 @@ struct Builder
     consts::Vector{ConstGen}  # meaning of the indeterminates of the constant field (output)
 end
 Builder(build, lift, x) = Builder(build, lift, x, ConstGen[])
+"""
+    polylog(n, z)
+
+The polylogarithm Liₙ(z) = Σₖ zᵏ/kⁿ (principal branch, cut [1, ∞)); real for real z ≤ 1. RischIntegrate uses it
+in answers such as ∫ x/(a + b sin x) dx, written as Rubi writes them (step PX).
+"""
+function polylog(n::Real, z::Number)
+    v = PolyLog.li(Int(n), z)
+    (z isa Real && z <= 1) ? real(v) : v
+end
+# (a numeric check in complex values: the order n as a complex number with a zero imaginary part)
+polylog(n::Complex, z::Number) = iszero(imag(n)) ? polylog(real(n), z) : throw(DomainError(n, "polylog: non-real order"))
 const OPS = Dict{Symbol,Function}(:+ => +, :* => *, :/ => /, :^ => ^, :exp => exp,
                                   :log => log, :atan => atan, :sqrt => sqrt,
                                   :sin => sin, :cos => cos, :tan => tan, :cot => cot, :sec => sec, :csc => csc,
@@ -36,7 +48,7 @@ const OPS = Dict{Symbol,Function}(:+ => +, :* => *, :/ => /, :^ => ^, :exp => ex
                                   # SpecialFunctions (Step 8a): Ei, Si, Ci, erf, erfi
                                   :Ei => expinti, :Si => sinint, :Ci => cosint, :erf => erf, :erfi => erfi,
                                   # PolyLog (step DL): the dilogarithm Li₂
-                                  :li2 => li2)
+                                  :li2 => li2, :polylog => polylog)
 mk(b::Builder, name::Symbol, args...) = b.build(OPS[name], args...)
 # the function of a term's operation; the operation of an Expr is a Symbol: the function of OPS or
 # of Base with that name (expinti, sinh, …), else the Symbol itself
@@ -64,13 +76,23 @@ end
 cterm(b::Builder, c) = throw(RischNotImplemented(
     "output of constants of type $(typeof(c)) is not implemented"))
 
-# constants of ℚ(i) and ℚ(i)(√d) in real-form output: they must be real (Step 7)
+# constants of ℚ(i) and ℚ(i)(√d) in real-form output: they must be real (Step 7). An answer in complex form (step
+# PX: Li_{j+1}(θ/r) with non-real r, written as Rubi does) is printed with COMPLEX_OUT set: re + im·i.
+const COMPLEX_OUT = Base.ScopedValues.ScopedValue(false)
 function cterm(b::Builder, c::QI)
-    iszero(c.im) || throw(RischError("a non-real constant $c reached the real-form output"))
+    if !iszero(c.im)
+        COMPLEX_OUT[] || throw(RischError("a non-real constant $c reached the real-form output"))
+        it = isone(c.im) ? b.lift(im) : b.build(*, cterm(b, c.im), b.lift(im))
+        return iszero(c.re) ? it : b.build(+, cterm(b, c.re), it)
+    end
     cterm(b, c.re)
 end
 function cterm(b::Builder, c::QSB{d,QI}) where {d}
-    (iszero(c.a.im) && iszero(c.b.im)) || throw(RischError("a non-real constant $c reached the real-form output"))
+    if !(iszero(c.a.im) && iszero(c.b.im))
+        COMPLEX_OUT[] || throw(RischError("a non-real constant $c reached the real-form output"))
+        r = b.build(sqrt, b.lift(d))
+        return iszero(c.b) ? cterm(b, c.a) : b.build(+, cterm(b, c.a), b.build(*, cterm(b, c.b), r))
+    end
     cterm(b, QS{d}(c.a.re, c.b.re))
 end
 
