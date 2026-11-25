@@ -300,7 +300,12 @@ function run_tests(x, evalat, name)
                 @test isapprox(fd(t -> evalat(F, t), a), evalat(f, a); rtol = 1e-5)
             end
         end
-        @test_throws Risch.NotElementary Risch.risch_integrate(log(x)/(x^4 + 1), x)   # dilogarithm
+        # dilogarithms at the roots ±√(±i) of x⁴ + 1, in complex form (step LG; SymEngine: Expr terms, evaluated numerically)
+        let F = Risch.risch_integrate(log(x)/(x^4 + 1), x)
+            @test occursin("polylog", string(F))
+            F isa Risch.IntegralWithRootSums &&
+                @test isapprox(real((F(1.7 + 1e-6) - F(1.7 - 1e-6)) / 2e-6), log(1.7) / (1.7^4 + 1); rtol = 1e-5)
+        end
         # real form of quartic residues at a tower level (step RF): √d log/atan, no jumps
         for (f, r) in ((1/(x*(log(x)^4 + 1)), 1.05:0.01:8), ((log(x) + 1)/(x*(log(x)^4 + 1)), 1.05:0.01:8),
                        (1/(x*(log(x)^4 + 1)^2), 1.05:0.01:8), (1/(x*(log(x)^4 + 9)), 1.05:0.01:8),
