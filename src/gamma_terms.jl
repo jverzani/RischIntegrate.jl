@@ -944,6 +944,9 @@ end
 # no such Ei (Ei(-1, a + b x), sample 2945)
 function rewrite_ei_order(f, x, build, lift)
     @nospecialize f x
+    has_ei2(t) = safe_iscall(t) && !isempty(arguments(t)) &&
+        ((opname(operation(t)) === :Ei && length(arguments(t)) == 2) || any(has_ei2, arguments(t)))
+    has_ei2(f) || return nothing
     found = Ref(false)
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
     neg(t) = mk(bd, :*, bd.lift(-1), t)
@@ -988,7 +991,7 @@ function rewrite_ei_order(f, x, build, lift)
                 return En(Int(n), args[2])
             end
         end
-        term_rebuild(bd, t, args)
+        all(i -> args[i] === arguments(t)[i], eachindex(args)) ? t : term_rebuild(bd, t, args)
     end
     g = rw(f)
     found[] ? dist(g) : nothing
