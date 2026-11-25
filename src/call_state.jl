@@ -54,7 +54,7 @@ mutable struct CallState
     ne_active::Bool              # step NE: u = d + e x + f √R, f² c = e²
 end
 CallState() = CallState(false, false, false, false, 0, false, false, 0, 0, false, 0, false, false, false, false, false,
-                        false, 0, false, false, false, 0, false, false, false, false, false, 0, 0, 0, false, false, false, false, false, false, false, false, false, false)
+                        false, 0, false, false, false, 0, false, false, false, false, false, 0, 0, 0, false, false, false, false, false, false, false, false, false, false, false)
 
 const CALL_STATE = Base.ScopedValues.ScopedValue{Union{Nothing,CallState}}(nothing)
 const DIRECT_STATE = CallState()                         # outside any risch_integrate call
