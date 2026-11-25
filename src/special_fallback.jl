@@ -47,7 +47,9 @@ function term_to_expr(t)
         isempty(args) || return Expr(:call, opname(operation(t)), (term_to_expr(a) for a in args)...)
     end
     r = leaf_rational(t)
-    r !== nothing && return isone(denominator(r)) ? numerator(r) : r
+    # (Int, Rational{Int} when they fit: a BigInt 1 made x + 1 a BigFloat at a Float64 x, and erf has no Complex{BigFloat}
+    # method, so (a + b asinh(c x))^(3/2) by step NE could not be checked numerically; sample 2703)
+    r !== nothing && return num(Q(r))
     is_e_const(t) && return :ℯ
     Symbol(string(t))
 end
