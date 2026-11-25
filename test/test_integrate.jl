@@ -4992,3 +4992,38 @@ end
     @test Risch.polylog(2, 0.5) ≈ π^2 / 12 - log(2)^2 / 2
     @test Risch.polylog(3, 0.5 + 0.2im) ≈ Risch.PolyLog.li(3, 0.5 + 0.2im)
 end
+
+# step LG: Σ sₖ(x) logᵏ(α x + β) with poles other than v = 0: Li_{l+2}(v/K) in complex form (samples 1193–1288)
+@testset "Step LG: powers of a logarithm by polylogarithms" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    # in ComplexF64, a zero imaginary part made +0 after each operation (log(1 - z), Li_n(z) on one side of the cut)
+    function ev(e, vals)
+        go(t) = begin
+            z = t isa Symbol ? (haskey(vals, t) ? ComplexF64(vals[t]) : Core.eval(Main, t)) : t isa Number ? t :
+                (t isa Expr && t.head === :call) ? (t.args[1] === :polylog ? Risch.polylog : Core.eval(Main, t.args[1]))(map(go, t.args[2:end])...) :
+                Core.eval(Main, t)
+            z isa Number || return z
+            w = ComplexF64(z)
+            iszero(imag(w)) ? complex(real(w), 0.0) : w
+        end
+        go(e)
+    end
+    h = 1e-6
+    P = (Dict(:a => 2.3, :b => 0.7, :c => 0.4, :d => 1.3, :e => 0.6, :n => 2.0),
+         Dict(:a => -1.7, :b => 0.6, :c => 1.5, :d => -0.8, :e => 0.9, :n => 3.0))
+    for g in (:(log(x) ^ 2 / (d + e * x)), :((a + b * log(c * x)) ^ 2 / (d + e * x)), :(log(x) ^ 2 * x / (d + e * x) ^ 2),
+              :(log(2x + 3) ^ 2 / (x ^ 2 + x + 1)), :(log(x + 1) ^ 2 / x), :(x ^ 3 * (a + b * log(c * x ^ n)) ^ 2 / (d + e * x) ^ 2),
+              :(log(c * (a + b * x) ^ n) / (d + e * x ^ 2)))
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 60
+        @test occursin("polylog", string(F))
+        for vals in P, x0 in (0.3, 1.1, 2.4)
+            v = ev(g, merge(vals, Dict(:x => x0)))
+            (isfinite(v) && abs(imag(v)) < 1e-12) || continue
+            d = (ev(F, merge(vals, Dict(:x => x0 + h))) - ev(F, merge(vals, Dict(:x => x0 - h)))) / 2h
+            @test abs(d - v) <= 1e-5 * max(1, abs(v))
+        end
+    end
+    # real forms where another step gives them
+    @test occursin("repolylog", string(Risch.risch_integrate(:(log(x) ^ 2 / (x + 1)), :x; build = build, lift = identity)))
+end

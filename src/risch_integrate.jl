@@ -365,6 +365,12 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
         end
         g === nothing || return g
+        # Σ sₖ(x) logᵏ(α x + β) whose logarithmic part needs other logarithms: Li_{l+2}(v/K) in complex form, after
+        # every route to a real form (step LG)
+        if e isa NotElementary
+            g = try_log_powers(f, x; build = build, lift = lift, verify = verify)
+            g === nothing || return g
+        end
         if e isa NotElementary && HYP_ANSWERS[]           # xᵐ(α + βxⁿ)^q, sinᵖ cosʳ, symbolic exponents: ₂F₁ (step HS)
             g = try
                 g1 = try_binomial_symbolic(f, x; build = build, lift = lift, verify = verify)
