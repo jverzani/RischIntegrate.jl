@@ -153,6 +153,10 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
     let g = log_of_roots(f, x, build, lift)
         g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
     end
+    # step EN: Ei(n, z) for an integer n in e^(-z), powers of z and Ei(-z)
+    let g = rewrite_ei_order(f, x, build, lift)
+        g === nothing || return risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    end
     # step CI: an answer to an integrand with i in it, checked numerically (complex values) in the outermost call:
     # a step that writes the real part of its answer, for a real integrand only, would drop the imaginary part
     if verify && RISCH_DEPTH[] == 0 && !CI_CHECK[] && has_imag_unit(f)
