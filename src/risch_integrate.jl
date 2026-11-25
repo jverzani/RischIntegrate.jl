@@ -368,7 +368,13 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         # Σ sₖ(x) logᵏ(α x + β) whose logarithmic part needs other logarithms: Li_{l+2}(v/K) in complex form, after
         # every route to a real form (step LG)
         if e isa NotElementary
-            g = try_log_powers(f, x; build = build, lift = lift, verify = verify)
+            g = try
+                try_log_powers(f, x; build = build, lift = lift, verify = verify)
+            catch e2
+                # (a term type without polylog: through Expr, the polylog terms evaluated numerically)
+                (e2 isa MethodError && any(fn -> e2.f === fn, SPECIAL_FNS) && !(f isa Expr)) || rethrow()
+                integrate_special_fallback(f, x; build = build, lift = lift, verify = verify)
+            end
             g === nothing || return g
         end
         if e isa NotElementary && HYP_ANSWERS[]           # xᵐ(α + βxⁿ)^q, sinᵖ cosʳ, symbolic exponents: ₂F₁ (step HS)

@@ -970,11 +970,16 @@ function run_tests(x, evalat, name)
         @test_throws Risch.NotElementary Risch.risch_integrate(x^x, x)
         # tower is [exp(x), log(x)]: top monomial log, normal denominator, non-constant residue
         @test_throws Risch.NotElementary Risch.risch_integrate(exp(x) / (x + log(x)), x)
-        # limited integration (step 9d): ∫ lc needs atan / irrational-residue logs, not c·log x
-        @test_throws Risch.NotElementary Risch.risch_integrate(log(x) / (x^2 + 2), x)
+        # limited integration (step 9d): ∫ lc needs atan / irrational-residue logs, not c·log x; Li₂, Li₃ of x/(±i√2),
+        # x/(±√2) in complex form (step LG; SymEngine has no polylog: Expr terms, evaluated numerically)
+        for (g, dg) in ((log(x) / (x^2 + 2), t -> log(t) / (t^2 + 2)), (log(x)^2 / (x^2 - 2), t -> log(t)^2 / (t^2 - 2)))
+            F = Risch.risch_integrate(g, x)
+            @test occursin("polylog", string(F))
+            name == "SymEngine" && @test F isa Risch.IntegralWithRootSums &&
+                                         isapprox(real((F(2.9 + 1e-6) - F(2.9 - 1e-6)) / 2e-6), dg(2.9); rtol = 1e-5)
+        end
         # (poles ±i ∈ ℚ(i): a polylogarithm, as li2 above (step DL))
         @test occursin("impolylog", string(Risch.risch_integrate(log(x) / (x^2 + 1), x)))
-        @test_throws Risch.NotElementary Risch.risch_integrate(log(x)^2 / (x^2 - 2), x)
     end
 
     @testset "$name: quadratic residues inside towers (Stage 5b)" begin
@@ -1403,9 +1408,11 @@ function dl_tests(x, name)
             end
         end
         @test string(Risch.risch_integrate(log(1 + x) / x, x)) in ("-1 * li2(-1 * x)", "-li2(-x)")
-        # poles ±i ∈ ℚ(i): Re, Im Li₂ (step DL pairs); irrational poles: still decided non-elementary
+        # poles ±i ∈ ℚ(i): Re, Im Li₂ (step DL pairs); irrational poles ±i√2: Li₂ in complex form (step LG, Expr terms)
         @test occursin("impolylog", string(Risch.risch_integrate(log(1 + x) / (1 + x^2), x)))
-        @test_throws Risch.NotElementary Risch.risch_integrate(log(1 + x) / (2 + x^2), x)
+        F = Risch.risch_integrate(log(1 + x) / (2 + x^2), x)
+        @test F isa Risch.IntegralWithRootSums && occursin("polylog", string(F)) &&
+              isapprox(real((F(1.3 + 1e-6) - F(1.3 - 1e-6)) / 2e-6), log(2.3) / (2 + 1.3^2); rtol = 1e-5)
     end
 end
 dl_tests(sym_x, "SymEngine")
