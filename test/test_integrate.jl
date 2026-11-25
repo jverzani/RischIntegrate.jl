@@ -2936,7 +2936,7 @@ end
     end
 end
 
-# SymPy #30167, step XP: P(x) R(eˣ) by parts with Q = ∫ R, then ∫ P′ Q (log(1 + c eᵏˣ): Li₂). x²/(eˣ - 1) needs Li₃
+# SymPy #30167, step XP: P(x) R(eˣ) by parts with Q = ∫ R, then ∫ P′ Q (log(1 + c eᵏˣ): Li₂). x²/(eˣ - 1) needs Li₃ (step PX)
 @testset "polynomial times a rational function of exp (step XP)" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     ev(e, x0) = Core.eval(Main, Expr(:let, Expr(:block, :(x = $(complex(x0))), :(li2 = z -> $(PolyLog.li2)(complex(z)))), e))
@@ -2947,7 +2947,24 @@ end
             @test isapprox(real((ev(F, x0 + 1e-6) - ev(F, x0 - 1e-6)) / 2e-6), real(ev(f, x0)); rtol = 1e-5)
         end
     end
-    @test_throws Risch.NotElementary Risch.risch_integrate(:(x ^ 2 / (exp(x) - 1)), :x; build = build, lift = identity)
+    # x²/(eˣ - 1): Li₂, Li₃ by step PX (complex form, as Rubi writes it: x²log(1 - eˣ) + 2x Li₂(eˣ) - 2Li₃(eˣ) - x³/3).
+    # For x > 0, eˣ is on the cut of log(1 - z) and Li_n(z): evaluated with every zero imaginary part +0 (as the
+    # mixed-sign checker does), log and Li_n take the same side (in plain complex arithmetic 1 - eˣ has -0im)
+    F = Risch.risch_integrate(:(x ^ 2 / (exp(x) - 1)), :x; build = build, lift = identity)
+    @test occursin("polylog(3,", string(F))
+    function ev3(e, x0)
+        go(t) = begin
+            z = t === :x ? complex(x0) : t isa Number ? t :
+                (t isa Expr && t.head === :call) ? (t.args[1] === :polylog ? Risch.polylog : Core.eval(Main, t.args[1]))(map(go, t.args[2:end])...) :
+                Core.eval(Main, t)
+            w = ComplexF64(z)
+            iszero(imag(w)) ? complex(real(w), 0.0) : w
+        end
+        go(e)
+    end
+    for x0 in (0.4, 1.3, 2.2)
+        @test isapprox((ev3(F, x0 + 1e-6) - ev3(F, x0 - 1e-6)) / 2e-6, x0 ^ 2 / (exp(x0) - 1); rtol = 1e-5)
+    end
 end
 
 # SymPy #30756: a power with base 0 is refused with log 0 undefined, not "the negative constant 0"

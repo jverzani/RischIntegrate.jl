@@ -179,8 +179,9 @@ end
 # that gives an answer
 function try_exp_polylog(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
-    # (not inside step AT's u = tan t: there step AP's real answer by parts follows, ∫ atan(x)/(x + c) with Li₂)
-    (PX_ACTIVE[] || ATAN_SUBST[]) && return nothing
+    # (not inside step AT's u = tan t, nor inside integration by parts (steps AP, XP): there the real answers with Li₂
+    # follow, ∫ atan(x)/(x + c), ∫ x/(eˣ - 1))
+    (PX_ACTIVE[] || ATAN_SUBST[] || PARTS[] || XPARTS[] != 0) && return nothing
     xk = string(x)
     T, el = try
         build_tower(f, xk)
