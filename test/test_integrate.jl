@@ -3025,14 +3025,31 @@ end
 end
 
 # SymPy #26509: x² atan(c + (1 + ic) tan(bx + a)) ran for minutes in the substitutions (steps US and TS2, over
-# ℚ(i)(a, b, c, cos a, sin a)), each refused: atan of a non-real argument has no real form. Now refused after step AP alone
-# (in a few seconds: step SL takes y = bx + a inside atan). Step CL writes real parts: not for x/(1 + (2 + (1 + 2i) tan x)²)
+# ℚ(i)(a, b, c, cos a, sin a)), each refused: atan of a non-real argument has no real form. Then refused after step AP alone
+# (in a few seconds: step SL takes y = bx + a inside atan); now answered by step AP in complex form (step PX). Step CL writes real parts: not for x/(1 + (2 + (1 + 2i) tan x)²)
 @testset "atan of a complex function of tan (SymPy #26509)" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
-    t = @elapsed @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(x ^ 2 * atan(c + (1 + im * c) * tan(b * x + a))), :x;
-                                                                             build = build, lift = identity)
-    @test t < 120
-    @test_throws Risch.RischNotImplemented Risch.risch_integrate(:(x * atan(2 + (1 + 2im) * tan(x))), :x; build = build, lift = identity)
+    # (now by parts, step AP, with step PX's polylogarithms in complex form; F′ = f with zero imaginary parts as +0)
+    function evc(e, vals)
+        go(t) = begin
+            z = t isa Symbol ? (haskey(vals, t) ? ComplexF64(vals[t]) : Core.eval(Main, t)) : t isa Number ? t :
+                (t isa Expr && t.head === :call) ? (t.args[1] === :polylog ? Risch.polylog : Core.eval(Main, t.args[1]))(map(go, t.args[2:end])...) :
+                Core.eval(Main, t)
+            w = ComplexF64(z)
+            iszero(imag(w)) ? complex(real(w), 0.0) : w
+        end
+        go(e)
+    end
+    for g in (:(x ^ 2 * atan(c + (1 + im * c) * tan(b * x + a))), :(x * atan(2 + (1 + 2im) * tan(x))))
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 120
+        vals = Dict(:a => 0.4, :b => 1.3, :c => 0.7)
+        for x0 in (0.3, 1.1, -0.4)
+            d = (evc(F, merge(vals, Dict(:x => x0 + 1e-6))) - evc(F, merge(vals, Dict(:x => x0 - 1e-6)))) / 2e-6
+            v = evc(g, merge(vals, Dict(:x => x0)))
+            @test abs(d - v) <= 1e-6 * max(1, abs(v))
+        end
+    end
     @test Risch.try_x_trig(:(x * sec(x) ^ 2 / (1 + (2 + (1 + 2im) * tan(x)) ^ 2)), :x; build = build, lift = identity) === nothing
     # a real one is unchanged: ∫ atan(2 tan x) (Rubi 206, by parts)
     F = Risch.risch_integrate(:(atan(2 * tan(x))), :x; build = build, lift = identity)
@@ -4125,10 +4142,26 @@ end
             end
         end
     end
-    # log of a root: ½ log u first (the Clausen integrand refused in seconds, not minutes)
+    # log of a root: ½ log u first (the Clausen integrand in seconds, not minutes; by parts, step AP, with step PX's Li₂
+    # in complex form, the constant e^i printed as such)
     t0 = time()
-    @test_throws Risch.NotElementary Risch.risch_integrate(:(log(sqrt((cos(1) - cos(x)) ^ 2 + (sin(1) - sin(x)) ^ 2))), :x;
-                                                     build = build, lift = identity)
+    let g = :(log(sqrt((cos(1) - cos(x)) ^ 2 + (sin(1) - sin(x)) ^ 2))),
+        F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test occursin("polylog", string(F))
+        function evq(e, x0)                         # (zero imaginary parts as +0)
+            go(t) = begin
+                z = t === :x ? complex(x0) : t isa Number ? t :
+                    (t isa Expr && t.head === :call) ? (t.args[1] === :polylog ? Risch.polylog : Core.eval(Main, t.args[1]))(map(go, t.args[2:end])...) :
+                    Core.eval(Main, t)
+                w = ComplexF64(z)
+                iszero(imag(w)) ? complex(real(w), 0.0) : w
+            end
+            go(e)
+        end
+        for x0 in (0.3, 2.1, -0.6)
+            @test isapprox(real((evq(F, x0 + 1e-6) - evq(F, x0 - 1e-6)) / 2e-6), real(evq(g, x0)); rtol = 1e-5)
+        end
+    end
     @test time() - t0 < 60
     @test occursin("clausen2", string(Risch.risch_integrate(:(log(sqrt(1 - cos(x)))), :x; build = build, lift = identity)))
     # Ei by parts

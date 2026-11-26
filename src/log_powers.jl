@@ -14,7 +14,7 @@ const MAX_LG_POWER = 6
 
 function try_log_powers(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
-    (PX_ACTIVE[] || ATAN_SUBST[] || PARTS[] || XPARTS[] != 0) && return nothing
+    (PX_ACTIVE[] || ATAN_SUBST[] || XPARTS[] != 0) && return nothing
     xk = string(x)
     T, el = try
         build_tower(f, xk)
