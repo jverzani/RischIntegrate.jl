@@ -5067,3 +5067,33 @@ end
     # real forms where another step gives them
     @test occursin("repolylog", string(Risch.risch_integrate(:(log(x) ^ 2 / (x + 1)), :x; build = build, lift = identity)))
 end
+
+# step HT: atanh(u), acoth(u) by u = tanh t, coth t, then step PX (samples 2752–2783, 2859)
+@testset "Step HT: powers of atanh, acoth by u = tanh t" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    function ev(e, vals)                                # (zero imaginary parts as +0)
+        go(t) = begin
+            z = t isa Symbol ? (haskey(vals, t) ? ComplexF64(vals[t]) : Core.eval(Main, t)) : t isa Number ? t :
+                (t isa Expr && t.head === :call) ? (t.args[1] === :polylog ? Risch.polylog : Core.eval(Main, t.args[1]))(map(go, t.args[2:end])...) :
+                Core.eval(Main, t)
+            z isa Number || return z
+            w = ComplexF64(z)
+            iszero(imag(w)) ? complex(real(w), 0.0) : w
+        end
+        go(e)
+    end
+    h = 1e-6
+    P = (Dict(:a => 0.8, :b => 0.7, :c => 0.6, :d => 1.3, :e => 0.6),)
+    for g in (:((d + e * x) ^ 2 * (a + b * atanh(c * x)) ^ 3), :(atanh(c * x) ^ 2 / (x * (1 - c ^ 2 * x ^ 2))),
+              :(x ^ 3 * atanh(a + b * x) ^ 2), :(x ^ 4 * acoth(c * x) ^ 3))
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 60
+        g == :(x ^ 3 * atanh(a + b * x) ^ 2) || @test occursin("polylog", string(F))   # (its answer has no Li_n)
+        for vals in P, x0 in (0.3, 0.55, -0.4, 2.1)
+            v = ev(g, merge(vals, Dict(:x => x0)))
+            (isfinite(v) && abs(imag(v)) < 1e-12) || continue
+            d = (ev(F, merge(vals, Dict(:x => x0 + h))) - ev(F, merge(vals, Dict(:x => x0 - h)))) / 2h
+            @test abs(d - v) <= 1e-5 * max(1, abs(v))
+        end
+    end
+end

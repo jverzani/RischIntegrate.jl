@@ -53,9 +53,10 @@ mutable struct CallState
     lk_active::Bool              # step LK: A + B log(c Π Vⱼ^kⱼ) = K + B Σ kⱼ log Vⱼ, K a symbol
     ne_active::Bool              # step NE: u = d + e x + f √R, f² c = e²
     px_active::Bool              # step PX: residues polynomial in x over e^(η x): Li_{j+1}(θ/r) terms
+    atanh_subst::Bool            # step HT: atanh(u), acoth(u) by u = tanh t, coth t
 end
 CallState() = CallState(false, false, false, false, 0, false, false, 0, 0, false, 0, false, false, false, false, false,
-                        false, 0, false, false, false, 0, false, false, false, false, false, 0, 0, 0, false, false, false, false, false, false, false, false, false, false, false, false)
+                        false, 0, false, false, false, 0, false, false, false, false, false, 0, 0, 0, false, false, false, false, false, false, false, false, false, false, false, false, false)
 
 const CALL_STATE = Base.ScopedValues.ScopedValue{Union{Nothing,CallState}}(nothing)
 const DIRECT_STATE = CallState()                         # outside any risch_integrate call
@@ -101,6 +102,7 @@ const PX_ACTIVE = StateField{:px_active}()
 const NEG_LOG_DROPPED = StateField{:neg_log_dropped}()
 const BN_SHIFTED = StateField{:bn_shifted}()
 const ATAN_SUBST = StateField{:atan_subst}()
+const ATANH_SUBST = StateField{:atanh_subst}()
 const PARTS = StateField{:parts}()
 const AH_ACTIVE = StateField{:ah_active}()
 const NE_ACTIVE = StateField{:ne_active}()
