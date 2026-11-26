@@ -5097,3 +5097,34 @@ end
         end
     end
 end
+
+# step LG through w = (a + b x)/(c + d x), the argument of the logarithm; Uⁿ/Vⁿ there as (U/V)ⁿ (samples 1216–1235)
+@testset "Step LG: logarithms of a Möbius map" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    function ev(e, vals)                                # (zero imaginary parts as +0)
+        go(t) = begin
+            z = t isa Symbol ? (haskey(vals, t) ? ComplexF64(vals[t]) : Core.eval(Main, t)) : t isa Number ? t :
+                (t isa Expr && t.head === :call) ? (t.args[1] === :polylog ? Risch.polylog : Core.eval(Main, t.args[1]))(map(go, t.args[2:end])...) :
+                Core.eval(Main, t)
+            z isa Number || return z
+            w = ComplexF64(z)
+            iszero(imag(w)) ? complex(real(w), 0.0) : w
+        end
+        go(e)
+    end
+    h = 1e-6
+    vals0 = Dict(:a => 1.3, :b => 0.7, :c => 2.1, :d => 0.4, :e => 1.6, :n => 1.5, :A => 0.8, :B => 0.6,
+                 :f => 0.9, :g => 1.2, :h => 0.5, :i => 0.7)
+    for g in (:((A + B * log(e * ((a + b * x) / (c + d * x)) ^ n)) ^ 2 / (f + g * x) ^ 4),
+              :((A + B * log((e * (a + b * x) ^ n) / (c + d * x) ^ n)) ^ 2 / (g + h * x)))
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 60
+        for x0 in (0.3, 1.1, 2.4)
+            vals = merge(vals0, Dict(:x => x0))
+            v = ev(g, vals)
+            (isfinite(v) && abs(imag(v)) < 1e-12) || continue
+            d = (ev(F, merge(vals0, Dict(:x => x0 + h))) - ev(F, merge(vals0, Dict(:x => x0 - h)))) / 2h
+            @test abs(d - v) <= 1e-5 * max(1, abs(v))
+        end
+    end
+end
