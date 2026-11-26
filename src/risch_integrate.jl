@@ -347,6 +347,8 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             g1 === nothing && (g1 = try_log_polylog(f, x; build = build, lift = lift, verify = verify))
             # P(x) R(e^(kx)) by parts, Q = ∫ R (step XP: x/(eˣ - 1) with Li₂)
             (g1 === nothing && e isa NotElementary) && (g1 = try_poly_exp_parts(f, x; build = build, lift = lift, verify = verify))
+            # P(x) R(e^(η x)) with residues polynomial in x: Li_{j+1}(θ/r) in complex form (step PX: ∫ x/(a + b sin x))
+            (g1 === nothing && e isa NotElementary) && (g1 = try_exp_polylog(f, x; build = build, lift = lift, verify = verify))
             # an exp of log x: x = eᵘ (step LU, exp(-log²x) a Gaussian in u)
             (g1 === nothing && e isa NotElementary) && (g1 = integrate_log_radicals(f, x; build = build, lift = lift, verify = verify, inexp = true))
             # exponentials of polynomials in 1/x: u = 1/x (step UR, e^(1/x²) with erfi)
@@ -1023,6 +1025,7 @@ function integrate_built(T::Tower, el, bd::Builder, verify::Bool; pos = nothing)
         res = integrate_el(T, L, el)
         verify && !check_tower(T, L, res, el) &&
             throw(RischError("internal check failed: derivative of the result differs from the integrand"))
+        any(q -> q isa ExpPolylogTerm, res.quads) && return to_term(bd, T, res)   # step PX: complex form
         isrsc(q) = q isa TowerRootSum || q isa BaseRootSum
         any(isrsc, res.quads) || return to_term_real(bd, T, L, res, el; pos = pos)
         # step RC: RootSums over ℚ(i) stay complex (F(a) takes the real part); the elementary part

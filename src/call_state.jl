@@ -52,9 +52,10 @@ mutable struct CallState
     tn_active::Bool              # step TN: w = p + q tan L for a symbolic power (p + q tan L)ᵐ
     lk_active::Bool              # step LK: A + B log(c Π Vⱼ^kⱼ) = K + B Σ kⱼ log Vⱼ, K a symbol
     ne_active::Bool              # step NE: u = d + e x + f √R, f² c = e²
+    px_active::Bool              # step PX: residues polynomial in x over e^(η x): Li_{j+1}(θ/r) terms
 end
 CallState() = CallState(false, false, false, false, 0, false, false, 0, 0, false, 0, false, false, false, false, false,
-                        false, 0, false, false, false, 0, false, false, false, false, false, 0, 0, 0, false, false, false, false, false, false, false, false, false, false, false)
+                        false, 0, false, false, false, 0, false, false, false, false, false, 0, 0, 0, false, false, false, false, false, false, false, false, false, false, false, false)
 
 const CALL_STATE = Base.ScopedValues.ScopedValue{Union{Nothing,CallState}}(nothing)
 const DIRECT_STATE = CallState()                         # outside any risch_integrate call
@@ -96,6 +97,7 @@ const SE_ACTIVE = StateField{:se_active}()
 const LV_ACTIVE = StateField{:lv_active}()
 const TN_ACTIVE = StateField{:tn_active}()
 const LK_ACTIVE = StateField{:lk_active}()
+const PX_ACTIVE = StateField{:px_active}()
 const NEG_LOG_DROPPED = StateField{:neg_log_dropped}()
 const BN_SHIFTED = StateField{:bn_shifted}()
 const ATAN_SUBST = StateField{:atan_subst}()
