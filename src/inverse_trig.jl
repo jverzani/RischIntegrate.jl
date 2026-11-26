@@ -721,7 +721,9 @@ end
 
 # ev(t, x0): the value (ComplexF64) of a term t of the terms ts at x = x0, with the k-th parameter (sorted by
 # name) at 0.5 + 0.3k
-function numeric_evaluator(xk::String, ts...)
+# pz: a zero imaginary part made +0 after each operation (as the mixed-sign checker does), so that log(1 - z) and
+# Li_n(z) take the same side of their cut at real z > 1 (steps PX, LG)
+function numeric_evaluator(xk::String, ts...; pz::Bool = false)
     names = String[]
     function leaves!(t)
         if safe_iscall(t) && !isempty(arguments(t))
@@ -748,7 +750,8 @@ function numeric_evaluator(xk::String, ts...)
                 (e isa MethodError && all(a -> abs(imag(a)) <= 1e-12 * max(1.0, abs(a)), as)) || rethrow()
                 fn(map(real, as)...)
             end
-            return ComplexF64(v)
+            w = ComplexF64(v)
+            return (pz && iszero(imag(w))) ? complex(real(w), 0.0) : w
         end
         s = string(t)
         s == xk && return ComplexF64(x0)
@@ -762,8 +765,8 @@ end
 # fixed positive values (one such point when there is only one). False when no point is found: an answer that
 # cannot be evaluated anywhere is not accepted (step IP's real form over ℚ(ⅈ) had 1/(1 + ⅈ²), which threw
 # at every point once ⅈ = i)
-function numeric_antiderivative(f, G, xk::String)
-    ev = numeric_evaluator(xk, f, G)
+function numeric_antiderivative(f, G, xk::String; pz::Bool = false)
+    ev = numeric_evaluator(xk, f, G; pz = pz)
     cx = has_imag_unit(f)                               # (a complex integrand: compared where it is finite, step CI)
     found = 0
     h = 0.0
