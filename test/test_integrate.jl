@@ -5085,7 +5085,8 @@ end
     h = 1e-6
     P = (Dict(:a => 0.8, :b => 0.7, :c => 0.6, :d => 1.3, :e => 0.6),)
     for g in (:((d + e * x) ^ 2 * (a + b * atanh(c * x)) ^ 3), :(atanh(c * x) ^ 2 / (x * (1 - c ^ 2 * x ^ 2))),
-              :(x ^ 3 * atanh(a + b * x) ^ 2), :(x ^ 4 * acoth(c * x) ^ 3))
+              :(x ^ 3 * atanh(a + b * x) ^ 2), :(x ^ 4 * acoth(c * x) ^ 3),
+              :((a + b * atanh(c / x)) ^ 3 / x ^ 3))
         t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
         @test t < 60
         g == :(x ^ 3 * atanh(a + b * x) ^ 2) || @test occursin("polylog", string(F))   # (its answer has no Li_n)
