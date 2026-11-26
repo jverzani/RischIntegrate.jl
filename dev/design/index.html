@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Design notes — RischIntegrate.jl</title>
-  <link rel="stylesheet" href="../assets/materialdocs.css?v=177f89ee">
+  <link rel="stylesheet" href="../assets/materialdocs.css?v=fd0b5dc5">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <meta name="title" content="Design notes — RischIntegrate.jl">
   <meta property="og:title" content="Design notes — RischIntegrate.jl">
@@ -66,7 +66,7 @@
 </li>
 <li><p><strong>Honest refusals.</strong> Without an answer, the package says why: <code class="md-code-inline">NotElementary</code> when the integral is proved to have no elementary antiderivative (and no form with the special functions used here was found), <code class="md-code-inline">RischNotImplemented</code> when the integrand is outside the implemented cases.</p>
 </li>
-<li><p><strong>Real answers on the real line.</strong> For a real integrand, the answer is a real expression, continuous where the integrand is, whenever the algorithm can arrange it (real forms of complex logarithms, <code class="md-code-inline">atan</code>s of polynomials instead of rational functions, jump corrections for <code class="md-code-inline">tan</code>-substitutions).</p>
+<li><p><strong>Real answers on the real line.</strong> For a real integrand, the answer is a real expression, continuous where the integrand is, whenever the algorithm can arrange it (real forms of complex logarithms, <code class="md-code-inline">atan</code>s of polynomials instead of rational functions, jump corrections for <code class="md-code-inline">tan</code>-substitutions). The exception is step PX (<span class="md-math md-math-inline">\(\int x/(a + b \sin x)\)</span>): its polylogarithms of <span class="md-math md-math-inline">\(e^{i x}/r\)</span>, with roots <span class="md-math md-math-inline">\(r\)</span> such as <span class="md-math md-math-inline">\((-ia \pm \sqrt{b^2 - a^2})/b\)</span>, are left in complex form, as Rubi writes them, since a real form would need cases on the signs of the parameters.</p>
 </li>
 </ul>
 <p>Simplifying expressions in symbolic constants, such as <span class="md-math md-math-inline">\(\cos^2 a + \sin^2 a = 1\)</span>, is left to the caller&#39;s CAS.</p>
@@ -522,6 +522,12 @@
 <td style="text-align:left">by parts with <span class="md-math md-math-inline">\(Q = \int R\)</span> elementary: <span class="md-math md-math-inline">\(P Q - \int P&#39; Q\)</span> (<span class="md-math md-math-inline">\(\int x/(e^x - 1)\)</span> with <span class="md-math md-math-inline">\(\operatorname{Li}_2\)</span>)</td>
 </tr>
 <tr>
+<td style="text-align:left">PX</td>
+<td style="text-align:left"><code class="md-code-inline">NotElementary</code>, after CL and XP</td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(P(x) R(e^{\eta x})\)</span>: trig and hyperbolic functions of a linear argument times a polynomial, the residues after Hermite reduction polynomials in <span class="md-math md-math-inline">\(x\)</span></td>
+<td style="text-align:left">each root <span class="md-math md-math-inline">\(r\)</span> of the remainder&#39;s denominator gives <span class="md-math md-math-inline">\(\sum_j (-1)^j w^{(j)} \operatorname{Li}_{j+1}(e^{\eta x}/r)/\eta^{j+1}\)</span>, <span class="md-math md-math-inline">\(w = -a_r/r\)</span>; roots of quadratics and of quadratics in <span class="md-math md-math-inline">\(\theta^2\)</span> written with square roots. The answer is in complex form, as Rubi writes it (<span class="md-math md-math-inline">\(\int x/(a + b \sin x)\)</span>)</td>
+</tr>
+<tr>
 <td style="text-align:left">LW</td>
 <td style="text-align:left"><code class="md-code-inline">RischNotImplemented</code></td>
 <td style="text-align:left">Lambert&#39;s <span class="md-math md-math-inline">\(W(ax + b)\)</span>, one argument</td>
@@ -969,6 +975,11 @@
 <td style="text-align:left"><span class="md-math md-math-inline">\(P(x) R(e^{kx})\)</span> by parts</td>
 </tr>
 <tr>
+<td style="text-align:left">PX</td>
+<td style="text-align:left"><code class="md-code-inline">exp_polylog.jl</code></td>
+<td style="text-align:left"><span class="md-math md-math-inline">\(P(x) R(e^{\eta x})\)</span>: residues polynomial in <span class="md-math md-math-inline">\(x\)</span>, <span class="md-math md-math-inline">\(\operatorname{Li}_{j+1}(e^{\eta x}/r)\)</span></td>
+</tr>
+<tr>
 <td style="text-align:left">LW</td>
 <td style="text-align:left"><code class="md-code-inline">lambertw.jl</code></td>
 <td style="text-align:left">Lambert&#39;s <span class="md-math md-math-inline">\(W(ax + b)\)</span> by <span class="md-math md-math-inline">\(x = (w e^w - b)/a\)</span></td>
@@ -1173,6 +1184,6 @@ document.querySelectorAll('.md-math').forEach(function (el) {
 });</script>
   <script src="../siteinfo.js"></script>
   <script src="../../versions.js"></script>
-  <script src="../assets/materialdocs.js?v=177f89ee"></script>
+  <script src="../assets/materialdocs.js?v=fd0b5dc5"></script>
 </body>
 </html>
