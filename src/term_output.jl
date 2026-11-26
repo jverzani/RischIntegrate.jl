@@ -109,6 +109,11 @@ end
 # a real (σ-invariant) constant c ∈ B(τ), τ = e^(i·a): c = (N·σD)/(D·σD) with σ-invariant Laurent
 # polynomials in τ, written with cos(k·a) and sin(k·a) (as for a :trig level of a tower)
 function cterm_expi(b::Builder, c::Frac{<:UPoly}, a::Q)
+    if COMPLEX_OUT[]                                    # (complex form, step PX: a rational function of e^(i·a))
+        τ = mk(b, :exp, mk(b, :*, b.lift(im), cterm(b, a)))
+        n = cpoly_term(b, c.num, τ)
+        return isone(c.den) ? n : mk(b, :/, n, cpoly_term(b, c.den, τ))
+    end
     B = eltype(c.num.c)
     sD = Dict{Int,B}(-(j - 1) => cconj_g(b.consts, d) for (j, d) in enumerate(c.den.c) if !iszero(d))
     A = laurent_mul(laurent_of(c.num), sD)
