@@ -369,7 +369,9 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         # every route to a real form (step LG)
         if e isa NotElementary
             g = try
-                try_log_powers(f, x; build = build, lift = lift, verify = verify)
+                g1 = try_log_powers(f, x; build = build, lift = lift, verify = verify)
+                # atanh(u), acoth(u), u ∈ ℚ(x) a Möbius map: u = tanh t, coth t, then step PX (step HT)
+                g1 === nothing ? try_atanh_subst(f, x; build = build, lift = lift, verify = verify) : g1
             catch e2
                 # (a term type without polylog: through Expr, the polylog terms evaluated numerically)
                 (e2 isa MethodError && any(fn -> e2.f === fn, SPECIAL_FNS) && !(f isa Expr)) || rethrow()
