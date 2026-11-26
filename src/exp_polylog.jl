@@ -41,11 +41,11 @@ function exp_polylog(T::Tower, i::Int, R::UPoly, Dsf::UPoly)
     iszero(Dc[1]) && return nothing
     DC = UPoly{C}(Dc)
     rest = DC
-    lins = C[]
+    lin_roots = C[]
     for r in constant_roots(DC)
         lin = UPoly{C}(C[-r, one(C)])
         iszero(rem(rest, lin)) || continue
-        push!(lins, r)
+        push!(lin_roots, r)
         rest = quo(rest, lin)
     end
     qs = px_factors(T, monic(rest))
@@ -54,7 +54,7 @@ function exp_polylog(T::Tower, i::Int, R::UPoly, Dsf::UPoly)
     polyx(w) = degree(w.den) == 0 && degree(w.num) <= MAX_PX_DEGREE
     dD = deriv(Dsf)
     roots = Any[]
-    for r in lins
+    for r in lin_roots
         rk = lk(r)
         w = -(peval(R, rk) / peval(dD, rk)) / rk
         polyx(w) || return nothing
