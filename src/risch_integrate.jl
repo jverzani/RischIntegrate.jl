@@ -307,6 +307,16 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         if e isa RischNotImplemented && startswith(e.msg, "more than $MAX_CONSTS transcendental constants")
             r = integrate_log_content(f, x; build = build, lift = lift, verify = verify)
             r === nothing || return r
+            # then once with up to MAX_CONSTS_WIDE constants (log(e ((a + b x)/(c + d x))ⁿ)²/(f + g x)⁴, sample 1218:
+            # step LG; LK first, as the wider field took minutes on x log(e ((a + b x)/(c + d x))ⁿ)/(f + g x + h x²))
+            if !WIDE_CONSTS[] && !LK_ACTIVE[]                 # (not inside step LK: sample 1252)
+                WIDE_CONSTS[] = true
+                try
+                    return risch_integrate(f, x; build = build, lift = lift, verify = verify)
+                finally
+                    WIDE_CONSTS[] = false
+                end
+            end
         end
         # step XA: x^(r + L) as x^r x^L
         if e isa RischNotImplemented && startswith(e.msg, "exp of a rational multiple of a logarithm")

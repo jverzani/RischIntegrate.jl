@@ -287,7 +287,7 @@ function build_tower(f, xk::String; constants::Union{Nothing,Type} = nothing, su
             elseif e isa NewConstants
                 constants === nothing || throw(RischNotImplemented(
                     "the input involves transcendental constants, but the constant field was fixed to $constants"))
-                length(e.consts) <= MAX_CONSTS || throw(RischNotImplemented(
+                length(e.consts) <= (WIDE_CONSTS[] ? MAX_CONSTS_WIDE : MAX_CONSTS) || throw(RischNotImplemented(
                     "more than $MAX_CONSTS transcendental constants"))
                 consts = e.consts
             elseif e isa NeedComplex

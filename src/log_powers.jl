@@ -22,10 +22,20 @@ function try_log_powers(f, x; build = nothing, lift = nothing, verify::Bool = tr
         (e isa RischNotImplemented || e isa RischError || e isa NotElementary) && return nothing
         rethrow()
     end
-    (length(T.levels) == 1 && T.levels[1].kind === :log && levelof(T, el) == 1) || return nothing
+    if length(T.levels) != 1                            # U^n/V^n in the logarithm as (U/V)^n (samples 1223, 1224)
+        f2 = combine_log_powers(f, x, xk, build, lift)
+        f2 === nothing && return nothing
+        G = try_log_powers(f2, x; build = build, lift = lift, verify = verify)
+        (G === nothing || (verify && !numeric_antiderivative(f, G, xk; pz = true))) && return nothing
+        return G
+    end
+    (T.levels[1].kind === :log && levelof(T, el) == 1) || return nothing
     C = ctype(T)
     arg = T.levels[1].arg                               # v ∈ C(x)
-    (degree(arg.den) == 0 && degree(arg.num) == 1) || return nothing
+    if !(degree(arg.den) == 0 && degree(arg.num) == 1)
+        (degree(arg.num) <= 1 && degree(arg.den) == 1) || return nothing
+        return log_powers_mobius(f, x, T, arg, build, lift, verify)
+    end
     l0 = arg.den.c[1]
     β, α = arg.num.c[1] / l0, arg.num.c[2] / l0
     degree(el.den) == 0 || return nothing
@@ -153,4 +163,94 @@ function lg_root_values(b::Builder, q::UPoly{C}, as, bs) where {C}
         end
     end
     out
+end
+
+# v = (p x + q)/(r x + s) not linear (log(e ((a + b x)/(c + d x))ⁿ), samples 1216, 1218, 1230): with w = v, x playing w,
+#   x ↦ (q - s w)/(r w - p),   dx ↦ (s p - r q)/(r w - p)² dx,
+# the logarithm's argument is linear in w; the integral by the usual route (then this step), and w ↦ v.
+function log_powers_mobius(f, x, T::Tower, v, build, lift, verify)
+    LG_MOBIUS[] && return nothing
+    xk = string(x)
+    C = ctype(T)
+    P = UPoly{C}
+    co(pl, k) = k + 1 <= length(pl.c) ? pl.c[k + 1] : zero(C)
+    p, q, r, s = co(v.num, 1), co(v.num, 0), co(v.den, 1), co(v.den, 0)
+    iszero(s * p - r * q) && return nothing
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
+    den = P(C[-p, r])
+    Xt = frac_term(bd, frac(P(C[q, -s]), den))
+    Jt = frac_term(bd, frac(P(C[s * p - r * q]), den * den))
+    sub(t) = (safe_iscall(t) && !isempty(arguments(t))) ? term_rebuild(bd, t, Any[sub(a) for a in arguments(t)]) :
+             string(t) == xk ? Xt : t
+    g = mk(bd, :*, sub(f), Jt)
+    LG_MOBIUS[] = true
+    G = try
+        risch_integrate(g, x; build = build, lift = lift, verify = verify)
+    catch e
+        (e isa RischNotImplemented || e isa NotElementary) || rethrow()
+        nothing
+    finally
+        LG_MOBIUS[] = false
+    end
+    (G === nothing || G isa IntegralWithRootSums) && return nothing
+    vt = tower_to_term(bd, T, v)
+    back(t) = (safe_iscall(t) && !isempty(arguments(t))) ? term_rebuild(bd, t, Any[back(a) for a in arguments(t)]) :
+              string(t) == xk ? vt : t
+    Gb = back(G)
+    (verify && !numeric_antiderivative(f, Gb, xk; pz = true)) && return nothing
+    Gb
+end
+
+# log(e Uⁿ/Vⁿ) ↦ log(e (U/V)ⁿ) for a symbolic exponent n shared by several factors (equal where U, V > 0, the real
+# integrand); nothing when no logarithm has such factors
+function combine_log_powers(f, x, xk::String, build, lift)
+    @nospecialize f x
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    changed = false
+    function factors!(out, t, sg)
+        if safe_iscall(t) && !isempty(arguments(t))
+            n, args = opname(operation(t)), arguments(t)
+            n === :* && return foreach(a -> factors!(out, a, sg), args)
+            (n === :/ && length(args) == 2) && return (factors!(out, args[1], sg); factors!(out, args[2], -sg))
+            if n === :^ && length(args) == 2 && !has_x(args[2], xk) && leaf_rational(args[2]) === nothing && has_x(args[1], xk)
+                return push!(out, (args[1], args[2], sg))
+            end
+        end
+        push!(out, (t, nothing, sg))
+    end
+    function rw(t)
+        (safe_iscall(t) && !isempty(arguments(t))) || return t
+        args = Any[rw(a) for a in arguments(t)]
+        if opname(operation(t)) === :log && length(args) == 1
+            fs = Any[]
+            factors!(fs, args[1], 1)
+            groups = Dict{String,Vector{Any}}()
+            for fc in fs
+                fc[2] === nothing || push!(get!(groups, string(fc[2]), Any[]), fc)
+            end
+            if any(g -> length(g) >= 2, values(groups))
+                nums, dens = Any[], Any[]
+                for fc in fs
+                    (fc[2] !== nothing && length(groups[string(fc[2])]) >= 2) && continue
+                    term = fc[2] === nothing ? fc[1] : mk(bd, :^, fc[1], fc[2])
+                    push!(fc[3] > 0 ? nums : dens, term)
+                end
+                for g in values(groups)
+                    length(g) >= 2 || continue
+                    nb = Any[fc[1] for fc in g if fc[3] > 0]
+                    db = Any[fc[1] for fc in g if fc[3] < 0]
+                    prod(ts) = isempty(ts) ? bd.lift(1) : length(ts) == 1 ? ts[1] : mk(bd, :*, ts...)
+                    base = isempty(db) ? prod(nb) : mk(bd, :/, prod(nb), prod(db))
+                    push!(nums, mk(bd, :^, base, g[1][2]))
+                end
+                changed = true
+                a = isempty(nums) ? bd.lift(1) : length(nums) == 1 ? nums[1] : mk(bd, :*, nums...)
+                isempty(dens) || (a = mk(bd, :/, a, length(dens) == 1 ? dens[1] : mk(bd, :*, dens...)))
+                return mk(bd, :log, a)
+            end
+        end
+        term_rebuild(bd, t, args)
+    end
+    g = rw(f)
+    changed ? g : nothing
 end
