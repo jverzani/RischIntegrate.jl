@@ -5124,6 +5124,29 @@ end
             v = ev(g, vals)
             (isfinite(v) && abs(imag(v)) < 1e-12) || continue
             d = (ev(F, merge(vals0, Dict(:x => x0 + h))) - ev(F, merge(vals0, Dict(:x => x0 - h)))) / 2h
+
+# step GQ: step GT with symbolic coefficients (Fresnel integrals in erf form; samples 1371, 1571, 1579, 2244, 2246)
+@testset "Step GQ: Gaussians and trigonometric quadratics with parameters" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    fns = Dict(:erf => SpecialFunctions.erf, :erfi => SpecialFunctions.erfi)
+    function ev(e, vals)
+        go(t) = t isa Symbol ? (haskey(vals, t) ? ComplexF64(vals[t]) : Core.eval(Main, t)) : t isa Number ? t :
+                (t isa Expr && t.head === :call) ? get(() -> Core.eval(Main, t.args[1]), fns, t.args[1])(map(go, t.args[2:end])...) :
+                Core.eval(Main, t)
+        go(e)
+    end
+    h = 1e-6
+    P = (Dict(:a => 0.8, :b => 0.7, :c => 0.6, :d => 1.3, :e => 0.6, :f => 1.4),
+         Dict(:a => -0.5, :b => -1.1, :c => 0.9, :d => 0.4, :e => -0.3, :f => 2.2))
+    for g in (:(x ^ 2 * cos(a + b * x ^ 2)), :((e + f * x) * sin(b * (c + d * x) ^ 2)),
+              :((d + e * x) ^ 2 * cos(a + b * x + c * x ^ 2)), :(x ^ 2 * sin(a + b * x + c * x ^ 2) ^ 2),
+              :(f ^ (a + b * x + c * x ^ 2) * cos(d + e * x) ^ 3), :(f ^ (a + b * x + c * x ^ 2) * sin(d + e * x + f * x ^ 2)))
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 60
+        @test occursin("erf", string(F))
+        for vals in P, x0 in (0.3, -0.8, 1.7)
+            v = ev(g, merge(vals, Dict(:x => x0)))
+            d = (ev(F, merge(vals, Dict(:x => x0 + h))) - ev(F, merge(vals, Dict(:x => x0 - h)))) / 2h
             @test abs(d - v) <= 1e-5 * max(1, abs(v))
         end
     end
