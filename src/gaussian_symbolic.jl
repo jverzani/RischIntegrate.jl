@@ -32,7 +32,7 @@ function integrate_gaussian_symbolic(f, x; build = nothing, lift = nothing, veri
         n in (:+, :-, :*, :/, :^) || return false       # (atanh, log, a radical of x: not this step)
         if n === :^
             p = length(as) == 2 ? leaf_rational(as[2]) : nothing
-            (p !== nothing && isone(denominator(p)) && 0 <= p <= 12) || return false
+            (p !== nothing && isone(denominator(p)) && (0 <= p <= 12 || (-12 <= p < 0 && string(as[1]) == xk))) || return false
         end
         all(walk, as)
     end
@@ -153,12 +153,13 @@ function gq_integrate(f, x, xk, T, ::Type{C}, bd0, build, lift, verify) where {C
         elseif n === :*
             return foldl(mul, ps; init = V([k0 => o]))
         elseif n === :/ && length(ps) == 2
-            # a divisor c e^L, one term without a power of x
-            (length(ps[2]) == 1 && ps[2][1].first[1] == 0) || return nothing
+            # a divisor c xᵏ e^L, one term
+            length(ps[2]) == 1 || return nothing
             (k, c) = ps[2][1]
-            return mul(ps[1], V([(0, -k[2], -k[3], -k[4]) => o / c]))
+            return mul(ps[1], V([(-k[1], -k[2], -k[3], -k[4]) => o / c]))
         elseif n === :^ && length(ps) == 2
             p = leaf_rational(as[2])
+            (p !== nothing && isone(denominator(p)) && -12 <= p < 0 && string(as[1]) == xk) && return V([(Int(p), z, z, z) => o])
             (p !== nothing && isone(denominator(p)) && 0 <= p <= 12) || return nothing
             return foldl(mul, fill(ps[1], Int(p)); init = V([k0 => o]))
         end
@@ -167,7 +168,7 @@ function gq_integrate(f, x, xk, T, ::Type{C}, bd0, build, lift, verify) where {C
     d = pr(f)
     (d === nothing || isempty(d) || length(d) > 200 || all(p -> iszero(p.first[2]), d)) && return nothing
     # (numbers only: step GT)
-    all(p -> all(c -> crational(re(c)) !== nothing && crational(im_(c)) !== nothing,
+    all(p -> p.first[1] >= 0, d) && all(p -> all(c -> crational(re(c)) !== nothing && crational(im_(c)) !== nothing,
                  (p.second, p.first[2], p.first[3], p.first[4])), d) && return nothing
     # the integral: Σ c xᵏ e^L (elementary) + Σ c ∫ e^L
     el = V()
@@ -176,6 +177,15 @@ function gq_integrate(f, x, xk, T, ::Type{C}, bd0, build, lift, verify) where {C
         iszero(c) && return
         j = findfirst(p -> p.first == k, ef)
         j === nothing ? push!(ef, k => c) : (ef[j] = k => ef[j].second + c)
+    end
+    # xⁿ e^L, n < 0 even, L = α x² + δ: Iₙ = xⁿ⁺¹ e^L/(n + 1) - 2α/(n + 1) Iₙ₊₂ (by parts) down to I₀ (samples 2289, 2290:
+    # 1/(a + b asin(c x))^(3/2) through step SQ); odd n ends at ∫ e^L/x, not elementary
+    while (j = findfirst(p -> p.first[1] < 0, d); j !== nothing)
+        (n, α, β, δ), c = d[j]
+        deleteat!(d, j)
+        (iszero(α) || !iszero(β) || isodd(n)) && return nothing
+        addto!(el, (n + 1, α, β, δ), c / cq(n + 1))
+        addto!(d, (n + 2, α, β, δ), -cq(2) * α * c / cq(n + 1))
     end
     for ((n, α, β, δ), c) in d
         if iszero(α) && iszero(β)

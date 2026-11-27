@@ -56,9 +56,10 @@ mutable struct CallState
     atanh_subst::Bool            # step HT: atanh(u), acoth(u) by u = tanh t, coth t
     lg_mobius::Bool              # step LG: w = (p x + q)/(r x + s), the argument of the logarithm
     wide_consts::Bool            # the retry with MAX_CONSTS_WIDE constants, after step LK has failed
+    sq_active::Bool              # step SQ: w = √(a + b A), A = log, asin, acos, asinh, acosh, W
 end
 CallState() = CallState(false, false, false, false, 0, false, false, 0, 0, false, 0, false, false, false, false, false,
-                        false, 0, false, false, false, 0, false, false, false, false, false, 0, 0, 0, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false)
+                        false, 0, false, false, false, 0, false, false, false, false, false, 0, 0, 0, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false)
 
 const CALL_STATE = Base.ScopedValues.ScopedValue{Union{Nothing,CallState}}(nothing)
 const DIRECT_STATE = CallState()                         # outside any risch_integrate call
@@ -107,6 +108,7 @@ const ATAN_SUBST = StateField{:atan_subst}()
 const ATANH_SUBST = StateField{:atanh_subst}()
 const LG_MOBIUS = StateField{:lg_mobius}()
 const WIDE_CONSTS = StateField{:wide_consts}()
+const SQ_ACTIVE = StateField{:sq_active}()
 const PARTS = StateField{:parts}()
 const AH_ACTIVE = StateField{:ah_active}()
 const NE_ACTIVE = StateField{:ne_active}()

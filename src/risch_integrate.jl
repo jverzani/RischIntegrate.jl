@@ -232,6 +232,9 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
         if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg)
             r = integrate_log_radicals(f, x; build = build, lift = lift, verify = verify)
             r === nothing || return r
+            # √(a + b asinh(c x)), √(a + b log(V)): w = √(a + b A) (step SQ), before the radical steps rewrite asinh
+            r = try_sqrt_atom(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
         end
         # step NE: u = d + e x + f √(a + b x + c x²) with f² c = e² (Rubi 1.3.2)
         if e isa RischNotImplemented && occursin("radical of a non-rational expression", e.msg)
@@ -370,6 +373,8 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             (g1 === nothing && e isa NotElementary) && (g1 = integrate_exp_x2_inv_x2(f, x; build = build, lift = lift, verify = verify))
             g1 === nothing && (g1 = try_atan_subst(f, x; build = build, lift = lift, verify = verify))
             # Lambert's W(x): x = w eʷ (step LW)
+            # half-integer powers of a + b A, A = log, asin, acos, asinh, acosh, W: w = √(a + b A) (step SQ)
+            (g1 === nothing && e isa NotElementary) && (g1 = try_sqrt_atom(f, x; build = build, lift = lift, verify = verify))
             g1 === nothing && e isa RischNotImplemented && (g1 = try_lambertw(f, x; build = build, lift = lift, verify = verify))
             g1 === nothing ? try_parts(f, x; build = build, lift = lift, verify = verify) : g1
         catch e2
@@ -743,6 +748,9 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         r === nothing || return r
         # x only in c xᵏ: the integrand in y = c^(1/k) x, free of c, for a NotElementary first (step SR)
         scaled_refusal(f, x, xk, build, lift, verify)
+        # half-integer powers of a + b asinh(u), acosh(u): w = √(a + b A) before the logs (step SQ)
+        r = try_sqrt_atom(f, x; build = build, lift = lift, verify = verify)
+        r === nothing || return r
         return risch_integrate(rewrite_invhyp(f, x, build, lift), x; build = build, lift = lift, verify = verify)
     end
     arcs = collect_arcs(f, xk)                  # asin / acos: substitution u = sin t / cos t (step AS)
