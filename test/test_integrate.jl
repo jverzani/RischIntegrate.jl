@@ -5155,3 +5155,33 @@ end
         end
     end
 end
+
+# step SQ: w = √(a + b A), A = log, asin, acos, asinh, acosh (samples 1186, 1241, 2289, 2336, 2708, 2721)
+@testset "Step SQ: half-integer powers of a + b A by w = √(a + b A)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    fns = Dict(:erf => SpecialFunctions.erf, :erfi => SpecialFunctions.erfi)
+    function ev(e, vals)
+        go(t) = t isa Symbol ? (haskey(vals, t) ? ComplexF64(vals[t]) : Core.eval(Main, t)) : t isa Number ? t :
+                (t isa Expr && t.head === :call) ? get(() -> Core.eval(Main, t.args[1]), fns, t.args[1])(map(go, t.args[2:end])...) :
+                Core.eval(Main, t)
+        go(e)
+    end
+    h = 1e-6
+    vals = Dict(:a => 0.8, :b => 0.7, :c => 0.6, :d => 1.3, :e => 0.6, :n => 1.3)
+    for g in (:(x ^ 2 / (a + b * asin(c * x)) ^ (3 / 2)), :(1 / sqrt(acos(a * x))), :(x ^ 3 * sqrt(log(a * x ^ n))),
+              :((a + b * log(c * (d + e * x) ^ n)) ^ (1 / 2)), :(x / acosh(a * x) ^ (3 / 2)),
+              :((c * e + d * e * x) ^ 2 * sqrt(a + b * asinh(c + d * x))))
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 60
+        @test occursin("erf", string(F))
+        n = 0
+        for x0 in (0.3, 0.55, -0.4, 1.7, 2.1, 3.0)
+            v = ev(g, merge(vals, Dict(:x => x0)))
+            (isfinite(v) && abs(imag(v)) < 1e-12) || continue
+            d = (ev(F, merge(vals, Dict(:x => x0 + h))) - ev(F, merge(vals, Dict(:x => x0 - h)))) / 2h
+            @test abs(d - v) <= 1e-5 * max(1, abs(v))
+            n += 1
+        end
+        @test n >= 2
+    end
+end
