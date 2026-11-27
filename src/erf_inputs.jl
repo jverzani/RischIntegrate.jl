@@ -64,6 +64,9 @@ function erf_inputs_expr(fe, xs::Symbol; verify::Bool = true)
     else
         a = term_deriv(Builder(expr_build, identity, xs), u, xk)
         a === nothing && return nothing
+        # (rational in x through the tower: d b (c n xⁿ/x)/(c xⁿ) as d b n/x)
+        Ta, ea = tw(a, xk)
+        (Ta !== nothing && isempty(Ta.levels)) && (a = tower_to_term(Builder(expr_build, identity, xs, Ta.consts), Ta, ea))
         b0 = nothing
     end
     dF = name === :erf ? :(2 / sqrt(π) * exp(-($u) ^ 2)) : name === :erfi ? :(2 / sqrt(π) * exp(($u) ^ 2)) :

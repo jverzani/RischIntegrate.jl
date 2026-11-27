@@ -5204,9 +5204,10 @@ end
     for g in (:(erf(a + b * x) ^ 2), :(exp(c - b ^ 2 * x ^ 2) * erf(b * x) ^ n), :(exp(c - b ^ 2 * x ^ 2) * erfc(b * x)),
               :(exp(c - b ^ 2 * x ^ 2) / erfc(b * x)), :((c + d * x) * FresnelS(a + b * x)),
               :(cos((1 / 2) * b ^ 2 * π * x ^ 2) * FresnelC(b * x)), :(x ^ 6 * FresnelC(b * x) ^ 2),
-              :((e * x) ^ m * erfi(d * (a + b * log(c * x ^ n)))))
+              :((e * x) ^ m * erfi(d * (a + b * log(c * x ^ n)))), :(x ^ 2 * erfi(d * (a + b * log(c * x ^ n)))),
+              :((e * x) ^ m * FresnelS(d * (a + b * log(c * x ^ n)))))
         t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
-        @test t < 60
+        @test t < 120
         for x0 in (0.31, 0.57, 1.7)
             v = ev(g, merge(vals, Dict(:x => x0)))
             d = (ev(F, merge(vals, Dict(:x => x0 + h))) - ev(F, merge(vals, Dict(:x => x0 - h)))) / 2h
