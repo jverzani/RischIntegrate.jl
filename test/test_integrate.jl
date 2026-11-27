@@ -5124,6 +5124,10 @@ end
             v = ev(g, vals)
             (isfinite(v) && abs(imag(v)) < 1e-12) || continue
             d = (ev(F, merge(vals0, Dict(:x => x0 + h))) - ev(F, merge(vals0, Dict(:x => x0 - h)))) / 2h
+            @test abs(d - v) <= 1e-5 * max(1, abs(v))
+        end
+    end
+end
 
 # step GQ: step GT with symbolic coefficients (Fresnel integrals in erf form; samples 1371, 1571, 1579, 2244, 2246)
 @testset "Step GQ: Gaussians and trigonometric quadratics with parameters" begin
