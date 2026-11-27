@@ -650,6 +650,8 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
     end
     g = try_erf(f, x; build = build, lift = lift, verify = verify)   # ∫ erf(ax + b) by parts
     g === nothing || return g
+    g = try_erf_inputs(f, x; build = build, lift = lift, verify = verify)   # erfc, FresnelS, erf(u)ᵏ (step EF)
+    g === nothing || return g
     g = try_ei(f, x; build = build, lift = lift, verify = verify)    # ∫ A Ei(g) by parts (step EB)
     g === nothing || return g
     special_rational_nonelementary(f, x; build = build, lift = lift, verify = verify)   # A·F(u), ∫ A not rational (SN)

@@ -5185,3 +5185,32 @@ end
         @test n >= 2
     end
 end
+
+# step EF: erf, erfi, erfc, FresnelS, FresnelC of one argument as inputs: derivative-divides, by parts (samples
+# 2926–2929, 2932, 2935, 2936, 2939, 2940)
+@testset "Step EF: erf, erfc, FresnelS, FresnelC in the integrand" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    fns = Dict(:erf => SpecialFunctions.erf, :erfi => SpecialFunctions.erfi, :erfc => SpecialFunctions.erfc,
+               :FresnelS => z -> (1 + im) / 4 * (SpecialFunctions.erf((1 + im) * sqrt(pi) * z / 2) - im * SpecialFunctions.erf((1 - im) * sqrt(pi) * z / 2)),
+               :FresnelC => z -> (1 - im) / 4 * (SpecialFunctions.erf((1 + im) * sqrt(pi) * z / 2) + im * SpecialFunctions.erf((1 - im) * sqrt(pi) * z / 2)))
+    function ev(e, vals)
+        go(t) = t isa Symbol ? (haskey(vals, t) ? ComplexF64(vals[t]) : Core.eval(Main, t)) : t isa Number ? t :
+                (t isa Expr && t.head === :call) ? get(() -> Core.eval(Main, t.args[1]), fns, t.args[1])(map(go, t.args[2:end])...) :
+                Core.eval(Main, t)
+        go(e)
+    end
+    h = 1e-6
+    vals = Dict(:a => 0.8, :b => 0.7, :c => 0.6, :d => 1.3, :e => 0.6, :m => 1.3, :n => 0.9)
+    for g in (:(erf(a + b * x) ^ 2), :(exp(c - b ^ 2 * x ^ 2) * erf(b * x) ^ n), :(exp(c - b ^ 2 * x ^ 2) * erfc(b * x)),
+              :(exp(c - b ^ 2 * x ^ 2) / erfc(b * x)), :((c + d * x) * FresnelS(a + b * x)),
+              :(cos((1 / 2) * b ^ 2 * π * x ^ 2) * FresnelC(b * x)), :(x ^ 6 * FresnelC(b * x) ^ 2),
+              :((e * x) ^ m * erfi(d * (a + b * log(c * x ^ n)))))
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 60
+        for x0 in (0.31, 0.57, 1.7)
+            v = ev(g, merge(vals, Dict(:x => x0)))
+            d = (ev(F, merge(vals, Dict(:x => x0 + h))) - ev(F, merge(vals, Dict(:x => x0 - h)))) / 2h
+            @test abs(d - v) <= 1e-5 * max(1, abs(v))
+        end
+    end
+end

@@ -61,7 +61,7 @@ end
 function integrate_rewritten_expr(f, x, rw, active; build = nothing, lift = nothing, verify::Bool = true,
                                   rootsums::Bool = false, answer = nothing)
     @nospecialize f x
-    active[] && return nothing
+    (active !== nothing && active[]) && return nothing      # (nothing: a step that nests, step EF)
     xk = string(x)
     leaves = Dict{String,Any}()
     collect_leaves!(leaves, f)
@@ -70,12 +70,12 @@ function integrate_rewritten_expr(f, x, rw, active; build = nothing, lift = noth
     # (`answer`: the Expr answer of the step itself, in place of a rewritten integrand)
     g = answer === nothing ? rw(toexpr(f), Symbol(xk)) : nothing
     answer === nothing && g === nothing && return nothing
-    active[] = true
+    active === nothing || (active[] = true)
     F = try
         answer === nothing ? risch_integrate(g, Symbol(xk); build = expr_build, lift = identity, verify = verify) :
                              answer(toexpr(f), Symbol(xk))
     finally
-        active[] = false
+        active === nothing || (active[] = false)
     end
     F === nothing && return nothing
     # (a RootSum answer only for an exact rewrite (`rootsums`, step XA), and in Expr, the user's terms)
