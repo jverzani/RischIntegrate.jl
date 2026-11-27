@@ -29,10 +29,31 @@ function integrate_gaussian_symbolic(f, x; build = nothing, lift = nothing, veri
             push!(parts, is_e_const(as[1]) ? as[2] : mk(bd0, :*, as[2], mk(bd0, :log, as[1])))
             return true
         end
+        n in (:+, :-, :*, :/, :^) || return false       # (atanh, log, a radical of x: not this step)
+        if n === :^
+            p = length(as) == 2 ? leaf_rational(as[2]) : nothing
+            (p !== nothing && isone(denominator(p)) && 0 <= p <= 12) || return false
+        end
         all(walk, as)
     end
     walk(f) || return nothing
     any(p -> depends_on(p, xk), parts) || return nothing
+    # (each argument a polynomial in x by its form, before any tower: e^(e^(e^(e^x))) built a complex tower of four
+    # levels and timed out)
+    function xpoly(t)
+        depends_on(t, xk) || return true
+        string(t) == xk && return true
+        isnode(t) || return false
+        n, as = opname(operation(t)), arguments(t)
+        n in (:+, :-, :*) && return all(xpoly, as)
+        n === :/ && length(as) == 2 && return xpoly(as[1]) && !depends_on(as[2], xk)
+        if n === :^ && length(as) == 2
+            p = leaf_rational(as[2])
+            return p !== nothing && isone(denominator(p)) && 0 <= p <= 4 && xpoly(as[1])
+        end
+        false
+    end
+    all(xpoly, parts) || return nothing
     T = try
         first(build_tower(mk(bd0, :+, parts..., bd0.lift(im)), xk; minimize = false))
     catch err
