@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # Step HT: atanh(u), acoth(u) by the substitution u = tanh t (coth t), after every other route has failed
 # (∫ (d + e x)² atanh(x)³, ∫ atanh(x)²/(x (1 - x²)): Rubi 7.3.1, answers with Li₂, Li₃). All atanh(u) (acoth(u)) in f
-# share one u = (p x + q)/(r x + s) ∈ ℚ(x) (step AL has taken the symbolic scale out: atanh(c x) ↦ atanh(y)), and f is
+# share one u = (p x + q)/(r x + s) ∈ K(x), K the constant field (atanh(c/x): the parameter c), and f is
 # rational in x apart from them. With x playing the role of t and E = e^(2x):
 #   w = tanh x = (E - 1)/(E + 1)  (coth x = (E + 1)/(E - 1)),   x ↦ (q - s w)/(r w - p),   atanh(u) ↦ x,
 #   dx ↦ (s p - r q)/(r w - p)² (1 - w²) dx,
@@ -48,16 +48,22 @@ function try_atanh_subst(f, x; build = nothing, lift = nothing, verify::Bool = t
     us = string(arg)
     all(a -> a[1] === n && string(a[2]) == us, ats) || return nothing
     rational_but_atoms(f, xk, n, us) || return nothing
-    u = radicand_element(arg, xk)
-    (u !== nothing && degree(u.num) <= 1 && degree(u.den) <= 1) || return nothing
-    P = UPoly{Q}
-    co(pl, k) = k + 1 <= length(pl.c) ? pl.c[k + 1] : zero(Q)
+    T, u = try                                          # u over the constant field (c/x: the parameter c)
+        build_tower(arg, xk)
+    catch e
+        (e isa RischNotImplemented || e isa RischError || e isa NotElementary) && return nothing
+        rethrow()
+    end
+    (isempty(T.levels) && degree(u.num) <= 1 && degree(u.den) <= 1) || return nothing
+    C = ctype(T)
+    P = UPoly{C}
+    co(pl, k) = k + 1 <= length(pl.c) ? pl.c[k + 1] : zero(C)
     p, q, r, s = co(u.num, 1), co(u.num, 0), co(u.den, 1), co(u.den, 0)
     iszero(s * p - r * q) && return nothing             # (u constant)
-    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x)
+    bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
     Et = mk(bd, :exp, mk(bd, :*, bd.lift(2), bd.x))
-    bE = Builder(bd.build, bd.lift, Et)                 # rational functions of E printed with e^(2x)
-    Em1, Ep1 = P(Q[-1, 1]), P(Q[1, 1])
+    bE = Builder(bd.build, bd.lift, Et, T.consts)                 # rational functions of E printed with e^(2x)
+    Em1, Ep1 = P(C[-one(C), one(C)]), P(C[one(C), one(C)])
     Nw, Dw = n === :atanh ? (Em1, Ep1) : (Ep1, Em1)
     den = scale(r, Nw) - scale(p, Dw)
     X = frac(scale(q, Dw) - scale(s, Nw), den)
