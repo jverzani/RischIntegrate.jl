@@ -90,6 +90,7 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
     κx = nothing
     rad = nothing                                    # P with √P ↦ √k R(T): (1 - u², R) for asin, ...
     xpow = t -> nothing
+    halfangle = false
     # atan(c x): x = tan T/c, a product of xᵏ, (k (1 + c² x²))^p, Bᵖ and constants as c⁻ᵏ sinᵏT cos^(-k)T, kᵖ cos^(-2p)T
     # (cos T > 0 for T = atan(c x)), wᵖ; dx = dT/(c cos²T); the exponents of sin, cos must come out ≥ 0 (√atan(a x)/(c +
     # a² c x²)², samples 2377–2381). Nothing for a sum, or atan(c x + d) with d ≠ 0
@@ -151,6 +152,16 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
         d0 = ct(Tl, el_.num.c[1] / el_.den.c[1], xs)
         xof = T -> leaf_rational(d0) == 0 ? :($T / $c1) : :(($T - $d0) / $c1)
         dxdT = T -> :(1 / $c1)
+    elseif name === :asin && (Tq = first(tw(u, xk)); Tq !== nothing && isempty(Tq.levels)) &&
+           (eq = last(tw(u, xk)); degree(eq.den) == 0 && degree(eq.num) == 2 && iszero(eq.num.c[2]) &&
+            crational(eq.num.c[1] / eq.den.c[1]) in (1, -1))
+        # asin(±1 + d x²): 1 ∓ sin T = (cos(T/2) ∓ sin(T/2))², so x = κ (cos(T/2) ∓ sin(T/2)) with κ = x/(cos(A/2) ∓ sin(A/2))
+        # constant (κ² = ∓1/d), as Rubi writes it (samples 2328, 2329)
+        sg = crational(eq.num.c[1] / eq.den.c[1]) == 1 ? :- : :+
+        halfangle = true
+        κx = Expr(:call, :/, xs, Expr(:call, sg, :(cos($A / 2)), :(sin($A / 2))))
+        xof = T -> :($κ * $(Expr(:call, sg, :(cos($T / 2)), :(sin($T / 2)))))
+        dxdT = T -> sg === :- ? :(-($κ) * (sin($T / 2) + cos($T / 2)) / 2) : :($κ * (cos($T / 2) - sin($T / 2)) / 2)
     elseif name in (:asin, :acos, :asinh, :acosh, :lambertw, :LambertW)
         Tu, eu = tw(u, xk)
         (Tu !== nothing && isempty(Tu.levels) && degree(eu.den) == 0 && degree(eu.num) == 1) || return nothing
@@ -269,6 +280,22 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
     end
     Gx = back(G)
     # (W(u): no numeric W here, and x = (w eʷ - d)/c, w = √B are identities, as for step LW)
-    (verify && name !== :lambertw && !numeric_antiderivative(fe, Gx, xk)) && return nothing
+    if verify && name !== :lambertw && !numeric_antiderivative(fe, Gx, xk)
+        # (asin(1 + d x²) with the check's d > 0 is complex at every point: compared as complex values there, two points)
+        halfangle || return nothing
+        ev = numeric_evaluator(xk, fe, Gx)
+        ok = 0
+        for x0 in (0.3, 0.7, -0.5, 1.3)
+            fv, dG = try
+                ev(fe, x0), (ev(Gx, x0 + 1e-6) - ev(Gx, x0 - 1e-6)) / 2e-6
+            catch
+                continue
+            end
+            (isfinite(fv) && isfinite(dG)) || continue
+            abs(dG - fv) <= 1e-5 * max(1.0, abs(fv)) || return nothing
+            ok += 1
+        end
+        ok >= 2 || return nothing
+    end
     Gx
 end

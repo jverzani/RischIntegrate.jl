@@ -764,6 +764,9 @@ function integrate_direct(f, x; build = nothing, lift = nothing, verify::Bool = 
         catch e
             # asin/acos of a tower element (acos(eᵗ log t)): by parts over the sum (step AM)
             (e isa RischNotImplemented && startswith(e.msg, "asin/acos of")) || rethrow()
+            # √(a + b asin(±1 + d x²)): w = √(a + b A) with x by half angles (step SQ)
+            r = try_sqrt_atom(f, x; build = build, lift = lift, verify = verify)
+            r === nothing || return r
             r = try_parts_sum(f, x; build = build, lift = lift, verify = verify)
             r === nothing && throw(e)
             r
