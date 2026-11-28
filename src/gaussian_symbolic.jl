@@ -183,6 +183,10 @@ function gq_integrate(f, x, xk, T, ::Type{C}, bd0, build, lift, verify) where {C
     while (j = findfirst(p -> p.first[1] < 0, d); j !== nothing)
         (n, α, β, δ), c = d[j]
         deleteat!(d, j)
+        if iszero(α) && iszero(β) && n != -1                # c xⁿ e^δ: c xⁿ⁺¹ e^δ/(n + 1)
+            addto!(el, (n + 1, α, β, δ), c / cq(n + 1))
+            continue
+        end
         (iszero(α) || !iszero(β) || isodd(n)) && return nothing
         addto!(el, (n + 1, α, β, δ), c / cq(n + 1))
         addto!(d, (n + 2, α, β, δ), -cq(2) * α * c / cq(n + 1))

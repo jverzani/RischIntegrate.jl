@@ -10,7 +10,7 @@
 # quadratics in w: step GT, GQ (erf for Rubi's erf, erfi, FresnelS, FresnelC). w ↦ √B back; checked numerically.
 # Nothing when f has another atom, another half-integer power of an atom, or the integral in w is refused.
 # ---------------------------------------------------------------------------
-const SQ_ATOMS = (:log, :asin, :acos, :asinh, :acosh, :lambertw, :LambertW)
+const SQ_ATOMS = (:log, :asin, :acos, :asinh, :acosh, :lambertw, :LambertW, :atan)
 
 try_sqrt_atom(f, x; build = nothing, lift = nothing, verify::Bool = true) =
     integrate_rewritten_expr(f, x, (fe, xs) -> nothing, SQ_ACTIVE; build = build, lift = lift, verify = verify,
@@ -77,7 +77,61 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
     κx = nothing
     rad = nothing                                    # P with √P ↦ √k R(T): (1 - u², R) for asin, ...
     xpow = t -> nothing
-    if name in (:asin, :acos, :asinh, :acosh, :lambertw, :LambertW)
+    # atan(c x): x = tan T/c, a product of xᵏ, (k (1 + c² x²))^p, Bᵖ and constants as c⁻ᵏ sinᵏT cos^(-k)T, kᵖ cos^(-2p)T
+    # (cos T > 0 for T = atan(c x)), wᵖ; dx = dT/(c cos²T); the exponents of sin, cos must come out ≥ 0 (√atan(a x)/(c +
+    # a² c x²)², samples 2377–2381). Nothing for a sum, or atan(c x + d) with d ≠ 0
+    function atan_product(t0)
+        Tu, eu = tw(u, xk)
+        (Tu !== nothing && isempty(Tu.levels) && degree(eu.den) == 0 && degree(eu.num) == 1 && iszero(eu.num.c[1])) || return nothing
+        c1 = ct(Tu, eu.num.c[2] / eu.den.c[1], xs)
+        lv = Any[]
+        function facs(t, e)
+            if iscall(t, :*, length(t isa Expr ? t.args : []) - 1) && t.args[1] === :*
+                foreach(v -> facs(v, e), t.args[2:end])
+            elseif iscall(t, :/, 2)
+                facs(t.args[2], e); facs(t.args[3], -e)
+            elseif iscall(t, :sqrt, 1) && t.args[2] != B
+                facs(t.args[2], e / 2)
+            elseif iscall(t, :^, 2) && t.args[2] != B && (p = leaf_rational(t.args[3]); p !== nothing) &&
+                   !(t.args[2] isa Expr && t.args[2].head === :call && t.args[2].args[1] in (:+, :-))
+                facs(t.args[2], e * Q(p))
+            else
+                (hp = half(t); hp !== nothing && hp[1] == B) ? push!(lv, (B, e * hp[2])) :
+                (iscall(t, :^, 2) && (p = leaf_rational(t.args[3]); p !== nothing)) ? push!(lv, (t.args[2], e * Q(p))) :
+                push!(lv, (t, e))
+            end
+        end
+        facs(t0, Q(1))
+        ks, ns, cs = Q(0), Q(-2), Any[:(1 / $c1)]      # sin, cos exponents; dx = dT/(c cos²T)
+        wp = Q(0)
+        for (v, e) in lv
+            if !has_x(v, xk)
+                push!(cs, isone(e) ? v : :($v ^ $e))
+            elseif v == xs
+                isinteger(e) || return nothing
+                ks += e; ns -= e; push!(cs, :($c1 ^ $(-e)))
+            elseif v == B
+                wp += 2e
+            elseif v == A && B == A
+                wp += 2e
+            else
+                isempty(atoms!(Any[], v)) || return nothing
+                Tk, ek = tw(:($v / (1 + $u ^ 2)), xk)
+                (Tk !== nothing && isempty(Tk.levels) && degree(ek.num) == 0 && degree(ek.den) == 0) || return nothing
+                kc = ct(Tk, ek.num.c[1] / ek.den.c[1], xs)
+                leaf_rational(kc) == 1 || push!(cs, :($kc ^ $e))
+                ns -= 2e
+            end
+        end
+        (isinteger(ks) && isinteger(ns) && isinteger(wp) && ks >= 0 && ns >= 0) || return nothing
+        fs = Any[cs..., :(2 * $w ^ $(Int(wp) + 1) / $a1)]
+        ks > 0 && push!(fs, :(sin($Tw) ^ $(Int(ks))))
+        ns > 0 && push!(fs, :(cos($Tw) ^ $(Int(ns))))
+        Expr(:call, :*, fs...)
+    end
+    if name === :atan
+        nothing
+    elseif name in (:asin, :acos, :asinh, :acosh, :lambertw, :LambertW)
         Tu, eu = tw(u, xk)
         (Tu !== nothing && isempty(Tu.levels) && degree(eu.den) == 0 && degree(eu.num) == 1) || return nothing
         c1 = ct(Tu, eu.num.c[2] / eu.den.c[1], xs)
@@ -141,7 +195,9 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
         end
         t == xs ? xof(Tw) : t
     end
-    g = direct ? :($(sub(fe)) * $(dxdT(Tw))) : :($(sub(fe)) * $(dxdT(Tw)) * 2 * $w / $a1)
+    g = name === :atan ? atan_product(fe) :
+        direct ? :($(sub(fe)) * $(dxdT(Tw))) : :($(sub(fe)) * $(dxdT(Tw)) * 2 * $w / $a1)
+    g === nothing && return nothing
     has_x(g, xk) && return nothing
     G = try
         risch_integrate(g, w; build = expr_build, lift = identity, verify = verify)
