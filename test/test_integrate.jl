@@ -5156,7 +5156,7 @@ end
     end
 end
 
-# step SQ: w = √(a + b A), A = log, asin, acos, asinh, acosh (samples 1186, 1241, 2289, 2336, 2708, 2721)
+# step SQ: w = √(a + b A), A = log, asin, acos, asinh, acosh, atan (samples 1186, 1241, 2289, 2336, 2708, 2721, 2377, 2379); a linear radicand (1351, 1566); step UR with cos (1575); asin(±1 + d x²) (2328, 2329)
 @testset "Step SQ: half-integer powers of a + b A by w = √(a + b A)" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     fns = Dict(:erf => SpecialFunctions.erf, :erfi => SpecialFunctions.erfi)
@@ -5167,10 +5167,13 @@ end
         go(e)
     end
     h = 1e-6
-    vals = Dict(:a => 0.8, :b => 0.7, :c => 0.6, :d => 1.3, :e => 0.6, :n => 1.3)
+    vals = Dict(:a => 0.8, :b => 0.7, :c => 0.6, :d => 1.3, :e => 0.6, :n => 1.3, :f => 1.1)
     for g in (:(x ^ 2 / (a + b * asin(c * x)) ^ (3 / 2)), :(1 / sqrt(acos(a * x))), :(x ^ 3 * sqrt(log(a * x ^ n))),
               :((a + b * log(c * (d + e * x) ^ n)) ^ (1 / 2)), :(x / acosh(a * x) ^ (3 / 2)),
-              :((c * e + d * e * x) ^ 2 * sqrt(a + b * asinh(c + d * x))))
+              :((c * e + d * e * x) ^ 2 * sqrt(a + b * asinh(c + d * x))),
+              :(sqrt(atan(a * x)) / (c + a ^ 2 * c * x ^ 2) ^ 2), :(x ^ 2 / ((c + a ^ 2 * c * x ^ 2) ^ 2 * atan(a * x) ^ (5 / 2))),
+              :((d * x) ^ (3 / 2) * sin(f * x)), :(cos(a + b * x) ^ 3 / (c + d * x) ^ (5 / 2)), :(cos(a + b / x ^ 2) / x ^ 4),
+              :((a + b * asin(1 - d * x ^ 2)) ^ (3 / 2)), :((a + b * asin(-1 + d * x ^ 2)) ^ (1 / 2)))
         t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
         @test t < 60
         @test occursin("erf", string(F))

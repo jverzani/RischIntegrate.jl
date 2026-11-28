@@ -10,7 +10,7 @@
 # quadratics in w: step GT, GQ (erf for Rubi's erf, erfi, FresnelS, FresnelC). w ↦ √B back; checked numerically.
 # Nothing when f has another atom, another half-integer power of an atom, or the integral in w is refused.
 # ---------------------------------------------------------------------------
-const SQ_ATOMS = (:log, :asin, :acos, :asinh, :acosh, :lambertw, :LambertW)
+const SQ_ATOMS = (:log, :asin, :acos, :asinh, :acosh, :lambertw, :LambertW, :atan)
 
 try_sqrt_atom(f, x; build = nothing, lift = nothing, verify::Bool = true) =
     integrate_rewritten_expr(f, x, (fe, xs) -> nothing, SQ_ACTIVE; build = build, lift = lift, verify = verify,
@@ -35,6 +35,19 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
     walk(t) = t isa Expr && ((h = half(t); h !== nothing && !isempty(atoms!(Any[], h[1])) && push!(Bs, h[1])); foreach(walk, t.args))
     walk(fe)
     as = unique(atoms!(Any[], fe))
+    # no atom: half-integer powers of one linear P with exp, sin, cos of x, P itself as A, w = √P ((d x)^(3/2) sin(f x),
+    # cos(a + b x)³/(c + d x)^(5/2), samples 1351, 1566)
+    lin = false
+    if isempty(as)
+        Ps = Any[]
+        walkp(t) = t isa Expr && ((h = half(t); h !== nothing && has_x(h[1], xk) && push!(Ps, h[1])); foreach(walkp, t.args))
+        walkp(fe)
+        (isempty(Ps) || !all(==(Ps[1]), Ps)) && return nothing
+        hastrig(t) = t isa Expr && ((t.head === :call && t.args[1] in (:exp, :sin, :cos, :sinh, :cosh) && length(t.args) == 2 &&
+                                     has_x(t.args[2], xk)) || any(hastrig, t.args))
+        hastrig(fe) || return nothing
+        Bs, as, lin = Any[Ps[1]], Any[Ps[1]], true
+    end
     length(as) == 1 || return nothing
     A = as[1]
     # without a half-integer power: w = A itself, for an A in an exp or trigonometric argument (xᵐ e^((a + b log(c xⁿ))²),
@@ -48,7 +61,7 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
     end
     B = Bs[1]
     all(==(B), Bs) || return nothing
-    name, u = A.args[1], A.args[2]
+    name, u = lin ? (:lin, A) : (A.args[1], A.args[2])
     # (log(u + √(u² + 1)): asinh as another step rewrote it; step SQ takes asinh itself, with a simpler answer)
     hasrad(t) = t isa Expr && (half(t) !== nothing || any(hasrad, t.args))
     (name === :log && hasrad(u)) && return nothing
@@ -77,7 +90,79 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
     κx = nothing
     rad = nothing                                    # P with √P ↦ √k R(T): (1 - u², R) for asin, ...
     xpow = t -> nothing
-    if name in (:asin, :acos, :asinh, :acosh, :lambertw, :LambertW)
+    halfangle = false
+    # atan(c x): x = tan T/c, a product of xᵏ, (k (1 + c² x²))^p, Bᵖ and constants as c⁻ᵏ sinᵏT cos^(-k)T, kᵖ cos^(-2p)T
+    # (cos T > 0 for T = atan(c x)), wᵖ; dx = dT/(c cos²T); the exponents of sin, cos must come out ≥ 0 (√atan(a x)/(c +
+    # a² c x²)², samples 2377–2381). Nothing for a sum, or atan(c x + d) with d ≠ 0
+    function atan_product(t0)
+        Tu, eu = tw(u, xk)
+        (Tu !== nothing && isempty(Tu.levels) && degree(eu.den) == 0 && degree(eu.num) == 1 && iszero(eu.num.c[1])) || return nothing
+        c1 = ct(Tu, eu.num.c[2] / eu.den.c[1], xs)
+        lv = Any[]
+        function facs(t, e)
+            if iscall(t, :*, length(t isa Expr ? t.args : []) - 1) && t.args[1] === :*
+                foreach(v -> facs(v, e), t.args[2:end])
+            elseif iscall(t, :/, 2)
+                facs(t.args[2], e); facs(t.args[3], -e)
+            elseif iscall(t, :sqrt, 1) && t.args[2] != B
+                facs(t.args[2], e / 2)
+            elseif iscall(t, :^, 2) && t.args[2] != B && (p = leaf_rational(t.args[3]); p !== nothing) &&
+                   !(t.args[2] isa Expr && t.args[2].head === :call && t.args[2].args[1] in (:+, :-))
+                facs(t.args[2], e * Q(p))
+            else
+                (hp = half(t); hp !== nothing && hp[1] == B) ? push!(lv, (B, e * hp[2])) :
+                (iscall(t, :^, 2) && (p = leaf_rational(t.args[3]); p !== nothing)) ? push!(lv, (t.args[2], e * Q(p))) :
+                push!(lv, (t, e))
+            end
+        end
+        facs(t0, Q(1))
+        ks, ns, cs = Q(0), Q(-2), Any[:(1 / $c1)]      # sin, cos exponents; dx = dT/(c cos²T)
+        wp = Q(0)
+        for (v, e) in lv
+            if !has_x(v, xk)
+                push!(cs, isone(e) ? v : :($v ^ $e))
+            elseif v == xs
+                isinteger(e) || return nothing
+                ks += e; ns -= e; push!(cs, :($c1 ^ $(-e)))
+            elseif v == B
+                wp += 2e
+            elseif v == A && B == A
+                wp += 2e
+            else
+                isempty(atoms!(Any[], v)) || return nothing
+                Tk, ek = tw(:($v / (1 + $u ^ 2)), xk)
+                (Tk !== nothing && isempty(Tk.levels) && degree(ek.num) == 0 && degree(ek.den) == 0) || return nothing
+                kc = ct(Tk, ek.num.c[1] / ek.den.c[1], xs)
+                leaf_rational(kc) == 1 || push!(cs, :($kc ^ $e))
+                ns -= 2e
+            end
+        end
+        (isinteger(ks) && isinteger(ns) && isinteger(wp) && ks >= 0 && ns >= 0) || return nothing
+        fs = Any[cs..., :(2 * $w ^ $(Int(wp) + 1) / $a1)]
+        ks > 0 && push!(fs, :(sin($Tw) ^ $(Int(ks))))
+        ns > 0 && push!(fs, :(cos($Tw) ^ $(Int(ns))))
+        Expr(:call, :*, fs...)
+    end
+    if name === :atan
+        nothing
+    elseif name === :lin
+        Tl, el_ = tw(A, xk)
+        (Tl !== nothing && isempty(Tl.levels) && degree(el_.den) == 0 && degree(el_.num) == 1) || return nothing
+        c1 = ct(Tl, el_.num.c[2] / el_.den.c[1], xs)
+        d0 = ct(Tl, el_.num.c[1] / el_.den.c[1], xs)
+        xof = T -> leaf_rational(d0) == 0 ? :($T / $c1) : :(($T - $d0) / $c1)
+        dxdT = T -> :(1 / $c1)
+    elseif name === :asin && (Tq = first(tw(u, xk)); Tq !== nothing && isempty(Tq.levels)) &&
+           (eq = last(tw(u, xk)); degree(eq.den) == 0 && degree(eq.num) == 2 && iszero(eq.num.c[2]) &&
+            crational(eq.num.c[1] / eq.den.c[1]) in (1, -1))
+        # asin(±1 + d x²): 1 ∓ sin T = (cos(T/2) ∓ sin(T/2))², so x = κ (cos(T/2) ∓ sin(T/2)) with κ = x/(cos(A/2) ∓ sin(A/2))
+        # constant (κ² = ∓1/d), as Rubi writes it (samples 2328, 2329)
+        sg = crational(eq.num.c[1] / eq.den.c[1]) == 1 ? :- : :+
+        halfangle = true
+        κx = Expr(:call, :/, xs, Expr(:call, sg, :(cos($A / 2)), :(sin($A / 2))))
+        xof = T -> :($κ * $(Expr(:call, sg, :(cos($T / 2)), :(sin($T / 2)))))
+        dxdT = T -> sg === :- ? :(-($κ) * (sin($T / 2) + cos($T / 2)) / 2) : :($κ * (cos($T / 2) - sin($T / 2)) / 2)
+    elseif name in (:asin, :acos, :asinh, :acosh, :lambertw, :LambertW)
         Tu, eu = tw(u, xk)
         (Tu !== nothing && isempty(Tu.levels) && degree(eu.den) == 0 && degree(eu.num) == 1) || return nothing
         c1 = ct(Tu, eu.num.c[2] / eu.den.c[1], xs)
@@ -141,7 +226,9 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
         end
         t == xs ? xof(Tw) : t
     end
-    g = direct ? :($(sub(fe)) * $(dxdT(Tw))) : :($(sub(fe)) * $(dxdT(Tw)) * 2 * $w / $a1)
+    g = name === :atan ? atan_product(fe) :
+        direct ? :($(sub(fe)) * $(dxdT(Tw))) : :($(sub(fe)) * $(dxdT(Tw)) * 2 * $w / $a1)
+    g === nothing && return nothing
     has_x(g, xk) && return nothing
     G = try
         risch_integrate(g, w; build = expr_build, lift = identity, verify = verify)
@@ -193,6 +280,22 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
     end
     Gx = back(G)
     # (W(u): no numeric W here, and x = (w eʷ - d)/c, w = √B are identities, as for step LW)
-    (verify && name !== :lambertw && !numeric_antiderivative(fe, Gx, xk)) && return nothing
+    if verify && name !== :lambertw && !numeric_antiderivative(fe, Gx, xk)
+        # (asin(1 + d x²) with the check's d > 0 is complex at every point: compared as complex values there, two points)
+        halfangle || return nothing
+        ev = numeric_evaluator(xk, fe, Gx)
+        ok = 0
+        for x0 in (0.3, 0.7, -0.5, 1.3)
+            fv, dG = try
+                ev(fe, x0), (ev(Gx, x0 + 1e-6) - ev(Gx, x0 - 1e-6)) / 2e-6
+            catch
+                continue
+            end
+            (isfinite(fv) && isfinite(dG)) || continue
+            abs(dG - fv) <= 1e-5 * max(1.0, abs(fv)) || return nothing
+            ok += 1
+        end
+        ok >= 2 || return nothing
+    end
     Gx
 end

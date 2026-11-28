@@ -784,7 +784,10 @@ function integrate_reciprocal_exp(f, x; build = nothing, lift = nothing, verify:
     @nospecialize f x
     xk = string(x)
     args = Any[]
-    walk(t) = isnode(t) ? ((w = exp_arg(t); w !== nothing && depends_on(w, xk) && push!(args, w)); foreach(walk, arguments(t))) : nothing
+    # (and sin, cos, sinh, cosh of polynomials in 1/x: cos(a + b/x²)/x⁴, sample 1575, Fresnel integrals in u)
+    trig_arg(t) = (opname(operation(t)) in (:sin, :cos, :sinh, :cosh) && length(arguments(t)) == 1) ? arguments(t)[1] : nothing
+    walk(t) = isnode(t) ? ((w = exp_arg(t); w === nothing && (w = trig_arg(t)); w !== nothing && depends_on(w, xk) && push!(args, w));
+                           foreach(walk, arguments(t))) : nothing
     walk(f)
     isempty(args) && return nothing
     for w in args
