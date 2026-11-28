@@ -4603,7 +4603,9 @@ end
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     for g in (:(1 / (a + b * acosh(1 + d * x ^ 2)) ^ 2),                                                 # 2749
               :(1 / (a + b * acosh(1 + d * x ^ 2))))
-        t = @elapsed @test_throws Risch.NotElementary Risch.risch_integrate(g, :x; build = build, lift = identity)
+        # (now integrated by step SQ, acosh(1 + d x²) by half angles; quickly, not by the residues)
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test occursin("expinti", string(F))                # (Shi and Chi as Ei of ±(a/b + acosh)/2)
         @test t < 60
     end
     # (an answer on the same route is unchanged)
@@ -5195,7 +5197,10 @@ end
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     fns = Dict(:erf => SpecialFunctions.erf, :erfi => SpecialFunctions.erfi, :erfc => SpecialFunctions.erfc,
                :FresnelS => z -> (1 + im) / 4 * (SpecialFunctions.erf((1 + im) * sqrt(pi) * z / 2) - im * SpecialFunctions.erf((1 - im) * sqrt(pi) * z / 2)),
-               :FresnelC => z -> (1 - im) / 4 * (SpecialFunctions.erf((1 + im) * sqrt(pi) * z / 2) + im * SpecialFunctions.erf((1 - im) * sqrt(pi) * z / 2)))
+               :FresnelC => z -> (1 - im) / 4 * (SpecialFunctions.erf((1 + im) * sqrt(pi) * z / 2) + im * SpecialFunctions.erf((1 - im) * sqrt(pi) * z / 2)),
+               # (real-only functions at real arguments)
+               :Si => z -> SpecialFunctions.sinint(real(z)), :Ci => z -> SpecialFunctions.cosint(real(z)),
+               :sinint => z -> SpecialFunctions.sinint(real(z)), :cosint => z -> SpecialFunctions.cosint(real(z)))
     function ev(e, vals)
         go(t) = t isa Symbol ? (haskey(vals, t) ? ComplexF64(vals[t]) : Core.eval(Main, t)) : t isa Number ? t :
                 (t isa Expr && t.head === :call) ? get(() -> Core.eval(Main, t.args[1]), fns, t.args[1])(map(go, t.args[2:end])...) :
@@ -5207,6 +5212,7 @@ end
     for g in (:(erf(a + b * x) ^ 2), :(exp(c - b ^ 2 * x ^ 2) * erf(b * x) ^ n), :(exp(c - b ^ 2 * x ^ 2) * erfc(b * x)),
               :(exp(c - b ^ 2 * x ^ 2) / erfc(b * x)), :((c + d * x) * FresnelS(a + b * x)),
               :(cos((1 / 2) * b ^ 2 * π * x ^ 2) * FresnelC(b * x)), :(x ^ 6 * FresnelC(b * x) ^ 2),
+              :(x ^ 2 * Si(b * x) ^ 2), :(Ci(a + b * x) ^ 2),
               :((e * x) ^ m * erfi(d * (a + b * log(c * x ^ n)))), :(x ^ 2 * erfi(d * (a + b * log(c * x ^ n)))),
               :((e * x) ^ m * FresnelS(d * (a + b * log(c * x ^ n)))))
         t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
@@ -5216,5 +5222,39 @@ end
             d = (ev(F, merge(vals, Dict(:x => x0 + h))) - ev(F, merge(vals, Dict(:x => x0 - h)))) / 2h
             @test abs(d - v) <= 1e-5 * max(1, abs(v))
         end
+    end
+end
+
+# step SQ with w = A for a negative integer power of a + b A (or A in a denominator): Ei, Shi, Chi, Si, Ci in w
+# (samples 1187, 2346, 2681, 2697, 2705, 2719, 2747, 2749)
+@testset "Step SQ: negative powers of a + b A (Ei, Shi, Chi, Si, Ci)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    # (real-only functions: at real arguments; complex ones only reach expinti, whose real part is taken)
+    re(f) = z -> f(real(z))
+    fns = Dict(:expinti => re(SpecialFunctions.expinti), :sinint => re(SpecialFunctions.sinint), :cosint => re(SpecialFunctions.cosint),
+               :sinhint => re(Risch.sinhint), :coshint => re(Risch.coshint))
+    function ev(e, vals)
+        go(t) = t isa Symbol ? (haskey(vals, t) ? ComplexF64(vals[t]) : Core.eval(Main, t)) : t isa Number ? t :
+                (t isa Expr && t.head === :call) ? get(() -> Core.eval(Main, t.args[1]), fns, t.args[1])(map(go, t.args[2:end])...) :
+                Core.eval(Main, t)
+        go(e)
+    end
+    h = 1e-6
+    vals = Dict(:a => 0.8, :b => 0.7, :c => 0.6, :d => 1.3, :m => 1.3, :n => 0.9)
+    for g in (:(x ^ 2 / asinh(a * x) ^ 2), :((x * sqrt(1 + c ^ 2 * x ^ 2)) / (a + b * asinh(c * x))),
+              :(1 / (a + b * acosh(c + d * x)) ^ 3), :(x ^ 3 / acosh(a * x) ^ 3), :((d * x) ^ m / (a + b * log(c * x ^ n)) ^ 3),
+              :(1 / (a + b * acos(-1 + d * x ^ 2))), :(1 / (a + b * acosh(1 + d * x ^ 2)) ^ 2))
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 120
+        n = 0
+        for x0 in (0.3, 0.55, 1.7, 2.1, 3.0)
+            v = ev(g, merge(vals, Dict(:x => x0)))
+            (isfinite(v) && abs(imag(v)) < 1e-12) || continue
+            d = (ev(F, merge(vals, Dict(:x => x0 + h))) - ev(F, merge(vals, Dict(:x => x0 - h)))) / 2h
+            (isfinite(d) && abs(imag(d)) < 1e-6) || continue      # (Ei of a negative argument: its real part)
+            @test abs(d - v) <= 1e-5 * max(1, abs(v))
+            n += 1
+        end
+        @test n >= 2
     end
 end
