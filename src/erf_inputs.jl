@@ -10,7 +10,12 @@
 #   S(z) = (1 + i)/4 [erf((1 + i)√π z/2) - i erf((1 - i)√π z/2)],  C(z) = (1 - i)/4 [erf((1 + i)√π z/2) + i erf((1 - i)√π z/2)].
 # By parts nests twice at most (step ER's depth). Nothing when f has another such function or another argument.
 # ---------------------------------------------------------------------------
-const EF_FUNS = (:erf, :erfi, :erfc, :FresnelS, :FresnelC, :fresnels, :fresnelc)
+const EF_FUNS = (:erf, :erfi, :erfc, :FresnelS, :FresnelC, :fresnels, :fresnelc,
+                 :Si, :Ci, :Shi, :Chi, :sinint, :cosint, :sinhint, :coshint)
+# (Si, Ci, Shi, Chi: F′(u) = sin u/u, cos u/u, sinh u/u, cosh u/u; samples 2948–2955)
+const EF_TRIGINT = Dict(:Si => :sin, :sinint => :sin, :Ci => :cos, :cosint => :cos,
+                        :Shi => :sinh, :sinhint => :sinh, :Chi => :cosh, :coshint => :cosh)
+const EF_NUMNAME = Dict(:Si => :sinint, :Ci => :cosint, :Shi => :sinhint, :Chi => :coshint)
 
 function try_erf_inputs(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
@@ -24,6 +29,7 @@ end
 function fresnel_as_erf(t)
     t isa Expr || return t
     a = Any[fresnel_as_erf(s) for s in t.args]
+    (t.head === :call && length(a) == 2 && haskey(EF_NUMNAME, a[1])) && return Expr(:call, EF_NUMNAME[a[1]], a[2])   # (Shi → sinhint)
     if t.head === :call && length(a) == 2 && a[1] in (:FresnelS, :FresnelC, :fresnels, :fresnelc)
         z = a[2]
         p = :(erf((1 + im) * sqrt(π) * $z / 2))
@@ -69,7 +75,8 @@ function erf_inputs_expr(fe, xs::Symbol; verify::Bool = true)
         (Ta !== nothing && isempty(Ta.levels)) && (a = tower_to_term(Builder(expr_build, identity, xs, Ta.consts), Ta, ea))
         b0 = nothing
     end
-    dF = name === :erf ? :(2 / sqrt(π) * exp(-($u) ^ 2)) : name === :erfi ? :(2 / sqrt(π) * exp(($u) ^ 2)) :
+    dF = haskey(EF_TRIGINT, name) ? :($(EF_TRIGINT[name])($u) / $u) :
+         name === :erf ? :(2 / sqrt(π) * exp(-($u) ^ 2)) : name === :erfi ? :(2 / sqrt(π) * exp(($u) ^ 2)) :
          name in (:FresnelS, :fresnels) ? :(sin(π * ($u) ^ 2 / 2)) : :(cos(π * ($u) ^ 2 / 2))
     D = leaf_rational(a) == 1 ? dF : :($a * $dF)
     check(G) = !verify || numeric_antiderivative(fresnel_as_erf(f), fresnel_as_erf(noc(G)), xk)   # (erfc as 1 - erf)

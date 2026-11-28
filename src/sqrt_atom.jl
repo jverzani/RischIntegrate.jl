@@ -56,7 +56,12 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
     if direct
         inarg(t) = t isa Expr && ((t.head === :call && t.args[1] in (:exp, :sin, :cos, :sinh, :cosh) && length(t.args) == 2 &&
                                    !isempty(atoms!(Any[], t.args[2]))) || any(inarg, t.args))
-        inarg(fe) || return nothing
+        # (or A in a denominator, a negative integer power of a + b A: x²/asinh(a x)², (d x)ᵐ/(a + b log(c xⁿ))³, the
+        # integral in w with Ei, Shi, Chi, Si, Ci; samples 1187, 2681, 2705, 2747)
+        indenom(t) = t isa Expr && ((iscall(t, :/, 2) && !isempty(atoms!(Any[], t.args[3]))) ||
+                                    (iscall(t, :^, 2) && (p = leaf_rational(t.args[3]); p !== nothing && isinteger(p) && p < 0) &&
+                                     !isempty(atoms!(Any[], t.args[2]))) || any(indenom, t.args))
+        (inarg(fe) || indenom(fe)) || return nothing
         Bs = Any[A]
     end
     B = Bs[1]
@@ -90,6 +95,7 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
     κx = nothing
     rad = nothing                                    # P with √P ↦ √k R(T): (1 - u², R) for asin, ...
     xpow = t -> nothing
+    opq = Dict{Symbol,Any}()
     halfangle = false
     # atan(c x): x = tan T/c, a product of xᵏ, (k (1 + c² x²))^p, Bᵖ and constants as c⁻ᵏ sinᵏT cos^(-k)T, kᵖ cos^(-2p)T
     # (cos T > 0 for T = atan(c x)), wᵖ; dx = dT/(c cos²T); the exponents of sin, cos must come out ≥ 0 (√atan(a x)/(c +
@@ -125,9 +131,11 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
                 isinteger(e) || return nothing
                 ks += e; ns -= e; push!(cs, :($c1 ^ $(-e)))
             elseif v == B
-                wp += 2e
+                wp += direct ? e : 2e
             elseif v == A && B == A
-                wp += 2e
+                wp += direct ? e : 2e
+            elseif direct && !isempty(atoms!(Any[], v)) && !has_x(rep(v, A, w), xk)
+                push!(cs, :($(rep(v, A, w)) ^ $e))         # (a + b A)ᵏ as (a + b w)ᵏ
             else
                 isempty(atoms!(Any[], v)) || return nothing
                 Tk, ek = tw(:($v / (1 + $u ^ 2)), xk)
@@ -138,7 +146,7 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
             end
         end
         (isinteger(ks) && isinteger(ns) && isinteger(wp) && ks >= 0 && ns >= 0) || return nothing
-        fs = Any[cs..., :(2 * $w ^ $(Int(wp) + 1) / $a1)]
+        fs = direct ? Any[cs..., :($w ^ $(Int(wp)))] : Any[cs..., :(2 * $w ^ $(Int(wp) + 1) / $a1)]
         ks > 0 && push!(fs, :(sin($Tw) ^ $(Int(ks))))
         ns > 0 && push!(fs, :(cos($Tw) ^ $(Int(ns))))
         Expr(:call, :*, fs...)
@@ -162,6 +170,18 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
         κx = Expr(:call, :/, xs, Expr(:call, sg, :(cos($A / 2)), :(sin($A / 2))))
         xof = T -> :($κ * $(Expr(:call, sg, :(cos($T / 2)), :(sin($T / 2)))))
         dxdT = T -> sg === :- ? :(-($κ) * (sin($T / 2) + cos($T / 2)) / 2) : :($κ * (cos($T / 2) - sin($T / 2)) / 2)
+    elseif name in (:acos, :acosh) && (Tq = first(tw(u, xk)); Tq !== nothing && isempty(Tq.levels)) &&
+           (eq = last(tw(u, xk)); degree(eq.den) == 0 && degree(eq.num) == 2 && iszero(eq.num.c[2]) &&
+            crational(eq.num.c[1] / eq.den.c[1]) in (1, -1))
+        # acos(±1 + d x²): 1 ∓ cos T = 2 sin²(T/2), 2 cos²(T/2); acosh(±1 + d x²): cosh T ∓ 1 = 2 sinh²(T/2), 2 cosh²(T/2):
+        # x = κ h(T/2), κ = x/h(A/2) constant (samples 2346, 2749)
+        one = crational(eq.num.c[1] / eq.den.c[1]) == 1
+        h, dh = name === :acos ? (one ? (:sin, :cos) : (:cos, :sin)) : (one ? (:sinh, :cosh) : (:cosh, :sinh))
+        sgn = (name === :acos && !one) ? -1 : 1           # (cos′ = -sin)
+        halfangle = true
+        κx = :($xs / $h($A / 2))
+        xof = T -> :($κ * $h($T / 2))
+        dxdT = T -> :($sgn * $κ * $dh($T / 2) / 2)
     elseif name in (:asin, :acos, :asinh, :acosh, :lambertw, :LambertW)
         Tu, eu = tw(u, xk)
         (Tu !== nothing && isempty(Tu.levels) && degree(eu.den) == 0 && degree(eu.num) == 1) || return nothing
@@ -193,8 +213,10 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
                 c = bs == xs ? nothing : (iscall(bs, :*, 2) && bs.args[3] == xs && !has_x(bs.args[2], xk)) ? bs.args[2] :
                     (iscall(bs, :*, 2) && bs.args[2] == xs && !has_x(bs.args[3], xk)) ? bs.args[3] : false
                 c === false && return nothing
-                e = :($κ ^ $p * exp($p * $Tw / $k))
-                c === nothing ? e : :($c ^ $p * $e)
+                # (c^p κ^p as one symbol: the tower takes no symbolic power of a constant)
+                K = gensym("K")
+                opq[K] = c === nothing ? :($κx ^ $p) : :($c ^ $p * $κx ^ $p)
+                :($K * exp($p * $Tw / $k))
             end
         end
     end
@@ -230,6 +252,25 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
         direct ? :($(sub(fe)) * $(dxdT(Tw))) : :($(sub(fe)) * $(dxdT(Tw)) * 2 * $w / $a1)
     g === nothing && return nothing
     has_x(g, xk) && return nothing
+    # the exp factors of the product as one (e^(m w/n) e^(w/n) = e^((m + 1) w/n): the Ei step takes one exponential)
+    function mergeexp(t)
+        fs, es = Any[], Any[]
+        function fl(v, sgn)
+            if iscall(v, :*, length(v isa Expr ? v.args : []) - 1) && v.args[1] === :*
+                foreach(z -> fl(z, sgn), v.args[2:end])
+            elseif iscall(v, :/, 2)
+                fl(v.args[2], sgn); fl(v.args[3], -sgn)
+            elseif iscall(v, :exp, 1)
+                push!(es, sgn == 1 ? v.args[2] : :(-($(v.args[2]))))
+            else
+                push!(fs, sgn == 1 ? v : :(1 / $v))
+            end
+        end
+        fl(t, 1)
+        length(es) >= 2 || return t
+        Expr(:call, :*, fs..., :(exp($(Expr(:call, :+, es...)))))
+    end
+    g = mergeexp(g)
     G = try
         risch_integrate(g, w; build = expr_build, lift = identity, verify = verify)
     catch err
@@ -241,6 +282,7 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
     function back(t)
         t == w && return direct ? A : :(sqrt($B))
         t == κ && return κx
+        (t isa Symbol && haskey(opq, t)) && return opq[t]
         t isa Expr || return t
         # exp, sin, ... of c₂ w² + c₀: of (c₂ a₁) A + (c₂ a₀ + c₀), e^(2 asinh u), not e^(-a/b + (a + b asinh u)/b)
         if t.head === :call && t.args[1] in (:exp, :sin, :cos, :sinh, :cosh) && length(t.args) == 2 && has_x(t.args[2], string(w))
