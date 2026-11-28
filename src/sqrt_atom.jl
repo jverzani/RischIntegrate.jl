@@ -35,6 +35,19 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
     walk(t) = t isa Expr && ((h = half(t); h !== nothing && !isempty(atoms!(Any[], h[1])) && push!(Bs, h[1])); foreach(walk, t.args))
     walk(fe)
     as = unique(atoms!(Any[], fe))
+    # no atom: half-integer powers of one linear P with exp, sin, cos of x, P itself as A, w = √P ((d x)^(3/2) sin(f x),
+    # cos(a + b x)³/(c + d x)^(5/2), samples 1351, 1566)
+    lin = false
+    if isempty(as)
+        Ps = Any[]
+        walkp(t) = t isa Expr && ((h = half(t); h !== nothing && has_x(h[1], xk) && push!(Ps, h[1])); foreach(walkp, t.args))
+        walkp(fe)
+        (isempty(Ps) || !all(==(Ps[1]), Ps)) && return nothing
+        hastrig(t) = t isa Expr && ((t.head === :call && t.args[1] in (:exp, :sin, :cos, :sinh, :cosh) && length(t.args) == 2 &&
+                                     has_x(t.args[2], xk)) || any(hastrig, t.args))
+        hastrig(fe) || return nothing
+        Bs, as, lin = Any[Ps[1]], Any[Ps[1]], true
+    end
     length(as) == 1 || return nothing
     A = as[1]
     # without a half-integer power: w = A itself, for an A in an exp or trigonometric argument (xᵐ e^((a + b log(c xⁿ))²),
@@ -48,7 +61,7 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
     end
     B = Bs[1]
     all(==(B), Bs) || return nothing
-    name, u = A.args[1], A.args[2]
+    name, u = lin ? (:lin, A) : (A.args[1], A.args[2])
     # (log(u + √(u² + 1)): asinh as another step rewrote it; step SQ takes asinh itself, with a simpler answer)
     hasrad(t) = t isa Expr && (half(t) !== nothing || any(hasrad, t.args))
     (name === :log && hasrad(u)) && return nothing
@@ -131,6 +144,13 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
     end
     if name === :atan
         nothing
+    elseif name === :lin
+        Tl, el_ = tw(A, xk)
+        (Tl !== nothing && isempty(Tl.levels) && degree(el_.den) == 0 && degree(el_.num) == 1) || return nothing
+        c1 = ct(Tl, el_.num.c[2] / el_.den.c[1], xs)
+        d0 = ct(Tl, el_.num.c[1] / el_.den.c[1], xs)
+        xof = T -> leaf_rational(d0) == 0 ? :($T / $c1) : :(($T - $d0) / $c1)
+        dxdT = T -> :(1 / $c1)
     elseif name in (:asin, :acos, :asinh, :acosh, :lambertw, :LambertW)
         Tu, eu = tw(u, xk)
         (Tu !== nothing && isempty(Tu.levels) && degree(eu.den) == 0 && degree(eu.num) == 1) || return nothing
