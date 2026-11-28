@@ -5258,3 +5258,41 @@ end
         @test n >= 2
     end
 end
+
+# step AN: the arguments of exp, sin, cos, b^u normalized after a NotElementary (a quotient by the root of a linear
+# denominator, the constant part of an exponent as a factor, two sines, cosines of linear arguments as a sum), and
+# sinh, cosh of a + b log(c xⁿ) beside an exponential in step SQ's w-integrand (samples 1159, 1160, 2250, 2952, 2953, 2955)
+@testset "Step AN: f^(a + b/x), cos((a + b x)/(c + d x)), Ci(c + d x) sin(a + b x)" begin
+    build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
+    # (real-only functions at real arguments; Ci, Chi of a negative y as of |y|, a constant iπ apart)
+    re(f) = z -> f(real(z))
+    ab(f) = z -> f(abs(real(z)))
+    ci, chi, si, shi = ab(SpecialFunctions.cosint), ab(Risch.coshint), re(SpecialFunctions.sinint), re(Risch.sinhint)
+    fns = Dict(:expinti => re(SpecialFunctions.expinti), :sinint => si, :Si => si, :cosint => ci, :Ci => ci,
+               :sinhint => shi, :Shi => shi, :coshint => chi, :Chi => chi)
+    function ev(e, vals)
+        go(t) = t isa Symbol ? (haskey(vals, t) ? ComplexF64(vals[t]) : Core.eval(Main, t)) : t isa Number ? t :
+                (t isa Expr && t.head === :call) ? get(() -> Core.eval(Main, t.args[1]), fns, t.args[1])(map(go, t.args[2:end])...) :
+                Core.eval(Main, t)
+        go(e)
+    end
+    h = 1e-6
+    vals = Dict(:a => 0.8, :b => 0.7, :c => 0.6, :d => 1.3, :f => 1.6, :n => 0.9)
+    for g in (:(f ^ (a + b / x) * x ^ 2), :(f ^ (a + b / x ^ 2) * x ^ 5), :(cos((a + b * x) / (c + d * x))),
+              :(exp((a + b * x) / (c + d * x))), :(Shi(d * (a + b * log(c * x ^ n))) / x ^ 2),
+              :(x * Chi(d * (a + b * log(c * x ^ n)))), :(Ci(c + d * x) * sin(a + b * x)), :(Ci(x) * sin(b * x)),
+              :(Chi(x) * sinh(b * x)), :(sin(a + b * x) * cos(c + d * x) / x))
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test t < 120
+        n = 0
+        for x0 in (0.3, 0.55, 1.7, 2.1, 3.0)
+            v = ev(g, merge(vals, Dict(:x => x0)))
+            (isfinite(v) && abs(imag(v)) < 1e-12) || continue
+            d = (ev(F, merge(vals, Dict(:x => x0 + h))) - ev(F, merge(vals, Dict(:x => x0 - h)))) / 2h
+            (isfinite(d) && abs(imag(d)) < 1e-6) || continue      # (Ei of a negative argument: its real part)
+            @test abs(d - v) <= 1e-5 * max(1, abs(v))
+            n += 1
+        end
+        @test n >= 2
+    end
+end

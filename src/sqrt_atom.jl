@@ -254,6 +254,10 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
     has_x(g, xk) && return nothing
     # the exp factors of the product as one (e^(m w/n) e^(w/n) = e^((m + 1) w/n): the Ei step takes one exponential)
     function mergeexp(t)
+        # (a sum: term by term; a sum factor with sinh, cosh of w distributed, after the addition formulas)
+        iscall(t, :+, length(t isa Expr ? t.args : []) - 1) && t.args[1] === :+ &&
+            return Expr(:call, :+, (mergeexp(z) for z in t.args[2:end])...)
+        hyw(z) = z isa Expr && ((z.head === :call && z.args[1] in (:sinh, :cosh) && has_x(z, string(w))) || any(hyw, z.args))
         fs, es = Any[], Any[]
         function fl(v, sgn)
             if iscall(v, :*, length(v isa Expr ? v.args : []) - 1) && v.args[1] === :*
@@ -261,12 +265,32 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
             elseif iscall(v, :/, 2)
                 fl(v.args[2], sgn); fl(v.args[3], -sgn)
             elseif iscall(v, :exp, 1)
-                push!(es, sgn == 1 ? v.args[2] : :(-($(v.args[2]))))
+                push!(es, sgn == 1 ? v.args[2] : :($sgn * $(v.args[2])))
+            elseif iscall(v, :^, 2) && v.args[3] isa Integer && (iscall(v.args[2], :exp, 1) ||
+                                                               (v.args[2] isa Expr && v.args[2].head === :call && v.args[2].args[1] in (:*, :/)))
+                fl(v.args[2], sgn * v.args[3])                # ((κ e^(w/n))²: κ² e^(2w/n))
             else
-                push!(fs, sgn == 1 ? v : :(1 / $v))
+                push!(fs, sgn == 1 ? v : sgn == -1 ? :(1 / $v) : :($v ^ $sgn))
             end
         end
         fl(t, 1)
+        is = findfirst(z -> z isa Expr && z.head === :call && z.args[1] === :+ && hyw(z), fs)
+        if is !== nothing && !isempty(es)
+            rest = Any[fs[j] for j in eachindex(fs) if j != is]
+            E = :(exp($(Expr(:call, :+, es...))))
+            return Expr(:call, :+, (mergeexp(Expr(:call, :*, z, rest..., E)) for z in fs[is].args[2:end])...)
+        end
+        # a factor sinh(v), cosh(v) of w beside an exponential as (e^v ∓ e^(-v))/2 (Shi(d (a + b log(c xⁿ)))/x² by
+        # parts, sample 2953)
+        ih = findfirst(v -> v isa Expr && v.head === :call && v.args[1] in (:sinh, :cosh) && length(v.args) == 2 &&
+                            has_x(v.args[2], string(w)), fs)
+        if ih !== nothing && !isempty(es)
+            v = fs[ih].args[2]
+            sg = fs[ih].args[1] === :sinh ? -1 : 1
+            rest = Any[fs[i] for i in eachindex(fs) if i != ih]
+            mk1(z) = Expr(:call, :*, rest..., :(exp($(Expr(:call, :+, es..., z)))))
+            return :((1 // 2) * $(mk1(v)) + $sg * (1 // 2) * $(mk1(:(-($v)))))
+        end
         length(es) >= 2 || return t
         Expr(:call, :*, fs..., :(exp($(Expr(:call, :+, es...)))))
     end
