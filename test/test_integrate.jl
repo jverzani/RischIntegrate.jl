@@ -4603,9 +4603,9 @@ end
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     for g in (:(1 / (a + b * acosh(1 + d * x ^ 2)) ^ 2),                                                 # 2749
               :(1 / (a + b * acosh(1 + d * x ^ 2))))
-        # (now integrated by step SQ, acosh(1 + d x²) by half angles: Shi and Chi; quickly, not by the residues)
+        # (now integrated by step SQ, acosh(1 + d x²) by half angles; quickly, not by the residues)
         t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
-        @test occursin("sinhint", string(F)) || occursin("coshint", string(F))
+        @test occursin("expinti", string(F))                # (Shi and Chi as Ei of ±(a/b + acosh)/2)
         @test t < 60
     end
     # (an answer on the same route is unchanged)
