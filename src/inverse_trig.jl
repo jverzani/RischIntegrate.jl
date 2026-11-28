@@ -747,8 +747,16 @@ function numeric_evaluator(xk::String, ts...; pz::Bool = false)
                 # a real-only function with no Complex method (SpecialFunctions' expinti, sinint, cosint, as a
                 # SymbolicUtils answer keeps them) at real arguments: their real parts (else the answer threw at
                 # every point and was rejected, Apostol 165, ℯᵗ log(1 + t))
-                (e isa MethodError && all(a -> abs(imag(a)) <= 1e-12 * max(1.0, abs(a)), as)) || rethrow()
-                fn(map(real, as)...)
+                (e isa MethodError || e isa DomainError) && all(a -> abs(imag(a)) <= 1e-12 * max(1.0, abs(a)), as) || rethrow()
+                ra = map(real, as)
+                # (Ci, Chi of a negative real: Ci(-y) = Ci(y) + iπ, the branch of x > 0 continued by a constant;
+                # Ci((b - 1) x) of cos(b x) cos(x)/x, b < 1)
+                if length(ra) == 1 && ra[1] < 0 && nameof(fn) in (:cosint, :coshint, :Ci, :Chi)
+                    fn(-ra[1]) + im * pi
+                else
+                    e isa DomainError && rethrow()
+                    fn(ra...)
+                end
             end
             w = ComplexF64(v)
             return (pz && iszero(imag(w))) ? complex(real(w), 0.0) : w

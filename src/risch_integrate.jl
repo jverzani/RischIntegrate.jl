@@ -354,6 +354,9 @@ Base.@nospecializeinfer function risch_integrate(@nospecialize(f), @nospecialize
             # x² cos(a + b x²): step GT over a constant field of parameters (step GQ)
             g = integrate_gaussian_symbolic(f, x; build = build, lift = lift, verify = verify)
             g === nothing || return g
+            # cos((a + b x)/(c + d x)) = cos(b/d + ρ/(c + d x)), f^(a + b/x) = f^a f^(b/x) (step AN)
+            g = integrate_normalized_args(f, x; build = build, lift = lift, verify = verify)
+            g === nothing || return g
         end
         g = try
             # x·R(sin, cos): Clausen's function (step CL); logʲ(x) L(w x)/x, L = atan, log or li2: polylogarithms
