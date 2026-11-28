@@ -34,12 +34,20 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
     Bs = Any[]
     walk(t) = t isa Expr && ((h = half(t); h !== nothing && !isempty(atoms!(Any[], h[1])) && push!(Bs, h[1])); foreach(walk, t.args))
     walk(fe)
-    isempty(Bs) && return nothing
-    B = Bs[1]
-    all(==(B), Bs) || return nothing
     as = unique(atoms!(Any[], fe))
     length(as) == 1 || return nothing
     A = as[1]
+    # without a half-integer power: w = A itself, for an A in an exp or trigonometric argument (xᵐ e^((a + b log(c xⁿ))²),
+    # the second integral of x² erfi(d (a + b log(c xⁿ))) by parts, sample 2931)
+    direct = isempty(Bs)
+    if direct
+        inarg(t) = t isa Expr && ((t.head === :call && t.args[1] in (:exp, :sin, :cos, :sinh, :cosh) && length(t.args) == 2 &&
+                                   !isempty(atoms!(Any[], t.args[2]))) || any(inarg, t.args))
+        inarg(fe) || return nothing
+        Bs = Any[A]
+    end
+    B = Bs[1]
+    all(==(B), Bs) || return nothing
     name, u = A.args[1], A.args[2]
     # (log(u + √(u² + 1)): asinh as another step rewrote it; step SQ takes asinh itself, with a simpler answer)
     hasrad(t) = t isa Expr && (half(t) !== nothing || any(hasrad, t.args))
@@ -64,9 +72,11 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
     w = gensym("w")
     Tw = a0z ? :($w ^ 2 / $a1) : :(($w ^ 2 - $a0) / $a1)
     leaf_rational(a1) == 1 && (Tw = a0z ? :($w ^ 2) : :($w ^ 2 - $a0))
+    direct && (Tw = w)
     κ = gensym("κ")
     κx = nothing
     rad = nothing                                    # P with √P ↦ √k R(T): (1 - u², R) for asin, ...
+    xpow = t -> nothing
     if name in (:asin, :acos, :asinh, :acosh, :lambertw, :LambertW)
         Tu, eu = tw(u, xk)
         (Tu !== nothing && isempty(Tu.levels) && degree(eu.den) == 0 && degree(eu.num) == 1) || return nothing
@@ -90,6 +100,18 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
         κx = :($xh * exp(-($A) / $k))
         xof = T -> leaf_rational(h) == 0 ? :($κ * exp($T / $k)) : :($κ * exp($T / $k) - $h)
         dxdT = T -> :($κ * exp($T / $k) / $k)
+        # (c x)^p, x^p with p not a number and h = 0: c^p κ^p e^(p T/k) (x^m e^((a + b log(c xⁿ))²), sample 2932)
+        if leaf_rational(h) == 0
+            xpow = function (t)
+                (iscall(t, :^, 2) && !has_x(t.args[3], xk) && leaf_rational(t.args[3]) === nothing) || return nothing
+                bs, p = t.args[2], t.args[3]
+                c = bs == xs ? nothing : (iscall(bs, :*, 2) && bs.args[3] == xs && !has_x(bs.args[2], xk)) ? bs.args[2] :
+                    (iscall(bs, :*, 2) && bs.args[2] == xs && !has_x(bs.args[3], xk)) ? bs.args[3] : false
+                c === false && return nothing
+                e = :($κ ^ $p * exp($p * $Tw / $k))
+                c === nothing ? e : :($c ^ $p * $e)
+            end
+        end
     end
     # √P, P^(m/2) with P = k·(the radicand of rad): √k^m R(T)^m
     function radsub(t)
@@ -112,12 +134,14 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
             hp !== nothing && hp[1] == B && return :($w ^ $(Int(2 * hp[2])))
             r = radsub(t)
             r === nothing || return r
+            r = xpow(t)
+            r === nothing || return r
             t == A && return Tw
             return Expr(t.head, (sub(s) for s in t.args)...)
         end
         t == xs ? xof(Tw) : t
     end
-    g = :($(sub(fe)) * $(dxdT(Tw)) * 2 * $w / $a1)
+    g = direct ? :($(sub(fe)) * $(dxdT(Tw))) : :($(sub(fe)) * $(dxdT(Tw)) * 2 * $w / $a1)
     has_x(g, xk) && return nothing
     G = try
         risch_integrate(g, w; build = expr_build, lift = identity, verify = verify)
@@ -128,14 +152,26 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
     (G === nothing || G isa IntegralWithRootSums) && return nothing
     # w^q ↦ B^(q/2), w ↦ √B, κ ↦ (x + h) e^(-A/k)
     function back(t)
-        t == w && return :(sqrt($B))
+        t == w && return direct ? A : :(sqrt($B))
         t == κ && return κx
         t isa Expr || return t
         # exp, sin, ... of c₂ w² + c₀: of (c₂ a₁) A + (c₂ a₀ + c₀), e^(2 asinh u), not e^(-a/b + (a + b asinh u)/b)
         if t.head === :call && t.args[1] in (:exp, :sin, :cos, :sinh, :cosh) && length(t.args) == 2 && has_x(t.args[2], string(w))
-            aτ = rep(t.args[2], :($w ^ 2), Bτ)
+            aτ = direct ? rep(t.args[2], w, τ) : rep(t.args[2], :($w ^ 2), Bτ)
             if !has_x(aτ, string(w))
                 Ta, ea = tw(aτ, string(τ))
+                if direct && Ta !== nothing && isempty(Ta.levels) && degree(ea.den) == 0 && 1 <= degree(ea.num) <= 4
+                    # (w = A: the argument as Σ cⱼ Aʲ)
+                    ts = Any[]
+                    for j in degree(ea.num):-1:0
+                        c = ea.num.c[j + 1] / ea.den.c[1]
+                        iszero(c) && continue
+                        cj = ct(Ta, c, τ)
+                        Aj = j == 0 ? nothing : j == 1 ? A : :($A ^ $j)
+                        push!(ts, Aj === nothing ? cj : leaf_rational(cj) == 1 ? Aj : :($cj * $Aj))
+                    end
+                    return Expr(:call, t.args[1], length(ts) == 1 ? ts[1] : Expr(:call, :+, ts...))
+                end
                 if Ta !== nothing && isempty(Ta.levels) && degree(ea.den) == 0 && degree(ea.num) <= 1
                     m = degree(ea.num) == 1 ? ct(Ta, ea.num.c[2] / ea.den.c[1], τ) : 0
                     r = ct(Ta, ea.num.c[1] / ea.den.c[1], τ)
@@ -150,7 +186,7 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
             end
         end
         if iscall(t, :^, 2) && t.args[2] == w && (q = leaf_rational(t.args[3]); q !== nothing)
-            e = Q(q) / 2
+            e = direct ? Q(q) : Q(q) / 2
             return isone(e) ? B : :($B ^ $(isone(denominator(e)) ? Int(e) : e))
         end
         Expr(t.head, (back(s) for s in t.args)...)
