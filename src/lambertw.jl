@@ -4,13 +4,13 @@
 #   ∫ R(x, W(x)) dx = ∫ R(w eʷ, w) (1 + w) eʷ dw,
 # integrated in w, then w = W(x) put back with eᵏʷ = (x/W)ᵏ for an integer k. ∫ W(x) dx = eʷ(w² - w + 1)
 # = (x/W)(W² - W + 1) = x (W - 1 + 1/W). For W(a x + b) (one argument, linear in x), x = (w eʷ - b)/a and
-# eʷ = (a x + b)/W. Nothing when f has no W, or the integral in w is refused or not elementary (its
+# eʷ = (a x + b)/W; for W(c/x), x = c/(w eʷ). Nothing when f has no W, or the integral in w is refused or not elementary (its
 # RischNotImplemented or NotElementary).
 # ---------------------------------------------------------------------------
 
 # W(u) as a term: the operation lambertw, or a term printed so (SymEngine has no operation for it)
 is_lambertw(t) = safe_iscall(t) && length(arguments(t)) == 1 &&
-                 (opname(operation(t)) === :lambertw || startswith(string(t), "lambertw("))
+                 (opname(operation(t)) in (:lambertw, :LambertW) || startswith(string(t), "lambertw("))   # (Rubi's LambertW)
 
 function try_lambertw(f, x; build = nothing, lift = nothing, verify::Bool = true)
     @nospecialize f x
@@ -34,13 +34,21 @@ function try_lambertw(f, x; build = nothing, lift = nothing, verify::Bool = true
         (err isa RischNotImplemented || err isa RischError) || rethrow()
         return nothing
     end
-    (isempty(T.levels) && degree(el.den) == 0 && degree(el.num) == 1) || return nothing
-    a, b = el.num.c[2] / el.den.c[1], el.num.c[1] / el.den.c[1]
+    # W(c/x): x = c/(w eʷ), dx = -c (1 + w)/(w² eʷ) dw, and eʷ = (c/x)/W as before (W(a/x)/(1 + W(a/x)), sample 2990)
+    recip = isempty(T.levels) && degree(el.num) == 0 && degree(el.den) == 1 && iszero(el.den.c[1])
+    (isempty(T.levels) && ((degree(el.den) == 0 && degree(el.num) == 1) || recip)) || return nothing
     bd = Builder(build === nothing ? auto_build(f, x) : build, lift === nothing ? auto_lift(f, x) : lift, x, T.consts)
     ew = mk(bd, :exp, bd.x)
-    # x = (w eʷ - b)/a, with w written as x
-    xw0 = iszero(b) ? mk(bd, :*, bd.x, ew) : mk(bd, :+, mk(bd, :*, bd.x, ew), cterm(bd, -b))
-    xw = isone(a) ? xw0 : mk(bd, :/, xw0, cterm(bd, a))
+    if recip
+        cr = el.num.c[1] / el.den.c[2]
+        a = one(cr)
+        xw = mk(bd, :/, cterm(bd, cr), mk(bd, :*, bd.x, ew))
+    else
+        a, b = el.num.c[2] / el.den.c[1], el.num.c[1] / el.den.c[1]
+        # x = (w eʷ - b)/a, with w written as x
+        xw0 = iszero(b) ? mk(bd, :*, bd.x, ew) : mk(bd, :+, mk(bd, :*, bd.x, ew), cterm(bd, -b))
+        xw = isone(a) ? xw0 : mk(bd, :/, xw0, cterm(bd, a))
+    end
     function walk(t)
         safe_iscall(t) || return string(t) == xk ? xw : t
         args = arguments(t)
@@ -49,7 +57,9 @@ function try_lambertw(f, x; build = nothing, lift = nothing, verify::Bool = true
         nargs = Any[walk(a) for a in args]
         all(i -> nargs[i] === args[i], eachindex(args)) ? t : term_rebuild(bd, t, nargs)
     end
-    g = mk(bd, :*, walk(f), mk(bd, :+, bd.lift(1), bd.x), ew)
+    g = recip ? mk(bd, :*, walk(f), cterm(bd, -cr), mk(bd, :+, bd.lift(1), bd.x),
+                  mk(bd, :/, bd.lift(1), mk(bd, :*, mk(bd, :^, bd.x, bd.lift(2)), ew))) :
+                mk(bd, :*, walk(f), mk(bd, :+, bd.lift(1), bd.x), ew)
     isone(a) || (g = mk(bd, :/, g, cterm(bd, a)))
     G = risch_integrate(g, x; build = bd.build, lift = bd.lift, verify = verify)
     G isa IntegralWithRootSums && return nothing

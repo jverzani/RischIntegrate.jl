@@ -5261,15 +5261,23 @@ end
 
 # step AN: the arguments of exp, sin, cos, b^u normalized after a NotElementary (a quotient by the root of a linear
 # denominator, the constant part of an exponent as a factor, two sines, cosines of linear arguments as a sum), and
-# sinh, cosh of a + b log(c xⁿ) beside an exponential in step SQ's w-integrand (samples 1159, 1160, 2250, 2952, 2953, 2955)
+# sinh, cosh of a + b log(c xⁿ) beside an exponential in step SQ's w-integrand (samples 1159, 1160, 2250, 2952, 2953, 2955);
+# asech, acsch in step SQ, W(c/x) and Rubi's LambertW in step LW
 @testset "Step AN: f^(a + b/x), cos((a + b x)/(c + d x)), Ci(c + d x) sin(a + b x)" begin
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     # (real-only functions at real arguments; Ci, Chi of a negative y as of |y|, a constant iπ apart)
     re(f) = z -> f(real(z))
     ab(f) = z -> f(abs(real(z)))
     ci, chi, si, shi = ab(SpecialFunctions.cosint), ab(Risch.coshint), re(SpecialFunctions.sinint), re(Risch.sinhint)
+    function W(y)                                       # (Lambert's W by Newton)
+        w = log1p(y)
+        for _ in 1:60
+            w -= (w * exp(w) - y) / (exp(w) * (1 + w))
+        end
+        w
+    end
     fns = Dict(:expinti => re(SpecialFunctions.expinti), :sinint => si, :Si => si, :cosint => ci, :Ci => ci,
-               :sinhint => shi, :Shi => shi, :coshint => chi, :Chi => chi)
+               :sinhint => shi, :Shi => shi, :coshint => chi, :Chi => chi, :LambertW => W, :lambertw => W)
     function ev(e, vals)
         go(t) = t isa Symbol ? (haskey(vals, t) ? ComplexF64(vals[t]) : Core.eval(Main, t)) : t isa Number ? t :
                 (t isa Expr && t.head === :call) ? get(() -> Core.eval(Main, t.args[1]), fns, t.args[1])(map(go, t.args[2:end])...) :
@@ -5281,7 +5289,10 @@ end
     for g in (:(f ^ (a + b / x) * x ^ 2), :(f ^ (a + b / x ^ 2) * x ^ 5), :(cos((a + b * x) / (c + d * x))),
               :(exp((a + b * x) / (c + d * x))), :(Shi(d * (a + b * log(c * x ^ n))) / x ^ 2),
               :(x * Chi(d * (a + b * log(c * x ^ n)))), :(Ci(c + d * x) * sin(a + b * x)), :(Ci(x) * sin(b * x)),
-              :(Chi(x) * sinh(b * x)), :(sin(a + b * x) * cos(c + d * x) / x))
+              :(Chi(x) * sinh(b * x)), :(sin(a + b * x) * cos(c + d * x) / x),
+              # (step SQ with asech, acsch, sample 2908; step LW with Rubi's LambertW and W(c/x), samples 2982, 2990)
+              :(1 / (x ^ 4 * (a + b * asech(c * x)) ^ 2)), :(1 / (x ^ 2 * (a + b * acsch(c * x)))),
+              :(LambertW(a * x) ^ 3 / x ^ 5), :(LambertW(a / x) / (1 + LambertW(a / x))), :(lambertw(a / x)))
         t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
         @test t < 120
         n = 0

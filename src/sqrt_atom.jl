@@ -10,7 +10,7 @@
 # quadratics in w: step GT, GQ (erf for Rubi's erf, erfi, FresnelS, FresnelC). w ↦ √B back; checked numerically.
 # Nothing when f has another atom, another half-integer power of an atom, or the integral in w is refused.
 # ---------------------------------------------------------------------------
-const SQ_ATOMS = (:log, :asin, :acos, :asinh, :acosh, :lambertw, :LambertW, :atan)
+const SQ_ATOMS = (:log, :asin, :acos, :asinh, :acosh, :asech, :acsch, :lambertw, :LambertW, :atan)
 
 try_sqrt_atom(f, x; build = nothing, lift = nothing, verify::Bool = true) =
     integrate_rewritten_expr(f, x, (fe, xs) -> nothing, SQ_ACTIVE; build = build, lift = lift, verify = verify,
@@ -182,7 +182,7 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
         κx = :($xs / $h($A / 2))
         xof = T -> :($κ * $h($T / 2))
         dxdT = T -> :($sgn * $κ * $dh($T / 2) / 2)
-    elseif name in (:asin, :acos, :asinh, :acosh, :lambertw, :LambertW)
+    elseif name in (:asin, :acos, :asinh, :acosh, :asech, :acsch, :lambertw, :LambertW)
         Tu, eu = tw(u, xk)
         (Tu !== nothing && isempty(Tu.levels) && degree(eu.den) == 0 && degree(eu.num) == 1) || return nothing
         c1 = ct(Tu, eu.num.c[2] / eu.den.c[1], xs)
@@ -191,6 +191,9 @@ function sqrt_atom_expr(fe, xs::Symbol; verify::Bool = true)
                      name === :acos ? (:cos, T -> :(-(sin($T))), (:(1 - $u ^ 2), :sin)) :
                      name === :asinh ? (:sinh, T -> :(cosh($T)), (:(1 + $u ^ 2), :cosh)) :
                      name === :acosh ? (:cosh, T -> :(sinh($T)), (:($u ^ 2 - 1), :sinh)) :
+                     # (asech, acsch: u = sech T, csch T, no radical; 1/(x⁴ (a + b asech(c x))²), sample 2908)
+                     name === :asech ? (:sech, T -> :(-(sech($T) * tanh($T))), nothing) :
+                     name === :acsch ? (:csch, T -> :(-(csch($T) * coth($T))), nothing) :
                      (nothing, T -> :((1 + $T) * exp($T)), nothing)
         xof = T -> (s = S === nothing ? :($T * exp($T)) : :($S($T)); :(($s - $d0) / $c1))
         dxdT = T -> :($(dS(T)) / $c1)
