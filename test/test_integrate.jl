@@ -4603,7 +4603,9 @@ end
     build(op, args...) = Expr(:call, op isa Symbol ? op : nameof(op), args...)
     for g in (:(1 / (a + b * acosh(1 + d * x ^ 2)) ^ 2),                                                 # 2749
               :(1 / (a + b * acosh(1 + d * x ^ 2))))
-        t = @elapsed @test_throws Risch.NotElementary Risch.risch_integrate(g, :x; build = build, lift = identity)
+        # (now integrated by step SQ, acosh(1 + d x²) by half angles: Shi and Chi; quickly, not by the residues)
+        t = @elapsed F = Risch.risch_integrate(g, :x; build = build, lift = identity)
+        @test occursin("sinhint", string(F)) || occursin("coshint", string(F))
         @test t < 60
     end
     # (an answer on the same route is unchanged)
